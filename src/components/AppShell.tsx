@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { WizardProvider } from '../context/WizardContext';
 import ClientsTab from './clients/ClientsTab';
+import WizardTab from './wizard/WizardTab';
 
 /** 원본 TABS 정의 */
 export const TABS: [string, string][] = [
@@ -18,7 +20,7 @@ export default function AppShell() {
   const [curTab, setCurTab] = useState('wizard');
 
   return (
-    <>
+    <WizardProvider>
       <header id="hdr">
         <span className="h-logo">인덕회계법인</span>
         <span className="h-sep" />
@@ -42,7 +44,9 @@ export default function AppShell() {
         </div>
       </header>
       <main id="main">
-        {curTab === 'clients' ? (
+        {curTab === 'wizard' ? (
+          <WizardTab />
+        ) : curTab === 'clients' ? (
           <ClientsTab />
         ) : (
           <div className="card">
@@ -53,6 +57,6 @@ export default function AppShell() {
           </div>
         )}
       </main>
-    </>
+    </WizardProvider>
   );
 }

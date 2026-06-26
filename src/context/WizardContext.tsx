@@ -1,0 +1,83 @@
+// 위저드 전역 상태 — 원본의 단일 S 객체 + step 을 React Context 로 옮긴 것
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { WizardState } from '../types';
+import { makeWizardState, STEP_LABELS } from '../lib/constants';
+import { saveDraft } from '../lib/draft';
+
+const STEP_COUNT = STEP_LABELS.length; // 6
+
+interface WizardCtx {
+  /** 위저드 입력 상태 (원본 S) */
+  S: WizardState;
+  /** 부분 갱신 (merge) */
+  setS: (patch: Partial<WizardState>) => void;
+  /** 전체 교체 (드래프트 복원/기록 불러오기) */
+  replaceS: (s: WizardState) => void;
+  /** 현재 단계 1..6 */
+  step: number;
+  setStep: (n: number) => void;
+  /** 이전/다음 (원본 wizNav) */
+  wizNav: (d: number) => void;
+  /** 뒤로만 이동 가능 (원본 goStep) */
+  goStep: (n: number) => void;
+  savedMsg: boolean;
+  setSavedMsg: (b: boolean) => void;
+  /** 새 청구서 작성 (연도 유지, 원본 doNewInvoice) */
+  resetNew: () => void;
+}
+
+const Ctx = createContext<WizardCtx | undefined>(undefined);
+
+export function WizardProvider({ children }: { children: ReactNode }) {
+  const [S, setSState] = useState<WizardState>(makeWizardState);
+  const [step, setStep] = useState(1);
+  const [savedMsg, setSavedMsg] = useState(false);
+  const sRef = useRef(S);
+  sRef.current = S;
+
+  const setS = useCallback((patch: Partial<WizardState>) => {
+    setSState((prev) => ({ ...prev, ...patch }));
+    setSavedMsg(false);
+  }, []);
+
+  const replaceS = useCallback((s: WizardState) => {
+    setSState(s);
+    setSavedMsg(false);
+  }, []);
+
+  const wizNav = useCallback((d: number) => {
+    setStep((s) => Math.max(1, Math.min(STEP_COUNT, s + d)));
+    setSavedMsg(false);
+  }, []);
+
+  const goStep = useCallback((n: number) => {
+    setStep((s) => (n < s ? n : s));
+    setSavedMsg(false);
+  }, []);
+
+  const resetNew = useCallback(() => {
+    setSState((prev) => ({ ...makeWizardState(), fiscalYear: prev.fiscalYear }));
+    setStep(1);
+    setSavedMsg(false);
+  }, []);
+
+  // 업무량 입력 중 자동 임시저장 (step>=2 && 거래처 선택됨)
+  useEffect(() => {
+    if (step >= 2 && S.selClientId) saveDraft(S, step);
+  }, [S, step]);
+
+  return (
+    <Ctx.Provider
+      value={{ S, setS, replaceS, step, setStep, wizNav, goStep, savedMsg, setSavedMsg, resetNew }}
+    >
+      {children}
+    </Ctx.Provider>
+  );
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useWizard(): WizardCtx {
+  const ctx = useContext(Ctx);
+  if (!ctx) throw new Error('useWizard must be used within WizardProvider');
+  return ctx;
+}
