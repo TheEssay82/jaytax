@@ -148,6 +148,14 @@ export interface CfgHistoryEntry {
   savedAt: string;
 }
 
+/** 설정 버전 (app_config 한 행 또는 가상 DEFAULT) */
+export interface ConfigVersion {
+  id: string;
+  label: string;
+  config: AppConfig;
+  isActive: boolean;
+}
+
 /** 설정 (원본 `ind_cfg4` / DEF) */
 export interface AppConfig {
   성실신고기본: number;

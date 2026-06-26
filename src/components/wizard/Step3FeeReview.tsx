@@ -7,7 +7,7 @@ import type { WizardStepProps } from './stepProps';
 
 export default function Step3FeeReview({ clients, records }: WizardStepProps) {
   const { S, cmpRec } = useWizard();
-  const { config } = useConfig();
+  const { config, activeLabel } = useConfig();
   const c = calcS(S, config);
 
   const prevYear = Number(S.fiscalYear) - 1;
@@ -103,8 +103,13 @@ export default function Step3FeeReview({ clients, records }: WizardStepProps) {
         </div>
       ) : null}
 
-      <div className="alert-i">
-        수수료는 <strong>천원 단위 반올림</strong> 후 최종 확정됩니다.
+      <div className="alert-i" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span>
+          수수료는 <strong>천원 단위 반올림</strong> 후 최종 확정됩니다.
+        </span>
+        <span style={{ marginLeft: 'auto' }}>
+          적용 설정: <span className="ver-badge">{activeLabel}</span>
+        </span>
       </div>
 
       <div className="fee-blk">
