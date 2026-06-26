@@ -4,8 +4,10 @@ import type { Client } from '../../types';
 import { CURRENT_YEAR } from '../../lib/constants';
 import { fm, dtFmt, getRevForYear, getClientDispYears, sortIndicator } from '../../lib/format';
 import { createClient, updateClient, deleteClient, deleteClients } from '../../lib/clientsApi';
+import { downloadTemplate, parseClientsFile } from '../../lib/clientsExcel';
 import { useClients } from '../../hooks/useClients';
 import ClientForm, { type ClientFormData } from './ClientForm';
+import BulkRevenue from './BulkRevenue';
 
 export default function ClientsTab() {
   const { clients, loading, error, refresh } = useClients();
@@ -18,6 +20,58 @@ export default function ClientsTab() {
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<'list' | 'bulk'>('list');
+
+  // 엑셀 업로드: 사업자번호 기준 일괄 upsert (원본 importClients)
+  async function importExcel(file: File) {
+    setBusy(true);
+    try {
+      const parsed = await parseClientsFile(file);
+      if (!parsed.length) {
+        alert('업로드할 데이터가 없습니다.');
+        return;
+      }
+      const norm = (s: string) => s.replace(/-/g, '');
+      let added = 0;
+      let updated = 0;
+      for (const p of parsed) {
+        const dup = p.taxId ? clients.find((c) => c.taxId && norm(c.taxId) === norm(p.taxId)) : undefined;
+        if (dup) {
+          await updateClient(dup.id, {
+            revenues: { ...(dup.revenues || {}), ...p.revenues },
+            modelYears: { ...(dup.modelYears || {}), ...p.modelYears },
+            manager: p.manager || dup.manager,
+            tradeName: p.tradeName || dup.tradeName,
+            repName: p.repName || dup.repName,
+            bankAccount: p.bankAccount || dup.bankAccount,
+            bizType: p.bizType,
+          });
+          updated++;
+        } else {
+          await createClient({
+            bizType: p.bizType,
+            companyName: p.companyName,
+            taxId: p.taxId,
+            manager: p.manager,
+            tradeName: p.tradeName,
+            repName: p.repName,
+            bankAccount: p.bankAccount,
+            revenues: p.revenues,
+            modelYears: p.modelYears,
+            managers: {},
+            lossYears: [],
+          });
+          added++;
+        }
+      }
+      await refresh();
+      alert(`✅ 업로드 완료 — 신규 ${added}개, 갱신 ${updated}개`);
+    } catch (e) {
+      alert('업로드 실패: ' + (e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const norm = (s: string) => s.replace(/-/g, '');
 
@@ -206,6 +260,10 @@ export default function ClientsTab() {
     );
   }
 
+  if (mode === 'bulk') {
+    return <BulkRevenue clients={clients} onBack={() => setMode('list')} onChanged={refresh} />;
+  }
+
   const colCount = 7 + dispYears.length + 3;
 
   return (
@@ -226,6 +284,25 @@ export default function ClientsTab() {
               선택 {selected.size}개 삭제
             </button>
           )}
+          <button className="btn-sm btn-sm-blue" style={{ fontWeight: 600 }} onClick={() => setMode('bulk')}>
+            📊 매출액 일괄입력
+          </button>
+          <button className="btn-sm btn-sm-blue" onClick={() => void downloadTemplate()}>
+            ⬇ 엑셀 양식
+          </button>
+          <label className="btn-sm btn-sm-blue" style={{ cursor: 'pointer' }}>
+            ⬆ 엑셀 업로드
+            <input
+              type="file"
+              accept=".xlsx,.xls,.xlsm,.csv"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void importExcel(f);
+                e.target.value = '';
+              }}
+            />
+          </label>
           <button
             className="btn-sm"
             onClick={() => {

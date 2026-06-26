@@ -13,7 +13,8 @@
       "Bash(git commit -q -m ' *)",
       "Bash([ -f \"$f\" ])",
       "Read(//d/Dropbox/9.행정폴더/기장팀/4. 조정료/**)",
-      "Bash(curl -s -o /dev/null -w \"preview HTTP %{http_code}\\\\n\" http://localhost:51750/)"
+      "Bash(curl -s -o /dev/null -w \"preview HTTP %{http_code}\\\\n\" http://localhost:51750/)",
+      "Bash(npm install *)"
     ]
   }
 }
