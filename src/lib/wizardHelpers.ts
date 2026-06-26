@@ -54,6 +54,30 @@ export function getTargetIds(targets: Target[], year: number | string): string[]
   return targets.filter((t) => String(t.fiscalYear) === String(year)).map((t) => t.clientId);
 }
 
+/**
+ * 거래처의 해당 연도 상태 (청구서작성 거래처선택용)
+ * - 'billed'   : 그 해 청구기록 있음
+ * - 'lost'     : 상실 연도 이후 (lossYears 최솟값 ≤ year) → 더 이상 거래처 아님
+ * - 'pre'      : 첫 활동연도 이전 (year < 첫 매출/청구 연도) → 아직 거래 전(신규 이전)
+ * - 'unbilled' : 위에 해당 없는 활성 거래처인데 아직 미청구 → 실제 청구 후보
+ */
+export type ClientYearStatus = 'billed' | 'lost' | 'pre' | 'unbilled';
+export function clientYearStatus(
+  records: BillingRecord[],
+  client: Client,
+  year: number | string,
+): ClientYearStatus {
+  const y = Number(year);
+  if (isBilled(records, y, client)) return 'billed';
+  const ly = (client.lossYears || []).map(Number);
+  if (ly.length && y >= Math.min(...ly)) return 'lost';
+  const revYears = Object.keys(client.revenues || {}).map(Number);
+  const recYears = records.filter((r) => recordMatchesClient(r, client)).map((r) => Number(r.fiscalYear));
+  const all = [...revYears, ...recYears];
+  if (all.length && y < Math.min(...all)) return 'pre';
+  return 'unbilled';
+}
+
 /** 신규: 전년도 청구기록 없음 (id+회사명 매칭) */
 export function isNewForYear(records: BillingRecord[], client: ClientRef, year: number | string): boolean {
   if (!client.id && !client.companyName) return false;

@@ -7,9 +7,8 @@ import { loadDraft, hasDraft } from '../../lib/draft';
 import {
   getWizardYears,
   getTargetIds,
-  isBilled,
   isNewForYear,
-  isManualLossYear,
+  clientYearStatus,
   getManagerForYear,
   isModelForYear,
   autoPayDatePatch,
@@ -35,16 +34,20 @@ export default function Step0SelectClient({ clients, records, targets }: WizardS
   if (bz) filtered = filtered.filter((c) => c.bizType === bz);
   if (mg) filtered = filtered.filter((c) => c.manager === mg);
 
+  // 거래처별 해당연도 상태 (billed/lost/pre/unbilled)
+  const statusOf = (c: Client) => clientYearStatus(records, c, S.fiscalYear);
+
   let shown = filtered;
-  if (billedFilter === 'unbilled') shown = shown.filter((c) => !isBilled(records, S.fiscalYear, c));
-  else if (billedFilter === 'billed') shown = shown.filter((c) => isBilled(records, S.fiscalYear, c));
+  if (billedFilter === 'unbilled') shown = shown.filter((c) => statusOf(c) === 'unbilled');
+  else if (billedFilter === 'billed') shown = shown.filter((c) => statusOf(c) === 'billed');
   // 청구대상 확정분은 숨기지 않고 위로 우선 정렬
   if (hasTargets) {
     shown = [...shown].sort((a, b) => (targetIds.includes(b.id) ? 1 : 0) - (targetIds.includes(a.id) ? 1 : 0));
   }
 
-  const unbilledCnt = shown.filter((c) => !isBilled(records, S.fiscalYear, c)).length;
-  const billedCnt = shown.filter((c) => isBilled(records, S.fiscalYear, c)).length;
+  // 카운트는 전체(검색/구분 필터 후) 기준
+  const unbilledCnt = filtered.filter((c) => statusOf(c) === 'unbilled').length;
+  const billedCnt = filtered.filter((c) => statusOf(c) === 'billed').length;
 
   // 거래처 선택 (원본 pickClient)
   function pickClient(c: Client) {
@@ -179,10 +182,17 @@ export default function Step0SelectClient({ clients, records, targets }: WizardS
 
         <div style={{ maxHeight: 360, overflowY: 'auto' }}>
           {shown.map((c) => {
-            const bil = isBilled(records, S.fiscalYear, c);
+            const status = statusOf(c);
             const nf = isNewForYear(records, c, S.fiscalYear);
-            const lf = isManualLossYear(clients, c.id, S.fiscalYear);
             const rv = getRevForYear(c, S.fiscalYear);
+            const statusBadge =
+              status === 'billed'
+                ? { cls: 'b-billed', txt: '✓청구완료' }
+                : status === 'lost'
+                  ? { cls: 'b-loss', txt: '상실(거래종료)' }
+                  : status === 'pre'
+                    ? { cls: 'b-off', txt: '거래전' }
+                    : { cls: 'b-unbilled', txt: '미청구' };
             return (
               <div
                 key={c.id}
@@ -197,14 +207,10 @@ export default function Step0SelectClient({ clients, records, targets }: WizardS
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-                  {nf ? (
-                    <span className="bdg b-new">신규</span>
-                  ) : lf ? (
-                    <span className="bdg b-loss">상실</span>
-                  ) : null}
+                  {nf && status !== 'pre' && <span className="bdg b-new">신규</span>}
                   {hasDraft(c.id, S.fiscalYear) && <span className="bdg-draft">✏️ 작성중</span>}
                 </div>
-                <span className={`bdg ${bil ? 'b-billed' : 'b-unbilled'}`}>{bil ? '✓청구완료' : '미청구'}</span>
+                <span className={`bdg ${statusBadge.cls}`}>{statusBadge.txt}</span>
               </div>
             );
           })}
