@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { WizardProvider } from '../context/WizardContext';
+import { WizardProvider, useWizard } from '../context/WizardContext';
 import { ConfigProvider } from '../context/ConfigContext';
 import ClientsTab from './clients/ClientsTab';
 import WizardTab from './wizard/WizardTab';
@@ -22,12 +22,28 @@ export const TABS: [string, string][] = [
 ];
 
 export default function AppShell() {
-  const { user, signOut } = useAuth();
-  const [curTab, setCurTab] = useState('wizard');
-
   return (
     <ConfigProvider>
       <WizardProvider>
+        <Shell />
+      </WizardProvider>
+    </ConfigProvider>
+  );
+}
+
+function Shell() {
+  const { user, signOut } = useAuth();
+  const { resetNew } = useWizard();
+  const [curTab, setCurTab] = useState('wizard');
+
+  // 탭 클릭: 청구서 작성 탭은 항상 새 청구서(거래처 선택, 1단계)부터 시작
+  function clickTab(id: string) {
+    if (id === 'wizard') resetNew();
+    setCurTab(id);
+  }
+
+  return (
+    <>
       <header id="hdr">
         <span className="h-logo">인덕회계법인</span>
         <span className="h-sep" />
@@ -37,7 +53,7 @@ export default function AppShell() {
             <button
               key={id}
               className={`h-tab${curTab === id ? ' on' : ''}`}
-              onClick={() => setCurTab(id)}
+              onClick={() => clickTab(id)}
             >
               {lbl}
             </button>
@@ -72,7 +88,6 @@ export default function AppShell() {
           </div>
         )}
       </main>
-      </WizardProvider>
-    </ConfigProvider>
+    </>
   );
 }

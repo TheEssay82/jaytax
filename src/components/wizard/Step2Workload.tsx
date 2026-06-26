@@ -7,7 +7,7 @@ import type { ModelFeeMode } from '../../types';
 
 export default function Step2Workload() {
   const { S, setS } = useWizard();
-  const { config: CFG } = useConfig();
+  const { config: CFG, activeLabel } = useConfig();
 
   const modelFeeDisplay = (() => {
     const m = S.modelFeeMode || 'default';
@@ -22,6 +22,12 @@ export default function Step2Workload() {
 
   return (
     <>
+      <div className="alert-i" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span>업무량을 입력하면 다음 단계에서 수수료가 계산됩니다.</span>
+        <span style={{ marginLeft: 'auto' }}>
+          적용 설정: <span className="ver-badge">{activeLabel}</span>
+        </span>
+      </div>
       <div className="wsec">
         <div className="whdr">
           <span>방문 및 전화 상담</span>
