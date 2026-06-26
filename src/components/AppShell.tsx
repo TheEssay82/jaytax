@@ -10,6 +10,7 @@ import RequestsTab from './requests/RequestsTab';
 import TargetsTab from './targets/TargetsTab';
 import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
+import UsersTab from './users/UsersTab';
 
 /** 원본 TABS 정의 */
 export const TABS: [string, string][] = [
@@ -20,6 +21,7 @@ export const TABS: [string, string][] = [
   ['stats', '📊 통계'],
   ['requests', '💬 업데이트요청'],
   ['settings', '⚙️ 설정'],
+  ['users', '👤 사용자 관리'],
 ];
 
 export default function AppShell() {
@@ -37,6 +39,7 @@ const TAB_CAP: Partial<Record<string, Capability>> = {
   clients: 'manageClients',
   targets: 'manageTargets',
   settings: 'changeSettings',
+  users: 'manageUsers',
 };
 
 function Shell() {
@@ -109,6 +112,8 @@ function Shell() {
           <SettingsTab />
         ) : cur === 'stats' ? (
           <StatsTab />
+        ) : cur === 'users' ? (
+          <UsersTab />
         ) : (
           <div className="card">
             <div className="chdr">{TABS.find(([id]) => id === cur)?.[1]}</div>
