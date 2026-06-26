@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { WizardProvider, useWizard } from '../context/WizardContext';
 import { ConfigProvider } from '../context/ConfigContext';
+import { can, ROLE_LABELS, type Capability } from '../lib/roles';
 import ClientsTab from './clients/ClientsTab';
 import WizardTab from './wizard/WizardTab';
 import HistoryTab from './history/HistoryTab';
@@ -31,16 +32,31 @@ export default function AppShell() {
   );
 }
 
+// 탭별 표시에 필요한 권한 (없으면 전원 표시)
+const TAB_CAP: Partial<Record<string, Capability>> = {
+  clients: 'manageClients',
+  targets: 'manageTargets',
+  settings: 'changeSettings',
+};
+
 function Shell() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, role } = useAuth();
   const { resetNew } = useWizard();
   const [curTab, setCurTab] = useState('wizard');
+
+  const visibleTabs = TABS.filter(([id]) => {
+    const cap = TAB_CAP[id];
+    return !cap || can(role, cap);
+  });
 
   // 탭 클릭: 청구서 작성 탭은 항상 새 청구서(거래처 선택, 1단계)부터 시작
   function clickTab(id: string) {
     if (id === 'wizard') resetNew();
     setCurTab(id);
   }
+
+  // 권한 없는 탭이 현재 선택돼 있으면 청구서 작성으로 되돌림(방어)
+  const cur = visibleTabs.some(([id]) => id === curTab) ? curTab : 'wizard';
 
   return (
     <>
@@ -56,10 +72,10 @@ function Shell() {
           v{__APP_VERSION__}
         </span>
         <nav className="h-nav" id="h-nav">
-          {TABS.map(([id, lbl]) => (
+          {visibleTabs.map(([id, lbl]) => (
             <button
               key={id}
-              className={`h-tab${curTab === id ? ' on' : ''}`}
+              className={`h-tab${cur === id ? ' on' : ''}`}
               onClick={() => clickTab(id)}
             >
               {lbl}
@@ -67,30 +83,35 @@ function Shell() {
           ))}
         </nav>
         <div className="h-acts">
-          <span className="h-title">{user?.email}</span>
+          <span className="h-title">
+            {user?.email}
+            <span className="bdg b-on" style={{ marginLeft: 6, fontSize: 10 }}>
+              {ROLE_LABELS[role]}
+            </span>
+          </span>
           <button className="ha" onClick={signOut}>
             로그아웃
           </button>
         </div>
       </header>
       <main id="main">
-        {curTab === 'wizard' ? (
+        {cur === 'wizard' ? (
           <WizardTab />
-        ) : curTab === 'clients' ? (
+        ) : cur === 'clients' ? (
           <ClientsTab />
-        ) : curTab === 'history' ? (
+        ) : cur === 'history' ? (
           <HistoryTab onSwitchTab={setCurTab} />
-        ) : curTab === 'targets' ? (
+        ) : cur === 'targets' ? (
           <TargetsTab />
-        ) : curTab === 'requests' ? (
+        ) : cur === 'requests' ? (
           <RequestsTab />
-        ) : curTab === 'settings' ? (
+        ) : cur === 'settings' ? (
           <SettingsTab />
-        ) : curTab === 'stats' ? (
+        ) : cur === 'stats' ? (
           <StatsTab />
         ) : (
           <div className="card">
-            <div className="chdr">{TABS.find(([id]) => id === curTab)?.[1]}</div>
+            <div className="chdr">{TABS.find(([id]) => id === cur)?.[1]}</div>
             <div className="alert-i">알 수 없는 탭입니다.</div>
           </div>
         )}

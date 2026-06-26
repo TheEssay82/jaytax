@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { useWizard } from '../../context/WizardContext';
 import { useConfig } from '../../context/ConfigContext';
+import { useAuth } from '../../context/AuthContext';
+import { can } from '../../lib/roles';
 import { calcS, won, pct, dt } from '../../lib/calc';
 import { updateClient } from '../../lib/clientsApi';
 import { createBillingRecord } from '../../lib/billingApi';
@@ -12,6 +14,8 @@ import type { WizardStepProps } from './stepProps';
 export default function Step5Invoice({ clients, refreshClients, refreshBilling }: WizardStepProps) {
   const { S, savedMsg, setSavedMsg, resetNew } = useWizard();
   const { config } = useConfig();
+  const { role } = useAuth();
+  const canFinalize = can(role, 'finalizeInvoice');
   const [saving, setSaving] = useState(false);
   const c = calcS(S, config);
   const yr = S.fiscalYear;
@@ -76,10 +80,15 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
           </button>
           <div className="alert-ok no-print">✓ 기록 저장 완료!</div>
         </>
-      ) : (
+      ) : canFinalize ? (
         <button className="btn-green no-print" onClick={saveRec} disabled={saving}>
           {saving ? '저장 중…' : `💾 청구 확정 및 기록 저장 (${S.fiscalYear}년 귀속)`}
         </button>
+      ) : (
+        <div className="alert-w no-print">
+          🔒 기장팀원은 청구서를 <strong>최종 저장(확정)</strong>할 수 없습니다. 기장팀장 이상이 확정합니다.
+          (작성·인쇄는 가능)
+        </div>
       )}
 
       <div className="inv" id="inv-body">

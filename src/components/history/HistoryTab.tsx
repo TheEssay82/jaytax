@@ -3,6 +3,8 @@ import { useMemo, useState } from 'react';
 import type { BillingRecord } from '../../types';
 import { useBillingData } from '../../hooks/useBillingData';
 import { useWizard } from '../../context/WizardContext';
+import { useAuth } from '../../context/AuthContext';
+import { can } from '../../lib/roles';
 import { deleteBillingRecord } from '../../lib/billingApi';
 import { isNewForYear } from '../../lib/wizardHelpers';
 import { fm } from '../../lib/format';
@@ -14,6 +16,8 @@ type SortKey = 'fiscalYear' | 'manager' | 'companyName' | 'rev' | 'A' | 'C' | 'd
 export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) => void }) {
   const { records, loading, error, refresh } = useBillingData();
   const { cmpRec, setCmpRec, loadRecord } = useWizard();
+  const { role } = useAuth();
+  const canDelete = can(role, 'deleteBilling');
   const [filter, setFilter] = useState('');
   const [year, setYear] = useState('');
   const [biz, setBiz] = useState('');
@@ -169,6 +173,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
                 onCmp={() => setCmpRec(r)}
                 onEdit={() => edit(r)}
                 onDel={() => del(r)}
+                canDelete={canDelete}
               />
             ))}
           </tbody>
@@ -209,9 +214,10 @@ interface RowProps {
   onCmp: () => void;
   onEdit: () => void;
   onDel: () => void;
+  canDelete: boolean;
 }
 
-function HistRow({ r, expanded, isNew, onToggle, onCmp, onEdit, onDel }: RowProps) {
+function HistRow({ r, expanded, isNew, onToggle, onCmp, onEdit, onDel, canDelete }: RowProps) {
   return (
     <>
       <tr onClick={onToggle} title="클릭: 업무량 상세" style={{ cursor: 'pointer' }}>
@@ -247,9 +253,11 @@ function HistRow({ r, expanded, isNew, onToggle, onCmp, onEdit, onDel }: RowProp
             <button className="btn-sm btn-sm-grn" onClick={onEdit}>
               수정
             </button>
-            <button className="btn-sm btn-sm-del" onClick={onDel}>
-              🗑
-            </button>
+            {canDelete && (
+              <button className="btn-sm btn-sm-del" onClick={onDel}>
+                🗑
+              </button>
+            )}
           </div>
         </td>
       </tr>

@@ -2,6 +2,8 @@
 import { useMemo, useState } from 'react';
 import { useClients } from '../../hooks/useClients';
 import { useBillingData } from '../../hooks/useBillingData';
+import { useAuth } from '../../context/AuthContext';
+import { can } from '../../lib/roles';
 import { getManagerForYear } from '../../lib/wizardHelpers';
 import { fm } from '../../lib/format';
 
@@ -17,6 +19,8 @@ const emptyAgg = (): MgrAgg => ({
 export default function StatsTab() {
   const { clients, loading: clLoading } = useClients();
   const { records, loading: bdLoading } = useBillingData();
+  const { role, profileName } = useAuth();
+  const ownOnly = !can(role, 'viewAllStats');
   const loading = clLoading || bdLoading;
 
   const years = useMemo(
@@ -26,10 +30,18 @@ export default function StatsTab() {
   const [statYear, setStatYear] = useState<number | null>(null);
   const year = statYear ?? years[0] ?? null;
 
-  const recs = useMemo(
-    () => (year == null ? [] : records.filter((r) => String(r.fiscalYear) === String(year))),
-    [records, year],
-  );
+  const recs = useMemo(() => {
+    if (year == null) return [];
+    let list = records.filter((r) => String(r.fiscalYear) === String(year));
+    if (ownOnly) {
+      list = list.filter((r) => {
+        const cl = clients.find((c) => c.id === r.selClientId);
+        const m = cl ? getManagerForYear(cl, r.fiscalYear) : r.manager || '';
+        return m === profileName;
+      });
+    }
+    return list;
+  }, [records, year, ownOnly, clients, profileName]);
 
   const { mgrs, tot } = useMemo(() => {
     const byMgr: Record<string, MgrAgg> = {};
@@ -102,6 +114,12 @@ export default function StatsTab() {
   return (
     <div className="card">
       <div className="chdr">담당자별 통계 — {yearSelect}</div>
+
+      {ownOnly && (
+        <div className="alert-i" style={{ fontSize: 11 }}>
+          🔒 본인(담당자: {profileName || '미지정'}) 청구건만 표시됩니다.
+        </div>
+      )}
 
       <div className="stat-cards">
         <div className="stat-card">
