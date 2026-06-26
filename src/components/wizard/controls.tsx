@@ -1,5 +1,6 @@
 // 위저드 공용 입력 컨트롤 — 원본 pills/ynpills/wsec/help-icon 포팅
-import type { ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { WizardState } from '../../types';
 import { useWizard } from '../../context/WizardContext';
 import { HELP_TEXTS } from '../../lib/constants';
@@ -46,17 +47,50 @@ export function YnPills({ value, onChange }: { value: string; onChange: (v: 'O' 
 /** 설명 툴팁 아이콘 (hover/focus 시 표시) */
 export function HelpTooltip({ k }: { k: string }) {
   const txt = HELP_TEXTS[k];
+  const ref = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   if (!txt) return null;
+
+  function show() {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const tw = 300;
+    let left = r.right + 8;
+    if (left + tw > window.innerWidth - 12) left = r.left - tw - 8;
+    if (left < 10) left = 10;
+    let top = r.top - 4;
+    const approxH = Math.min(window.innerHeight * 0.8, 80 + txt.split('\n').length * 22);
+    if (top + approxH > window.innerHeight - 12) top = window.innerHeight - approxH - 12;
+    if (top < 10) top = 10;
+    setPos({ left, top });
+  }
+  const hide = () => setPos(null);
+
   return (
-    <span className="help-icon" tabIndex={0}>
-      i
-      <span className="help-pop">
-        <b>{k} 설명</b>
+    <>
+      <span
+        ref={ref}
+        className="help-icon"
+        tabIndex={0}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+      >
+        i
+      </span>
+      {pos &&
+        createPortal(
+          <div className="help-pop-fixed" style={{ left: pos.left, top: pos.top }}>
+            <b>{k} 설명</b>
         {txt.split('\n').map((l, i) => (
           <span key={i}>{l || ' '}</span>
-        ))}
-      </span>
-    </span>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
