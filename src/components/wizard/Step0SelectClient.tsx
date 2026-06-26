@@ -37,11 +37,11 @@ export default function Step0SelectClient({ clients, records, targets }: WizardS
 
   const tgtFiltered = hasTargets ? filtered.filter((c) => targetIds.includes(c.id)) : filtered;
   let shown = tgtFiltered.length ? tgtFiltered : filtered;
-  if (billedFilter === 'unbilled') shown = shown.filter((c) => !isBilled(records, S.fiscalYear, c.id));
-  else if (billedFilter === 'billed') shown = shown.filter((c) => isBilled(records, S.fiscalYear, c.id));
+  if (billedFilter === 'unbilled') shown = shown.filter((c) => !isBilled(records, S.fiscalYear, c));
+  else if (billedFilter === 'billed') shown = shown.filter((c) => isBilled(records, S.fiscalYear, c));
 
-  const unbilledCnt = shown.filter((c) => !isBilled(records, S.fiscalYear, c.id)).length;
-  const billedCnt = shown.filter((c) => isBilled(records, S.fiscalYear, c.id)).length;
+  const unbilledCnt = shown.filter((c) => !isBilled(records, S.fiscalYear, c)).length;
+  const billedCnt = shown.filter((c) => isBilled(records, S.fiscalYear, c)).length;
 
   // 거래처 선택 (원본 pickClient)
   function pickClient(c: Client) {
@@ -176,8 +176,8 @@ export default function Step0SelectClient({ clients, records, targets }: WizardS
 
         <div style={{ maxHeight: 360, overflowY: 'auto' }}>
           {shown.map((c) => {
-            const bil = isBilled(records, S.fiscalYear, c.id);
-            const nf = isNewForYear(records, c.id, S.fiscalYear);
+            const bil = isBilled(records, S.fiscalYear, c);
+            const nf = isNewForYear(records, c, S.fiscalYear);
             const lf = isManualLossYear(clients, c.id, S.fiscalYear);
             const rv = getRevForYear(c, S.fiscalYear);
             return (

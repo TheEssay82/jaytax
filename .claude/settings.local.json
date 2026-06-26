@@ -14,7 +14,10 @@
       "Bash([ -f \"$f\" ])",
       "Read(//d/Dropbox/9.행정폴더/기장팀/4. 조정료/**)",
       "Bash(curl -s -o /dev/null -w \"preview HTTP %{http_code}\\\\n\" http://localhost:51750/)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(curl -s -o /dev/null -w \"5174: HTTP %{http_code}\\\\n\" http://localhost:5174/)",
+      "Bash(f=\"C:/Users/geniw/Downloads/인덕_백업_2026-06-26.json\"; if [ -f \"$f\" ]; then echo \"FOUND, size=$\\(wc -c < \"$f\"\\) bytes\"; else echo \"NOT FOUND\"; ls \"C:/Users/geniw/Downloads/\" | grep -i \"백업\\\\|backup\\\\|인덕\" || echo \"\\(no match\\)\"; fi)",
+      "Bash(NODE_PATH=C:/Users/geniw/Downloads/jaytax/node_modules node -e ' *)"
     ]
   }
 }

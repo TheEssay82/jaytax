@@ -164,7 +164,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
                 key={r.id}
                 r={r}
                 expanded={expandId === r.id}
-                isNew={isNewForYear(records, r.selClientId || '', r.fiscalYear)}
+                isNew={isNewForYear(records, { id: r.selClientId || '', companyName: r.companyName }, r.fiscalYear)}
                 onToggle={() => setExpandId((id) => (id === r.id ? null : r.id))}
                 onCmp={() => setCmpRec(r)}
                 onEdit={() => edit(r)}

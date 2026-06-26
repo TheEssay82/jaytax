@@ -24,9 +24,24 @@ export function getWizardYears(clients: Client[], records: BillingRecord[]): num
   return [...new Set([...revYears, ...histYears, ...base])].filter((y) => y >= 2015).sort((a, b) => b - a);
 }
 
+/** 거래처 참조 (id + 회사명) */
+export interface ClientRef {
+  id: string;
+  companyName: string;
+}
+
+/**
+ * 기록이 해당 거래처 것인지 — selClientId(id) 우선, 안 맞으면 회사명 보조 매칭.
+ * 거래처 삭제·재등록/마이그레이션으로 id가 바뀌어도 회사명으로 연결을 유지한다.
+ */
+export function recordMatchesClient(r: BillingRecord, client: ClientRef): boolean {
+  if (r.selClientId && r.selClientId === client.id) return true;
+  return !!client.companyName && r.companyName === client.companyName;
+}
+
 /** 해당 연도 청구기록 존재 여부 */
-export function isBilled(records: BillingRecord[], year: number | string, cid: string): boolean {
-  return records.some((r) => r.selClientId === cid && String(r.fiscalYear) === String(year));
+export function isBilled(records: BillingRecord[], year: number | string, client: ClientRef): boolean {
+  return records.some((r) => String(r.fiscalYear) === String(year) && recordMatchesClient(r, client));
 }
 
 /** 청구대상 확정 여부 */
@@ -39,11 +54,11 @@ export function getTargetIds(targets: Target[], year: number | string): string[]
   return targets.filter((t) => String(t.fiscalYear) === String(year)).map((t) => t.clientId);
 }
 
-/** 신규: 전년도 청구기록 없음 */
-export function isNewForYear(records: BillingRecord[], cid: string, year: number | string): boolean {
-  if (!cid) return false;
+/** 신규: 전년도 청구기록 없음 (id+회사명 매칭) */
+export function isNewForYear(records: BillingRecord[], client: ClientRef, year: number | string): boolean {
+  if (!client.id && !client.companyName) return false;
   const py = String(Number(year) - 1);
-  return !records.some((r) => r.selClientId === cid && String(r.fiscalYear) === py);
+  return !records.some((r) => String(r.fiscalYear) === py && recordMatchesClient(r, client));
 }
 
 /** 수동 상실: 거래처에 명시적으로 설정된 상실 연도만 (거래처선택 화면용) */

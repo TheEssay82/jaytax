@@ -33,8 +33,8 @@ export default function TargetsTab() {
   const selIds = getTargetIds(targets, tYear);
   const selLaw = lawClients.filter((c) => selIds.includes(c.id)).length;
   const selPer = perClients.filter((c) => selIds.includes(c.id)).length;
-  const billedCnt = clients.filter((c) => isBilled(records, tYear, c.id)).length;
-  const unbilledSel = selIds.length - clients.filter((c) => isBilled(records, tYear, c.id) && selIds.includes(c.id)).length;
+  const billedCnt = clients.filter((c) => isBilled(records, tYear, c)).length;
+  const unbilledSel = selIds.length - clients.filter((c) => isBilled(records, tYear, c) && selIds.includes(c.id)).length;
 
   async function toggle(cid: string, val: boolean) {
     try {
@@ -74,8 +74,8 @@ export default function TargetsTab() {
       <>
         {list.map((c) => {
           const sel = selIds.includes(c.id);
-          const billed = isBilled(records, tYear, c.id);
-          const nf = isNewForYear(records, c.id, tYear);
+          const billed = isBilled(records, tYear, c);
+          const nf = isNewForYear(records, c, tYear);
           const lf = isManualLossYear(clients, c.id, tYear);
           const prevRec = records.find(
             (r) => r.selClientId === c.id && String(r.fiscalYear) === String(tYear - 1),
