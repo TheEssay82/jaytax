@@ -176,12 +176,6 @@ export default function Step3FeeReview({ clients, records }: WizardStepProps) {
             <span className="fv">{won(c.otherFee)}</span>
           </div>
         )}
-        {!!c.penFee && (
-          <div className="fr2">
-            <span className="fk">가산세</span>
-            <span className="fv">{won(c.penFee)}</span>
-          </div>
-        )}
         <div className="fr2" style={{ borderTop: '2px solid #E0DCD4', marginTop: 2, paddingTop: 5 }}>
           <span className="fk" style={{ fontWeight: 700 }}>
             ⑦) 소계
@@ -209,11 +203,15 @@ export default function Step3FeeReview({ clients, records }: WizardStepProps) {
           <span className="fv">- {won(c.disc)}</span>
         </div>
         <div className="fr2">
+          <span className="fk">⑨ 가산금액</span>
+          <span className="fv">+ {won(c.penFee)}</span>
+        </div>
+        <div className="fr2">
           <span className="fk">D) 총 보수 합계</span>
           <span className="fv">{won(c.D)}</span>
         </div>
         <div className="fr2">
-          <span className="fk">⑨ 부가가치세 (10%)</span>
+          <span className="fk">⑩ 부가가치세 (10%)</span>
           <span className="fv">{won(c.VAT)}</span>
         </div>
         <div

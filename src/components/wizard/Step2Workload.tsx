@@ -178,21 +178,8 @@ export default function Step2Workload() {
               onChange={(e) => setS({ otherAmt: e.target.value })}
             />
           </div>
-          <div className="wrow">
-            <span className="wl">가산세 내용</span>
-            <input
-              value={S.penaltyContent}
-              placeholder="가산세 내용"
-              onChange={(e) => setS({ penaltyContent: e.target.value })}
-            />
-          </div>
-          <div className="wrow">
-            <span className="wl">가산세 금액</span>
-            <input
-              value={S.penaltyAmt}
-              placeholder="가산세 금액 (원)"
-              onChange={(e) => setS({ penaltyAmt: e.target.value })}
-            />
+          <div style={{ fontSize: 11, color: '#888', padding: '4px 2px' }}>
+            ※ 가산세(가산금액)는 [금액 조정] 단계에서 입력합니다.
           </div>
         </div>
       </div>

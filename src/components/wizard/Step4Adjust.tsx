@@ -53,6 +53,23 @@ export default function Step4Adjust({ records }: WizardStepProps) {
             onChange={(e) => setS({ discAmt: e.target.value })}
           />
         </div>
+        <div style={{ height: 1, background: '#EDE9E2', margin: '9px 0' }} />
+        <div className="frow">
+          <span className="fl">가산세 사유</span>
+          <input
+            value={S.penaltyContent}
+            placeholder="예: 무신고 가산세"
+            onChange={(e) => setS({ penaltyContent: e.target.value })}
+          />
+        </div>
+        <div className="frow">
+          <span className="fl">가산세 금액 (원)</span>
+          <input
+            value={S.penaltyAmt}
+            placeholder="양수로 입력"
+            onChange={(e) => setS({ penaltyAmt: e.target.value })}
+          />
+        </div>
       </div>
 
       <div className="fee-grd">
@@ -65,11 +82,15 @@ export default function Step4Adjust({ records }: WizardStepProps) {
           <span className="fv">- {won(c.disc)}</span>
         </div>
         <div className="fr2">
+          <span className="fk">⑨ 가산금액 ({S.penaltyContent || '미입력'})</span>
+          <span className="fv">+ {won(c.penFee)}</span>
+        </div>
+        <div className="fr2">
           <span className="fk">D) 총 보수 합계</span>
           <span className="fv">{won(c.D)}</span>
         </div>
         <div className="fr2">
-          <span className="fk">⑨ VAT 10%</span>
+          <span className="fk">⑩ VAT 10%</span>
           <span className="fv">{won(c.VAT)}</span>
         </div>
         <div className="fr2" style={{ borderTop: '1px solid rgba(255,255,255,.2)', paddingTop: 7, marginTop: 3 }}>

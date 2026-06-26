@@ -131,7 +131,7 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
               <td className="ic">(사업장이 여러 곳인 경우 가장 큰 사업장 기준)</td>
             </tr>
             <tr>
-              <td rowSpan={13} className="ic-v" style={{ width: 20 }}>
+              <td rowSpan={14} className="ic-v" style={{ width: 20 }}>
                 산 출 내 역
               </td>
               <td colSpan={2}>① 기본보수</td>
@@ -198,18 +198,24 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
             </tr>
             <tr>
               <td colSpan={2}>⑧ 할인금액</td>
-              <td colSpan={2}>{S.discContent || ''}</td>
+              <td colSpan={2}></td>
               <td className="ir">{c.disc ? '- ' + won(c.disc) : '0원'}</td>
-              <td className="ic">세무조사 대응 및 기타 업무</td>
+              <td className="ic">{S.discContent || ''}</td>
+            </tr>
+            <tr>
+              <td colSpan={2}>⑨ 가산금액</td>
+              <td colSpan={2}></td>
+              <td className="ir">{c.penFee ? '+ ' + won(c.penFee) : '0원'}</td>
+              <td className="ic">{S.penaltyContent || ''}</td>
             </tr>
             <tr className="itotD">
-              <td colSpan={2}>D) 총 보수 합계 (C-⑧)</td>
+              <td colSpan={2}>D) 총 보수 합계 (C-⑧+⑨)</td>
               <td colSpan={2}></td>
               <td className="ir">{won(c.D)}</td>
               <td className="ic"></td>
             </tr>
             <tr>
-              <td colSpan={2}>⑨ 부가가치세 (VAT)</td>
+              <td colSpan={2}>⑩ 부가가치세 (VAT)</td>
               <td className="ic">10%</td>
               <td></td>
               <td className="ir">{won(c.VAT)}</td>
