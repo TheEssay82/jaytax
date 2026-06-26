@@ -5,6 +5,7 @@ import ClientsTab from './clients/ClientsTab';
 import WizardTab from './wizard/WizardTab';
 import HistoryTab from './history/HistoryTab';
 import RequestsTab from './requests/RequestsTab';
+import TargetsTab from './targets/TargetsTab';
 
 /** 원본 TABS 정의 */
 export const TABS: [string, string][] = [
@@ -52,6 +53,8 @@ export default function AppShell() {
           <ClientsTab />
         ) : curTab === 'history' ? (
           <HistoryTab onSwitchTab={setCurTab} />
+        ) : curTab === 'targets' ? (
+          <TargetsTab />
         ) : curTab === 'requests' ? (
           <RequestsTab />
         ) : (
