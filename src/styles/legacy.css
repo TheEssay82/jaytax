@@ -187,3 +187,7 @@ input:focus,select:focus{border-color:#1A2B52}
 .help-pop-fixed{position:fixed;z-index:99999;background:rgba(26,43,82,0.95);color:#EEE9DF;padding:12px 16px;border-radius:10px;font-size:12px;font-style:normal;font-weight:400;line-height:1.7;width:300px;max-height:80vh;overflow:auto;box-shadow:0 4px 24px rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.15);white-space:normal;text-align:left;pointer-events:none}
 .help-pop-fixed b{display:block;font-weight:700;color:#fff;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.2)}
 .help-pop-fixed span{display:block}
+
+/* ── 모달 ── */
+.modal-overlay{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-box{background:#fff;border-radius:12px;padding:18px 20px;max-width:880px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 12px 48px rgba(0,0,0,0.3)}

@@ -7,6 +7,8 @@ import Step0SelectClient from './Step0SelectClient';
 import Step1BasicInfo from './Step1BasicInfo';
 import Step2Workload from './Step2Workload';
 import Step3FeeReview from './Step3FeeReview';
+import Step4Adjust from './Step4Adjust';
+import Step5Invoice from './Step5Invoice';
 
 export default function WizardTab() {
   const { step, wizNav, goStep } = useWizard();
@@ -28,13 +30,10 @@ export default function WizardTab() {
     body = <Step2Workload />;
   } else if (step === 4) {
     body = <Step3FeeReview {...data} />;
+  } else if (step === 5) {
+    body = <Step4Adjust {...data} />;
   } else {
-    body = (
-      <div className="card">
-        <div className="chdr">{STEP_LABELS[step - 1]}</div>
-        <div className="alert-i">🚧 이 단계는 다음 Phase에서 포팅됩니다 (금액 조정 → 청구서).</div>
-      </div>
-    );
+    body = <Step5Invoice {...data} />;
   }
 
   return (
