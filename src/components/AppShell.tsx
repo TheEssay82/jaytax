@@ -48,6 +48,13 @@ function Shell() {
         <span className="h-logo">인덕회계법인</span>
         <span className="h-sep" />
         <span className="h-title">세무조정수수료 관리시스템</span>
+        <span
+          className="h-ver"
+          title={`앱 버전 v${__APP_VERSION__}`}
+          style={{ fontSize: 11, color: '#9aa0ad', fontWeight: 600, marginLeft: 6 }}
+        >
+          v{__APP_VERSION__}
+        </span>
         <nav className="h-nav" id="h-nav">
           {TABS.map(([id, lbl]) => (
             <button
