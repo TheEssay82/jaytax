@@ -76,7 +76,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       if (v !== undefined) (picked[k] as unknown) = v;
     });
     setSState(picked);
-    setStep(2); // 거래처 선택(1단계)을 건너뛰고 기본정보부터 편집
+    setStep(3); // 거래처선택·기본정보 건너뛰고 업무량(3단계)부터 편집
     setSavedMsg(false);
   }, []);
 
