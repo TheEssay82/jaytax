@@ -119,13 +119,26 @@ export interface BillingRecord extends WizardState, CalcResult {
   cfgVersionLabel: string;
 }
 
+/** 업데이트요청 상태 */
+export type RequestStatus = '미접수' | '개발중' | '개발완료' | '미반영종료';
+
+/** 업데이트요청 댓글 */
+export interface RequestComment {
+  id: string;
+  author: string;
+  text: string;
+  createdAt: string;
+}
+
 /** 업데이트요청 (원본 `ind_reqs4`) */
 export interface UpdateRequest {
   id: string;
   requester: string;
   content: string;
-  status?: string;
+  status: RequestStatus;
+  comments: RequestComment[];
   createdAt: string;
+  updatedAt?: string;
 }
 
 /** 설정 (원본 `ind_cfg4` / DEF) */
