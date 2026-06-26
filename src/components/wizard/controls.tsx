@@ -3,6 +3,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { WizardState } from '../../types';
 import { useWizard } from '../../context/WizardContext';
+import { useConfig } from '../../context/ConfigContext';
 import { HELP_TEXTS } from '../../lib/constants';
 
 /** 토글 pill 묶음 — 활성값 재클릭 시 첫 옵션으로 리셋 (원본 pills) */
@@ -46,7 +47,8 @@ export function YnPills({ value, onChange }: { value: string; onChange: (v: 'O' 
 
 /** 설명 툴팁 아이콘 (hover/focus 시 표시) */
 export function HelpTooltip({ k }: { k: string }) {
-  const txt = HELP_TEXTS[k];
+  const { config } = useConfig();
+  const txt = config.helpTexts?.[k] || HELP_TEXTS[k];
   const ref = useRef<HTMLSpanElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   if (!txt) return null;
