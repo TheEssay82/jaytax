@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import ClientsTab from './clients/ClientsTab';
 
 /** 원본 TABS 정의 */
 export const TABS: [string, string][] = [
@@ -41,14 +42,16 @@ export default function AppShell() {
         </div>
       </header>
       <main id="main">
-        <div className="card">
-          <div className="chdr">
-            {TABS.find(([id]) => id === curTab)?.[1]}
+        {curTab === 'clients' ? (
+          <ClientsTab />
+        ) : (
+          <div className="card">
+            <div className="chdr">{TABS.find(([id]) => id === curTab)?.[1]}</div>
+            <div className="alert-i">
+              🚧 토대 준비 완료 — 이 탭 화면은 다음 단계에서 원본 기능을 포팅합니다.
+            </div>
           </div>
-          <div className="alert-i">
-            🚧 토대 준비 완료 — 이 탭 화면은 다음 단계에서 원본 기능을 포팅합니다.
-          </div>
-        </div>
+        )}
       </main>
     </>
   );
