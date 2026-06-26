@@ -1,6 +1,6 @@
 // 위저드 전역 상태 — 원본의 단일 S 객체 + step 을 React Context 로 옮긴 것
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { WizardState } from '../types';
+import type { BillingRecord, WizardState } from '../types';
 import { makeWizardState, STEP_LABELS } from '../lib/constants';
 import { saveDraft } from '../lib/draft';
 
@@ -24,6 +24,11 @@ interface WizardCtx {
   setSavedMsg: (b: boolean) => void;
   /** 새 청구서 작성 (연도 유지, 원본 doNewInvoice) */
   resetNew: () => void;
+  /** 청구기록 탭에서 선택한 비교 기준 (Step3에서 전년 대신 사용) */
+  cmpRec: BillingRecord | null;
+  setCmpRec: (r: BillingRecord | null) => void;
+  /** 청구기록을 위저드로 불러와 수정 (원본 loadRec) */
+  loadRecord: (rec: BillingRecord) => void;
 }
 
 const Ctx = createContext<WizardCtx | undefined>(undefined);
@@ -32,6 +37,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const [S, setSState] = useState<WizardState>(makeWizardState);
   const [step, setStep] = useState(1);
   const [savedMsg, setSavedMsg] = useState(false);
+  const [cmpRec, setCmpRec] = useState<BillingRecord | null>(null);
   const sRef = useRef(S);
   sRef.current = S;
 
@@ -61,6 +67,19 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     setSavedMsg(false);
   }, []);
 
+  // 청구기록 → 위저드 S 로 복원 (WizardState 키만 추출) — 원본 loadRec
+  const loadRecord = useCallback((rec: BillingRecord) => {
+    const fresh = makeWizardState();
+    const picked = { ...fresh };
+    (Object.keys(fresh) as (keyof WizardState)[]).forEach((k) => {
+      const v = (rec as Partial<WizardState>)[k];
+      if (v !== undefined) (picked[k] as unknown) = v;
+    });
+    setSState(picked);
+    setStep(1);
+    setSavedMsg(false);
+  }, []);
+
   // 업무량 입력 중 자동 임시저장 (step>=2 && 거래처 선택됨)
   useEffect(() => {
     if (step >= 2 && S.selClientId) saveDraft(S, step);
@@ -68,7 +87,21 @@ export function WizardProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider
-      value={{ S, setS, replaceS, step, setStep, wizNav, goStep, savedMsg, setSavedMsg, resetNew }}
+      value={{
+        S,
+        setS,
+        replaceS,
+        step,
+        setStep,
+        wizNav,
+        goStep,
+        savedMsg,
+        setSavedMsg,
+        resetNew,
+        cmpRec,
+        setCmpRec,
+        loadRecord,
+      }}
     >
       {children}
     </Ctx.Provider>

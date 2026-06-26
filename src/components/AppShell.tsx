@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { WizardProvider } from '../context/WizardContext';
 import ClientsTab from './clients/ClientsTab';
 import WizardTab from './wizard/WizardTab';
+import HistoryTab from './history/HistoryTab';
 
 /** 원본 TABS 정의 */
 export const TABS: [string, string][] = [
@@ -48,6 +49,8 @@ export default function AppShell() {
           <WizardTab />
         ) : curTab === 'clients' ? (
           <ClientsTab />
+        ) : curTab === 'history' ? (
+          <HistoryTab onSwitchTab={setCurTab} />
         ) : (
           <div className="card">
             <div className="chdr">{TABS.find(([id]) => id === curTab)?.[1]}</div>
