@@ -46,7 +46,13 @@ export function isNewForYear(records: BillingRecord[], cid: string, year: number
   return !records.some((r) => r.selClientId === cid && String(r.fiscalYear) === py);
 }
 
-/** 상실: 수동 플래그 우선, 또는 전년 기록 있고 당해 청구대상 미선택 */
+/** 수동 상실: 거래처에 명시적으로 설정된 상실 연도만 (거래처선택 화면용) */
+export function isManualLossYear(clients: Client[], cid: string, year: number | string): boolean {
+  const cl = clients.find((c) => c.id === cid);
+  return !!cl?.lossYears?.map(Number).includes(Number(year));
+}
+
+/** 상실: 수동 플래그 우선, 또는 전년 기록 있고 당해 청구대상 미선택 (청구대상 탭용) */
 export function isLossForYear(
   clients: Client[],
   records: BillingRecord[],

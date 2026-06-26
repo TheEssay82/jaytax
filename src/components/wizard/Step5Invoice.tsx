@@ -72,7 +72,7 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
           <button className="btn-new no-print" onClick={newInvoice}>
             ＋ 새로 작성 (다른 거래처 청구서)
           </button>
-          <div className="alert-ok">✓ 기록 저장 완료!</div>
+          <div className="alert-ok no-print">✓ 기록 저장 완료!</div>
         </>
       ) : (
         <button className="btn-green no-print" onClick={saveRec} disabled={saving}>

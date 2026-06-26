@@ -104,6 +104,30 @@ export default function Step4Adjust({ records }: WizardStepProps) {
                   </tr>
                 </thead>
                 <tbody>
+                  <tr style={{ background: '#FEF3C7' }}>
+                    <td style={{ fontWeight: 700 }}>{S.fiscalYear}년 ✍️작성중</td>
+                    <td>
+                      <span className={`bdg ${S.bizType === '법인' ? 'b-law' : 'b-per'}`}>{S.bizType}</span>
+                    </td>
+                    <td className="r" style={{ fontFamily: 'monospace' }}>
+                      {억(c.rev)}
+                    </td>
+                    <td className="r" style={{ fontFamily: 'monospace' }}>
+                      {만(c.A)}
+                    </td>
+                    <td className="r" style={{ fontFamily: 'monospace' }}>
+                      {만(c.Btot)}
+                    </td>
+                    <td className="r" style={{ fontFamily: 'monospace' }}>
+                      {만(c.C)}
+                    </td>
+                    <td className="r" style={{ fontFamily: 'monospace', color: '#DC2626' }}>
+                      {만(c.disc)}
+                    </td>
+                    <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#C8963C' }}>
+                      {만(c.grand)}원
+                    </td>
+                  </tr>
                   {pastRecs.map((r) => (
                     <tr key={r.id}>
                       <td style={{ fontWeight: 700 }}>{r.fiscalYear}년</td>

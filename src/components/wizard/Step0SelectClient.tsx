@@ -9,7 +9,7 @@ import {
   getTargetIds,
   isBilled,
   isNewForYear,
-  isLossForYear,
+  isManualLossYear,
   getManagerForYear,
   isModelForYear,
   autoPayDatePatch,
@@ -178,7 +178,7 @@ export default function Step0SelectClient({ clients, records, targets }: WizardS
           {shown.map((c) => {
             const bil = isBilled(records, S.fiscalYear, c.id);
             const nf = isNewForYear(records, c.id, S.fiscalYear);
-            const lf = isLossForYear(clients, records, targets, c.id, S.fiscalYear);
+            const lf = isManualLossYear(clients, c.id, S.fiscalYear);
             const rv = getRevForYear(c, S.fiscalYear);
             return (
               <div
