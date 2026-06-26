@@ -1,14 +1,13 @@
 // Step 2: 업무량 — 원본 rStep2 포팅
 import { useWizard } from '../../context/WizardContext';
-import { DEFAULT_CONFIG } from '../../lib/constants';
+import { useConfig } from '../../context/ConfigContext';
 import { fm } from '../../lib/format';
 import { Pills, WorkSection, HelpTooltip } from './controls';
 import type { ModelFeeMode } from '../../types';
 
-const CFG = DEFAULT_CONFIG; // TODO: 설정 탭 포팅 시 DB app_config 연동
-
 export default function Step2Workload() {
   const { S, setS } = useWizard();
+  const { config: CFG } = useConfig();
 
   const modelFeeDisplay = (() => {
     const m = S.modelFeeMode || 'default';

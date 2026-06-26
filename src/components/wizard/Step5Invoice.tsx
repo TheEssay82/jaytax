@@ -1,6 +1,7 @@
 // Step 5: 청구서 + 저장 + 인쇄 — 원본 rStep5 + saveRec + printInv 포팅
 import { useState } from 'react';
 import { useWizard } from '../../context/WizardContext';
+import { useConfig } from '../../context/ConfigContext';
 import { calcS, won, pct, dt } from '../../lib/calc';
 import { updateClient } from '../../lib/clientsApi';
 import { createBillingRecord } from '../../lib/billingApi';
@@ -10,8 +11,9 @@ import type { WizardStepProps } from './stepProps';
 
 export default function Step5Invoice({ clients, refreshClients, refreshBilling }: WizardStepProps) {
   const { S, savedMsg, setSavedMsg, resetNew } = useWizard();
+  const { config } = useConfig();
   const [saving, setSaving] = useState(false);
-  const c = calcS(S);
+  const c = calcS(S, config);
   const yr = S.fiscalYear;
   const taxType = S.bizType === '법인' ? '법인세' : '종합소득세';
   const payStr = S.payMonth ? `${S.payMonth}월 ${S.payDay}일` : S.payDay ? `${S.payDay}일` : '';
@@ -32,8 +34,8 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
         ...c,
         id: '',
         savedAt: new Date().toISOString(),
-        cfgVersionId: 'v0',
-        cfgVersionLabel: '기본',
+        cfgVersionId: config.cfgVersionId || 'v0',
+        cfgVersionLabel: config.cfgVersionLabel || '기본',
       };
       await createBillingRecord(rec);
       // 당기 매출액 거래처 DB 자동 갱신

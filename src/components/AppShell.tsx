@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { WizardProvider } from '../context/WizardContext';
+import { ConfigProvider } from '../context/ConfigContext';
 import ClientsTab from './clients/ClientsTab';
 import WizardTab from './wizard/WizardTab';
 import HistoryTab from './history/HistoryTab';
 import RequestsTab from './requests/RequestsTab';
 import TargetsTab from './targets/TargetsTab';
+import SettingsTab from './settings/SettingsTab';
 
 /** 원본 TABS 정의 */
 export const TABS: [string, string][] = [
@@ -23,7 +25,8 @@ export default function AppShell() {
   const [curTab, setCurTab] = useState('wizard');
 
   return (
-    <WizardProvider>
+    <ConfigProvider>
+      <WizardProvider>
       <header id="hdr">
         <span className="h-logo">인덕회계법인</span>
         <span className="h-sep" />
@@ -57,6 +60,8 @@ export default function AppShell() {
           <TargetsTab />
         ) : curTab === 'requests' ? (
           <RequestsTab />
+        ) : curTab === 'settings' ? (
+          <SettingsTab />
         ) : (
           <div className="card">
             <div className="chdr">{TABS.find(([id]) => id === curTab)?.[1]}</div>
@@ -66,6 +71,7 @@ export default function AppShell() {
           </div>
         )}
       </main>
-    </WizardProvider>
+      </WizardProvider>
+    </ConfigProvider>
   );
 }

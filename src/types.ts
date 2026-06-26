@@ -141,6 +141,13 @@ export interface UpdateRequest {
   updatedAt?: string;
 }
 
+/** 설정 버전 이력 항목 */
+export interface CfgHistoryEntry {
+  id: string;
+  label: string;
+  savedAt: string;
+}
+
 /** 설정 (원본 `ind_cfg4` / DEF) */
 export interface AppConfig {
   성실신고기본: number;
@@ -155,6 +162,6 @@ export interface AppConfig {
   perBrackets: Bracket[];
   cfgVersionLabel: string;
   cfgVersionId: string;
-  cfgHistory: unknown[];
+  cfgHistory: CfgHistoryEntry[];
   helpTexts: Record<string, string>;
 }

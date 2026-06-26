@@ -191,3 +191,15 @@ input:focus,select:focus{border-color:#1A2B52}
 /* ── 모달 ── */
 .modal-overlay{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:20px}
 .modal-box{background:#fff;border-radius:12px;padding:18px 20px;max-width:880px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 12px 48px rgba(0,0,0,0.3)}
+
+/* ── 설정 탭 ── */
+.cfg-subtabs{display:flex;gap:6px;margin-bottom:12px;border-bottom:1px solid #EDE9E2;padding-bottom:8px}
+.cfg-stab{background:#F5F1EB;border:1px solid #E0DCD4;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;color:#666;cursor:pointer;font-family:inherit}
+.cfg-stab.on{background:#1A2B52;color:#fff;border-color:#1A2B52}
+.fee-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.fee-tbl th{background:#F5F1EB;padding:7px 9px;text-align:left;font-size:11px;color:#666;border-bottom:2px solid #E0DCD4;white-space:nowrap}
+.fee-tbl td{padding:5px 9px;border-bottom:1px solid #EDE9E2;vertical-align:middle}
+.fee-tbl td:first-child{font-size:11px;color:#555;white-space:nowrap}
+.fee-tbl input{width:110px;padding:3px 6px;border:1px solid #D0CCC4;border-radius:5px;font-size:12px;font-family:monospace;text-align:right}
+.ver-badge{display:inline-block;background:#EEF2FF;color:#1A2B52;font-size:11px;font-weight:700;padding:2px 9px;border-radius:5px;border:1px solid #C7D2FE}
+.ver-hist-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:11px;color:#888}

@@ -1,12 +1,14 @@
 // Step 3: 수수료 확인 + 전년 비교 — 원본 rStep3 포팅
 import { useWizard } from '../../context/WizardContext';
+import { useConfig } from '../../context/ConfigContext';
 import { calcS, won, pct } from '../../lib/calc';
 import { getRevForYear } from '../../lib/format';
 import type { WizardStepProps } from './stepProps';
 
 export default function Step3FeeReview({ clients, records }: WizardStepProps) {
   const { S, cmpRec } = useWizard();
-  const c = calcS(S);
+  const { config } = useConfig();
+  const c = calcS(S, config);
 
   const prevYear = Number(S.fiscalYear) - 1;
   const prev =
