@@ -35,10 +35,13 @@ export default function Step0SelectClient({ clients, records, targets }: WizardS
   if (bz) filtered = filtered.filter((c) => c.bizType === bz);
   if (mg) filtered = filtered.filter((c) => c.manager === mg);
 
-  const tgtFiltered = hasTargets ? filtered.filter((c) => targetIds.includes(c.id)) : filtered;
-  let shown = tgtFiltered.length ? tgtFiltered : filtered;
+  let shown = filtered;
   if (billedFilter === 'unbilled') shown = shown.filter((c) => !isBilled(records, S.fiscalYear, c));
   else if (billedFilter === 'billed') shown = shown.filter((c) => isBilled(records, S.fiscalYear, c));
+  // 청구대상 확정분은 숨기지 않고 위로 우선 정렬
+  if (hasTargets) {
+    shown = [...shown].sort((a, b) => (targetIds.includes(b.id) ? 1 : 0) - (targetIds.includes(a.id) ? 1 : 0));
+  }
 
   const unbilledCnt = shown.filter((c) => !isBilled(records, S.fiscalYear, c)).length;
   const billedCnt = shown.filter((c) => isBilled(records, S.fiscalYear, c)).length;
@@ -153,7 +156,7 @@ export default function Step0SelectClient({ clients, records, targets }: WizardS
         )}
         {hasTargets && (
           <div className="alert-i">
-            {S.fiscalYear}년 청구대상 확정 {targetIds.length}개 우선 표시
+            {S.fiscalYear}년 청구대상 확정 {targetIds.length}개 — 목록 상단 우선 표시 (전체 거래처도 함께 표시)
           </div>
         )}
 
