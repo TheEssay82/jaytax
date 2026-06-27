@@ -55,18 +55,18 @@ export default function Step4Adjust({ records }: WizardStepProps) {
         </div>
         <div style={{ height: 1, background: '#EDE9E2', margin: '9px 0' }} />
         <div className="frow">
-          <span className="fl">가산세 사유</span>
+          <span className="fl">협의조정 사유</span>
           <input
             value={S.penaltyContent}
-            placeholder="예: 무신고 가산세"
+            placeholder="예: 가산세 대납 등"
             onChange={(e) => setS({ penaltyContent: e.target.value })}
           />
         </div>
         <div className="frow">
-          <span className="fl">가산세 금액 (원)</span>
+          <span className="fl">협의조정 금액 (원)</span>
           <input
             value={S.penaltyAmt}
-            placeholder="양수로 입력"
+            placeholder="양수로 입력 (청구액에서 차감)"
             onChange={(e) => setS({ penaltyAmt: e.target.value })}
           />
         </div>
@@ -82,8 +82,8 @@ export default function Step4Adjust({ records }: WizardStepProps) {
           <span className="fv">- {won(c.disc)}</span>
         </div>
         <div className="fr2">
-          <span className="fk">⑨ 가산금액 ({S.penaltyContent || '미입력'})</span>
-          <span className="fv">+ {won(c.penFee)}</span>
+          <span className="fk">⑨ 협의조정금액 ({S.penaltyContent || '미입력'})</span>
+          <span className="fv">- {won(c.penFee)}</span>
         </div>
         <div className="fr2">
           <span className="fk">D) 총 보수 합계</span>

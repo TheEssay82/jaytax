@@ -69,12 +69,12 @@ export function calcS(s: WizardState, cfg: AppConfig = DEFAULT_CONFIG): CalcResu
 
   const evFee = cfg.증빙금액[s.evCount] || 0;
   const otherFee = parseAmount(s.otherAmt);
-  const penFee = parseAmount(s.penaltyAmt); // 가산금액 — 보수총계(C) 이후 가산 (금액조정 단계 입력)
-  const f7 = evFee + otherFee; // ⑦ 증빙 및 기타 (가산세 제외)
+  const penFee = parseAmount(s.penaltyAmt); // 협의조정금액(가산세 대납 등) — 우리가 대신 부담 → 차감
+  const f7 = evFee + otherFee; // ⑦ 증빙 및 기타 (협의조정 제외)
 
   const C = Math.round((A + Btot + f7) / 1000) * 1000;
   const disc = parseAmount(s.discAmt);
-  const D = C - disc + penFee; // ⑧ 할인 차감 + ⑨ 가산금액 가산
+  const D = C - disc - penFee; // ⑧ 할인 차감 + ⑨ 협의조정금액 차감(양수 입력 시 할인처럼 반영)
   const VAT = Math.round(D * 0.1);
 
   return {

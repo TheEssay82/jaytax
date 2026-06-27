@@ -203,8 +203,8 @@ export default function Step3FeeReview({ clients, records }: WizardStepProps) {
           <span className="fv">- {won(c.disc)}</span>
         </div>
         <div className="fr2">
-          <span className="fk">⑨ 가산금액</span>
-          <span className="fv">+ {won(c.penFee)}</span>
+          <span className="fk">⑨ 협의조정금액</span>
+          <span className="fv">- {won(c.penFee)}</span>
         </div>
         <div className="fr2">
           <span className="fk">D) 총 보수 합계</span>

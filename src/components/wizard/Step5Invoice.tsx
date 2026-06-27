@@ -212,13 +212,13 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
               <td className="ic">{S.discContent || ''}</td>
             </tr>
             <tr>
-              <td colSpan={2}>⑨ 가산금액</td>
+              <td colSpan={2}>⑨ 협의조정금액</td>
               <td colSpan={2}></td>
-              <td className="ir">{c.penFee ? '+ ' + won(c.penFee) : '0원'}</td>
+              <td className="ir">{c.penFee ? '- ' + won(c.penFee) : '0원'}</td>
               <td className="ic">{S.penaltyContent || ''}</td>
             </tr>
             <tr className="itotD">
-              <td colSpan={2}>D) 총 보수 합계 (C-⑧+⑨)</td>
+              <td colSpan={2}>D) 총 보수 합계 (C-⑧-⑨)</td>
               <td colSpan={2}></td>
               <td className="ir">{won(c.D)}</td>
               <td className="ic"></td>
