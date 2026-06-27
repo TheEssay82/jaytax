@@ -1,7 +1,7 @@
 // 설정 탭 — 수수료 설정(다중 버전) + 설명 변경. 원본 rSettings 확장.
 import { useEffect, useRef, useState } from 'react';
 import type { AppConfig } from '../../types';
-import { DEFAULT_CONFIG, FEE_LABELS, HELP_TEXTS } from '../../lib/constants';
+import { DEFAULT_CONFIG, FEE_LABELS, HELP_TEXTS, HELP_KEYS } from '../../lib/constants';
 import { useConfig } from '../../context/ConfigContext';
 import { DEFAULT_VERSION_ID } from '../../lib/configApi';
 
@@ -15,7 +15,6 @@ const WEIGHT_GROUPS: [string, WeightKey, boolean][] = [
   ['업무 난이도별 가산율', '업무난이도', false],
   ['증빙업무 금액', '증빙금액', true],
 ];
-const HELP_KEYS = ['방문', '전화', '장부', '결산', '조정', '증빙', '원가'];
 
 export default function SettingsTab() {
   const { config, activeId, activeLabel, versions, loading, error, apply, saveNew, overwrite, remove } =

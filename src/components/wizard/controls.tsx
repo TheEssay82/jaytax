@@ -100,6 +100,7 @@ export function HelpTooltip({ k }: { k: string }) {
 export function WorkSection({
   title,
   helpKey,
+  amountHelpKey,
   pKey,
   aKey,
   dKey,
@@ -107,6 +108,7 @@ export function WorkSection({
 }: {
   title: string;
   helpKey?: string;
+  amountHelpKey?: string;
   pKey: keyof WizardState;
   aKey: keyof WizardState;
   dKey: keyof WizardState;
@@ -131,7 +133,10 @@ export function WorkSection({
         {on && (
           <>
             <div className="wrow">
-              <span className="wl">업무량</span>
+              <span className="wl">
+                업무량
+                {amountHelpKey && <HelpTooltip k={amountHelpKey} />}
+              </span>
               <Pills
                 value={S[aKey] as string}
                 opts={['적음', '보통', '많음']}

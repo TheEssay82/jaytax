@@ -30,14 +30,14 @@ export default function Step2Workload() {
       </div>
       <div className="wsec">
         <div className="whdr">
-          <span>방문 및 전화 상담</span>
+          <span>
+            방문상담
+            <HelpTooltip k="방문상담" />
+          </span>
         </div>
         <div className="wbody">
           <div className="wrow">
-            <span className="wl">
-              방문 횟수
-              <HelpTooltip k="방문" />
-            </span>
+            <span className="wl">횟수</span>
             <Pills
               value={S.visitCount}
               opts={['없음', '2회이하', '5회이하', '10회이하', '10회초과']}
@@ -45,18 +45,29 @@ export default function Step2Workload() {
             />
           </div>
           <div className="wrow">
-            <span className="wl">방문 난이도</span>
+            <span className="wl">
+              난이도
+              <HelpTooltip k="방문난이도" />
+            </span>
             <Pills
               value={S.visitDiff}
               opts={['해당없음', '쉬움', '보통', '어려움']}
               onChange={(v) => setS({ visitDiff: v as typeof S.visitDiff })}
             />
           </div>
+        </div>
+      </div>
+
+      <div className="wsec">
+        <div className="whdr">
+          <span>
+            전화상담
+            <HelpTooltip k="전화상담" />
+          </span>
+        </div>
+        <div className="wbody">
           <div className="wrow">
-            <span className="wl">
-              전화 횟수
-              <HelpTooltip k="전화" />
-            </span>
+            <span className="wl">횟수</span>
             <Pills
               value={S.phoneCount}
               opts={['없음', '10회이하', '30회이하', '60회이하', '60회초과']}
@@ -64,7 +75,10 @@ export default function Step2Workload() {
             />
           </div>
           <div className="wrow">
-            <span className="wl">전화 난이도</span>
+            <span className="wl">
+              난이도
+              <HelpTooltip k="전화난이도" />
+            </span>
             <Pills
               value={S.phoneDiff}
               opts={['해당없음', '쉬움', '보통', '어려움']}
@@ -74,12 +88,12 @@ export default function Step2Workload() {
         </div>
       </div>
 
-      <WorkSection title="계약 외 기장업무" helpKey="장부" pKey="장부P" aKey="장부A" dKey="장부D" />
-      <WorkSection title="결산업무" helpKey="결산" pKey="결산P" aKey="결산A" dKey="결산D" />
-      <WorkSection title="세무조정업무 (회계사 작성)" helpKey="조정" pKey="조정P" aKey="조정A" dKey="조정D" />
+      <WorkSection title="계약 외 기장업무" helpKey="계약외기장업무" amountHelpKey="업무량" pKey="장부P" aKey="장부A" dKey="장부D" />
+      <WorkSection title="결산 및 세무조정업무" helpKey="결산및세무조정업무" pKey="결산P" aKey="결산A" dKey="결산D" />
+      <WorkSection title="회계사 업무관여수준" helpKey="회계사업무관여수준" pKey="조정P" aKey="조정A" dKey="조정D" />
       <WorkSection
         title="원가계산"
-        helpKey="원가"
+        helpKey="원가계산"
         pKey="원가P"
         aKey="원가A"
         dKey="원가D"
@@ -154,7 +168,7 @@ export default function Step2Workload() {
           <div className="wrow">
             <span className="wl">
               증빙 발행
-              <HelpTooltip k="증빙" />
+              <HelpTooltip k="증빙발행" />
             </span>
             <Pills
               value={S.evCount}
