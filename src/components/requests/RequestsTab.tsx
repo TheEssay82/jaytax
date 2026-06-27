@@ -21,7 +21,8 @@ const dtShort = (s?: string) => (s ? s.replace('T', ' ').slice(0, 16) : '');
 
 export default function RequestsTab() {
   const { requests, loading, error, refresh } = useRequests();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const canSetStatus = role === 'superuser';
   const defaultName = user?.email?.split('@')[0] ?? '';
 
   const [reqName, setReqName] = useState(defaultName);
@@ -122,6 +123,7 @@ export default function RequestsTab() {
           key={r.id}
           r={r}
           onStatus={(s) => changeStatus(r.id, s)}
+          canSetStatus={canSetStatus}
           onDelete={() => remove(r.id)}
           onCommentAdded={refresh}
           defaultAuthor={defaultName}
@@ -134,12 +136,13 @@ export default function RequestsTab() {
 interface CardProps {
   r: UpdateRequest;
   onStatus: (s: RequestStatus) => void;
+  canSetStatus: boolean;
   onDelete: () => void;
   onCommentAdded: () => Promise<void>;
   defaultAuthor: string;
 }
 
-function RequestCard({ r, onStatus, onDelete, onCommentAdded, defaultAuthor }: CardProps) {
+function RequestCard({ r, onStatus, onDelete, onCommentAdded, defaultAuthor, canSetStatus }: CardProps) {
   const [expanded, setExpanded] = useState(false);
   const [author, setAuthor] = useState(defaultAuthor);
   const [text, setText] = useState('');
@@ -179,18 +182,20 @@ function RequestCard({ r, onStatus, onDelete, onCommentAdded, defaultAuthor }: C
           <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{r.content}</div>
         </div>
         <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-          <select
-            className="btn-sm"
-            style={{ fontSize: 11 }}
-            value={r.status}
-            onChange={(e) => onStatus(e.target.value as RequestStatus)}
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          {canSetStatus && (
+            <select
+              className="btn-sm"
+              style={{ fontSize: 11 }}
+              value={r.status}
+              onChange={(e) => onStatus(e.target.value as RequestStatus)}
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          )}
           <button className="btn-sm btn-sm-del" onClick={onDelete}>
             🗑
           </button>

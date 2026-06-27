@@ -6,13 +6,14 @@ import { useAuth } from '../../context/AuthContext';
 import { can } from '../../lib/roles';
 import { getManagerForYear } from '../../lib/wizardHelpers';
 import { fm } from '../../lib/format';
+import StatsChart from './StatsChart';
 
 interface MgrAgg {
-  cnt: number; law: number; per: number; rev: number; A: number; C: number; disc: number; grand: number;
+  cnt: number; law: number; per: number; rev: number; A: number; C: number; disc: number; D: number; grand: number;
   model: number; visit: number; phone: number; jangbu: number; gyeolsan: number; jojung: number; wonka: number; ev: number;
 }
 const emptyAgg = (): MgrAgg => ({
-  cnt: 0, law: 0, per: 0, rev: 0, A: 0, C: 0, disc: 0, grand: 0,
+  cnt: 0, law: 0, per: 0, rev: 0, A: 0, C: 0, disc: 0, D: 0, grand: 0,
   model: 0, visit: 0, phone: 0, jangbu: 0, gyeolsan: 0, jojung: 0, wonka: 0, ev: 0,
 });
 
@@ -30,18 +31,21 @@ export default function StatsTab() {
   const [statYear, setStatYear] = useState<number | null>(null);
   const year = statYear ?? years[0] ?? null;
 
-  const recs = useMemo(() => {
-    if (year == null) return [];
-    let list = records.filter((r) => String(r.fiscalYear) === String(year));
-    if (ownOnly) {
-      list = list.filter((r) => {
-        const cl = clients.find((c) => c.id === r.selClientId);
-        const m = cl ? getManagerForYear(cl, r.fiscalYear) : r.manager || '';
-        return m === profileName;
-      });
-    }
-    return list;
-  }, [records, year, ownOnly, clients, profileName]);
+  // 본인필터(기장팀원) 적용된 전체 기록 — 차트(전 연도)용
+  const ownRecords = useMemo(() => {
+    if (!ownOnly) return records;
+    return records.filter((r) => {
+      const cl = clients.find((c) => c.id === r.selClientId);
+      const m = cl ? getManagerForYear(cl, r.fiscalYear) : r.manager || '';
+      return m === profileName;
+    });
+  }, [records, ownOnly, clients, profileName]);
+
+  // 선택 연도 기록 — 표용
+  const recs = useMemo(
+    () => (year == null ? [] : ownRecords.filter((r) => String(r.fiscalYear) === String(year))),
+    [ownRecords, year],
+  );
 
   const { mgrs, tot } = useMemo(() => {
     const byMgr: Record<string, MgrAgg> = {};
@@ -56,6 +60,7 @@ export default function StatsTab() {
       g.A += r.A || 0;
       g.C += r.C || 0;
       g.disc += r.disc || 0;
+      g.D += r.D || 0;
       g.grand += r.grand || 0;
       if (r.isModel) g.model++;
       if (r.visitCount && r.visitCount !== '없음') g.visit++;
@@ -72,6 +77,7 @@ export default function StatsTab() {
         rev: recs.reduce((s, r) => s + (r.rev || 0), 0),
         C: recs.reduce((s, r) => s + (r.C || 0), 0),
         disc: recs.reduce((s, r) => s + (r.disc || 0), 0),
+        D: recs.reduce((s, r) => s + (r.D || 0), 0),
         grand: recs.reduce((s, r) => s + (r.grand || 0), 0),
         law: recs.filter((r) => r.bizType === '법인').length,
         per: recs.filter((r) => r.bizType === '개인').length,
@@ -140,8 +146,12 @@ export default function StatsTab() {
           <div className="value" style={{ fontSize: 13, color: '#DC2626' }}>-{(tot.disc / 1e6).toFixed(0)}백만</div>
         </div>
         <div className="stat-card">
-          <div className="label">총 청구금액</div>
-          <div className="value" style={{ fontSize: 13, color: '#1A2B52' }}>{(tot.grand / 1e6).toFixed(0)}백만</div>
+          <div className="label">최종청구금액(VAT제외)</div>
+          <div className="value" style={{ fontSize: 13, color: '#1A2B52' }}>{(tot.D / 1e6).toFixed(0)}백만</div>
+        </div>
+        <div className="stat-card">
+          <div className="label">VAT포함 공급금액</div>
+          <div className="value" style={{ fontSize: 13, color: '#555' }}>{(tot.grand / 1e6).toFixed(0)}백만</div>
         </div>
       </div>
 
@@ -156,8 +166,9 @@ export default function StatsTab() {
               <th className="r">총매출액</th>
               <th className="r">보수총계C)</th>
               <th className="r">할인</th>
-              <th className="r">최종청구금액</th>
-              <th className="r">평균</th>
+              <th className="r">최종청구금액<br /><small style={{ color: '#999', fontWeight: 400 }}>(VAT제외)</small></th>
+              <th className="r">VAT포함<br />공급금액</th>
+              <th className="r">평균<br /><small style={{ color: '#999', fontWeight: 400 }}>(VAT제외)</small></th>
             </tr>
           </thead>
           <tbody>
@@ -170,8 +181,9 @@ export default function StatsTab() {
                 <td className="r" style={{ fontFamily: 'monospace' }}>{(g.rev / 1e8).toFixed(2)}억</td>
                 <td className="r" style={{ fontFamily: 'monospace' }}>{fm(g.C)}</td>
                 <td className="r" style={{ fontFamily: 'monospace', color: '#DC2626' }}>{g.disc ? '-' + fm(g.disc) : '-'}</td>
-                <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1A2B52' }}>{fm(g.grand)}</td>
-                <td className="r" style={{ fontFamily: 'monospace' }}>{fm(Math.round(g.grand / g.cnt))}</td>
+                <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1A2B52' }}>{fm(g.D)}</td>
+                <td className="r" style={{ fontFamily: 'monospace', color: '#555' }}>{fm(g.grand)}</td>
+                <td className="r" style={{ fontFamily: 'monospace' }}>{fm(Math.round(g.D / g.cnt))}</td>
               </tr>
             ))}
             <tr className="tot">
@@ -182,8 +194,9 @@ export default function StatsTab() {
               <td className="r" style={{ fontFamily: 'monospace' }}>{(tot.rev / 1e8).toFixed(2)}억</td>
               <td className="r" style={{ fontFamily: 'monospace' }}>{fm(tot.C)}</td>
               <td className="r" style={{ fontFamily: 'monospace', color: '#DC2626' }}>-{fm(tot.disc)}</td>
-              <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1A2B52' }}>{fm(tot.grand)}</td>
-              <td className="r" style={{ fontFamily: 'monospace' }}>{fm(Math.round(tot.grand / recs.length))}</td>
+              <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1A2B52' }}>{fm(tot.D)}</td>
+              <td className="r" style={{ fontFamily: 'monospace', color: '#555' }}>{fm(tot.grand)}</td>
+              <td className="r" style={{ fontFamily: 'monospace' }}>{fm(Math.round(tot.D / recs.length))}</td>
             </tr>
           </tbody>
         </table>
@@ -224,6 +237,11 @@ export default function StatsTab() {
           </tbody>
         </table>
       </div>
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#555', margin: '16px 0 4px' }}>
+        담당자별 연도별 추이 (최종청구금액 · VAT제외)
+      </div>
+      <StatsChart records={ownRecords} />
     </div>
   );
 }

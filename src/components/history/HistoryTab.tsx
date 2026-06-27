@@ -14,10 +14,13 @@ const dt = (s?: string) => (s ? s.split('T')[0].replace(/-/g, '.') : '');
 type SortKey = 'fiscalYear' | 'manager' | 'companyName' | 'rev' | 'A' | 'C' | 'disc' | 'D' | 'VAT' | 'grand';
 
 export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) => void }) {
-  const { records, loading, error, refresh } = useBillingData();
+  const { records: allRecords, loading, error, refresh } = useBillingData();
   const { cmpRec, setCmpRec, loadRecord } = useWizard();
-  const { role } = useAuth();
+  const { role, profileName } = useAuth();
   const canDelete = can(role, 'deleteBilling');
+  const ownOnly = !can(role, 'viewAllStats');
+  // 기장팀원은 본인(담당자명) 청구기록만
+  const records = ownOnly ? allRecords.filter((r) => r.manager === profileName) : allRecords;
   const [filter, setFilter] = useState('');
   const [year, setYear] = useState('');
   const [biz, setBiz] = useState('');
@@ -93,6 +96,11 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
       </div>
 
       {error && <div className="alert-w">{error}</div>}
+      {ownOnly && (
+        <div className="alert-i" style={{ fontSize: 11 }}>
+          🔒 본인(담당자: {profileName || '미지정'}) 청구기록만 표시됩니다.
+        </div>
+      )}
 
       <div className="sbar">
         <input placeholder="🔍 거래처명·담당자" value={filter} onChange={(e) => setFilter(e.target.value)} />
