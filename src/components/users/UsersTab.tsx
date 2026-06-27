@@ -143,6 +143,7 @@ export default function UsersTab() {
           <thead>
             <tr>
               <th>담당자명 (이름)</th>
+              <th>이메일</th>
               <th style={{ minWidth: 130 }}>역할</th>
               <th>가입일</th>
               <th>관리</th>
@@ -164,6 +165,7 @@ export default function UsersTab() {
                       placeholder="예: 김동주"
                     />
                   </td>
+                  <td style={{ fontSize: 11, color: '#666' }}>{r.email || '-'}</td>
                   <td>
                     <select
                       value={e.role}

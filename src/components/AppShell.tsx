@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { WizardProvider, useWizard } from '../context/WizardContext';
 import { ConfigProvider } from '../context/ConfigContext';
 import { can, ROLE_LABELS, type Capability } from '../lib/roles';
+import PasswordModal from './PasswordModal';
 import ClientsTab from './clients/ClientsTab';
 import WizardTab from './wizard/WizardTab';
 import HistoryTab from './history/HistoryTab';
@@ -46,6 +47,7 @@ function Shell() {
   const { user, signOut, role } = useAuth();
   const { resetNew } = useWizard();
   const [curTab, setCurTab] = useState('wizard');
+  const [showPw, setShowPw] = useState(false);
 
   const visibleTabs = TABS.filter(([id]) => {
     const cap = TAB_CAP[id];
@@ -92,11 +94,15 @@ function Shell() {
               {ROLE_LABELS[role]}
             </span>
           </span>
+          <button className="ha" onClick={() => setShowPw(true)}>
+            비밀번호 변경
+          </button>
           <button className="ha" onClick={signOut}>
             로그아웃
           </button>
         </div>
       </header>
+      {showPw && <PasswordModal onClose={() => setShowPw(false)} />}
       <main id="main">
         {cur === 'wizard' ? (
           <WizardTab />

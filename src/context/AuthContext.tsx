@@ -13,6 +13,8 @@ interface AuthValue {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  /** 로그인한 본인의 비밀번호 변경 */
+  changePassword: (newPassword: string) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthValue | undefined>(undefined);
@@ -65,9 +67,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  const changePassword: AuthValue['changePassword'] = async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    return { error: error?.message ?? null };
+  };
+
   return (
     <AuthContext.Provider
-      value={{ session, user: session?.user ?? null, role, profileName, loading, signIn, signOut }}
+      value={{ session, user: session?.user ?? null, role, profileName, loading, signIn, signOut, changePassword }}
     >
       {children}
     </AuthContext.Provider>
