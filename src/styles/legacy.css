@@ -203,3 +203,7 @@ input:focus,select:focus{border-color:#1A2B52}
 .fee-tbl input{width:110px;padding:3px 6px;border:1px solid #D0CCC4;border-radius:5px;font-size:12px;font-family:monospace;text-align:right}
 .ver-badge{display:inline-block;background:#EEF2FF;color:#1A2B52;font-size:11px;font-weight:700;padding:2px 9px;border-radius:5px;border:1px solid #C7D2FE}
 .ver-hist-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:11px;color:#888}
+
+/* ── 표 헤더 고정 스크롤 컨테이너 (청구기록·거래처관리) ── */
+.tbl-scroll{max-height:calc(100vh - 250px);overflow:auto;border-radius:0 0 8px 8px}
+.tbl-scroll thead th{position:sticky;top:0;z-index:5;background:#F5F1EB !important;box-shadow:0 2px 0 #E0DCD4}

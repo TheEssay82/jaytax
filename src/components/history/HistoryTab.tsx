@@ -113,7 +113,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
         </select>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
+      <div className="tbl-scroll">
         <table className="tbl">
           <thead>
             <tr>
