@@ -1,4 +1,4 @@
-// 청구기록 탭 — 원본 rHistory 포팅 (목록·필터·정렬·상세펼침·비교·수정·삭제)
+// 청구기록 탭 — 원본 rHistory 포팅 (목록·필터·정렬·상세펼침·수정·삭제)
 import { useMemo, useState } from 'react';
 import type { BillingRecord } from '../../types';
 import { useBillingData } from '../../hooks/useBillingData';
@@ -15,7 +15,7 @@ type SortKey = 'fiscalYear' | 'manager' | 'companyName' | 'rev' | 'A' | 'C' | 'd
 
 export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) => void }) {
   const { records: allRecords, loading, error, refresh } = useBillingData();
-  const { cmpRec, setCmpRec, loadRecord } = useWizard();
+  const { loadRecord } = useWizard();
   const { role, profileName } = useAuth();
   const canDelete = can(role, 'deleteBilling');
   const ownOnly = !can(role, 'viewAllStats');
@@ -59,7 +59,6 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
     if (!confirm(`'${r.companyName}' ${r.fiscalYear}년 청구기록을 삭제하시겠습니까?`)) return;
     try {
       await deleteBillingRecord(r.id);
-      if (cmpRec?.id === r.id) setCmpRec(null);
       await refresh();
     } catch (e) {
       alert('삭제 실패: ' + (e instanceof Error ? e.message : e));
@@ -88,11 +87,6 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
     <div className="card">
       <div className="chdr">
         청구기록 (총 {records.length}건 / 표시 {view.length}건)
-        {cmpRec && (
-          <span className="bdg b-new" style={{ marginLeft: 'auto' }}>
-            비교기준: {cmpRec.companyName} {cmpRec.fiscalYear}년
-          </span>
-        )}
       </div>
 
       {error && <div className="alert-w">{error}</div>}
@@ -117,11 +111,6 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
           <option value="법인">법인</option>
           <option value="개인">개인</option>
         </select>
-        {cmpRec && (
-          <button className="btn-sm" onClick={() => setCmpRec(null)}>
-            ✕ 비교해제
-          </button>
-        )}
       </div>
 
       <div style={{ overflowX: 'auto' }}>
@@ -178,7 +167,6 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
                 expanded={expandId === r.id}
                 isNew={isNewForYear(records, { id: r.selClientId || '', companyName: r.companyName }, r.fiscalYear)}
                 onToggle={() => setExpandId((id) => (id === r.id ? null : r.id))}
-                onCmp={() => setCmpRec(r)}
                 onEdit={() => edit(r)}
                 onDel={() => del(r)}
                 canDelete={canDelete}
@@ -219,13 +207,12 @@ interface RowProps {
   expanded: boolean;
   isNew: boolean;
   onToggle: () => void;
-  onCmp: () => void;
   onEdit: () => void;
   onDel: () => void;
   canDelete: boolean;
 }
 
-function HistRow({ r, expanded, isNew, onToggle, onCmp, onEdit, onDel, canDelete }: RowProps) {
+function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, canDelete }: RowProps) {
   return (
     <>
       <tr onClick={onToggle} title="클릭: 업무량 상세" style={{ cursor: 'pointer' }}>
@@ -255,9 +242,6 @@ function HistRow({ r, expanded, isNew, onToggle, onCmp, onEdit, onDel, canDelete
         <td style={{ fontSize: 10, color: '#999' }}>{dt(r.savedAt)}</td>
         <td>
           <div style={{ display: 'flex', gap: 3 }} onClick={(e) => e.stopPropagation()}>
-            <button className="btn-sm btn-sm-blue" onClick={onCmp}>
-              비교
-            </button>
             <button className="btn-sm btn-sm-grn" onClick={onEdit}>
               수정
             </button>

@@ -24,9 +24,6 @@ interface WizardCtx {
   setSavedMsg: (b: boolean) => void;
   /** 새 청구서 작성 (연도 유지, 원본 doNewInvoice) */
   resetNew: () => void;
-  /** 청구기록 탭에서 선택한 비교 기준 (Step3에서 전년 대신 사용) */
-  cmpRec: BillingRecord | null;
-  setCmpRec: (r: BillingRecord | null) => void;
   /** 청구기록을 위저드로 불러와 수정 (원본 loadRec) */
   loadRecord: (rec: BillingRecord) => void;
 }
@@ -37,7 +34,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const [S, setSState] = useState<WizardState>(makeWizardState);
   const [step, setStep] = useState(1);
   const [savedMsg, setSavedMsg] = useState(false);
-  const [cmpRec, setCmpRec] = useState<BillingRecord | null>(null);
   const sRef = useRef(S);
   sRef.current = S;
 
@@ -98,8 +94,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         savedMsg,
         setSavedMsg,
         resetNew,
-        cmpRec,
-        setCmpRec,
         loadRecord,
       }}
     >

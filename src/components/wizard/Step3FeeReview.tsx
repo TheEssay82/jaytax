@@ -6,18 +6,16 @@ import { getRevForYear } from '../../lib/format';
 import type { WizardStepProps } from './stepProps';
 
 export default function Step3FeeReview({ clients, records }: WizardStepProps) {
-  const { S, cmpRec } = useWizard();
+  const { S } = useWizard();
   const { config, activeLabel } = useConfig();
   const c = calcS(S, config);
 
   const prevYear = Number(S.fiscalYear) - 1;
-  const prev =
-    cmpRec ||
-    records.find(
-      (r) =>
-        (S.selClientId ? r.selClientId === S.selClientId : r.companyName === S.companyName) &&
-        String(r.fiscalYear) === String(prevYear),
-    );
+  const prev = records.find(
+    (r) =>
+      (S.selClientId ? r.selClientId === S.selClientId : r.companyName === S.companyName) &&
+      String(r.fiscalYear) === String(prevYear),
+  );
   const prevCl = S.selClientId ? clients.find((x) => x.id === S.selClientId) : undefined;
   const prevRevFallback = prevCl ? getRevForYear(prevCl, prevYear) : 0;
 
