@@ -1,10 +1,8 @@
 // 통계 탭 — 원본 rStats 포팅 (담당자별 재무·업무량 집계)
 import { useMemo, useState } from 'react';
-import { useClients } from '../../hooks/useClients';
 import { useBillingData } from '../../hooks/useBillingData';
 import { useAuth } from '../../context/AuthContext';
 import { can } from '../../lib/roles';
-import { getManagerForYear } from '../../lib/wizardHelpers';
 import { fm } from '../../lib/format';
 import StatsChart from './StatsChart';
 
@@ -18,11 +16,9 @@ const emptyAgg = (): MgrAgg => ({
 });
 
 export default function StatsTab() {
-  const { clients, loading: clLoading } = useClients();
-  const { records, loading: bdLoading } = useBillingData();
+  const { records, loading } = useBillingData();
   const { role, profileName } = useAuth();
   const ownOnly = !can(role, 'viewAllStats');
-  const loading = clLoading || bdLoading;
 
   const years = useMemo(
     () => [...new Set(records.map((r) => r.fiscalYear))].sort((a, b) => b - a),
@@ -31,15 +27,11 @@ export default function StatsTab() {
   const [statYear, setStatYear] = useState<number | null>(null);
   const year = statYear ?? years[0] ?? null;
 
-  // 본인필터(기장팀원) 적용된 전체 기록 — 차트(전 연도)용
+  // 본인필터(기장팀원) 적용된 전체 기록 — 차트(전 연도)용. 기록(record)의 담당자 기준.
   const ownRecords = useMemo(() => {
     if (!ownOnly) return records;
-    return records.filter((r) => {
-      const cl = clients.find((c) => c.id === r.selClientId);
-      const m = cl ? getManagerForYear(cl, r.fiscalYear) : r.manager || '';
-      return m === profileName;
-    });
-  }, [records, ownOnly, clients, profileName]);
+    return records.filter((r) => (r.manager || '') === profileName);
+  }, [records, ownOnly, profileName]);
 
   // 선택 연도 기록 — 표용
   const recs = useMemo(
@@ -50,8 +42,7 @@ export default function StatsTab() {
   const { mgrs, tot } = useMemo(() => {
     const byMgr: Record<string, MgrAgg> = {};
     for (const r of recs) {
-      const cl = clients.find((c) => c.id === r.selClientId);
-      const m = cl ? getManagerForYear(cl, r.fiscalYear) : r.manager || '(미지정)';
+      const m = r.manager || '(미지정)';
       const g = (byMgr[m] ??= emptyAgg());
       g.cnt++;
       if (r.bizType === '법인') g.law++;
@@ -83,7 +74,7 @@ export default function StatsTab() {
         per: recs.filter((r) => r.bizType === '개인').length,
       },
     };
-  }, [recs, clients]);
+  }, [recs]);
 
   if (loading) {
     return (
