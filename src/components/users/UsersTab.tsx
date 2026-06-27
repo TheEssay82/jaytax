@@ -1,7 +1,7 @@
 // 사용자/계정 관리 탭 — 최고관리자(superuser) 전용. 역할 배정 + 담당자명 설정.
 import { useEffect, useState } from 'react';
 import { ROLES, ROLE_LABELS, type Role } from '../../lib/roles';
-import { listProfiles, updateProfile, type UserProfile } from '../../lib/usersApi';
+import { listProfiles, updateProfile, createEmployee, type UserProfile } from '../../lib/usersApi';
 import { useAuth } from '../../context/AuthContext';
 
 export default function UsersTab() {
@@ -12,6 +12,12 @@ export default function UsersTab() {
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
+  // 직원 추가 폼
+  const [nEmail, setNEmail] = useState('');
+  const [nPw, setNPw] = useState('');
+  const [nName, setNName] = useState('');
+  const [nRole, setNRole] = useState<Role>('team_member');
+  const [adding, setAdding] = useState(false);
 
   async function load() {
     try {
@@ -32,6 +38,27 @@ export default function UsersTab() {
   function flash(t: string) {
     setMsg(t);
     setTimeout(() => setMsg(''), 2500);
+  }
+
+  async function addEmployee() {
+    if (!nEmail.trim() || !nPw.trim()) {
+      alert('이메일과 비밀번호를 입력하세요.');
+      return;
+    }
+    setAdding(true);
+    try {
+      await createEmployee({ email: nEmail.trim(), password: nPw, name: nName.trim(), role: nRole });
+      setNEmail('');
+      setNPw('');
+      setNName('');
+      setNRole('team_member');
+      await load();
+      flash('✓ 직원 추가됨');
+    } catch (e) {
+      alert('직원 추가 실패: ' + (e instanceof Error ? e.message : e));
+    } finally {
+      setAdding(false);
+    }
   }
 
   async function save(id: string) {
@@ -72,9 +99,43 @@ export default function UsersTab() {
       </div>
 
       {error && <div className="alert-w">{error}</div>}
-      <div className="alert-i" style={{ fontSize: 11 }}>
-        신규 계정 추가는 Supabase 대시보드(Authentication → Users)에서 합니다. 여기서는 <strong>역할</strong>과{' '}
-        <strong>담당자명</strong>을 지정합니다. 담당자명은 통계 본인필터·청구서 담당자와 매칭되니 정확히 입력하세요.
+
+      <div className="card" style={{ background: '#F5F1EB' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>＋ 직원 추가 (계정 생성)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
+          <div className="frow">
+            <span className="fl">이메일<span className="req">*</span></span>
+            <input value={nEmail} placeholder="staff@jaytax.co.kr" onChange={(e) => setNEmail(e.target.value)} />
+          </div>
+          <div className="frow">
+            <span className="fl">비밀번호<span className="req">*</span></span>
+            <input value={nPw} placeholder="6자 이상" onChange={(e) => setNPw(e.target.value)} />
+          </div>
+          <div className="frow">
+            <span className="fl">담당자명</span>
+            <input value={nName} placeholder="예: 김동주" onChange={(e) => setNName(e.target.value)} />
+          </div>
+          <div className="frow">
+            <span className="fl">역할</span>
+            <select
+              value={nRole}
+              onChange={(e) => setNRole(e.target.value as Role)}
+              style={{ padding: '4px 7px', fontSize: 12 }}
+            >
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABELS[r]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <button className="btn-p" style={{ marginTop: 7 }} onClick={addEmployee} disabled={adding}>
+          {adding ? '생성 중…' : '직원 계정 생성'}
+        </button>
+        <div style={{ fontSize: 11, color: '#888', marginTop: 6 }}>
+          ※ 담당자명은 통계 본인필터·청구서 담당자와 매칭되니 정확히 입력하세요.
+        </div>
       </div>
 
       <div style={{ overflowX: 'auto' }}>

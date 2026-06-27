@@ -29,3 +29,15 @@ export async function updateProfile(id: string, patch: { role?: Role; name?: str
   const { error } = await supabase.from('profiles').update(patch).eq('id', id);
   if (error) throw new Error(error.message);
 }
+
+/** 직원 계정 생성 — Edge Function(create-employee) 호출. 최고관리자만 성공. */
+export async function createEmployee(input: {
+  email: string;
+  password: string;
+  name: string;
+  role: Role;
+}): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('create-employee', { body: input });
+  if (error) throw new Error(error.message);
+  if (data && data.ok === false) throw new Error(data.error || '직원 생성에 실패했습니다.');
+}
