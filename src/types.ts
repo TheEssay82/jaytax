@@ -50,6 +50,8 @@ export interface WizardState {
   taxId: string;
   repName: string;
   manager: string;
+  /** 담당자 계정 ID (profiles.id) — 이름 대신 견고한 연결. 없으면 manager(이름)로 fallback */
+  managerId: string | null;
   revenue: string;
   fiscalYear: number;
   isModel: boolean;

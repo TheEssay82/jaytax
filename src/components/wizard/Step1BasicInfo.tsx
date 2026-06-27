@@ -11,9 +11,18 @@ import {
 import { getRevForYear } from '../../lib/format';
 import type { WizardStepProps } from './stepProps';
 
-export default function Step1BasicInfo({ clients }: WizardStepProps) {
+export default function Step1BasicInfo({ clients, profiles }: WizardStepProps) {
   const { S, setS, replaceS } = useWizard();
   const hasDft = !!(S.selClientId && hasDraft(S.selClientId, S.fiscalYear));
+
+  function changeManager(id: string) {
+    if (!id) {
+      setS({ managerId: null });
+      return;
+    }
+    const p = profiles.find((x) => x.id === id);
+    setS({ managerId: id, manager: p ? p.name : S.manager });
+  }
 
   function changeBizType(bt: BizType) {
     const next = { ...S, bizType: bt, payMonth: '', payDay: '' };
@@ -44,6 +53,7 @@ export default function Step1BasicInfo({ clients }: WizardStepProps) {
       taxId: c.taxId,
       repName: c.repName,
       manager: getManagerForYear(c, yr),
+      managerId: profiles.find((p) => p.name === getManagerForYear(c, yr))?.id ?? null,
       bankAccount: c.bankAccount,
       isModel: isModelForYear(c, yr),
       revenue: rv ? String(rv) : '',
@@ -93,7 +103,14 @@ export default function Step1BasicInfo({ clients }: WizardStepProps) {
           <span className="fl">
             담당자<span className="req">*</span>
           </span>
-          <input value={S.manager} placeholder="담당자 이름" onChange={(e) => setS({ manager: e.target.value })} />
+          <select value={S.managerId ?? ''} onChange={(e) => changeManager(e.target.value)}>
+            <option value="">{S.manager ? `미지정 (현재: ${S.manager})` : '담당자 선택'}</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="frow">
           <span className="fl">귀속연도</span>

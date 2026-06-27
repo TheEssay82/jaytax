@@ -10,6 +10,7 @@ interface BillingRow {
   biz_type: string;
   company_name: string;
   manager: string;
+  manager_id: string | null;
   revenue: number;
   grand_total: number;
   cfg_version_id: string;
@@ -20,12 +21,14 @@ interface BillingRow {
 
 function rowToRecord(r: BillingRow): BillingRecord {
   // payload 가 전체 스냅샷(S + Calc) — 상단 컬럼으로 메타만 보정
+  const payload = r.payload as unknown as BillingRecord;
   return {
-    ...(r.payload as unknown as BillingRecord),
+    ...payload,
     id: r.id,
     savedAt: r.saved_at,
     cfgVersionId: r.cfg_version_id,
     cfgVersionLabel: r.cfg_version_label,
+    managerId: r.manager_id ?? payload.managerId ?? null,
   };
 }
 
@@ -48,6 +51,7 @@ export async function createBillingRecord(rec: BillingRecord): Promise<void> {
     biz_type: rec.bizType,
     company_name: rec.companyName,
     manager: rec.manager,
+    manager_id: rec.managerId ?? null,
     revenue: rec.rev,
     grand_total: rec.grand,
     cfg_version_id: rec.cfgVersionId || 'v0',

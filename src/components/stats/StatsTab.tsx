@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useBillingData } from '../../hooks/useBillingData';
 import { useAuth } from '../../context/AuthContext';
 import { can } from '../../lib/roles';
+import { isOwnRecord } from '../../lib/wizardHelpers';
 import { fm } from '../../lib/format';
 import StatsChart from './StatsChart';
 
@@ -17,7 +18,7 @@ const emptyAgg = (): MgrAgg => ({
 
 export default function StatsTab() {
   const { records, loading } = useBillingData();
-  const { role, profileName } = useAuth();
+  const { user, role, profileName } = useAuth();
   const ownOnly = !can(role, 'viewAllStats');
 
   const years = useMemo(
@@ -30,8 +31,8 @@ export default function StatsTab() {
   // 본인필터(기장팀원) 적용된 전체 기록 — 차트(전 연도)용. 기록(record)의 담당자 기준.
   const ownRecords = useMemo(() => {
     if (!ownOnly) return records;
-    return records.filter((r) => (r.manager || '') === profileName);
-  }, [records, ownOnly, profileName]);
+    return records.filter((r) => isOwnRecord(r, user?.id ?? '', profileName));
+  }, [records, ownOnly, user, profileName]);
 
   // 선택 연도 기록 — 표용
   const recs = useMemo(

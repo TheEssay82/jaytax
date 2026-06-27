@@ -6,7 +6,7 @@ import { useWizard } from '../../context/WizardContext';
 import { useAuth } from '../../context/AuthContext';
 import { can } from '../../lib/roles';
 import { deleteBillingRecord } from '../../lib/billingApi';
-import { isNewForYear } from '../../lib/wizardHelpers';
+import { isNewForYear, isOwnRecord } from '../../lib/wizardHelpers';
 import { fm } from '../../lib/format';
 
 const dt = (s?: string) => (s ? s.split('T')[0].replace(/-/g, '.') : '');
@@ -16,11 +16,13 @@ type SortKey = 'fiscalYear' | 'manager' | 'companyName' | 'rev' | 'A' | 'C' | 'd
 export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) => void }) {
   const { records: allRecords, loading, error, refresh } = useBillingData();
   const { loadRecord } = useWizard();
-  const { role, profileName } = useAuth();
+  const { user, role, profileName } = useAuth();
   const canDelete = can(role, 'deleteBilling');
   const ownOnly = !can(role, 'viewAllStats');
-  // 기장팀원은 본인(담당자명) 청구기록만
-  const records = ownOnly ? allRecords.filter((r) => r.manager === profileName) : allRecords;
+  // 기장팀원은 본인 청구기록만 (담당자 계정ID 우선, 없으면 이름)
+  const records = ownOnly
+    ? allRecords.filter((r) => isOwnRecord(r, user?.id ?? '', profileName))
+    : allRecords;
   const [filter, setFilter] = useState('');
   const [year, setYear] = useState('');
   const [biz, setBiz] = useState('');

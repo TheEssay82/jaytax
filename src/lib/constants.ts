@@ -117,6 +117,7 @@ export function makeWizardState(): WizardState {
     taxId: '',
     repName: '',
     manager: '',
+    managerId: null,
     revenue: '',
     fiscalYear: CURRENT_YEAR - 1,
     isModel: false,

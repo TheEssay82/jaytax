@@ -3,6 +3,7 @@ import { useWizard } from '../../context/WizardContext';
 import { STEP_LABELS } from '../../lib/constants';
 import { useClients } from '../../hooks/useClients';
 import { useBillingData } from '../../hooks/useBillingData';
+import { useProfiles } from '../../hooks/useProfiles';
 import Step0SelectClient from './Step0SelectClient';
 import Step1BasicInfo from './Step1BasicInfo';
 import Step2Workload from './Step2Workload';
@@ -14,10 +15,11 @@ export default function WizardTab() {
   const { step, wizNav, goStep } = useWizard();
   const { clients, loading: clLoading, refresh: refreshClients } = useClients();
   const { records, targets, loading: bdLoading, refresh: refreshBilling } = useBillingData();
+  const profiles = useProfiles();
 
   const loading = clLoading || bdLoading;
 
-  const data = { clients, records, targets, refreshClients, refreshBilling };
+  const data = { clients, records, targets, profiles, refreshClients, refreshBilling };
 
   let body: React.ReactNode;
   if (loading) {

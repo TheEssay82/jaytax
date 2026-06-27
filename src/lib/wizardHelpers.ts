@@ -85,6 +85,21 @@ export function isNewForYear(records: BillingRecord[], client: ClientRef, year: 
   return !records.some((r) => String(r.fiscalYear) === py && recordMatchesClient(r, client));
 }
 
+/** 기록이 특정 담당자(본인) 것인지 — managerId(계정) 우선, 없으면 이름 fallback */
+export function isOwnRecord(
+  r: { managerId?: string | null; manager: string },
+  userId: string,
+  userName: string,
+): boolean {
+  if (r.managerId) return r.managerId === userId;
+  return (r.manager || '') === userName;
+}
+
+/** 담당자 그룹 키 — managerId 우선(없으면 이름). 통계 집계용 */
+export function managerGroupKey(r: { managerId?: string | null; manager: string }): string {
+  return r.managerId ? 'id:' + r.managerId : 'name:' + (r.manager || '(미지정)');
+}
+
 /** 수동 상실: 거래처에 명시적으로 설정된 상실 연도만 (거래처선택 화면용) */
 export function isManualLossYear(clients: Client[], cid: string, year: number | string): boolean {
   const cl = clients.find((c) => c.id === cid);

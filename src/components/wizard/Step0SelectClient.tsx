@@ -17,7 +17,7 @@ import type { WizardStepProps } from './stepProps';
 
 type BilledFilter = 'unbilled' | 'all' | 'billed';
 
-export default function Step0SelectClient({ clients, records, targets }: WizardStepProps) {
+export default function Step0SelectClient({ clients, records, targets, profiles }: WizardStepProps) {
   const { S, setS, replaceS, setStep } = useWizard();
   const [srch, setSrch] = useState('');
   const [bz, setBz] = useState('');
@@ -52,6 +52,8 @@ export default function Step0SelectClient({ clients, records, targets }: WizardS
   // 거래처 선택 (원본 pickClient)
   function pickClient(c: Client) {
     const yr = S.fiscalYear;
+    const mgrName = getManagerForYear(c, yr);
+    const mgrId = profiles.find((p) => p.name === mgrName)?.id ?? null;
     const draft = loadDraft(c.id, yr);
     if (draft) {
       // 임시저장 복원 + 기본정보는 DB 최신값으로 보정
@@ -63,7 +65,8 @@ export default function Step0SelectClient({ clients, records, targets }: WizardS
         tradeName: c.tradeName,
         taxId: c.taxId,
         repName: c.repName,
-        manager: getManagerForYear(c, yr),
+        manager: mgrName,
+        managerId: mgrId,
         bankAccount: c.bankAccount,
       });
       setStep(draft._step || 2);
@@ -78,7 +81,8 @@ export default function Step0SelectClient({ clients, records, targets }: WizardS
       tradeName: c.tradeName,
       taxId: c.taxId,
       repName: c.repName,
-      manager: getManagerForYear(c, yr),
+      manager: mgrName,
+      managerId: mgrId,
       bankAccount: c.bankAccount,
       isModel: isModelForYear(c, yr),
       revenue: rv ? String(rv) : '',
