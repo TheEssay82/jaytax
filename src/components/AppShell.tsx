@@ -69,17 +69,8 @@ function Shell() {
         <img
           src="/logo2.png"
           alt="JAY · 세무회계 지원"
-          style={{
-            height: 44,
-            width: 156,
-            objectFit: 'cover',
-            objectPosition: 'left center',
-            display: 'block',
-            flexShrink: 0,
-          }}
+          style={{ height: 48, display: 'block', flexShrink: 0 }}
         />
-        <span className="h-sep" />
-        <span className="h-title">세무조정수수료 관리시스템</span>
         <span
           className="h-ver"
           title={`앱 버전 v${__APP_VERSION__}`}
