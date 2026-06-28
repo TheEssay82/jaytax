@@ -67,9 +67,16 @@ function Shell() {
     <>
       <header id="hdr">
         <img
-          src="/logo.png"
+          src="/logo2.png"
           alt="JAY · 세무회계 지원"
-          style={{ height: 34, display: 'block', flexShrink: 0 }}
+          style={{
+            height: 44,
+            width: 156,
+            objectFit: 'cover',
+            objectPosition: 'left center',
+            display: 'block',
+            flexShrink: 0,
+          }}
         />
         <span className="h-sep" />
         <span className="h-title">세무조정수수료 관리시스템</span>
