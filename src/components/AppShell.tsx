@@ -66,7 +66,7 @@ function Shell() {
   return (
     <>
       <header id="hdr">
-        <span className="h-logo">인덕회계법인</span>
+        <span className="h-logo">세무회계 지원</span>
         <span className="h-sep" />
         <span className="h-title">세무조정수수료 관리시스템</span>
         <span

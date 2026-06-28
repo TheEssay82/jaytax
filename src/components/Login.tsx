@@ -28,11 +28,27 @@ export default function Login() {
       }}
     >
       <form onSubmit={handleSubmit} className="card" style={{ width: 340, padding: '28px 26px' }}>
-        <div style={{ textAlign: 'center', marginBottom: 18 }}>
-          <div style={{ color: '#C8963C', fontWeight: 700, fontSize: 18, letterSpacing: 1 }}>
-            인덕회계법인
+        <div style={{ textAlign: 'center', marginBottom: 22 }}>
+          <div
+            style={{
+              fontFamily: 'Georgia, "Times New Roman", serif',
+              fontSize: 42,
+              fontWeight: 500,
+              letterSpacing: 12,
+              color: '#1A2B52',
+              paddingLeft: 12,
+              lineHeight: 1.1,
+            }}
+          >
+            JAY
           </div>
-          <div style={{ color: '#888', fontSize: 12, marginTop: 4 }}>세무조정수수료 관리시스템</div>
+          <div style={{ height: 1, background: '#C8963C', width: '86%', margin: '8px auto 11px' }} />
+          <div style={{ fontSize: 10, letterSpacing: 4, color: '#1A2B52' }}>JIWON ACCOUNTING</div>
+          <div style={{ fontSize: 10, letterSpacing: 4, color: '#1A2B52', marginTop: 3 }}>FOR YOU</div>
+          <div style={{ fontSize: 12, letterSpacing: 2, color: '#555', marginTop: 7 }}>
+            세무회계사무소 지원
+          </div>
+          <div style={{ color: '#999', fontSize: 11, marginTop: 12 }}>세무조정수수료 관리시스템</div>
         </div>
         {error && <div className="alert-w" style={{ marginBottom: 12 }}>{error}</div>}
         <div className="frow" style={{ gridTemplateColumns: '1fr' }}>
