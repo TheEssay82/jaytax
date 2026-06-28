@@ -90,6 +90,7 @@ function Shell() {
           ))}
         </nav>
         <div className="h-acts">
+          <span className="h-title" style={{ opacity: 0.6, marginRight: 4 }}>세무조정수수료 관리시스템</span>
           <span className="h-title">
             {user?.email}
             <span className="bdg b-on" style={{ marginLeft: 6, fontSize: 10 }}>
