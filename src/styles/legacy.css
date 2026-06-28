@@ -2,7 +2,7 @@
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;font-size:13px;background:#F0EDE7;color:#1A1A1A;min-height:100vh}
-#hdr{background:#1A2B52;color:#fff;display:flex;align-items:center;padding:0 14px;height:52px;position:sticky;top:0;z-index:200;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+#hdr{background:#1A2B52;color:#fff;display:flex;align-items:center;padding:0 14px;height:64px;position:sticky;top:0;z-index:200;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .h-logo{font-size:14px;font-weight:700;letter-spacing:1px;color:#C8963C;flex-shrink:0}
 .h-sep{width:1px;height:22px;background:rgba(255,255,255,.2);flex-shrink:0}
 .h-title{font-size:11px;color:rgba(255,255,255,.55);flex-shrink:0}

@@ -69,7 +69,7 @@ function Shell() {
         <img
           src="/logo2.png"
           alt="JAY · 세무회계 지원"
-          style={{ height: 48, display: 'block', flexShrink: 0 }}
+          style={{ height: 56, display: 'block', flexShrink: 0 }}
         />
         <span
           className="h-ver"
