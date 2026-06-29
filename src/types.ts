@@ -119,6 +119,8 @@ export interface BillingRecord extends WizardState, CalcResult {
   savedAt: string;
   cfgVersionId: string;
   cfgVersionLabel: string;
+  /** 'draft'=작성중(팀원 저장), 'final'=확정(팀장+ 승인) */
+  status: 'draft' | 'final';
 }
 
 /** 업데이트요청 상태 */

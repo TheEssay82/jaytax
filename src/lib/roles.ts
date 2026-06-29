@@ -17,7 +17,8 @@ export function normalizeRole(r: string | null | undefined): Role {
 
 /** 권한 항목 */
 export type Capability =
-  | 'finalizeInvoice' // 청구서 최종 저장(확정)
+  | 'saveInvoice' // 청구서 저장(작성중 포함) — 전 직원
+  | 'finalizeInvoice' // 청구서 확정 — 팀장+
   | 'manageClients' // 거래처 관리(추가/수정/삭제·일괄·엑셀)
   | 'manageTargets' // 청구대상 확정
   | 'deleteBilling' // 청구기록 삭제
@@ -27,8 +28,9 @@ export type Capability =
 
 // 항목별 허용 역할 (매트릭스)
 const MATRIX: Record<Capability, Role[]> = {
-  // 청구서 저장: 전 직원 가능(기장팀원 포함) — 작성분 유실 방지
-  finalizeInvoice: ['superuser', 'accountant', 'team_lead', 'team_member'],
+  // 저장(작성중 포함): 전 직원 / 확정: 팀장+
+  saveInvoice: ['superuser', 'accountant', 'team_lead', 'team_member'],
+  finalizeInvoice: ['superuser', 'accountant', 'team_lead'],
   manageClients: ['superuser', 'accountant', 'team_lead'],
   manageTargets: ['superuser', 'accountant', 'team_lead'],
   deleteBilling: ['superuser', 'accountant', 'team_lead'],

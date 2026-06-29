@@ -5,7 +5,7 @@ import { useBillingData } from '../../hooks/useBillingData';
 import { useWizard } from '../../context/WizardContext';
 import { useAuth } from '../../context/AuthContext';
 import { can } from '../../lib/roles';
-import { deleteBillingRecord } from '../../lib/billingApi';
+import { deleteBillingRecord, finalizeBillingRecord } from '../../lib/billingApi';
 import { isNewForYear, isOwnRecord } from '../../lib/wizardHelpers';
 import { fm } from '../../lib/format';
 
@@ -18,6 +18,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
   const { loadRecord } = useWizard();
   const { user, role, profileName } = useAuth();
   const canDelete = can(role, 'deleteBilling');
+  const canFinalize = can(role, 'finalizeInvoice');
   const ownOnly = !can(role, 'viewAllStats');
   // 기장팀원은 본인 청구기록만 (담당자 계정ID 우선, 없으면 이름)
   const records = ownOnly
@@ -70,6 +71,16 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
   function edit(r: BillingRecord) {
     loadRecord(r);
     onSwitchTab('wizard');
+  }
+
+  async function finalize(r: BillingRecord) {
+    if (!confirm(`'${r.companyName}' ${r.fiscalYear}년 청구건을 확정하시겠습니까?`)) return;
+    try {
+      await finalizeBillingRecord(r.id);
+      await refresh();
+    } catch (e) {
+      alert('확정 실패: ' + (e instanceof Error ? e.message : e));
+    }
   }
 
   const sum = (f: (r: BillingRecord) => number) => view.reduce((s, r) => s + (f(r) || 0), 0);
@@ -171,7 +182,9 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
                 onToggle={() => setExpandId((id) => (id === r.id ? null : r.id))}
                 onEdit={() => edit(r)}
                 onDel={() => del(r)}
+                onFinalize={() => finalize(r)}
                 canDelete={canDelete}
+                canFinalize={canFinalize}
               />
             ))}
           </tbody>
@@ -211,10 +224,12 @@ interface RowProps {
   onToggle: () => void;
   onEdit: () => void;
   onDel: () => void;
+  onFinalize: () => void;
   canDelete: boolean;
+  canFinalize: boolean;
 }
 
-function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, canDelete }: RowProps) {
+function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, canDelete, canFinalize }: RowProps) {
   return (
     <>
       <tr onClick={onToggle} title="클릭: 업무량 상세" style={{ cursor: 'pointer' }}>
@@ -229,7 +244,15 @@ function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, canDelete }: Row
           )}
         </td>
         <td>{r.manager}</td>
-        <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.companyName}</td>
+        <td style={{ fontWeight: 700, color: '#1A2B52' }}>
+          {r.companyName}
+          {r.status === 'draft' && (
+            <>
+              {' '}
+              <span className="bdg-draft">작성중</span>
+            </>
+          )}
+        </td>
         <td className="r" style={{ fontFamily: 'monospace' }}>{fm(r.rev || 0)}</td>
         <td className="r" style={{ fontFamily: 'monospace' }}>{fm(r.A || 0)}</td>
         <td className="r" style={{ fontFamily: 'monospace', color: '#555' }}>{fm(r.C || 0)}</td>
@@ -244,6 +267,11 @@ function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, canDelete }: Row
         <td style={{ fontSize: 10, color: '#999' }}>{dt(r.savedAt)}</td>
         <td>
           <div style={{ display: 'flex', gap: 3 }} onClick={(e) => e.stopPropagation()}>
+            {r.status === 'draft' && canFinalize && (
+              <button className="btn-sm btn-sm-navy" onClick={onFinalize}>
+                확정
+              </button>
+            )}
             <button className="btn-sm btn-sm-grn" onClick={onEdit}>
               수정
             </button>

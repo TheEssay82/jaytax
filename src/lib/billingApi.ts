@@ -16,6 +16,7 @@ interface BillingRow {
   cfg_version_id: string;
   cfg_version_label: string;
   payload: Record<string, unknown>;
+  status: string | null;
   saved_at: string;
 }
 
@@ -29,6 +30,7 @@ function rowToRecord(r: BillingRow): BillingRecord {
     cfgVersionId: r.cfg_version_id,
     cfgVersionLabel: r.cfg_version_label,
     managerId: r.manager_id ?? payload.managerId ?? null,
+    status: (r.status as 'draft' | 'final') ?? 'final',
   };
 }
 
@@ -57,10 +59,17 @@ export async function createBillingRecord(rec: BillingRecord): Promise<void> {
     cfg_version_id: rec.cfgVersionId || 'v0',
     cfg_version_label: rec.cfgVersionLabel || '기본',
     payload: rec as unknown as Record<string, unknown>,
+    status: rec.status || 'final',
     created_by: u.user?.id ?? null,
     saved_at: rec.savedAt,
   };
   const { error } = await supabase.from('billing_records').insert(row);
+  if (error) throw new Error(error.message);
+}
+
+/** 청구기록 확정 (작성중 → 확정). RLS상 팀장+ 만 가능. */
+export async function finalizeBillingRecord(id: string): Promise<void> {
+  const { error } = await supabase.from('billing_records').update({ status: 'final' }).eq('id', id);
   if (error) throw new Error(error.message);
 }
 

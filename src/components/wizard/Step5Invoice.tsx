@@ -15,7 +15,7 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
   const { S, savedMsg, setSavedMsg, resetNew } = useWizard();
   const { config } = useConfig();
   const { role } = useAuth();
-  const canFinalize = can(role, 'finalizeInvoice');
+  const isFinalizer = can(role, 'finalizeInvoice'); // 확정 권한(팀장+)
   const canSyncClient = can(role, 'manageClients'); // 거래처 자동갱신 권한
   const [saving, setSaving] = useState(false);
   const c = calcS(S, config);
@@ -41,6 +41,7 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
         savedAt: new Date().toISOString(),
         cfgVersionId: config.cfgVersionId || 'v0',
         cfgVersionLabel: config.cfgVersionLabel || '기본',
+        status: isFinalizer ? 'final' : 'draft',
       };
       await createBillingRecord(rec);
       // 당기 매출액 거래처 DB 자동 갱신 (거래처 관리 권한자만)
@@ -79,17 +80,18 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
           <button className="btn-new no-print" onClick={newInvoice}>
             ＋ 새로 작성 (다른 거래처 청구서)
           </button>
-          <div className="alert-ok no-print">✓ 기록 저장 완료!</div>
+          <div className="alert-ok no-print">
+            {isFinalizer ? '✓ 청구 확정·저장 완료!' : '✓ 임시저장 완료! (기장팀장 확정 대기)'}
+          </div>
         </>
-      ) : canFinalize ? (
-        <button className="btn-green no-print" onClick={saveRec} disabled={saving}>
-          {saving ? '저장 중…' : `💾 청구 확정 및 기록 저장 (${S.fiscalYear}년 귀속)`}
-        </button>
       ) : (
-        <div className="alert-w no-print">
-          🔒 기장팀원은 청구서를 <strong>최종 저장(확정)</strong>할 수 없습니다. 기장팀장 이상이 확정합니다.
-          (작성·인쇄는 가능)
-        </div>
+        <button className="btn-green no-print" onClick={saveRec} disabled={saving}>
+          {saving
+            ? '저장 중…'
+            : isFinalizer
+              ? `💾 청구 확정 및 기록 저장 (${S.fiscalYear}년 귀속)`
+              : `💾 임시저장 (작성중 — 기장팀장 확정 필요)`}
+        </button>
       )}
 
       <div className="inv" id="inv-body">
