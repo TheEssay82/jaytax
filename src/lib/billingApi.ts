@@ -67,6 +67,27 @@ export async function createBillingRecord(rec: BillingRecord): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** 청구기록 수정(덮어쓰기). created_by 는 보존. RLS: 팀장+ 전체 / 팀원은 본인 작성중 건만. */
+export async function updateBillingRecord(id: string, rec: BillingRecord): Promise<void> {
+  const row = {
+    client_id: rec.selClientId,
+    fiscal_year: rec.fiscalYear,
+    biz_type: rec.bizType,
+    company_name: rec.companyName,
+    manager: rec.manager,
+    manager_id: rec.managerId ?? null,
+    revenue: rec.rev,
+    grand_total: rec.grand,
+    cfg_version_id: rec.cfgVersionId || 'v0',
+    cfg_version_label: rec.cfgVersionLabel || '기본',
+    payload: rec as unknown as Record<string, unknown>,
+    status: rec.status || 'final',
+    saved_at: rec.savedAt,
+  };
+  const { error } = await supabase.from('billing_records').update(row).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 /** 청구기록 확정 (작성중 → 확정). RLS상 팀장+ 만 가능. */
 export async function finalizeBillingRecord(id: string): Promise<void> {
   const { error } = await supabase.from('billing_records').update({ status: 'final' }).eq('id', id);

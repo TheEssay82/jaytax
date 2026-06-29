@@ -272,9 +272,11 @@ function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, canD
                 확정
               </button>
             )}
-            <button className="btn-sm btn-sm-grn" onClick={onEdit}>
-              수정
-            </button>
+            {(canFinalize || r.status === 'draft') && (
+              <button className="btn-sm btn-sm-grn" onClick={onEdit}>
+                수정
+              </button>
+            )}
             {canDelete && (
               <button className="btn-sm btn-sm-del" onClick={onDel}>
                 🗑

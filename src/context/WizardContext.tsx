@@ -26,6 +26,10 @@ interface WizardCtx {
   resetNew: () => void;
   /** 청구기록을 위저드로 불러와 수정 (원본 loadRec) */
   loadRecord: (rec: BillingRecord) => void;
+  /** 수정 중인 기록 id (있으면 저장 시 덮어쓰기, 없으면 신규 저장) */
+  editId: string | null;
+  /** 수정 모드 해제 */
+  clearEdit: () => void;
 }
 
 const Ctx = createContext<WizardCtx | undefined>(undefined);
@@ -34,6 +38,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const [S, setSState] = useState<WizardState>(makeWizardState);
   const [step, setStep] = useState(1);
   const [savedMsg, setSavedMsg] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const sRef = useRef(S);
   sRef.current = S;
 
@@ -61,7 +66,10 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     setSState((prev) => ({ ...makeWizardState(), fiscalYear: prev.fiscalYear }));
     setStep(1);
     setSavedMsg(false);
+    setEditId(null);
   }, []);
+
+  const clearEdit = useCallback(() => setEditId(null), []);
 
   // 청구기록 → 위저드 S 로 복원 (WizardState 키만 추출) — 원본 loadRec
   const loadRecord = useCallback((rec: BillingRecord) => {
@@ -74,6 +82,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     setSState(picked);
     setStep(3); // 거래처선택·기본정보 건너뛰고 업무량(3단계)부터 편집
     setSavedMsg(false);
+    setEditId(rec.id); // 수정 모드: 저장 시 이 기록을 덮어쓴다
   }, []);
 
   // 업무량 입력 중 자동 임시저장 (step>=2 && 거래처 선택됨)
@@ -95,6 +104,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         setSavedMsg,
         resetNew,
         loadRecord,
+        editId,
+        clearEdit,
       }}
     >
       {children}

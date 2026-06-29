@@ -6,13 +6,13 @@ import { useAuth } from '../../context/AuthContext';
 import { can } from '../../lib/roles';
 import { calcS, won, pct, dt } from '../../lib/calc';
 import { updateClient } from '../../lib/clientsApi';
-import { createBillingRecord } from '../../lib/billingApi';
+import { createBillingRecord, updateBillingRecord } from '../../lib/billingApi';
 import { clearDraft } from '../../lib/draft';
 import type { BillingRecord } from '../../types';
 import type { WizardStepProps } from './stepProps';
 
 export default function Step5Invoice({ clients, refreshClients, refreshBilling }: WizardStepProps) {
-  const { S, savedMsg, setSavedMsg, resetNew } = useWizard();
+  const { S, savedMsg, setSavedMsg, resetNew, editId, clearEdit } = useWizard();
   const { config } = useConfig();
   const { role } = useAuth();
   const isFinalizer = can(role, 'finalizeInvoice'); // 확정 권한(팀장+)
@@ -37,13 +37,18 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
       const rec: BillingRecord = {
         ...S,
         ...c,
-        id: '',
+        id: editId ?? '',
         savedAt: new Date().toISOString(),
         cfgVersionId: config.cfgVersionId || 'v0',
         cfgVersionLabel: config.cfgVersionLabel || '기본',
         status: isFinalizer ? 'final' : 'draft',
       };
-      await createBillingRecord(rec);
+      if (editId) {
+        await updateBillingRecord(editId, rec); // 수정: 기존 건 덮어쓰기
+        clearEdit();
+      } else {
+        await createBillingRecord(rec); // 신규 저장
+      }
       // 당기 매출액 거래처 DB 자동 갱신 (거래처 관리 권한자만)
       if (canSyncClient && S.selClientId && c.rev > 0) {
         const cl = clients.find((x) => x.id === S.selClientId);
@@ -81,16 +86,22 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
             ＋ 새로 작성 (다른 거래처 청구서)
           </button>
           <div className="alert-ok no-print">
-            {isFinalizer ? '✓ 청구 확정·저장 완료!' : '✓ 임시저장 완료! (기장팀장 확정 대기)'}
+            {editId
+              ? '✓ 수정 저장 완료!'
+              : isFinalizer
+                ? '✓ 청구 확정·저장 완료!'
+                : '✓ 임시저장 완료! (기장팀장 확정 대기)'}
           </div>
         </>
       ) : (
         <button className="btn-green no-print" onClick={saveRec} disabled={saving}>
           {saving
             ? '저장 중…'
-            : isFinalizer
-              ? `💾 청구 확정 및 기록 저장 (${S.fiscalYear}년 귀속)`
-              : `💾 임시저장 (작성중 — 기장팀장 확정 필요)`}
+            : editId
+              ? `✏️ 수정 저장 (${S.fiscalYear}년 귀속${isFinalizer ? '' : ' · 작성중'})`
+              : isFinalizer
+                ? `💾 청구 확정 및 기록 저장 (${S.fiscalYear}년 귀속)`
+                : `💾 임시저장 (작성중 — 기장팀장 확정 필요)`}
         </button>
       )}
 
