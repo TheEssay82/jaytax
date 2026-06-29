@@ -16,6 +16,7 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
   const { config } = useConfig();
   const { role } = useAuth();
   const canFinalize = can(role, 'finalizeInvoice');
+  const canSyncClient = can(role, 'manageClients'); // 거래처 자동갱신 권한
   const [saving, setSaving] = useState(false);
   const c = calcS(S, config);
   const yr = S.fiscalYear;
@@ -25,8 +26,8 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
   async function saveRec() {
     setSaving(true);
     try {
-      // 귀속연도별 담당자 거래처 DB 반영
-      if (S.selClientId && S.manager && S.fiscalYear) {
+      // 귀속연도별 담당자 거래처 DB 반영 (거래처 관리 권한자만 — 팀원은 건너뜀)
+      if (canSyncClient && S.selClientId && S.manager && S.fiscalYear) {
         const cl = clients.find((x) => x.id === S.selClientId);
         if (cl) {
           const mgrs = { ...(cl.managers || {}), [S.fiscalYear]: S.manager };
@@ -42,8 +43,8 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
         cfgVersionLabel: config.cfgVersionLabel || '기본',
       };
       await createBillingRecord(rec);
-      // 당기 매출액 거래처 DB 자동 갱신
-      if (S.selClientId && c.rev > 0) {
+      // 당기 매출액 거래처 DB 자동 갱신 (거래처 관리 권한자만)
+      if (canSyncClient && S.selClientId && c.rev > 0) {
         const cl = clients.find((x) => x.id === S.selClientId);
         if (cl) {
           const revs = { ...(cl.revenues || {}), [S.fiscalYear]: c.rev };

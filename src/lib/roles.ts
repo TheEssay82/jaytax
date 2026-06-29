@@ -27,7 +27,8 @@ export type Capability =
 
 // 항목별 허용 역할 (매트릭스)
 const MATRIX: Record<Capability, Role[]> = {
-  finalizeInvoice: ['superuser', 'accountant', 'team_lead'],
+  // 청구서 저장: 전 직원 가능(기장팀원 포함) — 작성분 유실 방지
+  finalizeInvoice: ['superuser', 'accountant', 'team_lead', 'team_member'],
   manageClients: ['superuser', 'accountant', 'team_lead'],
   manageTargets: ['superuser', 'accountant', 'team_lead'],
   deleteBilling: ['superuser', 'accountant', 'team_lead'],
