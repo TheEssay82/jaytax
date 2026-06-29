@@ -47,6 +47,7 @@ function Shell() {
   const { user, signOut, role } = useAuth();
   const { resetNew } = useWizard();
   const [curTab, setCurTab] = useState('wizard');
+  const [reloadKey, setReloadKey] = useState(0);
   const [showPw, setShowPw] = useState(false);
 
   const visibleTabs = TABS.filter(([id]) => {
@@ -54,10 +55,12 @@ function Shell() {
     return !cap || can(role, cap);
   });
 
-  // 탭 클릭: 청구서 작성 탭은 항상 새 청구서(거래처 선택, 1단계)부터 시작
+  // 탭 클릭: 화면을 remount(key 변경)해 데이터를 다시 불러온다(새로고침).
+  // 청구서 작성 탭은 항상 새 청구서(거래처 선택, 1단계)부터 시작.
   function clickTab(id: string) {
     if (id === 'wizard') resetNew();
     setCurTab(id);
+    setReloadKey((k) => k + 1);
   }
 
   // 권한 없는 탭이 현재 선택돼 있으면 청구서 작성으로 되돌림(방어)
@@ -106,7 +109,7 @@ function Shell() {
         </div>
       </header>
       {showPw && <PasswordModal onClose={() => setShowPw(false)} />}
-      <main id="main">
+      <main id="main" key={`${cur}-${reloadKey}`}>
         {cur === 'wizard' ? (
           <WizardTab />
         ) : cur === 'clients' ? (
