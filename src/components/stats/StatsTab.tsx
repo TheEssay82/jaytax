@@ -17,9 +17,12 @@ const emptyAgg = (): MgrAgg => ({
 });
 
 export default function StatsTab() {
-  const { records, loading } = useBillingData();
+  const { records: allRecords, loading } = useBillingData();
   const { user, role, profileName } = useAuth();
   const ownOnly = !can(role, 'viewAllStats');
+
+  // 통계는 '확정(final)' 건만 집계 (작성중 제외)
+  const records = useMemo(() => allRecords.filter((r) => r.status === 'final'), [allRecords]);
 
   const years = useMemo(
     () => [...new Set(records.map((r) => r.fiscalYear))].sort((a, b) => b - a),
