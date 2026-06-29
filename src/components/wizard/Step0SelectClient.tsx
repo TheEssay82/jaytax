@@ -1,13 +1,14 @@
 // Step 0: 거래처 선택 — 원본 rStep0 + pickClient 포팅
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Client } from '../../types';
 import { useWizard } from '../../context/WizardContext';
 import { fm, getRevForYear } from '../../lib/format';
-import { loadDraft, hasDraft } from '../../lib/draft';
+import { loadDraft, hasDraft, clearDraft } from '../../lib/draft';
 import {
   getWizardYears,
   getTargetIds,
   isNewForYear,
+  isBilled,
   clientYearStatus,
   getManagerForYear,
   isModelForYear,
@@ -15,7 +16,7 @@ import {
 } from '../../lib/wizardHelpers';
 import type { WizardStepProps } from './stepProps';
 
-type BilledFilter = 'unbilled' | 'all' | 'billed';
+type BilledFilter = 'unbilled' | 'drafting' | 'all' | 'billed';
 
 export default function Step0SelectClient({ clients, records, targets, profiles }: WizardStepProps) {
   const { S, setS, replaceS, setStep } = useWizard();
@@ -34,11 +35,21 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
   if (bz) filtered = filtered.filter((c) => c.bizType === bz);
   if (mg) filtered = filtered.filter((c) => c.manager === mg);
 
-  // 거래처별 해당연도 상태 (billed/lost/pre/unbilled)
+  // 거래처별 해당연도 상태 (billed/drafting/lost/pre/unbilled)
   const statusOf = (c: Client) => clientYearStatus(records, c, S.fiscalYear);
+
+  // 청구완료(확정)된 거래처에 남아있는 stale 로컬 임시저장 자동 정리
+  useEffect(() => {
+    for (const c of clients) {
+      if (isBilled(records, S.fiscalYear, c) && hasDraft(c.id, S.fiscalYear)) {
+        clearDraft(c.id, S.fiscalYear);
+      }
+    }
+  }, [clients, records, S.fiscalYear]);
 
   let shown = filtered;
   if (billedFilter === 'unbilled') shown = shown.filter((c) => statusOf(c) === 'unbilled');
+  else if (billedFilter === 'drafting') shown = shown.filter((c) => statusOf(c) === 'drafting');
   else if (billedFilter === 'billed') shown = shown.filter((c) => statusOf(c) === 'billed');
   // 청구대상 확정분은 숨기지 않고 위로 우선 정렬
   if (hasTargets) {
@@ -47,6 +58,7 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
 
   // 카운트는 전체(검색/구분 필터 후) 기준
   const unbilledCnt = filtered.filter((c) => statusOf(c) === 'unbilled').length;
+  const draftingCnt = filtered.filter((c) => statusOf(c) === 'drafting').length;
   const billedCnt = filtered.filter((c) => statusOf(c) === 'billed').length;
 
   // 거래처 선택 (원본 pickClient)
@@ -138,6 +150,7 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
           {(
             [
               ['unbilled', '📋 미청구만'],
+              ['drafting', '✏️ 작성중'],
               ['all', '전체'],
               ['billed', '✓ 청구완료'],
             ] as [BilledFilter, string][]
@@ -152,7 +165,7 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
             </span>
           ))}
           <span style={{ fontSize: 11, color: '#888', marginLeft: 'auto' }}>
-            미청구: {unbilledCnt}개 · 완료: {billedCnt}개
+            미청구: {unbilledCnt}개 · 작성중: {draftingCnt}개 · 완료: {billedCnt}개
           </span>
         </div>
 
@@ -192,11 +205,13 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
             const statusBadge =
               status === 'billed'
                 ? { cls: 'b-billed', txt: '✓청구완료' }
-                : status === 'lost'
-                  ? { cls: 'b-loss', txt: '상실(거래종료)' }
-                  : status === 'pre'
-                    ? { cls: 'b-off', txt: '거래전' }
-                    : { cls: 'b-unbilled', txt: '미청구' };
+                : status === 'drafting'
+                  ? { cls: 'b-draft', txt: '✏️작성중(미확정)' }
+                  : status === 'lost'
+                    ? { cls: 'b-loss', txt: '상실(거래종료)' }
+                    : status === 'pre'
+                      ? { cls: 'b-off', txt: '거래전' }
+                      : { cls: 'b-unbilled', txt: '미청구' };
             return (
               <div
                 key={c.id}
@@ -212,7 +227,9 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
                 </div>
                 <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
                   {nf && status !== 'pre' && <span className="bdg b-new">신규</span>}
-                  {hasDraft(c.id, S.fiscalYear) && <span className="bdg-draft">✏️ 작성중</span>}
+                  {status !== 'billed' && status !== 'drafting' && hasDraft(c.id, S.fiscalYear) && (
+                    <span className="bdg-draft">✏️ 임시작성(이 PC)</span>
+                  )}
                 </div>
                 <span className={`bdg ${statusBadge.cls}`}>{statusBadge.txt}</span>
               </div>

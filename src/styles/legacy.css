@@ -54,6 +54,7 @@ input:focus,select:focus{border-color:#1A2B52}
 .b-new{background:#FEF3C7;color:#92400E}
 .b-loss{background:#FEE2E2;color:#991B1B}
 .b-billed{background:#D1FAE5;color:#065F46}
+.b-draft{background:#FEF3C7;color:#92400E}
 .b-unbilled{background:#F3F4F6;color:#6B7280}
 .b-conf{background:#1A2B52;color:#fff}
 .btn-p{padding:8px 16px;background:#1A2B52;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-family:inherit;font-weight:700}

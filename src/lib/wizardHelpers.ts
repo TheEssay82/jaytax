@@ -39,9 +39,18 @@ export function recordMatchesClient(r: BillingRecord, client: ClientRef): boolea
   return !!client.companyName && r.companyName === client.companyName;
 }
 
-/** 해당 연도 청구기록 존재 여부 */
+/** 해당 연도 '확정(final)' 청구기록 존재 여부 (작성중 draft 는 제외) */
 export function isBilled(records: BillingRecord[], year: number | string, client: ClientRef): boolean {
-  return records.some((r) => String(r.fiscalYear) === String(year) && recordMatchesClient(r, client));
+  return records.some(
+    (r) => r.status !== 'draft' && String(r.fiscalYear) === String(year) && recordMatchesClient(r, client),
+  );
+}
+
+/** 해당 연도 '작성중(draft)' 청구기록 존재 여부 */
+export function hasDraftRecord(records: BillingRecord[], year: number | string, client: ClientRef): boolean {
+  return records.some(
+    (r) => r.status === 'draft' && String(r.fiscalYear) === String(year) && recordMatchesClient(r, client),
+  );
 }
 
 /** 청구대상 확정 여부 */
@@ -56,12 +65,13 @@ export function getTargetIds(targets: Target[], year: number | string): string[]
 
 /**
  * 거래처의 해당 연도 상태 (청구서작성 거래처선택용)
- * - 'billed'   : 그 해 청구기록 있음
+ * - 'billed'   : 그 해 '확정' 청구기록 있음
+ * - 'drafting' : 그 해 '작성중(draft)' 기록만 있음 (아직 미확정)
  * - 'lost'     : 상실 연도 이후 (lossYears 최솟값 ≤ year) → 더 이상 거래처 아님
  * - 'pre'      : 첫 활동연도 이전 (year < 첫 매출/청구 연도) → 아직 거래 전(신규 이전)
  * - 'unbilled' : 위에 해당 없는 활성 거래처인데 아직 미청구 → 실제 청구 후보
  */
-export type ClientYearStatus = 'billed' | 'lost' | 'pre' | 'unbilled';
+export type ClientYearStatus = 'billed' | 'drafting' | 'lost' | 'pre' | 'unbilled';
 export function clientYearStatus(
   records: BillingRecord[],
   client: Client,
@@ -69,6 +79,7 @@ export function clientYearStatus(
 ): ClientYearStatus {
   const y = Number(year);
   if (isBilled(records, y, client)) return 'billed';
+  if (hasDraftRecord(records, y, client)) return 'drafting';
   const ly = (client.lossYears || []).map(Number);
   if (ly.length && y >= Math.min(...ly)) return 'lost';
   const revYears = Object.keys(client.revenues || {}).map(Number);
