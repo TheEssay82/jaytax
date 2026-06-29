@@ -28,13 +28,20 @@ export default function TargetsTab() {
     return [...new Set([...histYears, ...revYears, ...base])].filter((y) => y >= 2020).sort((a, b) => b - a);
   }, [records, clients]);
 
-  const lawClients = clients.filter((c) => c.bizType === '법인');
-  const perClients = clients.filter((c) => c.bizType === '개인');
+  // 전년도(이전 연도)에 상실된 거래처는 당해 연도엔 더이상 거래처가 아니므로 제외.
+  // (단, 당해 연도에 매출이 기록돼 있으면 재거래로 보고 계속 표시)
+  const isLostBeforeYear = (c: Client) => {
+    const losses = (c.lossYears || []).map(Number);
+    return losses.length > 0 && Math.min(...losses) < tYear && !getRevForYear(c, tYear);
+  };
+  const lawClients = clients.filter((c) => c.bizType === '법인' && !isLostBeforeYear(c));
+  const perClients = clients.filter((c) => c.bizType === '개인' && !isLostBeforeYear(c));
+  const visibleClients = [...lawClients, ...perClients];
   const selIds = getTargetIds(targets, tYear);
   const selLaw = lawClients.filter((c) => selIds.includes(c.id)).length;
   const selPer = perClients.filter((c) => selIds.includes(c.id)).length;
-  const billedCnt = clients.filter((c) => isBilled(records, tYear, c)).length;
-  const unbilledSel = selIds.length - clients.filter((c) => isBilled(records, tYear, c) && selIds.includes(c.id)).length;
+  const billedCnt = visibleClients.filter((c) => isBilled(records, tYear, c)).length;
+  const unbilledSel = selIds.length - visibleClients.filter((c) => isBilled(records, tYear, c) && selIds.includes(c.id)).length;
 
   async function toggle(cid: string, val: boolean) {
     try {
@@ -48,7 +55,8 @@ export default function TargetsTab() {
   async function bulk(bizType: BizType, val: boolean) {
     setBusy(true);
     try {
-      await Promise.all(clients.filter((c) => c.bizType === bizType).map((c) => setTarget(tYear, c.id, val)));
+      const list = bizType === '법인' ? lawClients : perClients;
+      await Promise.all(list.map((c) => setTarget(tYear, c.id, val)));
       await refresh();
     } catch (e) {
       alert('일괄 변경 실패: ' + (e instanceof Error ? e.message : e));
@@ -161,6 +169,10 @@ export default function TargetsTab() {
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="alert-i" style={{ fontSize: 11 }}>
+        이전 연도에 ‘상실(거래종료)’ 처리된 거래처는 {tYear}년 청구대상에서 제외됩니다. (해당 연도 매출이 입력되면 다시 표시)
       </div>
 
       <div style={{ display: 'flex', gap: 9, marginBottom: 11, flexWrap: 'wrap' }}>
