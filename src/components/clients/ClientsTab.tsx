@@ -317,7 +317,7 @@ export default function ClientsTab() {
 
       {error && <div className="alert-w">{error}</div>}
       <div className="alert-i" style={{ fontSize: 11 }}>
-        신규/상실은 청구기록 기반 자동 판단입니다. 사업자번호가 같은 거래처를 새로 추가하면 기존 정보가 갱신됩니다.
+        매출 셀: <b>숫자</b>=매출액 · <b style={{ color: '#6B7280' }}>0</b>=매출 0원(기록됨) · <b style={{ color: '#CCC' }}>—</b>=데이터 없음 · <span className="bdg b-loss">상실</span>=거래종료(‘상실?’ 버튼으로 처리/‘해제’로 취소). 사업자번호가 같은 거래처를 새로 추가하면 기존 정보가 갱신됩니다.
       </div>
 
       {showAdd && editingId === null && (
@@ -496,27 +496,53 @@ function ClientRow({
         </td>
         {dispYears.map((y) => {
           const rv = getRevForYear(c, y);
+          const hasKey = !!c.revenues && Object.prototype.hasOwnProperty.call(c.revenues, String(y));
           const isLoss = (c.lossYears || []).map(Number).includes(Number(y));
-          if (!rv) {
+          // ① 상실 확정 — 빨강 '상실' + 해제 버튼
+          if (isLoss) {
             return (
-              <td key={y} className="r" style={{ fontFamily: 'monospace', fontSize: 11, color: '#CCC' }}>
+              <td key={y} className="r" style={{ fontFamily: 'monospace', fontSize: 11 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
-                  <span style={{ color: '#CCC' }}>N/A</span>
+                  <span className="bdg b-loss">상실</span>
                   <button
-                    className={`btn-sm ${isLoss ? 'btn-sm-red' : 'btn-sm-del'}`}
+                    className="btn-sm btn-sm-del"
                     style={{ fontSize: 10, padding: '1px 6px' }}
-                    onClick={() => onToggleLoss(y, !isLoss)}
-                    title={isLoss ? '상실 해제' : '상실 처리'}
+                    onClick={() => onToggleLoss(y, false)}
+                    title="상실 해제"
                   >
-                    {isLoss ? '상실 ✓' : '상실?'}
+                    해제
                   </button>
                 </div>
               </td>
             );
           }
+          // ② 매출 있음 — 금액만
+          if (rv > 0) {
+            return (
+              <td key={y} className="r" style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                {fm(rv)}
+              </td>
+            );
+          }
+          // ③ 매출 0(기록됨) / 데이터 없음 — 구분 표기 + 상실 처리 버튼
           return (
             <td key={y} className="r" style={{ fontFamily: 'monospace', fontSize: 11 }}>
-              {fm(rv)}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                <span
+                  style={{ color: hasKey ? '#6B7280' : '#CCC', fontWeight: hasKey ? 700 : 400 }}
+                  title={hasKey ? '매출 0원(기록됨)' : '데이터 없음'}
+                >
+                  {hasKey ? '0' : '—'}
+                </span>
+                <button
+                  className="btn-sm btn-sm-del"
+                  style={{ fontSize: 10, padding: '1px 6px' }}
+                  onClick={() => onToggleLoss(y, true)}
+                  title="이 연도를 상실(거래종료)로 처리"
+                >
+                  상실?
+                </button>
+              </div>
             </td>
           );
         })}
