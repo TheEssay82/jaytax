@@ -24,6 +24,17 @@ function asArray<T>(v: T | T[] | undefined | null): T[] {
   return Array.isArray(v) ? v : [v];
 }
 
+// DRF 텍스트 필드는 문자열이거나 {content:'...'} 객체일 수 있다 → 문자열로 정규화
+function asText(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return String(o['content'] ?? o['소관부처명'] ?? o['_'] ?? '');
+  }
+  return String(v);
+}
+
 async function drf(endpoint: string, params: Record<string, string>, oc: string): Promise<Record<string, unknown>> {
   const url = new URL(`${DRF}/${endpoint}`);
   url.searchParams.set('OC', oc);
@@ -98,9 +109,9 @@ Deno.serve(async (req) => {
       });
       return json({
         ok: true,
-        name: String(basic['법령명_한글'] ?? basic['법령명한글'] ?? ''),
-        effDate: String(basic['시행일자'] ?? ''),
-        dept: String(basic['소관부처'] ?? basic['소관부처명'] ?? ''),
+        name: asText(basic['법령명_한글']) || asText(basic['법령명한글']),
+        effDate: asText(basic['시행일자']),
+        dept: asText(basic['소관부처']) || asText(basic['소관부처명']),
         articleCount: articles.length,
         articles,
       });
