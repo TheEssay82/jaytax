@@ -1,7 +1,15 @@
 // 상담진행 — 질문 → consult Edge(회계기준 RAG 근거 + Claude 회신 초안) → 검토·편집 → 상담기록 저장.
 //  회신 초안은 요지 정리본 근거 기반이며, 최종 판단·서명은 담당 회계사·세무사가 한다(근거 밖은 [확인 불가]).
 import { useState } from 'react';
-import { runConsult, createConsultation, modelLabel, type Citation, type LawRef } from '../../lib/consultApi';
+import {
+  runConsult,
+  createConsultation,
+  modelLabel,
+  CONSULT_MODELS,
+  DEFAULT_CONSULT_MODEL,
+  type Citation,
+  type LawRef,
+} from '../../lib/consultApi';
 import LawRefPicker from './LawRefPicker';
 
 export default function ConsultTab() {
@@ -9,6 +17,7 @@ export default function ConsultTab() {
   const [title, setTitle] = useState('');
   const [standardNo, setStandardNo] = useState('1115');
   const [matchCount, setMatchCount] = useState(6);
+  const [selModel, setSelModel] = useState<string>(DEFAULT_CONSULT_MODEL);
   const [lawRefs, setLawRefs] = useState<LawRef[]>([]);
   const [showLaw, setShowLaw] = useState(false);
 
@@ -33,7 +42,7 @@ export default function ConsultTab() {
     setError(null);
     setSaved(false);
     try {
-      const res = await runConsult(q, { standardNo: standardNo || undefined, matchCount, lawRefs });
+      const res = await runConsult(q, { standardNo: standardNo || undefined, matchCount, lawRefs, model: selModel });
       setAnswer(res.answer_md);
       setCitations(res.citations);
       setModel(res.model);
@@ -107,7 +116,7 @@ export default function ConsultTab() {
           />
         </div>
 
-        <div className="frow" style={{ gridTemplateColumns: '2fr 1fr 1fr auto', alignItems: 'end', gap: 10 }}>
+        <div className="frow" style={{ gridTemplateColumns: '1.7fr 1.1fr 0.8fr 1.4fr auto', alignItems: 'end', gap: 10 }}>
           <div>
             <label className="fl">제목 (선택 — 비우면 자동)</label>
             <input
@@ -129,6 +138,14 @@ export default function ConsultTab() {
             <select value={matchCount} onChange={(e) => setMatchCount(Number(e.target.value))}>
               {[4, 6, 8, 10].map((n) => (
                 <option key={n} value={n}>{n}개</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="fl">작성 모델</label>
+            <select value={selModel} onChange={(e) => setSelModel(e.target.value)}>
+              {CONSULT_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
               ))}
             </select>
           </div>
