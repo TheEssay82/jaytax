@@ -21,6 +21,7 @@ export interface ConsultResult {
   answer_md: string;
   citations: Citation[];
   model: string;
+  tags: string[];
 }
 
 /** 상담 회신에 쓸 수 있는 모델(서버 allowlist와 일치). 첫 항목이 기본값. */
@@ -53,7 +54,7 @@ export async function runConsult(
   });
   if (error) throw new Error(error.message);
   if (!data || data.ok === false) throw new Error(data?.error || '회신 초안 작성에 실패했습니다.');
-  return { answer_md: data.answer_md, citations: data.citations ?? [], model: data.model };
+  return { answer_md: data.answer_md, citations: data.citations ?? [], model: data.model, tags: data.tags ?? [] };
 }
 
 /** 모델 id → 사람이 읽는 표기 (예: 'claude-sonnet-4-6' → 'Anthropic Claude Sonnet 4.6'). */
@@ -82,6 +83,7 @@ export interface Consultation {
   question: string;
   answerMd: string;
   citations: Citation[];
+  tags: string[];
   llmModel: string | null;
   status: ConsultStatus;
   createdAt: string;
@@ -96,6 +98,7 @@ interface ConsultRow {
   question: string;
   answer_md: string | null;
   citations: Citation[] | null;
+  tags: string[] | null;
   llm_model: string | null;
   status: string | null;
   created_at: string;
@@ -111,6 +114,7 @@ function rowToConsultation(r: ConsultRow): Consultation {
     question: r.question || '',
     answerMd: r.answer_md || '',
     citations: r.citations || [],
+    tags: r.tags || [],
     llmModel: r.llm_model,
     status: (r.status as ConsultStatus) || 'draft',
     createdAt: r.created_at,
@@ -133,6 +137,7 @@ export interface ConsultInput {
   question: string;
   answerMd: string;
   citations: Citation[];
+  tags?: string[];
   llmModel?: string | null;
   status?: ConsultStatus;
 }
@@ -149,6 +154,7 @@ export async function createConsultation(input: ConsultInput): Promise<Consultat
       question: input.question,
       answer_md: input.answerMd,
       citations: input.citations,
+      tags: input.tags ?? [],
       llm_model: input.llmModel ?? null,
       status: input.status ?? 'draft',
     })
@@ -158,15 +164,16 @@ export async function createConsultation(input: ConsultInput): Promise<Consultat
   return rowToConsultation(data as ConsultRow);
 }
 
-/** 상담기록 수정 (본인 것만 — RLS). 제목/회신/상태 등 일부 필드 갱신. */
+/** 상담기록 수정 (본인 것만 — RLS). 제목/회신/상태/태그 등 일부 필드 갱신. */
 export async function updateConsultation(
   id: string,
-  patch: Partial<Pick<ConsultInput, 'title' | 'answerMd' | 'status'>>
+  patch: Partial<Pick<ConsultInput, 'title' | 'answerMd' | 'status' | 'tags'>>
 ): Promise<void> {
   const row: Record<string, unknown> = {};
   if (patch.title !== undefined) row.title = patch.title;
   if (patch.answerMd !== undefined) row.answer_md = patch.answerMd;
   if (patch.status !== undefined) row.status = patch.status;
+  if (patch.tags !== undefined) row.tags = patch.tags;
   const { error } = await supabase.from('consultations').update(row).eq('id', id);
   if (error) throw new Error(error.message);
 }

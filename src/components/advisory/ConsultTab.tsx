@@ -11,6 +11,7 @@ import {
   type LawRef,
 } from '../../lib/consultApi';
 import LawRefPicker from './LawRefPicker';
+import { TagEditor } from './TagsField';
 
 export default function ConsultTab() {
   const [question, setQuestion] = useState('');
@@ -27,6 +28,7 @@ export default function ConsultTab() {
   // 생성 결과 (편집 가능)
   const [answer, setAnswer] = useState<string | null>(null);
   const [citations, setCitations] = useState<Citation[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [model, setModel] = useState('');
 
   // 저장 상태
@@ -45,6 +47,7 @@ export default function ConsultTab() {
       const res = await runConsult(q, { standardNo: standardNo || undefined, matchCount, lawRefs, model: selModel });
       setAnswer(res.answer_md);
       setCitations(res.citations);
+      setTags(res.tags);
       setModel(res.model);
       if (!title.trim()) setTitle(deriveTitle(res.answer_md, q));
     } catch (err) {
@@ -65,6 +68,7 @@ export default function ConsultTab() {
         question: question.trim(),
         answerMd: answer,
         citations,
+        tags,
         llmModel: model || null,
         status: 'draft',
       });
@@ -92,6 +96,7 @@ export default function ConsultTab() {
     setTitle('');
     setAnswer(null);
     setCitations([]);
+    setTags([]);
     setModel('');
     setError(null);
     setSaved(false);
@@ -212,6 +217,13 @@ export default function ConsultTab() {
               fontFamily: 'inherit', whiteSpace: 'pre-wrap',
             }}
           />
+
+          <div style={{ marginTop: 10 }}>
+            <label className="fl" style={{ display: 'block', marginBottom: 4 }}>
+              키워드 해시태그 <span style={{ fontWeight: 400, color: '#9aa0ad' }}>(자동 추출 · 저장 전 편집 가능)</span>
+            </label>
+            <TagEditor value={tags} onChange={(t) => { setTags(t); setSaved(false); }} />
+          </div>
 
           {saved && (
             <div className="alert-i" style={{ marginTop: 8 }}>

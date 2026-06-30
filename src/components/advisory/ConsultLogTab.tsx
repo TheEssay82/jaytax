@@ -10,12 +10,14 @@ import {
   type Consultation,
   type ConsultStatus,
 } from '../../lib/consultApi';
+import { TagList, TagEditor } from './TagsField';
 
 export default function ConsultLogTab() {
   const { user } = useAuth();
   const [items, setItems] = useState<Consultation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<Consultation | null>(null);
 
   async function reload() {
@@ -48,9 +50,17 @@ export default function ConsultLogTab() {
   }
 
   const f = filter.trim();
-  const filtered = (items ?? []).filter(
-    (c) => !f || c.title.includes(f) || c.question.includes(f) || c.authorEmail.includes(f)
-  );
+  const filtered = (items ?? []).filter((c) => {
+    const textOk =
+      !f || c.title.includes(f) || c.question.includes(f) || c.authorEmail.includes(f) || c.tags.some((t) => t.includes(f));
+    const tagOk = !tagFilter || c.tags.includes(tagFilter);
+    return textOk && tagOk;
+  });
+
+  // 태그 필터 바: 빈도순 상위 태그
+  const tagCounts = new Map<string, number>();
+  for (const c of items ?? []) for (const t of c.tags) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
+  const topTags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 24).map((e) => e[0]);
 
   return (
     <div className="card">
@@ -72,6 +82,16 @@ export default function ConsultLogTab() {
         />
       </div>
 
+      {topTags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 10 }}>
+          <span style={{ fontSize: 11.5, color: '#8a8170', fontWeight: 700 }}>태그</span>
+          <TagList tags={topTags} active={tagFilter} onSelect={(t) => setTagFilter((cur) => (cur === t ? null : t))} />
+          {tagFilter && (
+            <button className="btn-sm" style={{ fontSize: 11 }} onClick={() => setTagFilter(null)}>필터 해제</button>
+          )}
+        </div>
+      )}
+
       {error && <div className="alert-w" style={{ marginTop: 12 }}>{error}</div>}
       {items === null && !error && <div className="alert-i" style={{ marginTop: 12 }}>불러오는 중…</div>}
 
@@ -90,12 +110,19 @@ export default function ConsultLogTab() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {filtered.map((c) => (
           <button key={c.id} onClick={() => setSelected(c)} style={rowStyle}>
-            <StatusBadge status={c.status} />
-            <span style={{ flex: 1, fontWeight: 600, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {c.title || '(제목 없음)'}
-            </span>
-            <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>{c.authorEmail}</span>
-            <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>{dtFmt(c.createdAt)}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+              <StatusBadge status={c.status} />
+              <span style={{ flex: 1, fontWeight: 600, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {c.title || '(제목 없음)'}
+              </span>
+              <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>{c.authorEmail}</span>
+              <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>{dtFmt(c.createdAt)}</span>
+            </div>
+            {c.tags.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                <TagList tags={c.tags} />
+              </div>
+            )}
           </button>
         ))}
       </div>
@@ -117,6 +144,7 @@ function Detail({
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(item.title);
   const [answer, setAnswer] = useState(item.answerMd);
+  const [tags, setTags] = useState<string[]>(item.tags);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyOk, setCopyOk] = useState(false);
@@ -126,7 +154,7 @@ function Detail({
     setBusy(true);
     setError(null);
     try {
-      await updateConsultation(item.id, { title: title.trim() || '(제목 없음)', answerMd: answer });
+      await updateConsultation(item.id, { title: title.trim() || '(제목 없음)', answerMd: answer, tags });
       await onChanged();
       setEditing(false);
     } catch (err) {
@@ -216,10 +244,17 @@ function Detail({
         {isOwner && editing && (
           <>
             <button className="btn-p btn-sm" onClick={saveEdit} disabled={busy}>{busy ? '저장 중…' : '저장'}</button>
-            <button className="btn-sm" onClick={() => { setEditing(false); setTitle(item.title); setAnswer(item.answerMd); }} disabled={busy}>취소</button>
+            <button className="btn-sm" onClick={() => { setEditing(false); setTitle(item.title); setAnswer(item.answerMd); setTags(item.tags); }} disabled={busy}>취소</button>
           </>
         )}
       </div>
+
+      {/* 키워드 해시태그 */}
+      {(editing || item.tags.length > 0) && (
+        <Section label="키워드 해시태그">
+          {editing ? <TagEditor value={tags} onChange={setTags} /> : <TagList tags={item.tags} />}
+        </Section>
+      )}
 
       {/* 질문 */}
       <Section label="질문 · 사실관계">
@@ -292,5 +327,5 @@ function StatusBadge({ status }: { status: ConsultStatus }) {
 
 const rowStyle: React.CSSProperties = {
   textAlign: 'left', border: '1px solid #e4e0d8', borderRadius: 7, padding: '10px 13px',
-  background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+  background: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'stretch', width: '100%',
 };
