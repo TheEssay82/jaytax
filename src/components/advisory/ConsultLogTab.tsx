@@ -6,6 +6,7 @@ import {
   listConsultations,
   updateConsultation,
   deleteConsultation,
+  modelLabel,
   type Consultation,
   type ConsultStatus,
 } from '../../lib/consultApi';
@@ -197,7 +198,7 @@ function Detail({
       <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 14 }}>
         {item.authorEmail} · 작성 {dtFmt(item.createdAt)}
         {item.updatedAt !== item.createdAt && ` · 수정 ${dtFmt(item.updatedAt)}`}
-        {item.llmModel && ` · ${item.llmModel}`}
+        {item.llmModel && ` · ${modelLabel(item.llmModel)}`}
       </div>
 
       {/* 액션 */}

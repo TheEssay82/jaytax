@@ -1,7 +1,7 @@
 // 상담진행 — 질문 → consult Edge(회계기준 RAG 근거 + Claude 회신 초안) → 검토·편집 → 상담기록 저장.
 //  회신 초안은 요지 정리본 근거 기반이며, 최종 판단·서명은 담당 회계사·세무사가 한다(근거 밖은 [확인 불가]).
 import { useState } from 'react';
-import { runConsult, createConsultation, type Citation, type LawRef } from '../../lib/consultApi';
+import { runConsult, createConsultation, modelLabel, type Citation, type LawRef } from '../../lib/consultApi';
 import LawRefPicker from './LawRefPicker';
 
 export default function ConsultTab() {
@@ -169,7 +169,7 @@ export default function ConsultTab() {
         <div style={{ marginTop: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>회신 초안</span>
-            {model && <span className="bdg" style={{ fontSize: 10, color: '#6b7280' }}>{model}</span>}
+            {model && <span className="bdg" style={{ fontSize: 10, color: '#6b7280' }} title={model}>{modelLabel(model)}</span>}
             <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
               <button type="button" className="btn-sm" onClick={copyAnswer}>
                 {copyOk ? '복사됨 ✓' : '📋 복사'}

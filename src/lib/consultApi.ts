@@ -47,6 +47,21 @@ export async function runConsult(
   return { answer_md: data.answer_md, citations: data.citations ?? [], model: data.model };
 }
 
+/** 모델 id → 사람이 읽는 표기 (예: 'claude-sonnet-4-6' → 'Anthropic Claude Sonnet 4.6'). */
+export function modelLabel(id: string | null | undefined): string {
+  if (!id) return '';
+  const map: Record<string, string> = {
+    'claude-opus-4-8': 'Anthropic Claude Opus 4.8',
+    'claude-sonnet-4-6': 'Anthropic Claude Sonnet 4.6',
+    'claude-haiku-4-5-20251001': 'Anthropic Claude Haiku 4.5',
+  };
+  if (map[id]) return map[id];
+  // claude-<family>-<ver> 패턴 일반화
+  const m = id.match(/^claude-(opus|sonnet|haiku)-(\d+)-(\d+)/);
+  if (m) return `Anthropic Claude ${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}`;
+  return id;
+}
+
 // ── consultations CRUD ───────────────────────────────────────────
 export type ConsultStatus = 'draft' | 'final';
 
