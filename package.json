@@ -14,6 +14,7 @@
     "std:search": "tsx scripts/standards/search.ts",
     "std:search:offline": "tsx scripts/standards/search-offline.ts",
     "std:fetch:qnas": "tsx scripts/standards/fetch-qnas.ts",
+    "std:fetch:kasb": "tsx scripts/standards/fetch-kasb-docids.ts",
     "skill:sync": "tsx scripts/standards/sync-skill.ts"
   },
   "dependencies": {

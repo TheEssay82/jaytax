@@ -10,9 +10,12 @@ import {
   fetchStandardParagraphs,
   loadQnaIndex,
   filterQnasByStandardNo,
+  loadKasbStandardIndex,
+  kasbStandardUrl,
   type StandardMatch,
   type ParagraphRow,
   type QnaIndexItem,
+  type KasbStandardIndex,
 } from '../../lib/standardsApi';
 import { CATALOG, type CatalogItem, type StandardSet } from '../../lib/standardsCatalog';
 
@@ -22,10 +25,12 @@ export default function StandardsTab() {
   const [mode, setMode] = useState<Mode>('browse');
   const [loadedKeys, setLoadedKeys] = useState<Set<string>>(new Set());
   const [qnaIndex, setQnaIndex] = useState<QnaIndexItem[]>([]);
+  const [kasbIndex, setKasbIndex] = useState<KasbStandardIndex | null>(null);
 
   useEffect(() => {
     loadedStandardKeys().then(setLoadedKeys).catch(() => setLoadedKeys(new Set()));
     loadQnaIndex().then(setQnaIndex).catch(() => setQnaIndex([]));
+    loadKasbStandardIndex().then(setKasbIndex).catch(() => setKasbIndex(null));
   }, []);
 
   return (
@@ -52,7 +57,7 @@ export default function StandardsTab() {
       </div>
 
       {mode === 'search' && <SearchView />}
-      {mode === 'browse' && <BrowseView loadedKeys={loadedKeys} qnaIndex={qnaIndex} />}
+      {mode === 'browse' && <BrowseView loadedKeys={loadedKeys} qnaIndex={qnaIndex} kasbIndex={kasbIndex} />}
       {mode === 'qna' && <QnaView items={qnaIndex} />}
     </div>
   );
@@ -158,7 +163,15 @@ function SearchView() {
 }
 
 // ─────────────────────────────────────────── 2) 기준서 목록(브라우징) + 상세 열람
-function BrowseView({ loadedKeys, qnaIndex }: { loadedKeys: Set<string>; qnaIndex: QnaIndexItem[] }) {
+function BrowseView({
+  loadedKeys,
+  qnaIndex,
+  kasbIndex,
+}: {
+  loadedKeys: Set<string>;
+  qnaIndex: QnaIndexItem[];
+  kasbIndex: KasbStandardIndex | null;
+}) {
   const [catIdx, setCatIdx] = useState(0);
   const [selected, setSelected] = useState<{ set: StandardSet; item: CatalogItem } | null>(null);
 
@@ -168,6 +181,7 @@ function BrowseView({ loadedKeys, qnaIndex }: { loadedKeys: Set<string>; qnaInde
         set={selected.set}
         item={selected.item}
         qnaIndex={qnaIndex}
+        kasbUrl={kasbStandardUrl(kasbIndex, selected.item.no)}
         onBack={() => setSelected(null)}
       />
     );
@@ -204,30 +218,64 @@ function BrowseView({ loadedKeys, qnaIndex }: { loadedKeys: Set<string>; qnaInde
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 6 }}>
             {g.items.map((item, i) => {
               const loaded = item.no !== '' && loadedKeys.has(`${cat.set} ${item.no}`);
+              const kasbUrl = kasbStandardUrl(kasbIndex, item.no);
               return (
-                <button
+                <div
                   key={`${item.no}-${i}`}
-                  disabled={!loaded}
-                  onClick={() => loaded && setSelected({ set: cat.set, item })}
-                  title={loaded ? '클릭하여 열람' : '미적재 (열람 준비 중)'}
                   style={{
-                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'stretch',
                     border: '1px solid ' + (loaded ? '#c9b88a' : '#ececec'),
                     background: loaded ? '#fffdf6' : '#fafafa',
-                    color: loaded ? '#1f2937' : '#b0b0b0',
                     borderRadius: 6,
-                    padding: '7px 10px',
-                    cursor: loaded ? 'pointer' : 'default',
-                    fontSize: 12.5,
-                    display: 'flex',
-                    gap: 8,
-                    alignItems: 'baseline',
+                    overflow: 'hidden',
                   }}
                 >
-                  {item.no && <span style={{ fontWeight: 700, minWidth: 38, color: loaded ? '#1A2B52' : '#bbb' }}>{item.no}</span>}
-                  <span style={{ flex: 1 }}>{item.title}</span>
-                  {loaded && <span className="bdg b-on" style={{ fontSize: 9 }}>열람</span>}
-                </button>
+                  <button
+                    disabled={!loaded}
+                    onClick={() => loaded && setSelected({ set: cat.set, item })}
+                    title={loaded ? '클릭하여 열람' : '미적재 (열람 준비 중)'}
+                    style={{
+                      flex: 1,
+                      textAlign: 'left',
+                      border: 'none',
+                      background: 'transparent',
+                      color: loaded ? '#1f2937' : '#b0b0b0',
+                      padding: '7px 10px',
+                      cursor: loaded ? 'pointer' : 'default',
+                      fontSize: 12.5,
+                      display: 'flex',
+                      gap: 8,
+                      alignItems: 'baseline',
+                      minWidth: 0,
+                    }}
+                  >
+                    {item.no && <span style={{ fontWeight: 700, minWidth: 38, color: loaded ? '#1A2B52' : '#bbb' }}>{item.no}</span>}
+                    <span style={{ flex: 1 }}>{item.title}</span>
+                    {loaded && <span className="bdg b-on" style={{ fontSize: 9 }}>열람</span>}
+                  </button>
+                  {kasbUrl && (
+                    <a
+                      href={kasbUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="KASB에서 원문 보기"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '0 8px',
+                        borderLeft: '1px solid #ece6d6',
+                        color: '#C8963C',
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      원문 ↗
+                    </a>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -245,11 +293,13 @@ function StandardDetail({
   set,
   item,
   qnaIndex,
+  kasbUrl,
   onBack,
 }: {
   set: StandardSet;
   item: CatalogItem;
   qnaIndex: QnaIndexItem[];
+  kasbUrl: string | null;
   onBack: () => void;
 }) {
   const [paras, setParas] = useState<ParagraphRow[] | null>(null);
@@ -269,12 +319,26 @@ function StandardDetail({
 
   return (
     <div style={{ marginTop: 8 }}>
-      <button className="btn-sm" onClick={onBack} style={{ marginBottom: 12 }}>← 목록으로</button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <button className="btn-sm" onClick={onBack}>← 목록으로</button>
+        {kasbUrl && (
+          <a
+            href={kasbUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-sm btn-sm-navy"
+            style={{ marginLeft: 'auto', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            title="한국회계기준원(KASB) 회계기준열람서비스에서 원문 보기·내려받기"
+          >
+            📄 KASB 원문 보기 ↗
+          </a>
+        )}
+      </div>
       <div style={{ fontSize: 16, fontWeight: 700, color: '#1A2B52', marginBottom: 4 }}>
         {set} {item.no && `제${item.no}호 `}{item.title}
       </div>
       <div className="alert-i" style={{ fontSize: 12, marginBottom: 12 }}>
-        본문은 요지 정리본(원문 verbatim 아님)입니다. 인용·적용 전 원문 대조를 권고합니다.
+        본문은 요지 정리본(원문 verbatim 아님)입니다. 인용·적용 전 원문 대조를 권고합니다. 원문은 우측 <b>KASB 원문 보기</b>에서 확인하세요.
       </div>
 
       {busy && <div className="alert-i">문단을 불러오는 중…</div>}

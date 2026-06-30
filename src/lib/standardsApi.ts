@@ -109,3 +109,34 @@ export function filterQnasByStandardNo(items: QnaIndexItem[], no: string): QnaIn
   if (!no) return [];
   return items.filter((q) => q.relStds && q.relStds.includes(no));
 }
+
+// ── KASB 기준서 원문 딥링크 인덱스 (public/standards-kasb.json) ──
+// 본문은 KASB 저작물이라 저장하지 않고(요지만 유지), 원문은 KASB에서 직접 열람·내려받게 링크만 제공.
+// scripts/standards/fetch-kasb-docids.ts 로 재생성(번호→문서id 존재 검증).
+
+export interface KasbStandardIndex {
+  base: string; // 'https://db.kasb.or.kr/standard/'
+  items: Record<string, string>; // { '1115': '491f32', ... }
+}
+
+let _kasbCache: KasbStandardIndex | null = null;
+
+/** KASB 기준서 딥링크 인덱스 로드(캐시). 실패 시 빈 인덱스. */
+export async function loadKasbStandardIndex(): Promise<KasbStandardIndex> {
+  if (_kasbCache) return _kasbCache;
+  try {
+    const res = await fetch('/standards-kasb.json');
+    if (!res.ok) throw new Error(String(res.status));
+    const j = (await res.json()) as { base?: string; items?: Record<string, string> };
+    _kasbCache = { base: j.base || 'https://db.kasb.or.kr/standard/', items: j.items || {} };
+  } catch {
+    _kasbCache = { base: 'https://db.kasb.or.kr/standard/', items: {} };
+  }
+  return _kasbCache;
+}
+
+/** 기준서 번호 → KASB 원문 URL. 인덱스에 없으면(미존재/미검증) null. */
+export function kasbStandardUrl(idx: KasbStandardIndex | null, no: string): string | null {
+  if (!idx || !no || !idx.items[no]) return null;
+  return idx.base + no;
+}
