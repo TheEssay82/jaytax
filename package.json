@@ -9,8 +9,10 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "std:parse": "tsx scripts/standards/parse.ts",
+    "std:parse:md": "tsx scripts/standards/parse-md.ts",
     "std:load": "tsx scripts/standards/load.ts",
-    "std:search": "tsx scripts/standards/search.ts"
+    "std:search": "tsx scripts/standards/search.ts",
+    "std:search:offline": "tsx scripts/standards/search-offline.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
