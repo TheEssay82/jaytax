@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Supabase CLI 로컬 산출물 (functions deploy 등이 생성)
+supabase/.temp/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
