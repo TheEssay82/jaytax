@@ -15,6 +15,22 @@ body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;font-size:13px
 .h-acts{display:flex;gap:4px;margin-left:8px;flex-shrink:0}
 .ha{padding:4px 9px;background:rgba(200,150,60,.15);color:#C8963C;border:1px solid rgba(200,150,60,.35);border-radius:5px;cursor:pointer;font-size:11px;font-family:inherit;white-space:nowrap}
 .ha:hover{background:rgba(200,150,60,.28)}
+
+/* ── 대분류 드롭다운 네비게이션 ── */
+.h-menus{display:flex;align-items:center;gap:4px;margin-left:14px}
+.h-menu{position:relative}
+.h-menu-btn{display:flex;align-items:center;gap:6px;padding:7px 13px;border:none;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:600;font-family:inherit;background:transparent;color:rgba(255,255,255,.72);white-space:nowrap}
+.h-menu-btn:hover{background:rgba(255,255,255,.1);color:#fff}
+.h-menu-btn.on{background:rgba(255,255,255,.16);color:#fff}
+.h-menu-btn .caret{font-size:8px;opacity:.65;transform:translateY(1px)}
+.h-dropdown{position:absolute;top:calc(100% + 7px);left:0;min-width:200px;background:#22325c;border:1px solid rgba(255,255,255,.12);border-radius:9px;box-shadow:0 10px 28px rgba(0,0,0,.45);padding:6px;z-index:300;display:flex;flex-direction:column;gap:2px;max-height:72vh;overflow-y:auto}
+.h-dropdown-item{text-align:left;padding:9px 13px;border:none;border-radius:6px;cursor:pointer;font-size:12.5px;font-family:inherit;background:transparent;color:rgba(255,255,255,.82);white-space:nowrap}
+.h-dropdown-item:hover{background:rgba(255,255,255,.12);color:#fff}
+.h-dropdown-item.on{background:rgba(200,150,60,.28);color:#fff;font-weight:600}
+.h-right{display:flex;align-items:center;gap:6px;margin-left:auto;flex-shrink:0}
+.h-iconbtn{width:33px;height:31px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:15px;line-height:1;flex-shrink:0}
+.h-iconbtn:hover{background:rgba(255,255,255,.16)}
+.h-iconbtn.on{background:rgba(200,150,60,.25);border-color:rgba(200,150,60,.45)}
 #main{max-width:1440px;margin:0 auto;padding:16px 16px 56px}
 .card{background:#fff;border:1px solid #E0DCD4;border-radius:12px;padding:12px 14px;margin-bottom:9px}
 .chdr{font-size:12px;font-weight:700;color:#555;border-bottom:1px solid #EDE9E2;padding-bottom:6px;margin-bottom:10px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}

@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "std:parse": "tsx scripts/standards/parse.ts",
+    "std:load": "tsx scripts/standards/load.ts",
+    "std:search": "tsx scripts/standards/search.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
@@ -22,6 +25,8 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "oxlint": "^1.69.0",
+    "pdf-parse": "^1.1.1",
+    "tsx": "^4.20.6",
     "typescript": "~6.0.2",
     "vite": "^8.1.0"
   }
