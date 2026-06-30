@@ -13,6 +13,7 @@
     "std:load": "tsx scripts/standards/load.ts",
     "std:search": "tsx scripts/standards/search.ts",
     "std:search:offline": "tsx scripts/standards/search-offline.ts",
+    "std:fetch:qnas": "tsx scripts/standards/fetch-qnas.ts",
     "skill:sync": "tsx scripts/standards/sync-skill.ts"
   },
   "dependencies": {

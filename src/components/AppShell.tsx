@@ -36,8 +36,8 @@ export const MENU_GROUPS: MenuGroup[] = [
     id: 'advisory',
     label: '회계및세무상담시스템',
     items: [
-      { id: 'std-kifrs', label: '📚 회계기준서검토' },
-      { id: 'std-tax', label: '⚖️ 세법검토' },
+      { id: 'std-kifrs', label: '📚 회계기준 검색' },
+      { id: 'std-tax', label: '⚖️ 세법 검색' },
       { id: 'consult', label: '🧑‍💼 상담진행' },
       { id: 'consult-log', label: '🗂️ 상담기록' },
       { id: 'library', label: '📁 자료실' },
@@ -230,8 +230,8 @@ function TabContent({
     case 'std-tax':
       return (
         <PlaceholderTab
-          title="⚖️ 세법검토"
-          desc="세법(법령·시행령·시행규칙) 근거 검토 메뉴입니다. 세부 설계 예정."
+          title="⚖️ 세법 검색"
+          desc="세법(법령·시행령·시행규칙) 근거 검색 메뉴입니다. 법령 MCP 연동 예정."
         />
       );
     case 'consult':

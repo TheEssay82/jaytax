@@ -45,3 +45,67 @@ export async function queryStandards(
   if (!data || data.ok === false) throw new Error(data?.error || '근거 검색에 실패했습니다.');
   return { question: data.question, matches: data.matches, notice: data.notice };
 }
+
+// ── 카탈로그 브라우징(검색 아님) ────────────────────────────────
+
+/** 현재 DB에 문단이 적재된 기준서 키 집합 (`${set} ${no}`). 카탈로그에서 클릭 가능 여부 판별용. */
+export async function loadedStandardKeys(): Promise<Set<string>> {
+  const { data, error } = await supabase.from('accounting_standards').select('standard_set, standard_no');
+  if (error) throw new Error(error.message);
+  const set = new Set<string>();
+  for (const r of (data ?? []) as { standard_set: string; standard_no: string }[]) {
+    set.add(`${r.standard_set} ${r.standard_no}`);
+  }
+  return set;
+}
+
+export interface ParagraphRow {
+  part: string;
+  chapter_title: string | null;
+  section_title: string | null;
+  paragraph_no: string;
+  content: string;
+  ordinal: number;
+}
+
+/** 한 기준서의 전체 문단을 등장순으로 — 열람(browse)용. */
+export async function fetchStandardParagraphs(standardSet: string, standardNo: string): Promise<ParagraphRow[]> {
+  const { data, error } = await supabase
+    .from('accounting_standards')
+    .select('part, chapter_title, section_title, paragraph_no, content, ordinal')
+    .eq('standard_set', standardSet)
+    .eq('standard_no', standardNo)
+    .order('ordinal', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ParagraphRow[];
+}
+
+// ── 질의회신요약 인덱스 (public/qnas-index.json, KASB 제목·메타·링크) ──
+
+export interface QnaIndexItem {
+  id: number;
+  docNumber: string | null;
+  date: string | null;
+  title: string;
+  relStds: string | null;
+  deprecated: boolean;
+  link: string;
+}
+
+let _qnaCache: QnaIndexItem[] | null = null;
+
+/** 질의회신 인덱스 로드(캐시). 본문은 없고 제목·메타·KASB 원문 링크만. */
+export async function loadQnaIndex(): Promise<QnaIndexItem[]> {
+  if (_qnaCache) return _qnaCache;
+  const res = await fetch('/qnas-index.json');
+  if (!res.ok) throw new Error(`질의회신 인덱스 로드 실패 ${res.status}`);
+  const json = (await res.json()) as { items: QnaIndexItem[] };
+  _qnaCache = json.items ?? [];
+  return _qnaCache;
+}
+
+/** 특정 기준서 번호(예: '1115')에 관련된 질의회신만 필터. relStds 문자열 매칭(휴리스틱). */
+export function filterQnasByStandardNo(items: QnaIndexItem[], no: string): QnaIndexItem[] {
+  if (!no) return [];
+  return items.filter((q) => q.relStds && q.relStds.includes(no));
+}
