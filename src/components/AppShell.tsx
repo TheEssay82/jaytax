@@ -13,6 +13,7 @@ import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
 import UsersTab from './users/UsersTab';
 import StandardsTab from './advisory/StandardsTab';
+import TaxLawTab from './advisory/TaxLawTab';
 import PlaceholderTab from './common/PlaceholderTab';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
@@ -228,12 +229,7 @@ function TabContent({
     case 'std-kifrs':
       return <StandardsTab />;
     case 'std-tax':
-      return (
-        <PlaceholderTab
-          title="⚖️ 세법 검색"
-          desc="세법(법령·시행령·시행규칙) 근거 검색 메뉴입니다. 법령 MCP 연동 예정."
-        />
-      );
+      return <TaxLawTab />;
     case 'consult':
       return (
         <PlaceholderTab

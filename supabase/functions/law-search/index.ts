@@ -1,0 +1,113 @@
+// Supabase Edge Function: 세법(법령) 검색·조문 열람 API (직원 전용)
+// 법제처 국가법령정보 공동활용 Open API(DRF)를 서버에서 호출한다. OC 키는 브라우저에 노출 금지(서버 시크릿).
+// 법제처 DRF는 CORS 헤더를 주지 않으므로 브라우저 직접호출 불가 → 이 함수가 프록시한다.
+//
+// 배포: Supabase 대시보드 → Edge Functions → law-search 생성 후 이 코드 붙여넣고 Deploy.
+//   필요한 Secret: LAW_API_OC  (법제처 OC 값. 대시보드 Secrets 또는 `supabase secrets set LAW_API_OC=...`)
+//   SUPABASE_URL/ANON_KEY 는 런타임 자동 주입.
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const DRF = 'https://www.law.go.kr/DRF';
+
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
+}
+
+// DRF 응답은 단건이면 객체, 다건이면 배열 → 항상 배열로
+function asArray<T>(v: T | T[] | undefined | null): T[] {
+  if (v == null) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
+async function drf(endpoint: string, params: Record<string, string>, oc: string): Promise<Record<string, unknown>> {
+  const url = new URL(`${DRF}/${endpoint}`);
+  url.searchParams.set('OC', oc);
+  url.searchParams.set('type', 'JSON');
+  url.searchParams.set('target', 'law');
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`법제처 API 실패 ${res.status}`);
+  return (await res.json()) as Record<string, unknown>;
+}
+
+// 조문단위 → 본문 텍스트(조문내용 + 항/호)
+function articleText(a: Record<string, unknown>): string {
+  const parts: string[] = [];
+  if (a['조문내용']) parts.push(String(a['조문내용']).trim());
+  for (const h of asArray(a['항'] as Record<string, unknown>)) {
+    if (h['항내용']) parts.push(String(h['항내용']).trim());
+    for (const ho of asArray(h['호'] as Record<string, unknown>)) {
+      if (ho['호내용']) parts.push('  ' + String(ho['호내용']).trim());
+    }
+  }
+  return parts.join('\n');
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+  try {
+    const url = Deno.env.get('SUPABASE_URL')!;
+    const anon = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const oc = Deno.env.get('LAW_API_OC');
+    if (!oc) return json({ ok: false, error: '서버에 LAW_API_OC(법제처 OC)가 설정되지 않았습니다.' }, 500);
+
+    // 인증: 로그인한 직원만
+    const caller = createClient(url, anon, { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } });
+    const { data: { user } } = await caller.auth.getUser();
+    if (!user) return json({ ok: false, error: '로그인이 필요합니다.' }, 401);
+
+    const { action, query, mst, display = 20 } = await req.json().catch(() => ({}));
+
+    if (action === 'search') {
+      if (!query || typeof query !== 'string' || !query.trim()) return json({ ok: false, error: '검색어(query)는 필수입니다.' }, 400);
+      const data = await drf('lawSearch.do', { query: query.trim(), display: String(Math.min(Math.max(Number(display) || 20, 1), 100)) }, oc);
+      const search = (data['LawSearch'] ?? {}) as Record<string, unknown>;
+      const laws = asArray(search['law'] as Record<string, unknown>).map((l) => ({
+        mst: String(l['법령일련번호'] ?? ''),
+        lawId: String(l['법령ID'] ?? ''),
+        name: String(l['법령명한글'] ?? ''),
+        lawType: String(l['법령구분명'] ?? ''),
+        effDate: String(l['시행일자'] ?? ''),
+        dept: String(l['소관부처명'] ?? ''),
+        link: l['법령상세링크'] ? `https://www.law.go.kr${l['법령상세링크']}` : null,
+      }));
+      return json({ ok: true, query, totalCnt: Number(search['totalCnt'] ?? laws.length), laws });
+    }
+
+    if (action === 'detail') {
+      if (!mst) return json({ ok: false, error: '법령일련번호(mst)는 필수입니다.' }, 400);
+      const data = await drf('lawService.do', { MST: String(mst) }, oc);
+      const law = (data['법령'] ?? {}) as Record<string, unknown>;
+      const basic = (law['기본정보'] ?? {}) as Record<string, unknown>;
+      const units = asArray((law['조문'] as Record<string, unknown>)?.['조문단위'] as Record<string, unknown>);
+      const articles = units.map((a) => {
+        const title = a['조문제목'] ? String(a['조문제목']) : null;
+        const content = articleText(a);
+        return {
+          no: String(a['조문번호'] ?? ''),
+          title,
+          isChapter: !title && /^제\s*\d+\s*[편장절관]/.test(content), // 장/절 제목 줄
+          content,
+          effDate: String(a['조문시행일자'] ?? ''),
+        };
+      });
+      return json({
+        ok: true,
+        name: String(basic['법령명_한글'] ?? basic['법령명한글'] ?? ''),
+        effDate: String(basic['시행일자'] ?? ''),
+        dept: String(basic['소관부처'] ?? basic['소관부처명'] ?? ''),
+        articleCount: articles.length,
+        articles,
+      });
+    }
+
+    return json({ ok: false, error: "action은 'search' 또는 'detail' 이어야 합니다." }, 400);
+  } catch (e) {
+    return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
