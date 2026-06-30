@@ -12,7 +12,8 @@
     "std:parse:md": "tsx scripts/standards/parse-md.ts",
     "std:load": "tsx scripts/standards/load.ts",
     "std:search": "tsx scripts/standards/search.ts",
-    "std:search:offline": "tsx scripts/standards/search-offline.ts"
+    "std:search:offline": "tsx scripts/standards/search-offline.ts",
+    "skill:sync": "tsx scripts/standards/sync-skill.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
