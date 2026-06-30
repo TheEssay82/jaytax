@@ -1,13 +1,16 @@
 // 상담진행 — 질문 → consult Edge(회계기준 RAG 근거 + Claude 회신 초안) → 검토·편집 → 상담기록 저장.
 //  회신 초안은 요지 정리본 근거 기반이며, 최종 판단·서명은 담당 회계사·세무사가 한다(근거 밖은 [확인 불가]).
 import { useState } from 'react';
-import { runConsult, createConsultation, type Citation } from '../../lib/consultApi';
+import { runConsult, createConsultation, type Citation, type LawRef } from '../../lib/consultApi';
+import LawRefPicker from './LawRefPicker';
 
 export default function ConsultTab() {
   const [question, setQuestion] = useState('');
   const [title, setTitle] = useState('');
   const [standardNo, setStandardNo] = useState('1115');
   const [matchCount, setMatchCount] = useState(6);
+  const [lawRefs, setLawRefs] = useState<LawRef[]>([]);
+  const [showLaw, setShowLaw] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +33,7 @@ export default function ConsultTab() {
     setError(null);
     setSaved(false);
     try {
-      const res = await runConsult(q, { standardNo: standardNo || undefined, matchCount });
+      const res = await runConsult(q, { standardNo: standardNo || undefined, matchCount, lawRefs });
       setAnswer(res.answer_md);
       setCitations(res.citations);
       setModel(res.model);
@@ -83,6 +86,8 @@ export default function ConsultTab() {
     setModel('');
     setError(null);
     setSaved(false);
+    setLawRefs([]);
+    setShowLaw(false);
   }
 
   return (
@@ -132,6 +137,23 @@ export default function ConsultTab() {
           </button>
         </div>
       </form>
+
+      {/* 세법 조문 근거 첨부 (선택) — 세무 쟁점일 때 원문 조문을 근거로 추가 */}
+      <div style={{ marginTop: 12 }}>
+        <button
+          type="button"
+          className="btn-sm"
+          onClick={() => setShowLaw((v) => !v)}
+          aria-expanded={showLaw}
+        >
+          {showLaw ? '▾' : '▸'} ⚖️ 세법 조문 근거 첨부 (선택){lawRefs.length > 0 && ` · ${lawRefs.length}건`}
+        </button>
+        {showLaw && (
+          <div style={{ marginTop: 8 }}>
+            <LawRefPicker value={lawRefs} onChange={setLawRefs} />
+          </div>
+        )}
+      </div>
 
       {error && <div className="alert-w" style={{ marginTop: 14 }}>{error}</div>}
 
