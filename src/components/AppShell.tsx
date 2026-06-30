@@ -14,6 +14,8 @@ import StatsTab from './stats/StatsTab';
 import UsersTab from './users/UsersTab';
 import StandardsTab from './advisory/StandardsTab';
 import TaxLawTab from './advisory/TaxLawTab';
+import ConsultTab from './advisory/ConsultTab';
+import ConsultLogTab from './advisory/ConsultLogTab';
 import PlaceholderTab from './common/PlaceholderTab';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
@@ -231,16 +233,9 @@ function TabContent({
     case 'std-tax':
       return <TaxLawTab />;
     case 'consult':
-      return (
-        <PlaceholderTab
-          title="🧑‍💼 상담진행"
-          desc="회계·세무 상담을 진행·기록하는 작업 화면입니다. 세부 설계 예정."
-        />
-      );
+      return <ConsultTab />;
     case 'consult-log':
-      return (
-        <PlaceholderTab title="🗂️ 상담기록" desc="지난 상담 이력을 조회하는 화면입니다. 세부 설계 예정." />
-      );
+      return <ConsultLogTab />;
     case 'library':
       return (
         <PlaceholderTab title="📁 자료실" desc="상담·검토에 활용할 자료 보관소입니다. 세부 설계 예정." />
