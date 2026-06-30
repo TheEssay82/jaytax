@@ -110,33 +110,9 @@ export function filterQnasByStandardNo(items: QnaIndexItem[], no: string): QnaIn
   return items.filter((q) => q.relStds && q.relStds.includes(no));
 }
 
-// ── KASB 기준서 원문 딥링크 인덱스 (public/standards-kasb.json) ──
+// ── KASB 회계기준열람서비스 링크 ─────────────────────────────────
 // 본문은 KASB 저작물이라 저장하지 않고(요지만 유지), 원문은 KASB에서 직접 열람·내려받게 링크만 제공.
-// scripts/standards/fetch-kasb-docids.ts 로 재생성(번호→문서id 존재 검증).
-
-export interface KasbStandardIndex {
-  base: string; // 'https://db.kasb.or.kr/standard/'
-  items: Record<string, string>; // { '1115': '491f32', ... }
-}
-
-let _kasbCache: KasbStandardIndex | null = null;
-
-/** KASB 기준서 딥링크 인덱스 로드(캐시). 실패 시 빈 인덱스. */
-export async function loadKasbStandardIndex(): Promise<KasbStandardIndex> {
-  if (_kasbCache) return _kasbCache;
-  try {
-    const res = await fetch('/standards-kasb.json');
-    if (!res.ok) throw new Error(String(res.status));
-    const j = (await res.json()) as { base?: string; items?: Record<string, string> };
-    _kasbCache = { base: j.base || 'https://db.kasb.or.kr/standard/', items: j.items || {} };
-  } catch {
-    _kasbCache = { base: 'https://db.kasb.or.kr/standard/', items: {} };
-  }
-  return _kasbCache;
-}
-
-/** 기준서 번호 → KASB 원문 URL. 인덱스에 없으면(미존재/미검증) null. */
-export function kasbStandardUrl(idx: KasbStandardIndex | null, no: string): string | null {
-  if (!idx || !no || !idx.items[no]) return null;
-  return idx.base + no;
-}
+// 주의: KASB 열람서비스(db.kasb.or.kr)는 기준서별 deep-link를 지원하지 않는다(SPA 라우트가 /·/qnas/:id 뿐,
+//   /standard/{번호}는 매칭 라우트가 없어 빈 화면). 그래서 '열람서비스 진입점'으로만 연결하고, 사용자가
+//   거기서 번호로 검색·열람한다. 질의회신(/qnas/{id})은 deep-link가 동작한다.
+export const KASB_STANDARDS_URL = 'https://db.kasb.or.kr/standard/';
