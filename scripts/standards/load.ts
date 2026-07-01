@@ -47,11 +47,21 @@ const rows = paras.map((p, i) => ({
   embedding: embeddings[i],
 }));
 
+// 업서트 충돌키(standard_set,standard_no,part,paragraph_no) 기준 배치 내 중복 제거(마지막 우선).
+// 자동 생성 요지(gen-gist)는 윈도 겹침으로 같은 문단이 중복될 수 있어, 그대로 upsert하면
+// "ON CONFLICT ... cannot affect row a second time" 오류가 난다.
+const byKey = new Map<string, (typeof rows)[number]>();
+for (const r of rows) byKey.set(`${r.standard_set}|${r.standard_no}|${r.part}|${r.paragraph_no}`, r);
+const deduped = [...byKey.values()];
+if (deduped.length !== rows.length) {
+  console.log(`중복 문단 ${rows.length - deduped.length}건 제거 → ${deduped.length}건 적재`);
+}
+
 const supabase = adminClient();
 console.log('Supabase upsert 중...');
 let done = 0;
-for (let i = 0; i < rows.length; i += 200) {
-  const batch = rows.slice(i, i + 200);
+for (let i = 0; i < deduped.length; i += 200) {
+  const batch = deduped.slice(i, i + 200);
   const { error } = await supabase
     .from('accounting_standards')
     .upsert(batch, { onConflict: 'standard_set,standard_no,part,paragraph_no' });
@@ -60,7 +70,7 @@ for (let i = 0; i < rows.length; i += 200) {
     process.exit(1);
   }
   done += batch.length;
-  process.stdout.write(`  적재 ${done}/${rows.length}\r`);
+  process.stdout.write(`  적재 ${done}/${deduped.length}\r`);
 }
 process.stdout.write('\n');
 console.log('완료.');

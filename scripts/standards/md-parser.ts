@@ -9,7 +9,10 @@
 import type { ParsedParagraph, ParseMeta } from './lib.ts';
 import { estimateTokens } from './lib.ts';
 
-const PARA_RE = /^\*\*§\s*([A-Za-z]?\d+[A-Za-z]?(?:~[A-Za-z]?\d+[A-Za-z]?)?)\s*\*\*\s*(.*)$/;
+// 문단번호 토큰: 선택적 접두(B·C·A 또는 한국문단 '한') + 숫자 + 다단계 소수점(3.2.14 등 IFRS9식) + 선택적 접미문자(A·D 등)
+// 범위(~) 허용. 예: 12, B34, C20D, 46A, 2.1, 3.2.14, 한2.1.1, 110~129
+const NO = String.raw`(?:[A-Za-z]|한)?\d+(?:\.\d+)*[A-Za-z]?`;
+const PARA_RE = new RegExp(String.raw`^\*\*§\s*(${NO}(?:~${NO})?)\s*\*\*\s*(.*)$`);
 
 function normalizePart(headingText: string): { part: string; chapter: string | null } {
   const t = headingText.trim();
