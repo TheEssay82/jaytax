@@ -24,7 +24,7 @@ export default function ConsultTab() {
   const [standardNo, setStandardNo] = useState(''); // 회계 분야에서만 사용
   const [matchCount, setMatchCount] = useState(6);
   const [selModel, setSelModel] = useState<string>(DEFAULT_CONSULT_MODEL);
-  const [includePrec, setIncludePrec] = useState(false);
+  const [includePrec, setIncludePrec] = useState(true); // 판례 자동참조 (세무·공통 기본 ON)
   const [includeTaxLaw, setIncludeTaxLaw] = useState(true); // 세법 조문 자동근거 (기본 ON)
   const [lawRefs, setLawRefs] = useState<LawRef[]>([]);
   const [showLaw, setShowLaw] = useState(false);
@@ -54,6 +54,8 @@ export default function ConsultTab() {
   function changeDomain(d: Domain) {
     setDomain(d);
     if (d !== '회계') setStandardNo('');
+    // 회계 전용이면 판례 자동참조는 기본 끔(세무·공통은 켬)
+    setIncludePrec(d !== '회계');
   }
 
   // 규격 필드 → 하나의 질문 문자열로 결합(형식 모드일 때).
@@ -135,7 +137,7 @@ export default function ConsultTab() {
     setLawRefs([]);
     setShowLaw(false);
     setIncludeTaxLaw(true);
-    setIncludePrec(false);
+    setIncludePrec(true);
     setStructured(false);
     setDomain('공통');
     setStandardNo('');
