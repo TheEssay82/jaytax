@@ -6,6 +6,7 @@ import { useState } from 'react';
 import {
   searchLaws,
   fetchLawDetail,
+  fetchLawTrio,
   fmtEffDate,
   TAX_LAW_QUICKLIST,
   searchPrecedents,
@@ -13,11 +14,12 @@ import {
   fmtPrecDate,
   type LawSummary,
   type LawDetail,
+  type LawTrio,
   type PrecedentSummary,
   type PrecedentDetail,
 } from '../../lib/lawApi';
 
-type Mode = 'law' | 'prec';
+type Mode = 'law' | 'trio' | 'prec';
 
 export default function TaxLawTab() {
   const [mode, setMode] = useState<Mode>('law');
@@ -29,6 +31,7 @@ export default function TaxLawTab() {
           {(
             [
               ['law', '📜 법령'],
+              ['trio', '📊 3단비교'],
               ['prec', '🏛️ 판례'],
             ] as [Mode, string][]
           ).map(([m, label]) => (
@@ -39,7 +42,139 @@ export default function TaxLawTab() {
         </span>
       </div>
       {mode === 'law' && <LawView />}
+      {mode === 'trio' && <TrioView />}
       {mode === 'prec' && <PrecedentView />}
+    </div>
+  );
+}
+
+// ───────────────────────────────────────── 3단비교 (법 · 시행령 · 시행규칙)
+const TRIO_QUICK = ['법인세법', '소득세법', '부가가치세법', '상속세 및 증여세법', '조세특례제한법', '국세기본법'];
+
+function TrioView() {
+  const [query, setQuery] = useState('');
+  const [trio, setTrio] = useState<LawTrio | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(q: string) {
+    const term = q.trim();
+    if (!term || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const t = await fetchLawTrio(term);
+      if (!t.law && !t.decree && !t.rule) {
+        setError('법·시행령·시행규칙을 찾지 못했습니다. 법령명을 확인해 주세요.');
+        setTrio(null);
+      } else {
+        setTrio(t);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '3단비교 조회 중 오류가 발생했습니다.');
+      setTrio(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const cols: { label: string; detail: LawDetail | null }[] = trio
+    ? [
+        { label: '법률', detail: trio.law },
+        { label: '시행령', detail: trio.decree },
+        { label: '시행규칙', detail: trio.rule },
+      ]
+    : [];
+
+  return (
+    <>
+      <form onSubmit={(e) => { e.preventDefault(); run(query); }}>
+        <div className="frow" style={{ gridTemplateColumns: '1fr auto', alignItems: 'end', gap: 10 }}>
+          <div>
+            <label className="fl">법령명 (법·시행령·시행규칙 3단비교)</label>
+            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="예: 법인세법 / 소득세법 / 부가가치세법" autoFocus />
+          </div>
+          <button className="btn-p" type="submit" disabled={busy || !query.trim()}>{busy ? '조회 중…' : '📊 3단 조회'}</button>
+        </div>
+      </form>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+        {TRIO_QUICK.map((name) => (
+          <button key={name} className="btn-sm" onClick={() => { setQuery(name); run(name); }} disabled={busy} style={{ fontSize: 12 }}>{name}</button>
+        ))}
+      </div>
+
+      {error && <div className="alert-w" style={{ marginTop: 14 }}>{error}</div>}
+      {busy && <div className="alert-i" style={{ marginTop: 14 }}>법·시행령·시행규칙을 불러오는 중…</div>}
+
+      {trio && !busy && (
+        <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, alignItems: 'start' }}>
+          {cols.map((c) => (
+            <TrioColumn key={c.label} label={c.label} detail={c.detail} />
+          ))}
+        </div>
+      )}
+
+      {!trio && !error && !busy && (
+        <div className="alert-i" style={{ marginTop: 14, lineHeight: 1.7 }}>
+          법령명을 입력하면 <b>법률 · 시행령 · 시행규칙</b>을 3열로 나란히 열람합니다. 각 열에서 조문을 선택해
+          법-시행령-시행규칙을 대조하세요(법제처 원문). 별표·별지서식, 관련통칙·집행기준 연동은 추후 추가 예정입니다.
+        </div>
+      )}
+    </>
+  );
+}
+
+function TrioColumn({ label, detail }: { label: string; detail: LawDetail | null }) {
+  const articles = (detail?.articles ?? []).filter((a) => !a.isChapter);
+  const [sel, setSel] = useState(0);
+  const cur = articles[sel];
+
+  const head: React.CSSProperties = { border: '1px solid #e4e0d8', borderRadius: 8, background: '#fff', overflow: 'hidden' };
+
+  if (!detail) {
+    return (
+      <div style={head}>
+        <div style={{ background: '#f3f1ea', padding: '8px 10px', fontSize: 12, fontWeight: 700, color: '#8a8170' }}>{label}</div>
+        <div className="alert-i" style={{ margin: 10, fontSize: 12 }}>해당 {label}이(가) 없습니다.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={head}>
+      <div style={{ background: '#1A2B52', padding: '8px 10px', color: '#fff' }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700 }}>{detail.name}</div>
+        <div style={{ fontSize: 10.5, color: '#c9d2e6' }}>시행 {fmtEffDate(detail.effDate)} · 조문 {detail.articleCount}개</div>
+      </div>
+      <div style={{ padding: 8, borderBottom: '1px solid #eee' }}>
+        <select
+          value={sel}
+          onChange={(e) => setSel(Number(e.target.value))}
+          style={{ width: '100%', fontSize: 12, padding: '5px 6px' }}
+        >
+          {articles.map((a, i) => (
+            <option key={`${a.no}-${i}`} value={i}>
+              제{a.no}조{a.title ? ` (${a.title})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div style={{ padding: '8px 10px', maxHeight: '62vh', overflowY: 'auto' }}>
+        {cur ? (
+          <>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1A2B52', marginBottom: 3 }}>
+              제{cur.no}조{cur.title ? ` (${cur.title})` : ''}
+              {cur.effDate && cur.effDate !== detail.effDate && (
+                <span style={{ fontWeight: 400, fontSize: 10.5, color: '#9aa0ad' }}> · 시행 {fmtEffDate(cur.effDate)}</span>
+              )}
+            </div>
+            <div style={{ fontSize: 12.5, lineHeight: 1.65, color: '#1f2937', whiteSpace: 'pre-wrap' }}>{cur.content}</div>
+          </>
+        ) : (
+          <div className="alert-i" style={{ fontSize: 12 }}>조문이 없습니다.</div>
+        )}
+      </div>
     </div>
   );
 }

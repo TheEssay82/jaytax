@@ -52,6 +52,31 @@ export function fmtEffDate(d: string): string {
   return `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}`;
 }
 
+// ── 3단비교 (법 · 시행령 · 시행규칙 동시 조회) ────────────────────
+export interface LawTrio {
+  base: string; // 기준 법령명 (예: '법인세법')
+  law: LawDetail | null; // 법률
+  decree: LawDetail | null; // 시행령
+  rule: LawDetail | null; // 시행규칙
+}
+
+/** 법령명으로 법·시행령·시행규칙을 한 번에 조회(3단비교용). 없는 단은 null.
+ *  '법인세법 시행령'처럼 넣어도 기준 법령('법인세법')으로 정규화해 3단을 찾는다. */
+export async function fetchLawTrio(name: string): Promise<LawTrio> {
+  const base = name.trim().replace(/\s*(시행령|시행규칙)\s*$/, '');
+  const { laws } = await searchLaws(base, 20);
+  const exact = (n: string) => laws.find((l) => l.name === n);
+  const lawS = exact(base) ?? laws.find((l) => l.name.startsWith(base) && !/시행(령|규칙)/.test(l.name));
+  const decreeS = exact(`${base} 시행령`);
+  const ruleS = exact(`${base} 시행규칙`);
+  const [law, decree, rule] = await Promise.all([
+    lawS ? fetchLawDetail(lawS.mst) : Promise.resolve(null),
+    decreeS ? fetchLawDetail(decreeS.mst) : Promise.resolve(null),
+    ruleS ? fetchLawDetail(ruleS.mst) : Promise.resolve(null),
+  ]);
+  return { base, law, decree, rule };
+}
+
 // ── 판례 검색 (법제처 target=prec) ────────────────────────────────
 export interface PrecedentSummary {
   serial: string; // 판례일련번호 (본문 조회 키)
