@@ -120,7 +120,21 @@ export const KASB_STANDARDS_URL = 'https://db.kasb.or.kr/standard/';
 // ── 기준서 원문 PDF (Supabase Storage: standard-pdfs 버킷, 0016) ──
 // Closed 사내 사이트에서 기준서 전문 PDF를 직접 게시·열람·다운로드. 경로: '{set}/{no}.pdf'.
 const PDF_BUCKET = 'standard-pdfs';
-export const standardPdfPath = (set: string, no: string) => `${set}/${no}.pdf`;
+
+// Storage 키는 한글 등 비ASCII를 거부한다. ASCII(영숫자·._-)면 그대로, 아니면 '_b64_'+base64url로 인코딩.
+// 숫자 기준서번호(1115)·'K-IFRS'는 ASCII라 그대로 → 기존 업로드분과 호환.
+function encodeSeg(s: string): string {
+  if (/^[A-Za-z0-9._-]+$/.test(s)) return s;
+  const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(s)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `_b64_${b64}`;
+}
+function decodeSeg(s: string): string {
+  if (!s.startsWith('_b64_')) return s;
+  const b64 = s.slice(5).replace(/-/g, '+').replace(/_/g, '/');
+  return new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+}
+export const standardPdfPath = (set: string, no: string) => `${encodeSeg(set)}/${encodeSeg(no)}.pdf`;
 
 /** 기준서 PDF 업로드(교체 포함). */
 export async function uploadStandardPdf(set: string, no: string, file: File): Promise<void> {
@@ -156,9 +170,9 @@ export async function loadStandardPdfKeys(sets: string[]): Promise<Set<string>> 
   const keys = new Set<string>();
   await Promise.all(
     sets.map(async (set) => {
-      const { data } = await supabase.storage.from(PDF_BUCKET).list(set, { limit: 1000 });
+      const { data } = await supabase.storage.from(PDF_BUCKET).list(encodeSeg(set), { limit: 1000 });
       for (const f of data ?? []) {
-        if (f.name.endsWith('.pdf')) keys.add(`${set} ${f.name.slice(0, -4)}`);
+        if (f.name.endsWith('.pdf')) keys.add(`${set} ${decodeSeg(f.name.slice(0, -4))}`);
       }
     })
   );
