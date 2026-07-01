@@ -116,3 +116,51 @@ export function filterQnasByStandardNo(items: QnaIndexItem[], no: string): QnaIn
 //   /standard/{번호}는 매칭 라우트가 없어 빈 화면). 그래서 '열람서비스 진입점'으로만 연결하고, 사용자가
 //   거기서 번호로 검색·열람한다. 질의회신(/qnas/{id})은 deep-link가 동작한다.
 export const KASB_STANDARDS_URL = 'https://db.kasb.or.kr/standard/';
+
+// ── 기준서 원문 PDF (Supabase Storage: standard-pdfs 버킷, 0016) ──
+// Closed 사내 사이트에서 기준서 전문 PDF를 직접 게시·열람·다운로드. 경로: '{set}/{no}.pdf'.
+const PDF_BUCKET = 'standard-pdfs';
+export const standardPdfPath = (set: string, no: string) => `${set}/${no}.pdf`;
+
+/** 기준서 PDF 업로드(교체 포함). */
+export async function uploadStandardPdf(set: string, no: string, file: File): Promise<void> {
+  const { error } = await supabase.storage.from(PDF_BUCKET).upload(standardPdfPath(set, no), file, {
+    upsert: true,
+    contentType: 'application/pdf',
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** 기준서 PDF 서명 URL(비공개 버킷 → 열람/임베드/다운로드용, 기본 1시간). 없으면 null.
+ *  download에 파일명을 주면 Content-Disposition attachment(다운로드)로 내려온다. */
+export async function getStandardPdfUrl(
+  set: string,
+  no: string,
+  opts: { expiresIn?: number; download?: string } = {}
+): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from(PDF_BUCKET)
+    .createSignedUrl(standardPdfPath(set, no), opts.expiresIn ?? 3600, opts.download ? { download: opts.download } : undefined);
+  if (error) return null;
+  return data?.signedUrl ?? null;
+}
+
+/** 기준서 PDF 삭제. */
+export async function deleteStandardPdf(set: string, no: string): Promise<void> {
+  const { error } = await supabase.storage.from(PDF_BUCKET).remove([standardPdfPath(set, no)]);
+  if (error) throw new Error(error.message);
+}
+
+/** PDF가 올라간 기준서 키 집합 (`${set} ${no}`). 카탈로그 배지·상세 판별용. */
+export async function loadStandardPdfKeys(sets: string[]): Promise<Set<string>> {
+  const keys = new Set<string>();
+  await Promise.all(
+    sets.map(async (set) => {
+      const { data } = await supabase.storage.from(PDF_BUCKET).list(set, { limit: 1000 });
+      for (const f of data ?? []) {
+        if (f.name.endsWith('.pdf')) keys.add(`${set} ${f.name.slice(0, -4)}`);
+      }
+    })
+  );
+  return keys;
+}

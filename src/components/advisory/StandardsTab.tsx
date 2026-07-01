@@ -3,7 +3,7 @@
 //  2) 기준서 목록: 대분류 → 기준서 클릭 → 전체 문단 열람 + 관련 질의회신
 //  3) 질의회신: KASB 질의회신 제목 인덱스(본문은 KASB 원문 링크)
 // 근거 문단은 요지 정리본이므로 인용 시 "(요지)"·원문 대조 권고를 함께 노출한다.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   queryStandards,
   loadedStandardKeys,
@@ -11,6 +11,10 @@ import {
   loadQnaIndex,
   filterQnasByStandardNo,
   KASB_STANDARDS_URL,
+  loadStandardPdfKeys,
+  uploadStandardPdf,
+  getStandardPdfUrl,
+  deleteStandardPdf,
   type StandardMatch,
   type ParagraphRow,
   type QnaIndexItem,
@@ -23,10 +27,15 @@ export default function StandardsTab() {
   const [mode, setMode] = useState<Mode>('browse');
   const [loadedKeys, setLoadedKeys] = useState<Set<string>>(new Set());
   const [qnaIndex, setQnaIndex] = useState<QnaIndexItem[]>([]);
+  const [pdfKeys, setPdfKeys] = useState<Set<string>>(new Set());
+
+  const reloadPdfKeys = () =>
+    loadStandardPdfKeys(CATALOG.map((c) => c.set)).then(setPdfKeys).catch(() => setPdfKeys(new Set()));
 
   useEffect(() => {
     loadedStandardKeys().then(setLoadedKeys).catch(() => setLoadedKeys(new Set()));
     loadQnaIndex().then(setQnaIndex).catch(() => setQnaIndex([]));
+    reloadPdfKeys();
   }, []);
 
   return (
@@ -53,7 +62,9 @@ export default function StandardsTab() {
       </div>
 
       {mode === 'search' && <SearchView />}
-      {mode === 'browse' && <BrowseView loadedKeys={loadedKeys} qnaIndex={qnaIndex} />}
+      {mode === 'browse' && (
+        <BrowseView loadedKeys={loadedKeys} qnaIndex={qnaIndex} pdfKeys={pdfKeys} onPdfChange={reloadPdfKeys} />
+      )}
       {mode === 'qna' && <QnaView items={qnaIndex} />}
     </div>
   );
@@ -159,12 +170,32 @@ function SearchView() {
 }
 
 // ─────────────────────────────────────────── 2) 기준서 목록(브라우징) + 상세 열람
-function BrowseView({ loadedKeys, qnaIndex }: { loadedKeys: Set<string>; qnaIndex: QnaIndexItem[] }) {
+function BrowseView({
+  loadedKeys,
+  qnaIndex,
+  pdfKeys,
+  onPdfChange,
+}: {
+  loadedKeys: Set<string>;
+  qnaIndex: QnaIndexItem[];
+  pdfKeys: Set<string>;
+  onPdfChange: () => void;
+}) {
   const [catIdx, setCatIdx] = useState(0);
   const [selected, setSelected] = useState<{ set: StandardSet; item: CatalogItem } | null>(null);
 
   if (selected) {
-    return <StandardDetail set={selected.set} item={selected.item} qnaIndex={qnaIndex} onBack={() => setSelected(null)} />;
+    return (
+      <StandardDetail
+        set={selected.set}
+        item={selected.item}
+        qnaIndex={qnaIndex}
+        loaded={loadedKeys.has(`${selected.set} ${selected.item.no}`)}
+        hasPdf={pdfKeys.has(`${selected.set} ${selected.item.no}`)}
+        onPdfChange={onPdfChange}
+        onBack={() => setSelected(null)}
+      />
+    );
   }
 
   const cat = CATALOG[catIdx];
@@ -198,29 +229,33 @@ function BrowseView({ loadedKeys, qnaIndex }: { loadedKeys: Set<string>; qnaInde
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 6 }}>
             {g.items.map((item, i) => {
               const loaded = item.no !== '' && loadedKeys.has(`${cat.set} ${item.no}`);
+              const hasPdf = item.no !== '' && pdfKeys.has(`${cat.set} ${item.no}`);
+              const clickable = item.no !== ''; // 번호 있는 기준서는 PDF 게시·열람 위해 항상 진입 가능
+              const active = loaded || hasPdf;
               return (
                 <button
                   key={`${item.no}-${i}`}
-                  disabled={!loaded}
-                  onClick={() => loaded && setSelected({ set: cat.set, item })}
-                  title={loaded ? '클릭하여 열람' : '미적재 (열람 준비 중)'}
+                  disabled={!clickable}
+                  onClick={() => clickable && setSelected({ set: cat.set, item })}
+                  title={clickable ? '클릭하여 열람·PDF 게시' : '항목 없음'}
                   style={{
                     textAlign: 'left',
-                    border: '1px solid ' + (loaded ? '#c9b88a' : '#ececec'),
-                    background: loaded ? '#fffdf6' : '#fafafa',
-                    color: loaded ? '#1f2937' : '#b0b0b0',
+                    border: '1px solid ' + (active ? '#c9b88a' : clickable ? '#e4e0d8' : '#ececec'),
+                    background: active ? '#fffdf6' : clickable ? '#fff' : '#fafafa',
+                    color: clickable ? '#1f2937' : '#b0b0b0',
                     borderRadius: 6,
                     padding: '7px 10px',
-                    cursor: loaded ? 'pointer' : 'default',
+                    cursor: clickable ? 'pointer' : 'default',
                     fontSize: 12.5,
                     display: 'flex',
-                    gap: 8,
+                    gap: 6,
                     alignItems: 'baseline',
                   }}
                 >
-                  {item.no && <span style={{ fontWeight: 700, minWidth: 38, color: loaded ? '#1A2B52' : '#bbb' }}>{item.no}</span>}
+                  {item.no && <span style={{ fontWeight: 700, minWidth: 38, color: active ? '#1A2B52' : clickable ? '#6b7280' : '#bbb' }}>{item.no}</span>}
                   <span style={{ flex: 1 }}>{item.title}</span>
-                  {loaded && <span className="bdg b-on" style={{ fontSize: 9 }}>열람</span>}
+                  {hasPdf && <span className="bdg" style={{ fontSize: 9, color: '#b91c1c', background: '#fdeaea', border: '1px solid #f3caca' }}>PDF</span>}
+                  {loaded && <span className="bdg b-on" style={{ fontSize: 9 }}>요지</span>}
                 </button>
               );
             })}
@@ -228,12 +263,14 @@ function BrowseView({ loadedKeys, qnaIndex }: { loadedKeys: Set<string>; qnaInde
         </div>
       ))}
       <div className="alert-i" style={{ fontSize: 12, lineHeight: 1.6 }}>
-        강조 표시(열람)된 기준서만 본문이 적재돼 있습니다. 나머지는 목록만 있으며 적재 후 열람 가능합니다.
-        본문은 <b>요지 정리본</b>입니다. 원문은{' '}
+        기준서를 클릭하면 <b>원문 PDF</b>를 게시·열람하고, <b>요지 정리본</b>(적재된 경우)을 함께 볼 수 있습니다.
+        <span className="bdg" style={{ fontSize: 9, color: '#b91c1c', background: '#fdeaea', border: '1px solid #f3caca', margin: '0 3px' }}>PDF</span>는 원문 게시,
+        <span className="bdg b-on" style={{ fontSize: 9, margin: '0 3px' }}>요지</span>는 정리본 적재를 뜻합니다.
+        참고로 KASB 원문 열람은{' '}
         <a href={KASB_STANDARDS_URL} target="_blank" rel="noreferrer" style={{ color: '#C8963C', fontWeight: 700 }}>
-          KASB 회계기준열람서비스 ↗
+          열람서비스 ↗
         </a>
-        에서 번호로 검색·열람하세요.
+        에서도 가능합니다.
       </div>
     </div>
   );
@@ -243,24 +280,31 @@ function StandardDetail({
   set,
   item,
   qnaIndex,
+  loaded,
+  hasPdf,
+  onPdfChange,
   onBack,
 }: {
   set: StandardSet;
   item: CatalogItem;
   qnaIndex: QnaIndexItem[];
+  loaded: boolean;
+  hasPdf: boolean;
+  onPdfChange: () => void;
   onBack: () => void;
 }) {
   const [paras, setParas] = useState<ParagraphRow[] | null>(null);
-  const [busy, setBusy] = useState(true);
+  const [busy, setBusy] = useState(loaded);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!loaded) { setParas(null); setBusy(false); return; }
     setBusy(true);
     fetchStandardParagraphs(set, item.no)
       .then((rows) => { setParas(rows); setError(null); })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setBusy(false));
-  }, [set, item.no]);
+  }, [set, item.no, loaded]);
 
   const related = filterQnasByStandardNo(qnaIndex, item.no);
   let lastSection: string | null = null;
@@ -280,36 +324,43 @@ function StandardDetail({
           📖 KASB 열람서비스 ↗
         </a>
       </div>
-      <div style={{ fontSize: 16, fontWeight: 700, color: '#1A2B52', marginBottom: 4 }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: '#1A2B52', marginBottom: 10 }}>
         {set} {item.no && `제${item.no}호 `}{item.title}
       </div>
-      <div className="alert-i" style={{ fontSize: 12, marginBottom: 12 }}>
-        본문은 요지 정리본(원문 verbatim 아님)입니다. 인용·적용 전 원문 대조를 권고합니다.
-        원문은 우측 <b>KASB 열람서비스</b>에서 번호({item.no || item.title})로 검색·열람하세요.
-      </div>
 
-      {busy && <div className="alert-i">문단을 불러오는 중…</div>}
-      {error && <div className="alert-w">{error}</div>}
+      {/* 원문 PDF (게시·열람·다운로드) */}
+      <StandardPdfSection set={set} no={item.no} hasPdf={hasPdf} onChange={onPdfChange} />
 
-      {paras && !busy && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {paras.map((p, i) => {
-            const showSection = p.section_title && p.section_title !== lastSection;
-            if (p.section_title) lastSection = p.section_title;
-            return (
-              <div key={`${p.paragraph_no}-${i}`}>
-                {showSection && (
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: '#8a8170', margin: '12px 0 4px' }}>
-                    {p.part !== '본문' ? `[${p.part}] ` : ''}{p.section_title}
+      {/* 요지 정리본 (적재된 경우만) */}
+      {loaded && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', marginBottom: 6 }}>📝 요지 정리본</div>
+          <div className="alert-i" style={{ fontSize: 12, marginBottom: 8 }}>
+            아래는 <b>요지 정리본</b>(원문 verbatim 아님)입니다. 정확한 인용은 위 <b>원문 PDF</b>를 사용하세요.
+          </div>
+          {busy && <div className="alert-i">문단을 불러오는 중…</div>}
+          {error && <div className="alert-w">{error}</div>}
+          {paras && !busy && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {paras.map((p, i) => {
+                const showSection = p.section_title && p.section_title !== lastSection;
+                if (p.section_title) lastSection = p.section_title;
+                return (
+                  <div key={`${p.paragraph_no}-${i}`}>
+                    {showSection && (
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#8a8170', margin: '12px 0 4px' }}>
+                        {p.part !== '본문' ? `[${p.part}] ` : ''}{p.section_title}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, padding: '3px 0', alignItems: 'baseline' }}>
+                      <span style={{ fontWeight: 700, color: '#1A2B52', minWidth: 42, fontSize: 12.5 }}>§{p.paragraph_no}</span>
+                      <span style={{ fontSize: 13.5, lineHeight: 1.6, color: '#1f2937' }}>{p.content}</span>
+                    </div>
                   </div>
-                )}
-                <div style={{ display: 'flex', gap: 8, padding: '3px 0', alignItems: 'baseline' }}>
-                  <span style={{ fontWeight: 700, color: '#1A2B52', minWidth: 42, fontSize: 12.5 }}>§{p.paragraph_no}</span>
-                  <span style={{ fontSize: 13.5, lineHeight: 1.6, color: '#1f2937' }}>{p.content}</span>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -330,6 +381,104 @@ function StandardDetail({
           <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6 }}>
             질의회신 본문은 KASB 원문에서 확인하세요(제목·연결만 제공).
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 원문 PDF 게시 섹션 — Storage(standard-pdfs) 업로드·열람·다운로드·삭제
+function StandardPdfSection({
+  set,
+  no,
+  hasPdf,
+  onChange,
+}: {
+  set: StandardSet;
+  no: string;
+  hasPdf: boolean;
+  onChange: () => void;
+}) {
+  const [exists, setExists] = useState(hasPdf);
+  const [url, setUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    setExists(hasPdf);
+    if (hasPdf) getStandardPdfUrl(set, no).then((u) => { if (active) setUrl(u); });
+    else setUrl(null);
+    return () => { active = false; };
+  }, [set, no, hasPdf]);
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (fileRef.current) fileRef.current.value = '';
+    if (!file) return;
+    if (file.type !== 'application/pdf') { setError('PDF 파일만 업로드할 수 있습니다.'); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      await uploadStandardPdf(set, no, file);
+      setExists(true);
+      setUrl(await getStandardPdfUrl(set, no)); // 교체 시 새 서명 URL
+      onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '업로드에 실패했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function download() {
+    const u = await getStandardPdfUrl(set, no, { download: `${set}_${no || '기준서'}.pdf` });
+    if (u) window.location.href = u;
+  }
+
+  async function remove() {
+    if (busy || !window.confirm('이 기준서의 원문 PDF를 삭제하시겠습니까? 되돌릴 수 없습니다.')) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteStandardPdf(set, no);
+      setExists(false);
+      setUrl(null);
+      onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '삭제에 실패했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>📄 원문 PDF</span>
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+          {exists && url && <a className="btn-sm" href={url} target="_blank" rel="noreferrer">↗ 새 탭</a>}
+          {exists && <button className="btn-sm" onClick={download} disabled={busy}>⬇ 다운로드</button>}
+          <button className="btn-sm btn-sm-navy" onClick={() => fileRef.current?.click()} disabled={busy}>
+            {busy ? '처리 중…' : exists ? '🔁 교체' : '⬆ PDF 업로드'}
+          </button>
+          {exists && <button className="btn-sm" onClick={remove} disabled={busy} style={{ color: '#b91c1c' }}>🗑️ 삭제</button>}
+        </span>
+        <input ref={fileRef} type="file" accept="application/pdf" onChange={onFile} style={{ display: 'none' }} />
+      </div>
+
+      {error && <div className="alert-w" style={{ marginBottom: 8 }}>{error}</div>}
+
+      {exists ? (
+        url ? (
+          <iframe title="기준서 원문 PDF" src={url} style={{ width: '100%', height: '78vh', border: '1px solid #e4e0d8', borderRadius: 8 }} />
+        ) : (
+          <div className="alert-i">PDF를 불러오는 중…</div>
+        )
+      ) : (
+        <div className="alert-i" style={{ lineHeight: 1.7 }}>
+          아직 게시된 원문 PDF가 없습니다. <b>⬆ PDF 업로드</b>로 이 기준서의 공식 전문 PDF를 올리면 여기서 열람·다운로드할 수 있습니다.
         </div>
       )}
     </div>
