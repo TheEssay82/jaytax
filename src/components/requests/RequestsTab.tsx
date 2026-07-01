@@ -17,26 +17,43 @@ const STATUS_STYLE: Record<RequestStatus, React.CSSProperties> = {
   개발완료: { background: '#D1FAE5', color: '#065F46' },
   미반영종료: { background: '#F3F4F6', color: '#6B7280' },
 };
-const dtShort = (s?: string) => (s ? s.replace('T', ' ').slice(0, 16) : '');
+// 저장은 UTC(timestamptz/ISO). 표시는 한국 표준시(KST)로 변환.
+const dtShort = (s?: string) => {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s.replace('T', ' ').slice(0, 16);
+  return d
+    .toLocaleString('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    })
+    .replace(/\. /g, '.')
+    .replace(/\.(\d{2}:)/, ' $1'); // '2026.07.01.14:30' → '2026.07.01 14:30'
+};
 
 export default function RequestsTab() {
+  const { user, role, profileName } = useAuth();
   const { requests, loading, error, refresh } = useRequests();
-  const { user, role } = useAuth();
   const canSetStatus = role === 'superuser';
-  const defaultName = user?.email?.split('@')[0] ?? '';
+  // 요청자·작성자는 로그인한 담당자명으로 강제(수정 불가). 담당자명 없으면 이메일 아이디로 대체.
+  const authorName = profileName?.trim() || user?.email?.split('@')[0] || '';
 
-  const [reqName, setReqName] = useState(defaultName);
   const [reqContent, setReqContent] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    if (!reqName.trim() || !reqContent.trim()) {
-      alert('요청자와 요청내용을 모두 입력해주세요.');
+    if (!authorName) {
+      alert('담당자명이 설정되어 있지 않습니다. 관리자에게 문의하세요.');
+      return;
+    }
+    if (!reqContent.trim()) {
+      alert('요청내용을 입력해주세요.');
       return;
     }
     setBusy(true);
     try {
-      await createRequest(reqName.trim(), reqContent.trim());
+      await createRequest(authorName, reqContent.trim());
       setReqContent('');
       await refresh();
     } catch (e) {
@@ -87,7 +104,10 @@ export default function RequestsTab() {
         <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>새 요청 등록</div>
         <div className="frow">
           <span className="fl">요청자</span>
-          <input value={reqName} placeholder="이름" onChange={(e) => setReqName(e.target.value)} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#1A2B52' }}>
+            {authorName || '(담당자명 미설정)'}
+            <span style={{ fontWeight: 400, color: '#9aa0ad', marginLeft: 6 }}>· 로그인 담당자</span>
+          </span>
         </div>
         <div className="frow" style={{ alignItems: 'flex-start' }}>
           <span className="fl" style={{ paddingTop: 6 }}>
@@ -126,7 +146,7 @@ export default function RequestsTab() {
           canSetStatus={canSetStatus}
           onDelete={() => remove(r.id)}
           onCommentAdded={refresh}
-          defaultAuthor={defaultName}
+          authorName={authorName}
         />
       ))}
     </div>
@@ -139,25 +159,28 @@ interface CardProps {
   canSetStatus: boolean;
   onDelete: () => void;
   onCommentAdded: () => Promise<void>;
-  defaultAuthor: string;
+  authorName: string;
 }
 
-function RequestCard({ r, onStatus, onDelete, onCommentAdded, defaultAuthor, canSetStatus }: CardProps) {
+function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSetStatus }: CardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [author, setAuthor] = useState(defaultAuthor);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const cmts = r.comments || [];
   const last = cmts.length ? cmts[cmts.length - 1] : null;
 
   async function submitComment() {
-    if (!author.trim() || !text.trim()) {
-      alert('작성자와 댓글 내용을 모두 입력해주세요.');
+    if (!authorName) {
+      alert('담당자명이 설정되어 있지 않습니다.');
+      return;
+    }
+    if (!text.trim()) {
+      alert('댓글 내용을 입력해주세요.');
       return;
     }
     setBusy(true);
     try {
-      await addComment(r.id, author.trim(), text.trim());
+      await addComment(r.id, authorName, text.trim());
       setText('');
       setExpanded(true);
       await onCommentAdded();
@@ -264,12 +287,12 @@ function RequestCard({ r, onStatus, onDelete, onCommentAdded, defaultAuthor, can
             ))}
 
             <div style={{ display: 'flex', gap: 5, marginTop: 7, alignItems: 'flex-start' }}>
-              <input
-                value={author}
-                placeholder="작성자"
-                onChange={(e) => setAuthor(e.target.value)}
-                style={{ width: 90, flexShrink: 0 }}
-              />
+              <span
+                title="로그인 담당자"
+                style={{ width: 90, flexShrink: 0, fontSize: 11, fontWeight: 700, color: '#1A2B52', paddingTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {authorName || '(미설정)'}
+              </span>
               <textarea
                 rows={1}
                 value={text}
