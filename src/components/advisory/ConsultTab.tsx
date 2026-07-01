@@ -20,6 +20,7 @@ export default function ConsultTab() {
   const [matchCount, setMatchCount] = useState(6);
   const [selModel, setSelModel] = useState<string>(DEFAULT_CONSULT_MODEL);
   const [includePrec, setIncludePrec] = useState(false);
+  const [includeTaxLaw, setIncludeTaxLaw] = useState(true); // 세법 조문 자동근거 (기본 ON — 회계기준+세법 모두 근거)
   const [lawRefs, setLawRefs] = useState<LawRef[]>([]);
   const [showLaw, setShowLaw] = useState(false);
 
@@ -45,7 +46,7 @@ export default function ConsultTab() {
     setError(null);
     setSaved(false);
     try {
-      const res = await runConsult(q, { standardNo, matchCount, lawRefs, model: selModel, includePrecedents: includePrec });
+      const res = await runConsult(q, { standardNo, matchCount, lawRefs, model: selModel, includePrecedents: includePrec, includeTaxLaw });
       setAnswer(res.answer_md);
       setCitations(res.citations);
       setTags(res.tags);
@@ -103,6 +104,8 @@ export default function ConsultTab() {
     setSaved(false);
     setLawRefs([]);
     setShowLaw(false);
+    setIncludeTaxLaw(true);
+    setIncludePrec(false);
   }
 
   return (
@@ -161,10 +164,16 @@ export default function ConsultTab() {
           </button>
         </div>
 
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 12.5, color: '#4b5563', cursor: 'pointer' }}>
-          <input type="checkbox" checked={includePrec} onChange={(e) => setIncludePrec(e.target.checked)} />
-          🏛️ 관련 판례 자동 참조 <span style={{ color: '#9aa0ad' }}>(세무 쟁점 시 — 법제처 판례 전문을 근거에 추가, 다소 느려짐)</span>
-        </label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#4b5563', cursor: 'pointer' }}>
+            <input type="checkbox" checked={includeTaxLaw} onChange={(e) => setIncludeTaxLaw(e.target.checked)} />
+            ⚖️ 세법 조문 자동근거 <span style={{ color: '#9aa0ad' }}>(질문에서 관련 세법을 찾아 법제처 조문 원문·시행일을 근거에 자동 추가)</span>
+          </label>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#4b5563', cursor: 'pointer' }}>
+            <input type="checkbox" checked={includePrec} onChange={(e) => setIncludePrec(e.target.checked)} />
+            🏛️ 관련 판례 자동 참조 <span style={{ color: '#9aa0ad' }}>(세무 쟁점 시 — 법제처 판례 전문을 근거에 추가, 다소 느려짐)</span>
+          </label>
+        </div>
       </form>
 
       {/* 세법 조문 근거 첨부 (선택) — 세무 쟁점일 때 원문 조문을 근거로 추가 */}
@@ -175,7 +184,7 @@ export default function ConsultTab() {
           onClick={() => setShowLaw((v) => !v)}
           aria-expanded={showLaw}
         >
-          {showLaw ? '▾' : '▸'} ⚖️ 세법 조문 근거 첨부 (선택){lawRefs.length > 0 && ` · ${lawRefs.length}건`}
+          {showLaw ? '▾' : '▸'} ⚖️ 세법 조문 직접 첨부 (선택 · 자동근거 외 특정 조문 추가){lawRefs.length > 0 && ` · ${lawRefs.length}건`}
         </button>
         {showLaw && (
           <div style={{ marginTop: 8 }}>
@@ -188,7 +197,7 @@ export default function ConsultTab() {
 
       {answer === null && !error && (
         <div className="alert-i" style={{ marginTop: 14, lineHeight: 1.7 }}>
-          질문을 입력하면 회계기준(요지 정리본) 근거를 검색해 이메일 회신 초안을 작성합니다.
+          질문을 입력하면 <b>회계기준(원문·요지)</b>과 <b>세법 조문(법제처 원문)</b>을 근거로 검색해 이메일 회신 초안을 작성합니다.
           초안은 검토·편집 후 <b>상담기록</b>에 저장할 수 있습니다.
           근거에 없는 내용은 본문에 <b>[확인 불가]</b>로 표기되며, 최종 판단·서명은 담당 회계사·세무사가 합니다.
         </div>

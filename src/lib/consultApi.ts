@@ -36,12 +36,13 @@ export const DEFAULT_CONSULT_MODEL = CONSULT_MODELS[0].id;
  * @param question 직원이 올린 질문/사실관계
  * @param opts.standardNo 회계기준 RAG 한정 (예: '1115'). 미지정 시 함수 기본('1115').
  * @param opts.matchCount RAG 근거 문단 수(1~12).
- * @param opts.lawRefs 함께 인용할 세법 조문 근거(선택).
+ * @param opts.lawRefs 함께 인용할 세법 조문 근거(수동 첨부, 선택).
+ * @param opts.includeTaxLaw 세법 조문 자동근거(법제처 조문 자동 조회). 기본 true.
  * @param opts.model 회신 작성 모델(allowlist). 미지정/허용 밖이면 서버 기본(Sonnet).
  */
 export async function runConsult(
   question: string,
-  opts: { standardNo?: string; matchCount?: number; lawRefs?: LawRef[]; model?: string; includePrecedents?: boolean } = {}
+  opts: { standardNo?: string; matchCount?: number; lawRefs?: LawRef[]; model?: string; includePrecedents?: boolean; includeTaxLaw?: boolean } = {}
 ): Promise<ConsultResult> {
   const { data, error } = await supabase.functions.invoke('consult', {
     body: {
@@ -51,6 +52,7 @@ export async function runConsult(
       lawRefs: opts.lawRefs ?? [],
       model: opts.model ?? DEFAULT_CONSULT_MODEL,
       includePrecedents: opts.includePrecedents ?? false,
+      includeTaxLaw: opts.includeTaxLaw ?? true,
     },
   });
   if (error) throw new Error(error.message);

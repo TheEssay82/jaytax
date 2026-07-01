@@ -161,6 +161,114 @@ async function fetchPrecedents(term: string, oc: string): Promise<{ type: string
   } catch { return []; }
 }
 
+// ── 세법 조문 자동근거 (법제처 target=law: search → detail, LAW_API_OC) ──
+// 질문 → 관련 세법 식별(haiku) → 법령 조문목록 → 관련 조문 선별(haiku) → 조문 원문+시행일 근거.
+// 법령은 수십~수백 조라 전문 투입 불가 → Claude가 조문제목 목록에서 선별한 조문만 원문 추출.
+async function haikuJson(key: string, system: string, user: string, maxTokens = 300): Promise<unknown> {
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: TAG_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const text = (data.content ?? []).map((c: { text?: string }) => c.text ?? '').join('').trim();
+    const m = text.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+    return JSON.parse(m ? m[0] : text);
+  } catch { return null; }
+}
+function asArr<T>(v: T | T[] | undefined | null): T[] {
+  return v == null ? [] : Array.isArray(v) ? v : [v];
+}
+async function drfLaw(endpoint: string, params: Record<string, string>, oc: string): Promise<Record<string, unknown>> {
+  const u = new URL(`https://www.law.go.kr/DRF/${endpoint}`);
+  u.searchParams.set('OC', oc); u.searchParams.set('type', 'JSON'); u.searchParams.set('target', 'law');
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  const r = await fetch(u.toString());
+  if (!r.ok) throw new Error(`법제처 API 실패 ${r.status}`);
+  return (await r.json()) as Record<string, unknown>;
+}
+function articleBody(a: Record<string, unknown>): string {
+  const parts: string[] = [];
+  if (a['조문내용']) parts.push(String(a['조문내용']).trim());
+  for (const h of asArr(a['항'] as Record<string, unknown>)) {
+    if (h['항내용']) parts.push(String(h['항내용']).trim());
+    for (const ho of asArr(h['호'] as Record<string, unknown>)) if (ho['호내용']) parts.push('  ' + String(ho['호내용']).trim());
+  }
+  return parts.join('\n');
+}
+function fmtDate(s: string): string {
+  const m = String(s ?? '').match(/^(\d{4})(\d{2})(\d{2})$/);
+  return m ? `${m[1]}.${m[2]}.${m[3]}` : String(s ?? '');
+}
+async function fetchTaxLaw(question: string, key: string, oc: string): Promise<{ type: string; ref: string; text: string }[]> {
+  try {
+    // 1) 관련 세법 식별
+    const idn = await haikuJson(
+      key,
+      '세무·회계 질문에서 근거가 될 한국 세법 법령명을 고른다. 법제처 정식 명칭으로 최대 3개. 예: 부가가치세법, 법인세법, 소득세법, 국세기본법, 조세특례제한법, 상속세 및 증여세법, 지방세법. 시행령 조문이 꼭 필요하면 "부가가치세법 시행령"처럼 포함. 세법 쟁점이 없으면 빈 배열. JSON 문자열 배열만 출력.',
+      question.slice(0, 1500),
+    );
+    const lawNames = Array.isArray(idn) ? idn.filter((x) => typeof x === 'string' && x.trim()).slice(0, 3) : [];
+    if (!lawNames.length) return [];
+
+    const cites: { type: string; ref: string; text: string }[] = [];
+    for (const name of lawNames) {
+      // 2) 법령 식별 → MST (정식명 일치 우선)
+      const s = await drfLaw('lawSearch.do', { query: name, display: '5' }, oc);
+      const laws = asArr((s['LawSearch'] as Record<string, unknown>)?.['law'] as Record<string, unknown>);
+      if (!laws.length) continue;
+      const pick = laws.find((l) => String(l['법령명한글'] ?? '') === name) ?? laws[0];
+      const mst = String(pick['법령일련번호'] ?? '');
+      if (!mst) continue;
+
+      // 3) 조문 목록
+      const d = await drfLaw('lawService.do', { MST: mst }, oc);
+      const law = (d['법령'] ?? {}) as Record<string, unknown>;
+      const basic = (law['기본정보'] ?? {}) as Record<string, unknown>;
+      const basicEff = String(basic['시행일자'] ?? '');
+      const lawName = String(basic['법령명_한글'] ?? basic['법령명한글'] ?? name);
+      const units = asArr((law['조문'] as Record<string, unknown>)?.['조문단위'] as Record<string, unknown>);
+      const arts = units
+        .map((a) => {
+          const branch = String(a['조문가지번호'] ?? '');
+          const content = articleBody(a);
+          return {
+            no: String(a['조문번호'] ?? ''),
+            branch: branch === '00' || branch === '' ? '' : String(Number(branch)),
+            title: a['조문제목'] ? String(a['조문제목']) : '',
+            content,
+            eff: String(a['조문시행일자'] ?? '') || basicEff,
+            isChapter: !a['조문제목'] && /^제\s*\d+\s*[편장절관]/.test(content),
+          };
+        })
+        .filter((a) => a.no && !a.isChapter && a.content && !a.content.startsWith('삭제'));
+      if (!arts.length) continue;
+
+      // 4) 관련 조문 선별(haiku) — 조문 제목 목록에서 최대 4개
+      const label = (a: { no: string; branch: string }) => `제${a.no}조${a.branch ? '의' + a.branch : ''}`;
+      const idx = arts.map((a) => `${label(a)}${a.title ? ` (${a.title})` : ''}`).join('\n');
+      const sel = await haikuJson(
+        key,
+        `아래 「${lawName}」 조문 목록에서 질문과 직접 관련된 조문만 최대 4개 고른다. "제38조" 또는 "제38조의2" 형태 문자열 JSON 배열만 출력. 관련 없으면 빈 배열.`,
+        `[질문]\n${question.slice(0, 1200)}\n\n[조문 목록]\n${idx}`,
+        200,
+      );
+      const wanted = Array.isArray(sel) ? sel.map((x) => String(x).replace(/\s/g, '')) : [];
+      const chosen = arts.filter((a) => wanted.includes(label(a))).slice(0, 4);
+      for (const a of chosen) {
+        cites.push({
+          type: '세법',
+          ref: `${lawName} ${label(a)}${a.title ? `(${a.title})` : ''}${a.eff ? ` (시행 ${fmtDate(a.eff)})` : ''}`,
+          text: a.content.slice(0, 1400),
+        });
+      }
+    }
+    return cites;
+  } catch { return []; }
+}
+
 interface LawRef { ref: string; text: string }
 
 Deno.serve(async (req) => {
@@ -178,7 +286,7 @@ Deno.serve(async (req) => {
     if (!user) return json({ ok: false, error: '로그인이 필요합니다.' }, 401);
 
     const lawOc = Deno.env.get('LAW_API_OC');
-    const { question, standardNo = '1115', matchCount = 6, lawRefs = [], model, includePrecedents = false } =
+    const { question, standardNo = '1115', matchCount = 6, lawRefs = [], model, includePrecedents = false, includeTaxLaw = true } =
       await req.json().catch(() => ({}));
     if (!question || typeof question !== 'string' || !question.trim()) {
       return json({ ok: false, error: '질문(question)은 필수입니다.' }, 400);
@@ -214,7 +322,14 @@ Deno.serve(async (req) => {
       text: String(r.content),
     }));
 
+    // 세법 수동 첨부(LawRefPicker) — 사용자가 직접 고른 조문
     const law = (lawRefs as LawRef[]).filter((l) => l && l.ref && l.text).map((l) => ({ type: '세법', ref: l.ref, text: l.text }));
+
+    // 1-b') 세법 조문 자동근거 (선택) — 질문 → 관련 세법 식별 → 조문 선별 → 원문+시행일
+    let taxCites: { type: string; ref: string; text: string }[] = [];
+    if (includeTaxLaw && lawOc) {
+      taxCites = await fetchTaxLaw(question.trim(), anthropicKey, lawOc);
+    }
 
     // 1-c) 판례 자동참조 (선택) — 질문에서 검색어 추출 → 법제처 판례 전문 근거
     let precCites: { type: string; ref: string; text: string }[] = [];
@@ -225,7 +340,7 @@ Deno.serve(async (req) => {
       precCites = await fetchPrecedents(term, lawOc);
     }
 
-    const citations = [...fullCites, ...gistCites, ...law, ...precCites];
+    const citations = [...fullCites, ...gistCites, ...taxCites, ...law, ...precCites];
 
     // 2) 근거 블록 구성
     const groundingBlock = citations
