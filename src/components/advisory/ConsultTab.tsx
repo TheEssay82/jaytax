@@ -16,9 +16,10 @@ import { TagEditor } from './TagsField';
 export default function ConsultTab() {
   const [question, setQuestion] = useState('');
   const [title, setTitle] = useState('');
-  const [standardNo, setStandardNo] = useState('1115');
+  const [standardNo, setStandardNo] = useState(''); // 기본 '전체'(원문 61종 검색)
   const [matchCount, setMatchCount] = useState(6);
   const [selModel, setSelModel] = useState<string>(DEFAULT_CONSULT_MODEL);
+  const [includePrec, setIncludePrec] = useState(false);
   const [lawRefs, setLawRefs] = useState<LawRef[]>([]);
   const [showLaw, setShowLaw] = useState(false);
 
@@ -44,7 +45,7 @@ export default function ConsultTab() {
     setError(null);
     setSaved(false);
     try {
-      const res = await runConsult(q, { standardNo: standardNo || undefined, matchCount, lawRefs, model: selModel });
+      const res = await runConsult(q, { standardNo, matchCount, lawRefs, model: selModel, includePrecedents: includePrec });
       setAnswer(res.answer_md);
       setCitations(res.citations);
       setTags(res.tags);
@@ -134,8 +135,9 @@ export default function ConsultTab() {
           <div>
             <label className="fl">근거 기준서</label>
             <select value={standardNo} onChange={(e) => setStandardNo(e.target.value)}>
+              <option value="">전체 기준서 (원문 61종)</option>
               <option value="1115">K-IFRS 제1115호 (수익)</option>
-              <option value="">전체 (적재된 기준서)</option>
+              <option value="1116">K-IFRS 제1116호 (리스)</option>
             </select>
           </div>
           <div>
@@ -158,6 +160,11 @@ export default function ConsultTab() {
             {busy ? '작성 중…' : '✍️ 회신 초안 작성'}
           </button>
         </div>
+
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 12.5, color: '#4b5563', cursor: 'pointer' }}>
+          <input type="checkbox" checked={includePrec} onChange={(e) => setIncludePrec(e.target.checked)} />
+          🏛️ 관련 판례 자동 참조 <span style={{ color: '#9aa0ad' }}>(세무 쟁점 시 — 법제처 판례 전문을 근거에 추가, 다소 느려짐)</span>
+        </label>
       </form>
 
       {/* 세법 조문 근거 첨부 (선택) — 세무 쟁점일 때 원문 조문을 근거로 추가 */}

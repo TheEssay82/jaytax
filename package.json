@@ -15,6 +15,7 @@
     "std:search:offline": "tsx scripts/standards/search-offline.ts",
     "std:fetch:qnas": "tsx scripts/standards/fetch-qnas.ts",
     "std:upload:pdfs": "tsx scripts/standards/upload-pdfs.ts",
+    "std:load:fulltext": "tsx scripts/standards/load-pdf-fulltext.ts",
     "skill:sync": "tsx scripts/standards/sync-skill.ts"
   },
   "dependencies": {

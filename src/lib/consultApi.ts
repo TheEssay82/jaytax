@@ -41,15 +41,16 @@ export const DEFAULT_CONSULT_MODEL = CONSULT_MODELS[0].id;
  */
 export async function runConsult(
   question: string,
-  opts: { standardNo?: string; matchCount?: number; lawRefs?: LawRef[]; model?: string } = {}
+  opts: { standardNo?: string; matchCount?: number; lawRefs?: LawRef[]; model?: string; includePrecedents?: boolean } = {}
 ): Promise<ConsultResult> {
   const { data, error } = await supabase.functions.invoke('consult', {
     body: {
       question,
-      standardNo: opts.standardNo ?? '1115',
+      standardNo: opts.standardNo ?? '',
       matchCount: opts.matchCount ?? 6,
       lawRefs: opts.lawRefs ?? [],
       model: opts.model ?? DEFAULT_CONSULT_MODEL,
+      includePrecedents: opts.includePrecedents ?? false,
     },
   });
   if (error) throw new Error(error.message);
