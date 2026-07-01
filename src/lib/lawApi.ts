@@ -14,6 +14,7 @@ export interface LawSummary {
 
 export interface LawArticle {
   no: string;
+  branch: string; // 조문가지번호(제2조의2 → '2'), 없으면 ''
   title: string | null;
   isChapter: boolean;
   content: string;
@@ -63,14 +64,32 @@ export function fmtEffDate(d: string): string {
 }
 
 // ── 3단비교 (법 · 시행령 · 시행규칙 동시 조회) ────────────────────
+/** 위임조문 매핑: 법률 조문 → 위임된 시행령/시행규칙 조문(조번호·가지번호). */
+export interface LawDelegation {
+  lawNo: string;
+  lawBranch: string;
+  decree: { no: string; branch: string } | null;
+  rule: { no: string; branch: string } | null;
+}
+
+/** 관련 행정규칙(통칙·훈령·고시 등). */
+export interface AdmRule {
+  name: string;
+  kind: string; // 훈령 / 고시 / 예규 등
+  effDate: string;
+  dept: string;
+  link: string | null;
+}
+
 export interface LawTrio {
   base: string; // 기준 법령명 (예: '법인세법')
   law: LawDetail | null; // 법률
   decree: LawDetail | null; // 시행령
   rule: LawDetail | null; // 시행규칙
+  delegations: LawDelegation[]; // 위임조문 매핑(법률 기준)
 }
 
-/** 법령명으로 법·시행령·시행규칙을 한 번에 조회(3단비교용). 없는 단은 null.
+/** 법령명으로 법·시행령·시행규칙 + 위임조문 매핑 + 관련 행정규칙을 한 번에 조회(3단비교용).
  *  '법인세법 시행령'처럼 넣어도 기준 법령('법인세법')으로 정규화해 3단을 찾는다. */
 export async function fetchLawTrio(name: string): Promise<LawTrio> {
   const base = name.trim().replace(/\s*(시행령|시행규칙)\s*$/, '');
@@ -79,13 +98,20 @@ export async function fetchLawTrio(name: string): Promise<LawTrio> {
   const lawS = exact(base) ?? laws.find((l) => l.name.startsWith(base) && !/시행(령|규칙)/.test(l.name));
   const decreeS = exact(`${base} 시행령`);
   const ruleS = exact(`${base} 시행규칙`);
-  const [law, decree, rule] = await Promise.all([
+  const [law, decree, rule, delegations] = await Promise.all([
     lawS ? fetchLawDetail(lawS.mst) : Promise.resolve(null),
     decreeS ? fetchLawDetail(decreeS.mst) : Promise.resolve(null),
     ruleS ? fetchLawDetail(ruleS.mst) : Promise.resolve(null),
+    lawS
+      ? invoke<{ map: LawDelegation[] }>({ action: 'thdcmp', mst: lawS.mst }).then((r) => r.map).catch(() => [])
+      : Promise.resolve([] as LawDelegation[]),
   ]);
-  return { base, law, decree, rule };
+  return { base, law, decree, rule, delegations };
 }
+
+/** 법제처 행정규칙(통칙·훈령·고시·집행기준 등) 검색 페이지 URL. (admrul API는 서버 IP에서 빈 결과라 링크로 대체) */
+export const admRuleSearchUrl = (query: string) =>
+  `https://www.law.go.kr/admRulSc.do?menuId=1&query=${encodeURIComponent(query)}`;
 
 // ── 판례 검색 (법제처 target=prec) ────────────────────────────────
 export interface PrecedentSummary {

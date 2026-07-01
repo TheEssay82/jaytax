@@ -112,11 +112,13 @@ Deno.serve(async (req) => {
       const law = (data['법령'] ?? {}) as Record<string, unknown>;
       const basic = (law['기본정보'] ?? {}) as Record<string, unknown>;
       const units = asArray((law['조문'] as Record<string, unknown>)?.['조문단위'] as Record<string, unknown>);
+      const branchOf = (v: unknown) => { const b = String(v ?? ''); return b === '00' || b === '' ? '' : String(Number(b)); };
       const articles = units.map((a) => {
         const title = a['조문제목'] ? String(a['조문제목']) : null;
         const content = articleText(a);
         return {
           no: String(a['조문번호'] ?? ''),
+          branch: branchOf(a['조문가지번호']), // 제2조의2 → branch '2'
           title,
           isChapter: !title && /^제\s*\d+\s*[편장절관]/.test(content), // 장/절 제목 줄
           content,
@@ -203,7 +205,49 @@ Deno.serve(async (req) => {
       });
     }
 
-    return json({ ok: false, error: "action은 'search' | 'detail' | 'prec-search' | 'prec-detail' 이어야 합니다." }, 400);
+    // ── 위임조문 3단비교 매핑 (target=thdCmp) ──────────────────
+    // 법률 조문 ↔ 시행령/시행규칙 조문 위임관계(조번호·가지번호). 본문은 detail에서 병합.
+    if (action === 'thdcmp') {
+      if (!mst) return json({ ok: false, error: '법령일련번호(mst)는 필수입니다.' }, 400);
+      const data = await drf('lawService.do', { MST: String(mst), knd: '2' }, oc, 'thdCmp');
+      const svc = (data['LspttnThdCmpLawXService'] ?? {}) as Record<string, unknown>;
+      const rows = asArray((svc['위임조문삼단비교'] as Record<string, unknown>)?.['법률조문'] as Record<string, unknown>);
+      const norm = (n: unknown) => String(Number(n) || 0);
+      const br = (v: unknown) => { const b = String(v ?? ''); return b === '00' || b === '' ? '' : String(Number(b)); };
+      const nb = (o: Record<string, unknown> | undefined) => (o ? { no: norm(o['조번호']), branch: br(o['조가지번호']) } : null);
+      const map = rows
+        .map((r) => ({
+          lawNo: norm(r['조번호']),
+          lawBranch: br(r['조가지번호']),
+          decree: nb(asArray(r['시행령조문'] as Record<string, unknown>)[0]),
+          rule: nb(asArray(r['시행규칙조문'] as Record<string, unknown>)[0]),
+        }))
+        .filter((m) => m.decree || m.rule);
+      return json({ ok: true, map });
+    }
+
+    // ── 관련 행정규칙 (통칙·훈령·고시 등, target=admrul) ────────
+    if (action === 'admrul-search') {
+      if (!query || typeof query !== 'string' || !query.trim()) return json({ ok: false, error: '검색어(query)는 필수입니다.' }, 400);
+      const data = await drf('lawSearch.do', {
+        query: query.trim(),
+        display: String(Math.min(Math.max(Number(display) || 20, 1), 100)),
+      }, oc, 'admrul');
+      const s = (data['AdmRulSearch'] ?? {}) as Record<string, unknown>;
+      const rules = asArray(s['admrul'] as Record<string, unknown>).map((r) => {
+        const seq = String(r['행정규칙일련번호'] ?? '');
+        return {
+          name: String(r['행정규칙명'] ?? ''),
+          kind: String(r['행정규칙종류'] ?? ''),
+          effDate: String(r['시행일자'] ?? ''),
+          dept: String(r['소관부처명'] ?? ''),
+          link: seq ? `https://www.law.go.kr/admRulInfoP.do?admRulSeq=${seq}` : null,
+        };
+      });
+      return json({ ok: true, totalCnt: Number(s['totalCnt'] ?? rules.length), rules });
+    }
+
+    return json({ ok: false, error: "action은 'search' | 'detail' | 'prec-search' | 'prec-detail' | 'thdcmp' | 'admrul-search' 이어야 합니다." }, 400);
   } catch (e) {
     return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
   }

@@ -2,11 +2,12 @@
 //  📜 법령: 법령 검색 → 조문 전문 열람(원문·시행일).
 //  🏛️ 판례: 판례 검색(target=prec) → 판시사항·판결요지·참조조문·전문 열람. 전문 미제공 건은 법제처 링크.
 // 회계기준(요지)과 달리 법령·판례는 원문이며, 판결문은 저작권 보호대상이 아니다(저작권법 §7).
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   searchLaws,
   fetchLawDetail,
   fetchLawTrio,
+  admRuleSearchUrl,
   fmtEffDate,
   TAX_LAW_QUICKLIST,
   searchPrecedents,
@@ -15,6 +16,7 @@ import {
   type LawSummary,
   type LawDetail,
   type LawTrio,
+  type LawDelegation,
   type PrecedentSummary,
   type PrecedentDetail,
 } from '../../lib/lawApi';
@@ -55,8 +57,16 @@ function TrioView() {
   const [query, setQuery] = useState('');
   const [trio, setTrio] = useState<LawTrio | null>(null);
   const [sels, setSels] = useState<[number, number, number]>([0, 0, 0]);
+  const [link, setLink] = useState(true); // 위임조문 연동(법률 선택 시 시행령·시행규칙 자동 이동)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 위임 매핑: '법률조번호_가지' → {decree, rule}
+  const delMap = useMemo(() => {
+    const m = new Map<string, LawDelegation>();
+    for (const d of trio?.delegations ?? []) m.set(`${d.lawNo}_${d.lawBranch}`, d);
+    return m;
+  }, [trio]);
 
   async function run(q: string) {
     const term = q.trim();
@@ -90,6 +100,28 @@ function TrioView() {
 
   const setSel = (i: number, v: number) => setSels((s) => { const n = [...s] as [number, number, number]; n[i] = v; return n; });
 
+  // 조문 목록(비-장) 에서 (조번호,가지) → 인덱스
+  const findIdx = (detail: LawDetail | null, no: string, branch: string) =>
+    detail ? detail.articles.filter((a) => !a.isChapter).findIndex((a) => a.no === no && (a.branch || '') === (branch || '')) : -1;
+
+  // 법률 열 선택 → 연동 시 시행령·시행규칙 열 자동 이동
+  function onLawSel(v: number) {
+    setSels((s) => {
+      const n = [v, s[1], s[2]] as [number, number, number];
+      if (!link || !trio) return n;
+      const arts = (trio.law?.articles ?? []).filter((a) => !a.isChapter);
+      const a = arts[v];
+      const d = a && delMap.get(`${a.no}_${a.branch || ''}`);
+      if (d?.decree) { const i = findIdx(trio.decree, d.decree.no, d.decree.branch); if (i >= 0) n[1] = i; }
+      if (d?.rule) { const i = findIdx(trio.rule, d.rule.no, d.rule.branch); if (i >= 0) n[2] = i; }
+      return n;
+    });
+  }
+
+  // 현재 법률 조문의 위임 표시용
+  const curLawArt = trio ? (trio.law?.articles ?? []).filter((a) => !a.isChapter)[sels[0]] : null;
+  const curDel = curLawArt ? delMap.get(`${curLawArt.no}_${curLawArt.branch || ''}`) : undefined;
+
   return (
     <>
       <form onSubmit={(e) => { e.preventDefault(); run(query); }}>
@@ -113,16 +145,29 @@ function TrioView() {
 
       {trio && !busy && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '14px 0 8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0 8px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>{trio.base} 3단비교</span>
+            {trio.delegations.length > 0 && (
+              <label style={{ fontSize: 12, color: '#4b5563', display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                <input type="checkbox" checked={link} onChange={(e) => setLink(e.target.checked)} />
+                🔗 위임조문 연동
+              </label>
+            )}
+            {link && curDel && (
+              <span style={{ fontSize: 11.5, color: '#8a5a00', background: '#fdf3e0', border: '1px solid #f0dcb4', borderRadius: 12, padding: '2px 8px' }}>
+                위임 → {curDel.decree ? `시행령 제${curDel.decree.no}조${curDel.decree.branch ? `의${curDel.decree.branch}` : ''}` : '시행령 없음'}
+                {curDel.rule ? ` · 시행규칙 제${curDel.rule.no}조${curDel.rule.branch ? `의${curDel.rule.branch}` : ''}` : ''}
+              </span>
+            )}
             <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => printTrioSelection(trio, sels)}>🖨️ 현재 조문 인쇄</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, alignItems: 'start' }}>
             {cols.map((c, i) => (
-              <TrioColumn key={c.label} label={c.label} detail={c.detail} sel={sels[i]} onSel={(v) => setSel(i, v)} />
+              <TrioColumn key={c.label} label={c.label} detail={c.detail} sel={sels[i]} onSel={(v) => (i === 0 ? onLawSel(v) : setSel(i, v))} />
             ))}
           </div>
           <AttachmentsPanel cols={cols} />
+          <AdminRulesPanel base={trio.base} />
         </>
       )}
 
@@ -217,6 +262,27 @@ function AttachmentsPanel({ cols }: { cols: { label: string; detail: LawDetail |
         ))}
       </div>
       <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6 }}>별표·서식 원본(PDF)은 법제처에서 내려받습니다.</div>
+    </div>
+  );
+}
+
+// 관련통칙·집행기준(행정규칙) — 법제처 행정규칙 검색으로 연결.
+function AdminRulesPanel({ base }: { base: string }) {
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', marginBottom: 8 }}>📋 관련통칙 · 집행기준 (행정규칙)</div>
+      <a
+        href={admRuleSearchUrl(base)}
+        target="_blank"
+        rel="noreferrer"
+        className="btn-sm btn-sm-navy"
+        style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+      >
+        법제처 행정규칙에서 ‘{base}’ 검색 ↗
+      </a>
+      <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6, lineHeight: 1.6 }}>
+        국세청 기본통칙·집행기준·훈령·고시 등 관련 행정규칙을 법제처에서 확인합니다.
+      </div>
     </div>
   );
 }
