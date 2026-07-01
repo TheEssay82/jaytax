@@ -123,6 +123,22 @@ Deno.serve(async (req) => {
           effDate: String(a['조문시행일자'] ?? ''),
         };
       });
+      // 별표·별지서식: 법령 상세 안의 별표단위(제목·번호·구분 + 공개 PDF 다운로드 링크)
+      const bylUnits = asArray((law['별표'] as Record<string, unknown>)?.['별표단위'] as Record<string, unknown>);
+      const firstLink = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? '') : String(v ?? ''));
+      const attachments = bylUnits
+        .map((b) => {
+          const pdf = firstLink(b['별표서식PDF파일링크'] ?? b['별표서식파일링크']);
+          const branch = String(b['별표가지번호'] ?? '');
+          return {
+            no: String(b['별표번호'] ?? ''),
+            branch: branch === '00' ? '' : branch,
+            kind: String(b['별표구분'] ?? ''), // 별표 / 별지 / 서식
+            title: stripHtml(b['별표제목']),
+            pdfUrl: pdf ? `https://www.law.go.kr${pdf}` : null,
+          };
+        })
+        .filter((b) => b.title && !b.title.startsWith('삭제'));
       return json({
         ok: true,
         name: asText(basic['법령명_한글']) || asText(basic['법령명한글']),
@@ -130,6 +146,7 @@ Deno.serve(async (req) => {
         dept: asText(basic['소관부처']) || asText(basic['소관부처명']),
         articleCount: articles.length,
         articles,
+        attachments,
       });
     }
 

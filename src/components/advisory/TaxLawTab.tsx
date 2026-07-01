@@ -54,6 +54,7 @@ const TRIO_QUICK = ['법인세법', '소득세법', '부가가치세법', '상�
 function TrioView() {
   const [query, setQuery] = useState('');
   const [trio, setTrio] = useState<LawTrio | null>(null);
+  const [sels, setSels] = useState<[number, number, number]>([0, 0, 0]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,6 +69,7 @@ function TrioView() {
         setError('법·시행령·시행규칙을 찾지 못했습니다. 법령명을 확인해 주세요.');
         setTrio(null);
       } else {
+        setSels([0, 0, 0]);
         setTrio(t);
       }
     } catch (err) {
@@ -85,6 +87,8 @@ function TrioView() {
         { label: '시행규칙', detail: trio.rule },
       ]
     : [];
+
+  const setSel = (i: number, v: number) => setSels((s) => { const n = [...s] as [number, number, number]; n[i] = v; return n; });
 
   return (
     <>
@@ -108,28 +112,33 @@ function TrioView() {
       {busy && <div className="alert-i" style={{ marginTop: 14 }}>법·시행령·시행규칙을 불러오는 중…</div>}
 
       {trio && !busy && (
-        <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, alignItems: 'start' }}>
-          {cols.map((c) => (
-            <TrioColumn key={c.label} label={c.label} detail={c.detail} />
-          ))}
-        </div>
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '14px 0 8px' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>{trio.base} 3단비교</span>
+            <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => printTrioSelection(trio, sels)}>🖨️ 현재 조문 인쇄</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, alignItems: 'start' }}>
+            {cols.map((c, i) => (
+              <TrioColumn key={c.label} label={c.label} detail={c.detail} sel={sels[i]} onSel={(v) => setSel(i, v)} />
+            ))}
+          </div>
+          <AttachmentsPanel cols={cols} />
+        </>
       )}
 
       {!trio && !error && !busy && (
         <div className="alert-i" style={{ marginTop: 14, lineHeight: 1.7 }}>
           법령명을 입력하면 <b>법률 · 시행령 · 시행규칙</b>을 3열로 나란히 열람합니다. 각 열에서 조문을 선택해
-          법-시행령-시행규칙을 대조하세요(법제처 원문). 별표·별지서식, 관련통칙·집행기준 연동은 추후 추가 예정입니다.
+          법-시행령-시행규칙을 대조하고, <b>🖨️ 인쇄</b>·<b>별표·별지서식</b>(PDF)까지 확인하세요(법제처 원문).
         </div>
       )}
     </>
   );
 }
 
-function TrioColumn({ label, detail }: { label: string; detail: LawDetail | null }) {
+function TrioColumn({ label, detail, sel, onSel }: { label: string; detail: LawDetail | null; sel: number; onSel: (v: number) => void }) {
   const articles = (detail?.articles ?? []).filter((a) => !a.isChapter);
-  const [sel, setSel] = useState(0);
   const cur = articles[sel];
-
   const head: React.CSSProperties = { border: '1px solid #e4e0d8', borderRadius: 8, background: '#fff', overflow: 'hidden' };
 
   if (!detail) {
@@ -148,15 +157,9 @@ function TrioColumn({ label, detail }: { label: string; detail: LawDetail | null
         <div style={{ fontSize: 10.5, color: '#c9d2e6' }}>시행 {fmtEffDate(detail.effDate)} · 조문 {detail.articleCount}개</div>
       </div>
       <div style={{ padding: 8, borderBottom: '1px solid #eee' }}>
-        <select
-          value={sel}
-          onChange={(e) => setSel(Number(e.target.value))}
-          style={{ width: '100%', fontSize: 12, padding: '5px 6px' }}
-        >
+        <select value={sel} onChange={(e) => onSel(Number(e.target.value))} style={{ width: '100%', fontSize: 12, padding: '5px 6px' }}>
           {articles.map((a, i) => (
-            <option key={`${a.no}-${i}`} value={i}>
-              제{a.no}조{a.title ? ` (${a.title})` : ''}
-            </option>
+            <option key={`${a.no}-${i}`} value={i}>제{a.no}조{a.title ? ` (${a.title})` : ''}</option>
           ))}
         </select>
       </div>
@@ -177,6 +180,74 @@ function TrioColumn({ label, detail }: { label: string; detail: LawDetail | null
       </div>
     </div>
   );
+}
+
+// 별표·별지서식 패널 — 법/시행령/시행규칙 중 별표 있는 법령을 서브탭으로, 목록에 PDF 다운로드 링크.
+function AttachmentsPanel({ cols }: { cols: { label: string; detail: LawDetail | null }[] }) {
+  const withByl = cols.filter((c) => c.detail && (c.detail.attachments?.length ?? 0) > 0);
+  const [tab, setTab] = useState(0);
+  if (!withByl.length) return null;
+  const cur = withByl[Math.min(tab, withByl.length - 1)];
+  const items = cur.detail?.attachments ?? [];
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>📎 별표·별지서식</span>
+        <span style={{ display: 'inline-flex', gap: 6 }}>
+          {withByl.map((c, i) => (
+            <button key={c.label} className={`btn-sm${tab === i ? ' btn-sm-navy' : ''}`} onClick={() => setTab(i)} style={{ fontSize: 11.5 }}>
+              {c.label} ({c.detail?.attachments.length})
+            </button>
+          ))}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '48vh', overflowY: 'auto' }}>
+        {items.map((a, i) => (
+          <div key={`${a.no}-${a.branch}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #f0ede5', borderRadius: 6, padding: '6px 10px' }}>
+            {a.kind && <span className="bdg b-on" style={{ fontSize: 9 }}>{a.kind}</span>}
+            <span style={{ fontSize: 12, color: '#6b7280', minWidth: 40 }}>{a.no}{a.branch && `-${a.branch}`}</span>
+            <span style={{ flex: 1, fontSize: 12.5, color: '#1f2937' }}>{a.title}</span>
+            {a.pdfUrl ? (
+              <a href={a.pdfUrl} target="_blank" rel="noreferrer" className="btn-sm" style={{ fontSize: 11, textDecoration: 'none', color: '#C8963C' }}>PDF ↓</a>
+            ) : (
+              <span style={{ fontSize: 11, color: '#c0c0c0' }}>—</span>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6 }}>별표·서식 원본(PDF)은 법제처에서 내려받습니다.</div>
+    </div>
+  );
+}
+
+// 현재 선택된 3단 조문을 인쇄용 새 창으로.
+function printTrioSelection(trio: LawTrio, sels: [number, number, number]) {
+  const esc = (s: string) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+  const details = [trio.law, trio.decree, trio.rule];
+  const labels = ['법률', '시행령', '시행규칙'];
+  const cell = (detail: LawDetail | null, sel: number, label: string) => {
+    if (!detail) return `<td class="c"><div class="h">${label} 없음</div></td>`;
+    const arts = detail.articles.filter((a) => !a.isChapter);
+    const a = arts[sel];
+    return `<td class="c"><div class="h">${esc(detail.name)}<span class="d"> 시행 ${esc(fmtEffDate(detail.effDate))}</span></div>` +
+      (a ? `<div class="an">제${esc(a.no)}조${a.title ? ` (${esc(a.title)})` : ''}</div><div class="ac">${esc(a.content)}</div>` : '<div class="empty">조문 없음</div>') +
+      `</td>`;
+  };
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(trio.base)} 3단비교</title>` +
+    `<style>body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;margin:16px;color:#1f2937}` +
+    `h1{font-size:15px;color:#1A2B52;margin:0 0 10px}table{width:100%;border-collapse:collapse;table-layout:fixed}` +
+    `td.c{width:33.33%;vertical-align:top;border:1px solid #ccc;padding:8px}` +
+    `.h{font-weight:700;color:#1A2B52;font-size:11.5px;border-bottom:1px solid #eee;padding-bottom:4px;margin-bottom:6px}` +
+    `.d{font-weight:400;color:#888;font-size:10px}.an{font-weight:700;font-size:11.5px;margin-bottom:3px}` +
+    `.ac{font-size:11px;line-height:1.6;white-space:pre-wrap}.empty{color:#aaa;font-size:11px}@media print{body{margin:0}}</style>` +
+    `</head><body><h1>${esc(trio.base)} 3단비교 — 법률 · 시행령 · 시행규칙 (법제처 원문)</h1>` +
+    `<table><tr>${details.map((d, i) => cell(d, sels[i], labels[i])).join('')}</tr></table>` +
+    `<script>window.onload=function(){window.print()}</script></body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.'); return; }
+  w.document.write(html);
+  w.document.close();
 }
 
 // ───────────────────────────────────────── 법령 검색·조문 열람

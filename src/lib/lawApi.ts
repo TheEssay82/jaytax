@@ -20,12 +20,22 @@ export interface LawArticle {
   effDate: string;
 }
 
+/** 별표·별지서식 (법령 상세에 포함, 공개 PDF 다운로드 링크). */
+export interface LawAttachment {
+  no: string;
+  branch: string; // 가지번호(예: '2')
+  kind: string; // 별표 / 별지 / 서식
+  title: string;
+  pdfUrl: string | null; // 법제처 공개 다운로드(OC 없음)
+}
+
 export interface LawDetail {
   name: string;
   effDate: string;
   dept: string;
   articleCount: number;
   articles: LawArticle[];
+  attachments: LawAttachment[];
 }
 
 async function invoke<T>(body: Record<string, unknown>): Promise<T> {
