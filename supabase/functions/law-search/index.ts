@@ -35,16 +35,32 @@ function asText(v: unknown): string {
   return String(v);
 }
 
-async function drf(endpoint: string, params: Record<string, string>, oc: string): Promise<Record<string, unknown>> {
+async function drf(endpoint: string, params: Record<string, string>, oc: string, target = 'law'): Promise<Record<string, unknown>> {
   const url = new URL(`${DRF}/${endpoint}`);
   url.searchParams.set('OC', oc);
   url.searchParams.set('type', 'JSON');
-  url.searchParams.set('target', 'law');
+  url.searchParams.set('target', target);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`법제처 API 실패 ${res.status}`);
   return (await res.json()) as Record<string, unknown>;
 }
+
+// 판례 본문 필드의 HTML/엔티티 정리 → 평문
+function stripHtml(v: unknown): string {
+  return String(v ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+}
+
+// 판례일련번호 → OC 없는 법제처 공개 판례 페이지
+const precLink = (serial: string) => `https://www.law.go.kr/precInfoP.do?precSeq=${serial}`;
 
 // 조문단위 → 본문 텍스트(조문내용 + 항/호)
 function articleText(a: Record<string, unknown>): string {
@@ -72,7 +88,7 @@ Deno.serve(async (req) => {
     const { data: { user } } = await caller.auth.getUser();
     if (!user) return json({ ok: false, error: '로그인이 필요합니다.' }, 401);
 
-    const { action, query, mst, display = 20 } = await req.json().catch(() => ({}));
+    const { action, query, mst, id, section, display = 20 } = await req.json().catch(() => ({}));
 
     if (action === 'search') {
       if (!query || typeof query !== 'string' || !query.trim()) return json({ ok: false, error: '검색어(query)는 필수입니다.' }, 400);
@@ -117,7 +133,60 @@ Deno.serve(async (req) => {
       });
     }
 
-    return json({ ok: false, error: "action은 'search' 또는 'detail' 이어야 합니다." }, 400);
+    // ── 판례 검색 (target=prec) ───────────────────────────────
+    if (action === 'prec-search') {
+      if (!query || typeof query !== 'string' || !query.trim()) return json({ ok: false, error: '검색어(query)는 필수입니다.' }, 400);
+      const sec = Number(section) === 2 ? '2' : '1'; // 1=제목/사건명, 2=본문
+      const data = await drf('lawSearch.do', {
+        query: query.trim(),
+        search: sec,
+        display: String(Math.min(Math.max(Number(display) || 20, 1), 100)),
+      }, oc, 'prec');
+      const search = (data['PrecSearch'] ?? {}) as Record<string, unknown>;
+      const precedents = asArray(search['prec'] as Record<string, unknown>).map((p) => {
+        const serial = String(p['판례일련번호'] ?? '');
+        return {
+          serial,
+          caseName: String(p['사건명'] ?? ''),
+          caseNo: String(p['사건번호'] ?? ''),
+          court: String(p['법원명'] ?? ''),
+          date: String(p['선고일자'] ?? ''),
+          caseType: String(p['사건종류명'] ?? ''),
+          judgmentType: String(p['판결유형'] ?? ''),
+          link: serial ? precLink(serial) : null,
+        };
+      });
+      return json({ ok: true, query, totalCnt: Number(search['totalCnt'] ?? precedents.length), precedents });
+    }
+
+    // ── 판례 본문 (target=prec) ───────────────────────────────
+    // 법제처는 대법원 공간판례 등 일부만 전문 제공. 전문 없으면 {Law:"일치하는 판례가 없습니다."} → hasText:false + 링크.
+    if (action === 'prec-detail') {
+      const serial = String(id ?? '');
+      if (!serial) return json({ ok: false, error: '판례일련번호(id)는 필수입니다.' }, 400);
+      const data = await drf('lawService.do', { ID: serial }, oc, 'prec');
+      const d = data['PrecService'] as Record<string, unknown> | undefined;
+      if (!d) return json({ ok: true, hasText: false, serial, link: precLink(serial) });
+      return json({
+        ok: true,
+        hasText: true,
+        serial,
+        caseName: stripHtml(d['사건명']),
+        caseNo: stripHtml(d['사건번호']),
+        court: stripHtml(d['법원명']),
+        date: stripHtml(d['선고일자']),
+        caseType: stripHtml(d['사건종류명']),
+        judgmentType: stripHtml(d['판결유형']),
+        issue: stripHtml(d['판시사항']),
+        summary: stripHtml(d['판결요지']),
+        refClauses: stripHtml(d['참조조문']),
+        refCases: stripHtml(d['참조판례']),
+        body: stripHtml(d['판례내용']),
+        link: precLink(serial),
+      });
+    }
+
+    return json({ ok: false, error: "action은 'search' | 'detail' | 'prec-search' | 'prec-detail' 이어야 합니다." }, 400);
   } catch (e) {
     return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
   }

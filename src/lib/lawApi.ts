@@ -52,6 +52,64 @@ export function fmtEffDate(d: string): string {
   return `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}`;
 }
 
+// ── 판례 검색 (법제처 target=prec) ────────────────────────────────
+export interface PrecedentSummary {
+  serial: string; // 판례일련번호 (본문 조회 키)
+  caseName: string; // 사건명
+  caseNo: string; // 사건번호 (예: 2022두32382)
+  court: string; // 법원명
+  date: string; // 선고일자
+  caseType: string; // 사건종류명 (세무/일반행정 등)
+  judgmentType: string; // 판결유형
+  link: string | null; // 법제처 공개 판례 페이지
+}
+
+export interface PrecedentDetail {
+  hasText: boolean; // 법제처 전문 제공 여부 (대법원 공간판례 등 일부만 제공)
+  serial: string;
+  link: string;
+  caseName?: string;
+  caseNo?: string;
+  court?: string;
+  date?: string;
+  caseType?: string;
+  judgmentType?: string;
+  issue?: string; // 판시사항
+  summary?: string; // 판결요지
+  refClauses?: string; // 참조조문
+  refCases?: string; // 참조판례
+  body?: string; // 판례내용(전문)
+}
+
+/**
+ * 판례 검색. 세법 쟁점 관련 판례를 사건명/본문에서 찾는다.
+ * @param opts.section 1=제목·사건명(기본), 2=본문 전체
+ */
+export async function searchPrecedents(
+  query: string,
+  opts: { section?: 1 | 2; display?: number } = {}
+): Promise<{ totalCnt: number; precedents: PrecedentSummary[] }> {
+  const r = await invoke<{ totalCnt: number; precedents: PrecedentSummary[] }>({
+    action: 'prec-search',
+    query,
+    section: opts.section ?? 1,
+    display: opts.display ?? 30,
+  });
+  return { totalCnt: r.totalCnt, precedents: r.precedents };
+}
+
+/** 판례 본문 열람(판례일련번호). 전문 미제공 시 hasText=false + 링크만. */
+export async function fetchPrecedent(serial: string): Promise<PrecedentDetail> {
+  return invoke<PrecedentDetail>({ action: 'prec-detail', id: serial });
+}
+
+/** 선고일자 표시: YYYYMMDD → 'YYYY.MM.DD', 이미 점표기면 그대로. */
+export function fmtPrecDate(d: string): string {
+  if (!d) return '';
+  if (/^\d{8}$/.test(d)) return `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}`;
+  return d;
+}
+
 /** 주요 세법 빠른 선택 목록 (검색어로 사용). */
 export const TAX_LAW_QUICKLIST: string[] = [
   '국세기본법',
