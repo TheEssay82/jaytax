@@ -42,7 +42,7 @@ export const DEFAULT_CONSULT_MODEL = CONSULT_MODELS[0].id;
  */
 export async function runConsult(
   question: string,
-  opts: { standardNo?: string; matchCount?: number; lawRefs?: LawRef[]; model?: string; includePrecedents?: boolean; includeTaxLaw?: boolean } = {}
+  opts: { standardNo?: string; matchCount?: number; lawRefs?: LawRef[]; model?: string; includePrecedents?: boolean; includeTaxLaw?: boolean; domain?: '공통' | '회계' | '세무' } = {}
 ): Promise<ConsultResult> {
   const { data, error } = await supabase.functions.invoke('consult', {
     body: {
@@ -53,6 +53,7 @@ export async function runConsult(
       model: opts.model ?? DEFAULT_CONSULT_MODEL,
       includePrecedents: opts.includePrecedents ?? false,
       includeTaxLaw: opts.includeTaxLaw ?? true,
+      domain: opts.domain ?? '공통',
     },
   });
   if (error) throw new Error(error.message);
