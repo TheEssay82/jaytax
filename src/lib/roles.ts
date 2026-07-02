@@ -34,7 +34,8 @@ export type Capability =
   | 'deleteBilling' // 청구기록 삭제
   | 'viewAllStats' // 통계 전체 조회(아니면 본인것만)
   | 'changeSettings' // 수수료 설정 변경
-  | 'manageUsers'; // 사용자/계정 관리
+  | 'manageUsers' // 사용자/계정 관리
+  | 'finalizeConsult'; // 상담기록 확정(초안↔확정) — 작성자 외에도 확정권한자 허용
 
 // 항목별 허용 역할 (매트릭스)
 const MATRIX: Record<Capability, Role[]> = {
@@ -47,6 +48,7 @@ const MATRIX: Record<Capability, Role[]> = {
   viewAllStats: ['superuser', 'accountant', 'team_lead'],
   changeSettings: ['superuser', 'accountant'],
   manageUsers: ['superuser'],
+  finalizeConsult: ['superuser', 'accountant', 'team_lead'],
 };
 
 export function can(role: Role, cap: Capability): boolean {

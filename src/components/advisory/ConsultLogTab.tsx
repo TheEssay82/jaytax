@@ -1,6 +1,7 @@
 // 상담기록 — 저장된 상담 회신 이력을 조회한다(직원 공유). 본인 작성 건은 편집·상태변경·삭제 가능(RLS).
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { can } from '../../lib/roles';
 import { dtFmt } from '../../lib/format';
 import {
   listConsultations,
@@ -13,7 +14,7 @@ import {
 import { TagList, TagEditor } from './TagsField';
 
 export default function ConsultLogTab() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const [items, setItems] = useState<Consultation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
@@ -51,6 +52,7 @@ export default function ConsultLogTab() {
         item={selected}
         seq={selected.status === 'final' ? finalSeq.get(selected.id) : undefined}
         isOwner={!!user && selected.authorId === user.id}
+        canFinalize={can(role, 'finalizeConsult')}
         onBack={() => setSelected(null)}
         onChanged={reload}
       />
@@ -126,7 +128,10 @@ export default function ConsultLogTab() {
               <span style={{ flex: 1, fontWeight: 600, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {c.title || '(제목 없음)'}
               </span>
-              <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>{c.authorName}</span>
+              <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>
+                초안 {c.authorName}
+                {c.status === 'final' && c.finalizedByName && ` · 확정 ${c.finalizedByName}`}
+              </span>
               <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>{dtFmt(c.createdAt)}</span>
             </div>
             {c.tags.length > 0 && (
@@ -145,12 +150,14 @@ function Detail({
   item,
   seq,
   isOwner,
+  canFinalize,
   onBack,
   onChanged,
 }: {
   item: Consultation;
   seq?: number;
   isOwner: boolean;
+  canFinalize: boolean;
   onBack: () => void;
   onChanged: () => Promise<void>;
 }) {
@@ -240,7 +247,12 @@ function Detail({
         )}
       </div>
       <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 14 }}>
-        {item.authorName} · 작성 {dtFmt(item.createdAt)}
+        초안 저장 {item.authorName} · {dtFmt(item.createdAt)}
+        {item.status === 'final' && item.finalizedByName && (
+          <span style={{ color: '#1A6E3C', fontWeight: 600 }}>
+            {' · '}확정 저장 {item.finalizedByName}{item.finalizedAt && ` · ${dtFmt(item.finalizedAt)}`}
+          </span>
+        )}
         {item.updatedAt !== item.createdAt && ` · 수정 ${dtFmt(item.updatedAt)}`}
         {item.llmModel && ` · ${modelLabel(item.llmModel)}`}
       </div>
@@ -249,13 +261,15 @@ function Detail({
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
         <button className="btn-sm" onClick={copyAnswer}>{copyOk ? '복사됨 ✓' : '📋 회신 복사'}</button>
         {isOwner && !editing && (
-          <>
-            <button className="btn-sm" onClick={() => setEditing(true)} disabled={busy}>✏️ 편집</button>
-            <button className="btn-sm" onClick={toggleStatus} disabled={busy}>
-              {item.status === 'final' ? '↩ 초안으로' : '✅ 확정으로'}
-            </button>
-            <button className="btn-sm" onClick={remove} disabled={busy} style={{ color: '#b91c1c' }}>🗑️ 삭제</button>
-          </>
+          <button className="btn-sm" onClick={() => setEditing(true)} disabled={busy}>✏️ 편집</button>
+        )}
+        {!editing && (isOwner || canFinalize) && (
+          <button className="btn-sm" onClick={toggleStatus} disabled={busy}>
+            {item.status === 'final' ? '↩ 초안으로' : '✅ 확정으로'}
+          </button>
+        )}
+        {isOwner && !editing && (
+          <button className="btn-sm" onClick={remove} disabled={busy} style={{ color: '#b91c1c' }}>🗑️ 삭제</button>
         )}
         {isOwner && editing && (
           <>

@@ -94,6 +94,11 @@ export interface Consultation {
   tags: string[];
   llmModel: string | null;
   status: ConsultStatus;
+  /** 확정 저장한 사람(id) — 초안↔확정 전환 시 트리거가 기록. */
+  finalizedById: string | null;
+  /** 확정 저장한 사람 담당자명(profiles.name). */
+  finalizedByName: string;
+  finalizedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -109,6 +114,8 @@ interface ConsultRow {
   tags: string[] | null;
   llm_model: string | null;
   status: string | null;
+  finalized_by: string | null;
+  finalized_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -126,6 +133,9 @@ function rowToConsultation(r: ConsultRow): Consultation {
     tags: r.tags || [],
     llmModel: r.llm_model,
     status: (r.status as ConsultStatus) || 'draft',
+    finalizedById: r.finalized_by,
+    finalizedByName: '',
+    finalizedAt: r.finalized_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -145,6 +155,8 @@ export async function listConsultations(): Promise<Consultation[]> {
   for (const c of rows) {
     const nm = c.authorId ? nameById.get(c.authorId) : '';
     if (nm) c.authorName = nm;
+    const fn = c.finalizedById ? nameById.get(c.finalizedById) : '';
+    c.finalizedByName = fn || '';
   }
   return rows;
 }
