@@ -10,17 +10,23 @@ import {
   DEFAULT_CONSULT_MODEL,
   type Citation,
   type LawRef,
+  type ConsultClientType,
 } from '../../lib/consultApi';
 import LawRefPicker from './LawRefPicker';
 import { TagEditor } from './TagsField';
 import { useAuth } from '../../context/AuthContext';
+import { useClients } from '../../hooks/useClients';
 
 type Domain = '공통' | '회계' | '세무';
 type Target = '공통' | '법인' | '개인';
 
 export default function ConsultTab() {
   const { readonly } = useAuth();
+  const { clients, loading: clientsLoading } = useClients();
   const [question, setQuestion] = useState('');
+  // 구분(필수): '' = 미선택 → 생성/저장 막힘. 'general' 일반 | 'client' 거래처.
+  const [clientType, setClientType] = useState<'' | ConsultClientType>('');
+  const [clientId, setClientId] = useState('');
   const [title, setTitle] = useState('');
   const [domain, setDomain] = useState<Domain>('공통');
   const [standardNo, setStandardNo] = useState(''); // 회계 분야에서만 사용
@@ -56,6 +62,10 @@ export default function ConsultTab() {
   const [followup, setFollowup] = useState('');
   const [refining, setRefining] = useState(false);
 
+  // 구분 검증: 미선택이거나 '거래처'인데 거래처 미선택이면 생성/저장 막음.
+  const selClient = clients.find((c) => c.id === clientId) ?? null;
+  const classified = clientType === 'general' || (clientType === 'client' && !!clientId);
+
   // 분야가 회계가 아니면 근거기준서 한정은 의미 없음 → 전체로 되돌림
   function changeDomain(d: Domain) {
     setDomain(d);
@@ -78,6 +88,10 @@ export default function ConsultTab() {
     e.preventDefault();
     const q = buildQuestion();
     if (!question.trim() || busy) return;
+    if (!classified) {
+      setError(clientType === '' ? '구분(일반/거래처)을 선택해 주세요.' : '거래처를 선택해 주세요.');
+      return;
+    }
     setBusy(true);
     setError(null);
     setSaved(false);
@@ -103,6 +117,10 @@ export default function ConsultTab() {
       setError('읽기 전용 테스트 계정입니다 — 상담기록을 저장할 수 없습니다.');
       return;
     }
+    if (!classified) {
+      setError(clientType === '' ? '구분(일반/거래처)을 선택해 주세요.' : '거래처를 선택해 주세요.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -114,6 +132,9 @@ export default function ConsultTab() {
         tags,
         llmModel: model || null,
         status: 'draft',
+        clientType: clientType || 'general',
+        clientId: clientType === 'client' ? clientId : null,
+        clientName: clientType === 'client' ? selClient?.companyName ?? null : null,
       });
       setSaved(true);
     } catch (err) {
@@ -162,6 +183,8 @@ export default function ConsultTab() {
   function reset() {
     setQuestion('');
     setTitle('');
+    setClientType('');
+    setClientId('');
     setAnswer(null);
     setCitations([]);
     setTags([]);
@@ -187,6 +210,36 @@ export default function ConsultTab() {
       <div className="chdr">🧑‍💼 상담진행</div>
 
       <form onSubmit={generate}>
+        {/* 구분(필수) — 일반 / 거래처. 거래처면 거래처관리에서 선택해 연결한다. */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'end', marginBottom: 10 }}>
+          <div style={{ flex: '0 1 150px' }}>
+            <label className="fl">구분 <span style={{ color: '#c0392b' }}>*</span></label>
+            <select
+              value={clientType}
+              onChange={(e) => { setClientType(e.target.value as '' | ConsultClientType); setClientId(''); setSaved(false); }}
+            >
+              <option value="">선택하세요</option>
+              <option value="general">일반</option>
+              <option value="client">거래처</option>
+            </select>
+          </div>
+          {clientType === 'client' && (
+            <div style={{ flex: '1 1 260px' }}>
+              <label className="fl">거래처 <span style={{ color: '#c0392b' }}>*</span></label>
+              <select
+                value={clientId}
+                onChange={(e) => { setClientId(e.target.value); setSaved(false); }}
+                disabled={clientsLoading}
+              >
+                <option value="">{clientsLoading ? '불러오는 중…' : '거래처 선택'}</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.companyName}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
         {/* 형식 모드 토글 */}
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 10, fontSize: 12.5, color: '#4b5563', cursor: 'pointer' }}>
           <input type="checkbox" checked={structured} onChange={(e) => setStructured(e.target.checked)} />
@@ -282,7 +335,8 @@ export default function ConsultTab() {
               ))}
             </select>
           </div>
-          <button className="btn-p" type="submit" disabled={busy || !question.trim()} style={{ flex: '0 0 auto' }}>
+          <button className="btn-p" type="submit" disabled={busy || !question.trim() || !classified} style={{ flex: '0 0 auto' }}
+            title={!classified ? '구분(일반/거래처)을 먼저 선택하세요' : undefined}>
             {busy ? '작성 중…' : '✍️ 회신 초안 작성'}
           </button>
         </div>
@@ -333,8 +387,8 @@ export default function ConsultTab() {
                 {copyOk ? '복사됨 ✓' : '📋 복사'}
               </button>
               <button type="button" className="btn-sm" onClick={reset}>새 상담</button>
-              <button type="button" className="btn-p btn-sm" onClick={save} disabled={saving || saved || readonly}
-                title={readonly ? '읽기 전용 계정 — 저장할 수 없습니다' : undefined}>
+              <button type="button" className="btn-p btn-sm" onClick={save} disabled={saving || saved || readonly || !classified}
+                title={readonly ? '읽기 전용 계정 — 저장할 수 없습니다' : !classified ? '구분(일반/거래처)을 선택하세요' : undefined}>
                 {readonly ? '저장 불가(읽기전용)' : saved ? '저장됨 ✓' : saving ? '저장 중…' : '💾 상담기록 저장'}
               </button>
             </span>

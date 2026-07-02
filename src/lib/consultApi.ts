@@ -80,6 +80,8 @@ export function modelLabel(id: string | null | undefined): string {
 
 // ── consultations CRUD ───────────────────────────────────────────
 export type ConsultStatus = 'draft' | 'final';
+/** 상담 구분: 일반 상담 | 특정 거래처 상담. */
+export type ConsultClientType = 'general' | 'client';
 
 export interface Consultation {
   id: string;
@@ -87,6 +89,12 @@ export interface Consultation {
   authorEmail: string;
   /** 작성자 담당자명(profiles.name). 없으면 이메일로 대체. */
   authorName: string;
+  /** 구분: 'general'(일반) | 'client'(거래처). */
+  clientType: ConsultClientType;
+  /** 연결된 거래처 id(구분=거래처일 때). 거래처 삭제 시 null이 될 수 있음. */
+  clientId: string | null;
+  /** 저장 시점 거래처명 스냅샷(거래처 삭제·개명 후에도 표시·검색용). */
+  clientName: string;
   title: string;
   question: string;
   answerMd: string;
@@ -107,6 +115,9 @@ interface ConsultRow {
   id: string;
   author_id: string | null;
   author_email: string | null;
+  client_type: string | null;
+  client_id: string | null;
+  client_name: string | null;
   title: string | null;
   question: string;
   answer_md: string | null;
@@ -126,6 +137,9 @@ function rowToConsultation(r: ConsultRow): Consultation {
     authorId: r.author_id,
     authorEmail: r.author_email || '',
     authorName: r.author_email || '',
+    clientType: (r.client_type as ConsultClientType) || 'general',
+    clientId: r.client_id,
+    clientName: r.client_name || '',
     title: r.title || '',
     question: r.question || '',
     answerMd: r.answer_md || '',
@@ -169,6 +183,9 @@ export interface ConsultInput {
   tags?: string[];
   llmModel?: string | null;
   status?: ConsultStatus;
+  clientType?: ConsultClientType;
+  clientId?: string | null;
+  clientName?: string | null;
 }
 
 /** 새 상담기록 저장 (본인 명의). author_id는 RLS/DEFAULT(auth.uid())로 채워진다. */
@@ -186,6 +203,9 @@ export async function createConsultation(input: ConsultInput): Promise<Consultat
       tags: input.tags ?? [],
       llm_model: input.llmModel ?? null,
       status: input.status ?? 'draft',
+      client_type: input.clientType ?? 'general',
+      client_id: input.clientType === 'client' ? input.clientId ?? null : null,
+      client_name: input.clientType === 'client' ? input.clientName ?? null : null,
     })
     .select('*')
     .single();

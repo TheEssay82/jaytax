@@ -19,6 +19,7 @@ export default function ConsultLogTab() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [clientFilter, setClientFilter] = useState<string>(''); // '' = 전체
   const [selected, setSelected] = useState<Consultation | null>(null);
 
   async function reload() {
@@ -62,10 +63,14 @@ export default function ConsultLogTab() {
   const f = filter.trim();
   const filtered = (items ?? []).filter((c) => {
     const textOk =
-      !f || c.title.includes(f) || c.question.includes(f) || c.authorName.includes(f) || c.authorEmail.includes(f) || c.tags.some((t) => t.includes(f));
+      !f || c.title.includes(f) || c.question.includes(f) || c.authorName.includes(f) || c.authorEmail.includes(f) || c.clientName.includes(f) || c.tags.some((t) => t.includes(f));
     const tagOk = !tagFilter || c.tags.includes(tagFilter);
-    return textOk && tagOk;
+    const clientOk = !clientFilter || c.clientName === clientFilter;
+    return textOk && tagOk && clientOk;
   });
+
+  // 거래처 필터 옵션: 기록에 존재하는 거래처명(가나다순).
+  const clientNames = [...new Set((items ?? []).filter((c) => c.clientType === 'client' && c.clientName).map((c) => c.clientName))].sort((a, b) => a.localeCompare(b, 'ko'));
 
   // 태그 필터 바: 빈도순 상위 태그
   const tagCounts = new Map<string, number>();
@@ -81,15 +86,28 @@ export default function ConsultLogTab() {
         </span>
       </div>
 
-      <div className="frow" style={{ gridTemplateColumns: '1fr' }}>
-        <label className="fl">제목 · 질문 · 작성자 검색</label>
-        <input
-          type="text"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="예: 라이선스 / 변동대가 / 수익인식"
-          autoFocus
-        />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'end' }}>
+        <div style={{ flex: '1 1 260px' }}>
+          <label className="fl">제목 · 질문 · 작성자 · 거래처 검색</label>
+          <input
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="예: 라이선스 / 변동대가 / 수익인식 / 거래처명"
+            autoFocus
+          />
+        </div>
+        {clientNames.length > 0 && (
+          <div style={{ flex: '0 1 220px' }}>
+            <label className="fl">거래처</label>
+            <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
+              <option value="">전체 거래처</option>
+              {clientNames.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {topTags.length > 0 && (
@@ -107,7 +125,10 @@ export default function ConsultLogTab() {
 
       {items !== null && (
         <div style={{ fontSize: 12, color: '#6b7280', margin: '10px 0' }}>
-          총 {items.length}건 {f && `· 검색 ${filtered.length}건`}
+          총 {items.length}건 {(f || tagFilter || clientFilter) && `· 필터 ${filtered.length}건`}
+          {clientFilter && (
+            <> · 거래처 <b>{clientFilter}</b> <button className="btn-sm" style={{ fontSize: 11 }} onClick={() => setClientFilter('')}>해제</button></>
+          )}
         </div>
       )}
 
@@ -125,6 +146,7 @@ export default function ConsultLogTab() {
               {finalSeq.has(c.id) && (
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#1A6E3C', whiteSpace: 'nowrap' }}>#{finalSeq.get(c.id)}</span>
               )}
+              {c.clientType === 'client' && c.clientName && <ClientBadge name={c.clientName} />}
               <span style={{ flex: 1, fontWeight: 600, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {c.title || '(제목 없음)'}
               </span>
@@ -235,6 +257,7 @@ function Detail({
         {seq != null && (
           <span style={{ fontSize: 12, fontWeight: 700, color: '#1A6E3C' }}>확정 #{seq}</span>
         )}
+        {item.clientType === 'client' && item.clientName && <ClientBadge name={item.clientName} />}
         {editing ? (
           <input
             type="text"
@@ -351,6 +374,22 @@ function StatusBadge({ status }: { status: ConsultStatus }) {
       }}
     >
       {final ? '확정' : '초안'}
+    </span>
+  );
+}
+
+function ClientBadge({ name }: { name: string }) {
+  return (
+    <span
+      className="bdg"
+      style={{
+        fontSize: 10, fontWeight: 700, color: '#1A2B52',
+        background: '#eef2fb', border: '1px solid #cdd8ef', whiteSpace: 'nowrap',
+        maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis',
+      }}
+      title={name}
+    >
+      🏢 {name}
     </span>
   );
 }
