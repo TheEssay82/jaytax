@@ -48,7 +48,6 @@ export default function Login() {
           <div style={{ fontSize: 12, letterSpacing: 2, color: '#555', marginTop: 7 }}>
             세무회계사무소 지원
           </div>
-          <div style={{ color: '#999', fontSize: 11, marginTop: 12 }}>세무조정수수료 관리시스템</div>
         </div>
         {error && <div className="alert-w" style={{ marginBottom: 12 }}>{error}</div>}
         <div className="frow" style={{ gridTemplateColumns: '1fr' }}>
