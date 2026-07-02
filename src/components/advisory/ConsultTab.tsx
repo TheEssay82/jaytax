@@ -13,11 +13,13 @@ import {
 } from '../../lib/consultApi';
 import LawRefPicker from './LawRefPicker';
 import { TagEditor } from './TagsField';
+import { useAuth } from '../../context/AuthContext';
 
 type Domain = '공통' | '회계' | '세무';
 type Target = '공통' | '법인' | '개인';
 
 export default function ConsultTab() {
+  const { readonly } = useAuth();
   const [question, setQuestion] = useState('');
   const [title, setTitle] = useState('');
   const [domain, setDomain] = useState<Domain>('공통');
@@ -326,8 +328,9 @@ export default function ConsultTab() {
                 {copyOk ? '복사됨 ✓' : '📋 복사'}
               </button>
               <button type="button" className="btn-sm" onClick={reset}>새 상담</button>
-              <button type="button" className="btn-p btn-sm" onClick={save} disabled={saving || saved}>
-                {saved ? '저장됨 ✓' : saving ? '저장 중…' : '💾 상담기록 저장'}
+              <button type="button" className="btn-p btn-sm" onClick={save} disabled={saving || saved || readonly}
+                title={readonly ? '읽기 전용 계정 — 저장할 수 없습니다' : undefined}>
+                {readonly ? '저장 불가(읽기전용)' : saved ? '저장됨 ✓' : saving ? '저장 중…' : '💾 상담기록 저장'}
               </button>
             </span>
           </div>

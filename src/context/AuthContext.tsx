@@ -25,6 +25,8 @@ interface AuthValue {
   role: Role;
   /** 담당자 이름 (profiles.name) — 통계 본인필터 기준 */
   profileName: string;
+  /** 읽기전용 계정 여부 (profiles.readonly) — 저장·변경·삭제가 서버에서 차단됨 */
+  readonly: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -38,17 +40,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<Role>('team_member');
   const [profileName, setProfileName] = useState('');
+  const [readonly, setReadonly] = useState(false);
   const [loading, setLoading] = useState(true);
   const signedInRef = useRef(false);
 
   async function loadProfile(uid: string) {
     try {
-      const { data } = await supabase.from('profiles').select('role, name').eq('id', uid).maybeSingle();
+      const { data } = await supabase.from('profiles').select('role, name, readonly').eq('id', uid).maybeSingle();
       setRole(normalizeRole(data?.role as string | undefined));
       setProfileName((data?.name as string) || '');
+      setReadonly(!!data?.readonly);
     } catch {
       setRole('team_member');
       setProfileName('');
+      setReadonly(false);
     }
   }
 
@@ -76,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       else {
         setRole('team_member');
         setProfileName('');
+        setReadonly(false);
       }
     });
     return () => {
@@ -122,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user: session?.user ?? null, role, profileName, loading, signIn, signOut, changePassword }}
+      value={{ session, user: session?.user ?? null, role, profileName, readonly, loading, signIn, signOut, changePassword }}
     >
       {children}
     </AuthContext.Provider>

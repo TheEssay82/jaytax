@@ -14,7 +14,7 @@ import type { WizardStepProps } from './stepProps';
 export default function Step5Invoice({ clients, refreshClients, refreshBilling }: WizardStepProps) {
   const { S, savedMsg, setSavedMsg, resetNew, editId, clearEdit } = useWizard();
   const { config } = useConfig();
-  const { role } = useAuth();
+  const { role, readonly } = useAuth();
   const isFinalizer = can(role, 'finalizeInvoice'); // 확정 권한(팀장+)
   const canSyncClient = can(role, 'manageClients'); // 거래처 자동갱신 권한
   const [saving, setSaving] = useState(false);
@@ -94,8 +94,11 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
           </div>
         </>
       ) : (
-        <button className="btn-green no-print" onClick={saveRec} disabled={saving}>
-          {saving
+        <button className="btn-green no-print" onClick={saveRec} disabled={saving || readonly}
+          title={readonly ? '읽기 전용 계정 — 저장할 수 없습니다' : undefined}>
+          {readonly
+            ? '🔒 저장 불가 (읽기전용 계정)'
+            : saving
             ? '저장 중…'
             : editId
               ? `✏️ 수정 저장 (${S.fiscalYear}년 귀속${isFinalizer ? '' : ' · 작성중'})`

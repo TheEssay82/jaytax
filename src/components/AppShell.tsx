@@ -65,7 +65,7 @@ export default function AppShell() {
 }
 
 function Shell() {
-  const { user, signOut, role } = useAuth();
+  const { user, signOut, role, readonly } = useAuth();
   const { resetNew } = useWizard();
   const [curTab, setCurTab] = useState('wizard');
   const [reloadKey, setReloadKey] = useState(0);
@@ -194,6 +194,18 @@ function Shell() {
       </header>
 
       {showPw && <PasswordModal onClose={() => setShowPw(false)} />}
+
+      {readonly && (
+        <div
+          role="status"
+          style={{
+            background: '#fff4e5', borderBottom: '1px solid #f0c98a', color: '#8a5a00',
+            padding: '8px 16px', fontSize: 12.5, fontWeight: 600, textAlign: 'center',
+          }}
+        >
+          🔒 읽기 전용 테스트 계정입니다 — 모든 기능을 열람·사용할 수 있으나 저장·변경·삭제는 서버에서 차단됩니다.
+        </div>
+      )}
 
       <main id="main" key={`${cur}-${reloadKey}`}>
         <TabContent cur={cur} setCurTab={setCurTab} curLabel={curLabel} />
