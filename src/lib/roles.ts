@@ -14,6 +14,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 /** 외부인이 접근 가능한 메뉴 id (기능 시연용, 공개 참조데이터·AI만). 고객정보 화면(거래처관리·상담기록·청구)은
  *  제외하고, 쓰기는 readonly로, 고객정보 테이블 읽기는 RLS(is_external)로 별도 차단한다. */
 export const EXTERNAL_ALLOWED_TABS = new Set<string>([
+  'wizard', // 청구서 작성 (기능 시연 — 거래처명 등 식별정보는 서버 마스킹, 저장 불가)
   'std-kifrs', // 회계기준 검색 (공개 기준서)
   'std-tax', // 세법 검색 (공개 법령)
   'consult', // 상담진행 (AI 회신 시연 — 저장 불가)

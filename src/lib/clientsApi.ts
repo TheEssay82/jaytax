@@ -70,6 +70,13 @@ export async function listClients(): Promise<Client[]> {
   return (data as ClientRow[]).map(rowToClient);
 }
 
+/** 외부인 데모용 마스킹 거래처 조회 (서버 RPC demo_clients — 식별정보 서버에서 마스킹). */
+export async function listClientsMasked(): Promise<Client[]> {
+  const { data, error } = await supabase.rpc('demo_clients');
+  if (error) throw new Error(error.message);
+  return (data as ClientRow[]).map(rowToClient);
+}
+
 /** 신규 거래처 생성 */
 export async function createClient(c: Partial<Client>): Promise<void> {
   const { data: u } = await supabase.auth.getUser();
