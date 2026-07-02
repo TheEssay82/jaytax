@@ -6,11 +6,13 @@ import { fm, dtFmt, getRevForYear, getClientDispYears, sortIndicator } from '../
 import { createClient, updateClient, deleteClient, deleteClients } from '../../lib/clientsApi';
 import { downloadTemplate, parseClientsFile } from '../../lib/clientsExcel';
 import { useClients } from '../../hooks/useClients';
+import { useAuth } from '../../context/AuthContext';
 import ClientForm, { type ClientFormData } from './ClientForm';
 import BulkRevenue from './BulkRevenue';
 
 export default function ClientsTab() {
   const { clients, loading, error, refresh } = useClients();
+  const { readonly } = useAuth();
   const [filter, setFilter] = useState('');
   const [bizFilter, setBizFilter] = useState('');
   const [displayYear, setDisplayYear] = useState(CURRENT_YEAR);
@@ -279,39 +281,43 @@ export default function ClientsTab() {
             alignItems: 'center',
           }}
         >
-          {selected.size > 0 && (
-            <button className="btn-sm btn-sm-red" onClick={handleBulkDelete} disabled={busy}>
-              선택 {selected.size}개 삭제
-            </button>
+          {!readonly && (
+            <>
+              {selected.size > 0 && (
+                <button className="btn-sm btn-sm-red" onClick={handleBulkDelete} disabled={busy}>
+                  선택 {selected.size}개 삭제
+                </button>
+              )}
+              <button className="btn-sm btn-sm-blue" style={{ fontWeight: 600 }} onClick={() => setMode('bulk')}>
+                📊 매출액 일괄입력
+              </button>
+              <button className="btn-sm btn-sm-blue" onClick={() => void downloadTemplate()}>
+                ⬇ 엑셀 양식
+              </button>
+              <label className="btn-sm btn-sm-blue" style={{ cursor: 'pointer' }}>
+                ⬆ 엑셀 업로드
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.xlsm,.csv"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void importExcel(f);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <button
+                className="btn-sm"
+                onClick={() => {
+                  setShowAdd(true);
+                  setEditingId(null);
+                }}
+              >
+                + 새 거래처
+              </button>
+            </>
           )}
-          <button className="btn-sm btn-sm-blue" style={{ fontWeight: 600 }} onClick={() => setMode('bulk')}>
-            📊 매출액 일괄입력
-          </button>
-          <button className="btn-sm btn-sm-blue" onClick={() => void downloadTemplate()}>
-            ⬇ 엑셀 양식
-          </button>
-          <label className="btn-sm btn-sm-blue" style={{ cursor: 'pointer' }}>
-            ⬆ 엑셀 업로드
-            <input
-              type="file"
-              accept=".xlsx,.xls,.xlsm,.csv"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void importExcel(f);
-                e.target.value = '';
-              }}
-            />
-          </label>
-          <button
-            className="btn-sm"
-            onClick={() => {
-              setShowAdd(true);
-              setEditingId(null);
-            }}
-          >
-            + 새 거래처
-          </button>
         </div>
       </div>
 
@@ -461,6 +467,7 @@ function ClientRow({
   onSubmitEdit,
   onCancelEdit,
 }: RowProps) {
+  const { readonly } = useAuth();
   return (
     <>
       <tr>
@@ -550,12 +557,16 @@ function ClientRow({
         <td style={{ fontSize: 10, color: '#888', whiteSpace: 'nowrap' }}>{dtFmt(c.updatedAt)}</td>
         <td>
           <div style={{ display: 'flex', gap: 4 }}>
-            <button className="btn-sm btn-sm-blue" onClick={onEdit} title="수정">
-              ✏️
-            </button>
-            <button className="btn-sm btn-sm-del" onClick={onDelete} title="삭제">
-              🗑
-            </button>
+            {!readonly && (
+              <>
+                <button className="btn-sm btn-sm-blue" onClick={onEdit} title="수정">
+                  ✏️
+                </button>
+                <button className="btn-sm btn-sm-del" onClick={onDelete} title="삭제">
+                  🗑
+                </button>
+              </>
+            )}
           </div>
         </td>
       </tr>

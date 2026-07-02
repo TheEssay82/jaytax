@@ -1,14 +1,21 @@
 // 사용자 역할(등급) 및 권한 정의 — 권한 매트릭스(2026-06-27 확정)
-export type Role = 'superuser' | 'accountant' | 'team_lead' | 'team_member';
+export type Role = 'superuser' | 'accountant' | 'team_lead' | 'team_member' | 'external';
 
-export const ROLES: Role[] = ['superuser', 'accountant', 'team_lead', 'team_member'];
+export const ROLES: Role[] = ['superuser', 'accountant', 'team_lead', 'team_member', 'external'];
 
 export const ROLE_LABELS: Record<Role, string> = {
   superuser: '최고관리자',
   accountant: '회계사',
   team_lead: '기장팀장',
   team_member: '기장팀원',
+  external: '외부인',
 };
+
+/** 외부인이 조회 가능한 메뉴 id (그 외는 숨김). 쓰기는 readonly로 별도 차단. */
+export const EXTERNAL_ALLOWED_TABS = new Set<string>([
+  'clients', // 세무조정수수료 관리시스템 → 거래처관리만
+  'std-kifrs', 'std-tax', 'consult', 'consult-log', 'library', // 회계및세무상담시스템 전체
+]);
 
 /** 알 수 없는/구버전 role 값은 최소 권한(기장팀원)으로 처리 */
 export function normalizeRole(r: string | null | undefined): Role {

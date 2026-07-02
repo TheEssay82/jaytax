@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { WizardProvider, useWizard } from '../context/WizardContext';
 import { ConfigProvider } from '../context/ConfigContext';
-import { can, ROLE_LABELS, type Capability } from '../lib/roles';
+import { can, ROLE_LABELS, EXTERNAL_ALLOWED_TABS, type Capability } from '../lib/roles';
 import PasswordModal from './PasswordModal';
 import ClientsTab from './clients/ClientsTab';
 import WizardTab from './wizard/WizardTab';
@@ -75,18 +75,24 @@ function Shell() {
   const fromPop = useRef(false); // popstate로 인한 탭 변경이면 pushState 생략
   const navMounted = useRef(false);
 
-  // 권한 필터링된 메뉴 그룹/아이콘
+  // 권한 필터링된 메뉴 그룹/아이콘. 외부인은 정해진 조회 메뉴만(EXTERNAL_ALLOWED_TABS), 아이콘 메뉴 없음.
+  const isExternal = role === 'external';
   const visibleGroups = MENU_GROUPS
-    .map((g) => ({ ...g, items: g.items.filter((it) => !it.cap || can(role, it.cap)) }))
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((it) => (isExternal ? EXTERNAL_ALLOWED_TABS.has(it.id) : !it.cap || can(role, it.cap))),
+    }))
     .filter((g) => g.items.length > 0);
-  const visibleIcons = ICON_ITEMS.filter((it) => !it.cap || can(role, it.cap));
+  const visibleIcons = isExternal ? [] : ICON_ITEMS.filter((it) => !it.cap || can(role, it.cap));
 
   // 접근 가능한 전체 탭 id 집합 (방어용)
   const allowedIds = new Set<string>([
     ...visibleGroups.flatMap((g) => g.items.map((it) => it.id)),
     ...visibleIcons.map((it) => it.id),
   ]);
-  const cur = allowedIds.has(curTab) ? curTab : 'wizard';
+  // 기본 탭: 접근 가능하면 현재 탭, 아니면 첫 접근가능 탭(외부인은 wizard 불가 → 거래처관리)
+  const firstAllowed = visibleGroups[0]?.items[0]?.id ?? 'wizard';
+  const cur = allowedIds.has(curTab) ? curTab : firstAllowed;
 
   // 현재 탭이 속한 대분류 (버튼 강조용)
   const activeGroupId = visibleGroups.find((g) => g.items.some((it) => it.id === cur))?.id ?? null;
