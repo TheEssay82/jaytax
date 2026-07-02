@@ -15,8 +15,8 @@ import UsersTab from './users/UsersTab';
 import StandardsTab from './advisory/StandardsTab';
 import TaxLawTab from './advisory/TaxLawTab';
 import ConsultTab from './advisory/ConsultTab';
+import LibraryTab from './advisory/LibraryTab';
 import ConsultLogTab from './advisory/ConsultLogTab';
-import PlaceholderTab from './common/PlaceholderTab';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
 type MenuItem = { id: string; label: string; cap?: Capability };
@@ -281,9 +281,7 @@ function TabContent({
     case 'consult-log':
       return <ConsultLogTab />;
     case 'library':
-      return (
-        <PlaceholderTab title="📁 자료실" desc="상담·검토에 활용할 자료 보관소입니다. 세부 설계 예정." />
-      );
+      return <LibraryTab />;
     default:
       return (
         <div className="card">
