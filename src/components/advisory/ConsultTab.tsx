@@ -99,6 +99,10 @@ export default function ConsultTab() {
 
   async function save() {
     if (answer === null || saving) return;
+    if (readonly) {
+      setError('읽기 전용 테스트 계정입니다 — 상담기록을 저장할 수 없습니다.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -113,7 +117,8 @@ export default function ConsultTab() {
       });
       setSaved(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '저장 중 오류가 발생했습니다.');
+      const msg = err instanceof Error ? err.message : '저장 중 오류가 발생했습니다.';
+      setError(/row-level security|ro_block/i.test(msg) ? '읽기 전용 계정이라 저장할 수 없습니다.' : msg);
     } finally {
       setSaving(false);
     }
