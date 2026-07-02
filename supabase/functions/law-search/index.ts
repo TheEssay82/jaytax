@@ -205,6 +205,49 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── 조세심판원 심판례 검색 (target=ttSpecialDecc) ─────────────
+    if (action === 'tt-search') {
+      if (!query || typeof query !== 'string' || !query.trim()) return json({ ok: false, error: '검색어(query)는 필수입니다.' }, 400);
+      const data = await drf('lawSearch.do', {
+        query: query.trim(),
+        display: String(Math.min(Math.max(Number(display) || 30, 1), 100)),
+      }, oc, 'ttSpecialDecc');
+      const search = (data['Decc'] ?? {}) as Record<string, unknown>;
+      const decisions = asArray(search['decc'] as Record<string, unknown>).map((p) => ({
+        serial: String(p['특별행정심판재결례일련번호'] ?? ''),
+        caseNo: String(p['청구번호'] ?? ''),
+        caseName: String(p['사건명'] ?? ''),
+        agency: String(p['재결청'] ?? ''),
+        date: String(p['의결일자'] ?? ''),
+        kind: String(p['재결구분명'] ?? ''),
+      }));
+      return json({ ok: true, query, totalCnt: Number(search['totalCnt'] ?? decisions.length), decisions });
+    }
+
+    // ── 조세심판원 심판례 본문 (target=ttSpecialDecc) ─────────────
+    if (action === 'tt-detail') {
+      const serial = String(id ?? '');
+      if (!serial) return json({ ok: false, error: '심판례일련번호(id)는 필수입니다.' }, 400);
+      const data = await drf('lawService.do', { ID: serial }, oc, 'ttSpecialDecc');
+      const d = data['SpecialDeccService'] as Record<string, unknown> | undefined;
+      if (!d) return json({ ok: true, hasText: false, serial });
+      return json({
+        ok: true,
+        hasText: true,
+        serial,
+        caseName: stripHtml(d['사건명']),
+        agency: stripHtml(d['재결청']),
+        date: stripHtml(d['의결일자']),
+        taxItem: stripHtml(d['세목']),
+        claim: stripHtml(d['청구취지']),
+        gist: stripHtml(d['재결요지']),
+        order: stripHtml(d['주문']),
+        reason: stripHtml(d['이유']),
+        refLaw: stripHtml(d['관련법령']),
+        refDecision: stripHtml(d['참조결정']),
+      });
+    }
+
     // ── 위임조문 3단비교 매핑 (target=thdCmp) ──────────────────
     // 법률 조문 ↔ 시행령/시행규칙 조문 위임관계(조번호·가지번호). 본문은 detail에서 병합.
     if (action === 'thdcmp') {
@@ -247,7 +290,7 @@ Deno.serve(async (req) => {
       return json({ ok: true, totalCnt: Number(s['totalCnt'] ?? rules.length), rules });
     }
 
-    return json({ ok: false, error: "action은 'search' | 'detail' | 'prec-search' | 'prec-detail' | 'thdcmp' | 'admrul-search' 이어야 합니다." }, 400);
+    return json({ ok: false, error: "action은 'search' | 'detail' | 'prec-search' | 'prec-detail' | 'tt-search' | 'tt-detail' | 'thdcmp' | 'admrul-search' 이어야 합니다." }, 400);
   } catch (e) {
     return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
   }

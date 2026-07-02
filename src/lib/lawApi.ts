@@ -171,6 +171,45 @@ export function fmtPrecDate(d: string): string {
   return d;
 }
 
+// ── 조세심판원 심판례 (법제처 target=ttSpecialDecc) ──────────────
+export interface TribunalSummary {
+  serial: string; // 특별행정심판재결례일련번호 (본문 조회 키)
+  caseNo: string; // 청구번호 (예: 조심 2025중4334)
+  caseName: string; // 사건명
+  agency: string; // 재결청 (조세심판원)
+  date: string; // 의결일자
+  kind: string; // 재결구분명 (조세)
+}
+
+export interface TribunalDetail {
+  hasText: boolean;
+  serial: string;
+  caseName?: string;
+  agency?: string;
+  date?: string;
+  taxItem?: string; // 세목 (법인/소득/부가 등)
+  claim?: string; // 청구취지
+  gist?: string; // 재결요지
+  order?: string; // 주문 (인용/기각/각하 등)
+  reason?: string; // 이유(전문)
+  refLaw?: string; // 관련법령
+  refDecision?: string; // 참조결정
+}
+
+/** 조세심판원 심판례(재결례) 검색. 세무 쟁점의 실제 결론을 사건명에서 찾는다. */
+export async function searchTribunal(
+  query: string,
+  display = 30
+): Promise<{ totalCnt: number; decisions: TribunalSummary[] }> {
+  const r = await invoke<{ totalCnt: number; decisions: TribunalSummary[] }>({ action: 'tt-search', query, display });
+  return { totalCnt: r.totalCnt, decisions: r.decisions };
+}
+
+/** 조세심판원 심판례 본문(재결요지·주문·이유 등). */
+export async function fetchTribunal(serial: string): Promise<TribunalDetail> {
+  return invoke<TribunalDetail>({ action: 'tt-detail', id: serial });
+}
+
 /** 주요 세법 빠른 선택 목록 (검색어로 사용). */
 export const TAX_LAW_QUICKLIST: string[] = [
   '국세기본법',

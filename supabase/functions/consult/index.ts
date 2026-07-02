@@ -206,6 +206,42 @@ async function fetchPrecedents(term: string, oc: string): Promise<{ type: string
   } catch { return []; }
 }
 
+// ── 조세심판원 심판례 자동참조 (법제처 target=ttSpecialDecc) ──────
+// 세무 쟁점의 실제 결론(재결요지·주문·관련법령)을 근거로. 판례보다 세무 실무에 직접적.
+async function fetchTaxTribunal(term: string, oc: string): Promise<{ type: string; ref: string; text: string }[]> {
+  try {
+    const su = new URL('https://www.law.go.kr/DRF/lawSearch.do');
+    su.searchParams.set('OC', oc); su.searchParams.set('type', 'JSON'); su.searchParams.set('target', 'ttSpecialDecc');
+    su.searchParams.set('query', term); su.searchParams.set('display', '8');
+    const sj = await (await fetch(su)).json();
+    const arr = sj?.Decc?.decc;
+    const list = Array.isArray(arr) ? arr : (arr ? [arr] : []);
+    const out: { type: string; ref: string; text: string }[] = [];
+    for (const p of list) {
+      if (out.length >= 3) break;
+      const serial = String(p['특별행정심판재결례일련번호'] ?? '');
+      if (!serial) continue;
+      const caseNo = String(p['청구번호'] ?? '');
+      const date = String(p['의결일자'] ?? '');
+      const name = String(p['사건명'] ?? '');
+      const du = new URL('https://www.law.go.kr/DRF/lawService.do');
+      du.searchParams.set('OC', oc); du.searchParams.set('type', 'JSON'); du.searchParams.set('target', 'ttSpecialDecc'); du.searchParams.set('ID', serial);
+      const d = (await (await fetch(du)).json())?.SpecialDeccService;
+      const gist = stripTags(d?.['재결요지']);
+      const order = stripTags(d?.['주문']);
+      const laws = stripTags(d?.['관련법령']);
+      if (!gist && !order) continue;
+      out.push({
+        type: '심판례',
+        ref: `조세심판원 ${caseNo} (의결 ${date})`,
+        text: [name && `[사건] ${name}`, gist && `[재결요지] ${gist}`, order && `[주문] ${order}`, laws && `[관련법령] ${laws}`]
+          .filter(Boolean).join('\n').slice(0, 1200),
+      });
+    }
+    return out;
+  } catch { return []; }
+}
+
 // ── 세법 조문 자동근거 (법제처 target=law: search → detail, LAW_API_OC) ──
 // 질문 → 관련 세법 식별(haiku) → 법령 조문목록 → 관련 조문 선별(haiku) → 조문 원문+시행일 근거.
 // 법령은 수십~수백 조라 전문 투입 불가 → Claude가 조문제목 목록에서 선별한 조문만 원문 추출.
@@ -405,14 +441,16 @@ Deno.serve(async (req) => {
 
     // 1-c) 판례 자동참조 (선택) — 질문에서 검색어 추출 → 법제처 판례 전문 근거
     let precCites: { type: string; ref: string; text: string }[] = [];
+    let ttCites: { type: string; ref: string; text: string }[] = [];
     if (includePrecedents && lawOc) {
       let term = (await precKeyword(groundingQuery, anthropicKey))
         .replace(/["'`]/g, '').replace(/[^가-힣0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
       if (!term) term = question.trim().replace(/[^가-힣0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
-      precCites = await fetchPrecedents(term, lawOc);
+      // 법원 판례 + 조세심판원 심판례 병행(심판례가 세무 실무엔 더 직접적)
+      [precCites, ttCites] = await Promise.all([fetchPrecedents(term, lawOc), fetchTaxTribunal(term, lawOc)]);
     }
 
-    const citations = [...fullCites, ...gistCites, ...taxCites, ...law, ...precCites];
+    const citations = [...fullCites, ...gistCites, ...taxCites, ...law, ...ttCites, ...precCites];
 
     // 2) 근거 블록 구성
     const groundingBlock = citations

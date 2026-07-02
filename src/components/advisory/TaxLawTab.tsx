@@ -13,15 +13,19 @@ import {
   searchPrecedents,
   fetchPrecedent,
   fmtPrecDate,
+  searchTribunal,
+  fetchTribunal,
   type LawSummary,
   type LawDetail,
   type LawTrio,
   type LawDelegation,
   type PrecedentSummary,
   type PrecedentDetail,
+  type TribunalSummary,
+  type TribunalDetail,
 } from '../../lib/lawApi';
 
-type Mode = 'law' | 'trio' | 'prec';
+type Mode = 'law' | 'trio' | 'prec' | 'tt';
 
 export default function TaxLawTab() {
   const [mode, setMode] = useState<Mode>('law');
@@ -35,6 +39,7 @@ export default function TaxLawTab() {
               ['law', '📜 법령'],
               ['trio', '📊 3단비교'],
               ['prec', '🏛️ 판례'],
+              ['tt', '⚖️ 심판례'],
             ] as [Mode, string][]
           ).map(([m, label]) => (
             <button key={m} className={`btn-sm${mode === m ? ' btn-sm-navy' : ''}`} onClick={() => setMode(m)}>
@@ -46,6 +51,7 @@ export default function TaxLawTab() {
       {mode === 'law' && <LawView />}
       {mode === 'trio' && <TrioView />}
       {mode === 'prec' && <PrecedentView />}
+      {mode === 'tt' && <TribunalView />}
     </div>
   );
 }
@@ -606,3 +612,143 @@ const rowBtn: React.CSSProperties = {
   textAlign: 'left', border: '1px solid #e4e0d8', borderRadius: 7, padding: '10px 13px',
   background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, width: '100%',
 };
+
+// ───────────────────────────────────────── 조세심판원 심판례 검색·본문
+const TT_QUICK = ['장애인고용부담금 손금', '매입세액 안분', '접대비 손금불산입', '가산세', '경정청구', '부당행위계산부인', '비상장주식 평가', '이월결손금'];
+
+function TribunalView() {
+  const [query, setQuery] = useState('');
+  const [list, setList] = useState<TribunalSummary[] | null>(null);
+  const [totalCnt, setTotalCnt] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<TribunalDetail | null>(null);
+  const [detailBusy, setDetailBusy] = useState(false);
+
+  async function run(q: string) {
+    const term = q.trim();
+    if (!term || busy) return;
+    setBusy(true);
+    setError(null);
+    setDetail(null);
+    try {
+      const r = await searchTribunal(term, 40);
+      setList(r.decisions);
+      setTotalCnt(r.totalCnt);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '심판례 검색 중 오류가 발생했습니다.');
+      setList(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openDetail(p: TribunalSummary) {
+    setDetailBusy(true);
+    setError(null);
+    try {
+      const d = await fetchTribunal(p.serial);
+      setDetail({
+        ...d,
+        caseName: d.caseName || p.caseName,
+        agency: d.agency || p.agency,
+        date: d.date || p.date,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '심판례를 불러오지 못했습니다.');
+    } finally {
+      setDetailBusy(false);
+    }
+  }
+
+  if (detail) return <TribunalDetailView d={detail} onBack={() => setDetail(null)} />;
+
+  return (
+    <>
+      <form onSubmit={(e) => { e.preventDefault(); run(query); }}>
+        <div className="frow" style={{ gridTemplateColumns: '1fr auto', alignItems: 'end', gap: 10 }}>
+          <div>
+            <label className="fl">조세심판원 심판례 검색 (세법 쟁점)</label>
+            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="예: 장애인고용부담금 손금 / 매입세액 안분 / 부당행위계산부인" autoFocus />
+          </div>
+          <button className="btn-p" type="submit" disabled={busy || !query.trim()}>{busy ? '검색 중…' : '🔍 심판례 검색'}</button>
+        </div>
+      </form>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+        {TT_QUICK.map((name) => (
+          <button key={name} className="btn-sm" onClick={() => { setQuery(name); run(name); }} disabled={busy} style={{ fontSize: 12 }}>{name}</button>
+        ))}
+      </div>
+
+      {error && <div className="alert-w" style={{ marginTop: 14 }}>{error}</div>}
+      {detailBusy && <div className="alert-i" style={{ marginTop: 14 }}>심판례 본문을 불러오는 중…</div>}
+
+      {list && !detailBusy && (
+        <div style={{ marginTop: 16 }}>
+          {list.length === 0 ? (
+            <div className="alert-i">검색 결과가 없습니다. 다른 쟁점어로 시도해 보세요.</div>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+                총 {totalCnt.toLocaleString('ko-KR')}건 {totalCnt > list.length && `(상위 ${list.length}건 표시)`}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {list.map((p) => (
+                  <button key={p.serial} onClick={() => openDetail(p)} style={{ ...rowBtn, alignItems: 'flex-start', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', flexWrap: 'wrap' }}>
+                      {p.kind && <span className="bdg b-on" style={{ fontSize: 9 }}>{p.kind}</span>}
+                      <span style={{ fontWeight: 700, color: '#1A2B52', fontSize: 12.5 }}>{p.agency} {p.caseNo}</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9aa0ad' }}>{fmtPrecDate(p.date)}</span>
+                    </div>
+                    <span style={{ fontSize: 13, color: '#1f2937', lineHeight: 1.5, textAlign: 'left' }}>{p.caseName}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {!list && !error && (
+        <div className="alert-i" style={{ marginTop: 14, lineHeight: 1.7 }}>
+          조세심판원 <b>심판례(재결례)</b>를 사건명에서 검색합니다. 세무 쟁점의 실제 결론(재결요지·주문·관련법령)을
+          열람할 수 있어 법원 판례보다 실무에 직접적입니다. 사실관계가 다르면 결론이 달라질 수 있으니 유의하세요.
+        </div>
+      )}
+    </>
+  );
+}
+
+function TribunalDetailView({ d, onBack }: { d: TribunalDetail; onBack: () => void }) {
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <button className="btn-sm" onClick={onBack}>← 목록으로</button>
+      </div>
+
+      <div style={{ fontSize: 15, fontWeight: 700, color: '#1A2B52', lineHeight: 1.5 }}>{d.caseName || '(사건명 없음)'}</div>
+      <div style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 14px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {d.agency && <span>{d.agency}</span>}
+        {d.date && <span>· 의결 {fmtPrecDate(d.date)}</span>}
+        {d.taxItem && <span className="bdg b-on" style={{ fontSize: 9 }}>{d.taxItem}</span>}
+      </div>
+
+      {!d.hasText ? (
+        <div className="alert-i">본문을 불러오지 못했습니다.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {d.order && <PrecSection label="주문" text={d.order} small />}
+          {d.gist && <PrecSection label="재결요지" text={d.gist} />}
+          {d.claim && <PrecSection label="청구취지" text={d.claim} small />}
+          {d.refLaw && <PrecSection label="관련법령" text={d.refLaw} small />}
+          {d.refDecision && <PrecSection label="참조결정" text={d.refDecision} small />}
+          {d.reason && <PrecSection label="이유(전문)" text={d.reason} />}
+          <div style={{ fontSize: 11, color: '#9aa0ad', lineHeight: 1.6 }}>
+            조세심판원 재결례(법제처 국가법령정보) 원문입니다. 인용 시 청구번호·의결일자를 명시하고, 사실관계 차이 가능성을 유의하세요.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
