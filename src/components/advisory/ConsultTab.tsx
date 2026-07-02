@@ -50,6 +50,10 @@ export default function ConsultTab() {
   const [saved, setSaved] = useState(false);
   const [copyOk, setCopyOk] = useState(false);
 
+  // 보완 재회신(대화형)
+  const [followup, setFollowup] = useState('');
+  const [refining, setRefining] = useState(false);
+
   // 분야가 회계가 아니면 근거기준서 한정은 의미 없음 → 전체로 되돌림
   function changeDomain(d: Domain) {
     setDomain(d);
@@ -113,6 +117,30 @@ export default function ConsultTab() {
     }
   }
 
+  // 보완 요청 → 기존 초안·근거를 유지한 채 개정본 생성
+  async function refine() {
+    const fu = followup.trim();
+    if (answer === null || !fu || refining) return;
+    setRefining(true);
+    setError(null);
+    try {
+      const res = await runConsult(submittedQuestion || buildQuestion(), {
+        standardNo, matchCount, lawRefs, model: selModel, includePrecedents: includePrec, includeTaxLaw, domain,
+        priorAnswer: answer, followup: fu,
+      });
+      setAnswer(res.answer_md);
+      setCitations(res.citations);
+      setTags(res.tags);
+      setModel(res.model);
+      setFollowup('');
+      setSaved(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '보완 재작성 중 오류가 발생했습니다.');
+    } finally {
+      setRefining(false);
+    }
+  }
+
   async function copyAnswer() {
     if (answer === null) return;
     try {
@@ -144,6 +172,7 @@ export default function ConsultTab() {
     setTarget('공통');
     setAssumptions('');
     setSelfReview('');
+    setFollowup('');
   }
 
   return (
@@ -312,6 +341,25 @@ export default function ConsultTab() {
               fontFamily: 'inherit', whiteSpace: 'pre-wrap',
             }}
           />
+
+          {/* 보완 재회신 — 기존 초안·근거를 유지한 채 개정 */}
+          <div style={{ marginTop: 12, border: '1px dashed #d8d2c6', borderRadius: 8, padding: '10px 12px', background: '#fbfaf6' }}>
+            <label className="fl" style={{ display: 'block', marginBottom: 4 }}>
+              ↻ 보완 요청 <span style={{ fontWeight: 400, color: '#9aa0ad' }}>(초안에 빠진 점·추가 질문을 적으면 기존 초안·근거를 유지한 채 개정합니다)</span>
+            </label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <textarea
+                value={followup}
+                onChange={(e) => setFollowup(e.target.value)}
+                rows={2}
+                placeholder="예: 최근 국세청 해석 경향을 반영해 주세요 / 개인·법인을 구분해 더 자세히 / 이 부분의 예외 요건을 보강"
+                style={{ flex: 1, resize: 'vertical', lineHeight: 1.6, fontSize: 13 }}
+              />
+              <button type="button" className="btn-p btn-sm" onClick={refine} disabled={refining || !followup.trim()} style={{ whiteSpace: 'nowrap' }}>
+                {refining ? '보완 중…' : '↻ 보완하여 다시 작성'}
+              </button>
+            </div>
+          </div>
 
           <div style={{ marginTop: 10 }}>
             <label className="fl" style={{ display: 'block', marginBottom: 4 }}>
