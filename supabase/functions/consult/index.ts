@@ -210,12 +210,20 @@ async function fetchPrecedents(term: string, oc: string): Promise<{ type: string
 // 세무 쟁점의 실제 결론(재결요지·주문·관련법령)을 근거로. 판례보다 세무 실무에 직접적.
 async function fetchTaxTribunal(term: string, oc: string): Promise<{ type: string; ref: string; text: string }[]> {
   try {
-    const su = new URL('https://www.law.go.kr/DRF/lawSearch.do');
-    su.searchParams.set('OC', oc); su.searchParams.set('type', 'JSON'); su.searchParams.set('target', 'ttSpecialDecc');
-    su.searchParams.set('query', term); su.searchParams.set('display', '8');
-    const sj = await (await fetch(su)).json();
-    const arr = sj?.Decc?.decc;
-    const list = Array.isArray(arr) ? arr : (arr ? [arr] : []);
+    const search = async (q: string) => {
+      const su = new URL('https://www.law.go.kr/DRF/lawSearch.do');
+      su.searchParams.set('OC', oc); su.searchParams.set('type', 'JSON'); su.searchParams.set('target', 'ttSpecialDecc');
+      su.searchParams.set('query', q); su.searchParams.set('display', '8');
+      const sj = await (await fetch(su)).json();
+      const arr = sj?.Decc?.decc;
+      return Array.isArray(arr) ? arr : (arr ? [arr] : []);
+    };
+    let list = await search(term);
+    // 다어절 검색이 0건이면 가장 앞 핵심어로 재검색(사건명 AND매칭 과제약 방지)
+    if (!list.length) {
+      const first = term.split(/\s+/)[0];
+      if (first && first !== term) list = await search(first);
+    }
     const out: { type: string; ref: string; text: string }[] = [];
     for (const p of list) {
       if (out.length >= 3) break;
@@ -440,14 +448,18 @@ Deno.serve(async (req) => {
     }
 
     // 1-c) 판례 자동참조 (선택) — 질문에서 검색어 추출 → 법제처 판례 전문 근거
+    // 조세심판원 심판례는 세무 핵심 근거라 세무/공통이면 항상 조회(체크박스 무관).
+    // 법원 판례(prec)는 커버리지가 불균일해 '판례 자동참조' 켰을 때만.
     let precCites: { type: string; ref: string; text: string }[] = [];
     let ttCites: { type: string; ref: string; text: string }[] = [];
-    if (includePrecedents && lawOc) {
+    if (lawOc && (doTax || includePrecedents)) {
       let term = (await precKeyword(groundingQuery, anthropicKey))
         .replace(/["'`]/g, '').replace(/[^가-힣0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
       if (!term) term = question.trim().replace(/[^가-힣0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
-      // 법원 판례 + 조세심판원 심판례 병행(심판례가 세무 실무엔 더 직접적)
-      [precCites, ttCites] = await Promise.all([fetchPrecedents(term, lawOc), fetchTaxTribunal(term, lawOc)]);
+      [ttCites, precCites] = await Promise.all([
+        doTax ? fetchTaxTribunal(term, lawOc) : Promise.resolve([]),
+        includePrecedents ? fetchPrecedents(term, lawOc) : Promise.resolve([]),
+      ]);
     }
 
     const citations = [...fullCites, ...gistCites, ...taxCites, ...law, ...ttCites, ...precCites];
