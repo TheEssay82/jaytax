@@ -11,10 +11,12 @@ export const ROLE_LABELS: Record<Role, string> = {
   external: '외부인',
 };
 
-/** 외부인이 조회 가능한 메뉴 id (그 외는 숨김). 쓰기는 readonly로 별도 차단. */
+/** 외부인이 접근 가능한 메뉴 id (기능 시연용, 공개 참조데이터·AI만). 고객정보 화면(거래처관리·상담기록·청구)은
+ *  제외하고, 쓰기는 readonly로, 고객정보 테이블 읽기는 RLS(is_external)로 별도 차단한다. */
 export const EXTERNAL_ALLOWED_TABS = new Set<string>([
-  'clients', // 세무조정수수료 관리시스템 → 거래처관리만
-  'std-kifrs', 'std-tax', 'consult', 'consult-log', 'library', // 회계및세무상담시스템 전체
+  'std-kifrs', // 회계기준 검색 (공개 기준서)
+  'std-tax', // 세법 검색 (공개 법령)
+  'consult', // 상담진행 (AI 회신 시연 — 저장 불가)
 ]);
 
 /** 알 수 없는/구버전 role 값은 최소 권한(기장팀원)으로 처리 */
