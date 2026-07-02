@@ -223,6 +223,19 @@ async function haikuJson(key: string, system: string, user: string, maxTokens = 
     return JSON.parse(m ? m[0] : text);
   } catch { return null; }
 }
+// 저비용 모델 원문 응답(문자열). 조문 선별처럼 JSON이 아닐 수 있는 경우 정규식 추출용.
+async function haikuText(key: string, system: string, user: string, maxTokens = 300): Promise<string> {
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: TAG_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+    });
+    if (!r.ok) return '';
+    const data = await r.json();
+    return (data.content ?? []).map((c: { text?: string }) => c.text ?? '').join('').trim();
+  } catch { return ''; }
+}
 function asArr<T>(v: T | T[] | undefined | null): T[] {
   return v == null ? [] : Array.isArray(v) ? v : [v];
 }
@@ -291,17 +304,21 @@ async function fetchTaxLaw(question: string, key: string, oc: string): Promise<{
         .filter((a) => a.no && !a.isChapter && a.content && !a.content.startsWith('삭제'));
       if (!arts.length) continue;
 
-      // 4) 관련 조문 선별(haiku) — 조문 제목 목록에서 최대 4개
+      // 4) 관련 조문 선별(haiku) — 조문 제목 목록에서 고른다. 응답이 JSON이 아니라 산문으로 새는
+      //    경우가 있어(특히 목록이 긴 법인세법 등), 텍스트에서 '제N조(의M)' 패턴을 정규식으로 추출한다.
       const label = (a: { no: string; branch: string }) => `제${a.no}조${a.branch ? '의' + a.branch : ''}`;
       const idx = arts.map((a) => `${label(a)}${a.title ? ` (${a.title})` : ''}`).join('\n');
-      const sel = await haikuJson(
+      const selText = await haikuText(
         key,
-        `아래 「${lawName}」 조문 목록에서 질문과 직접 관련된 조문만 최대 4개 고른다. "제38조" 또는 "제38조의2" 형태 문자열 JSON 배열만 출력. 관련 없으면 빈 배열.`,
+        `아래 「${lawName}」 조문 목록에서 질문과 직접 관련된 조문 번호만 최대 6개 나열하라. 예: 제19조, 제21조, 제38조의2. 다른 설명 없이 번호만.`,
         `[질문]\n${question.slice(0, 1200)}\n\n[조문 목록]\n${idx}`,
-        200,
+        300,
       );
-      const wanted = Array.isArray(sel) ? sel.map((x) => String(x).replace(/\s/g, '')) : [];
-      const chosen = arts.filter((a) => wanted.includes(label(a))).slice(0, 4);
+      const wanted = new Set<string>();
+      for (const mm of selText.matchAll(/제\s*(\d+)\s*조(?:\s*의\s*(\d+))?/g)) {
+        wanted.add(`제${mm[1]}조${mm[2] ? '의' + mm[2] : ''}`);
+      }
+      const chosen = arts.filter((a) => wanted.has(label(a))).slice(0, 5);
       for (const a of chosen) {
         cites.push({
           type: '세법',
