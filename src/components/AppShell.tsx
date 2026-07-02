@@ -72,6 +72,8 @@ function Shell() {
   const [showPw, setShowPw] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
+  const fromPop = useRef(false); // popstate로 인한 탭 변경이면 pushState 생략
+  const navMounted = useRef(false);
 
   // 권한 필터링된 메뉴 그룹/아이콘
   const visibleGroups = MENU_GROUPS
@@ -105,6 +107,30 @@ function Shell() {
       document.removeEventListener('keydown', onKey);
     };
   }, [openMenu]);
+
+  // 브라우저 뒤로/앞으로가 사이트를 벗어나지 않고 앱 내 탭 사이를 이동하게 한다.
+  // 탭 변경마다 history 항목을 쌓고, popstate 시 해당 탭으로 복원한다.
+  useEffect(() => {
+    history.replaceState({ jaytab: curTab }, '');
+    const onPop = (e: PopStateEvent) => {
+      const t = (e.state as { jaytab?: string } | null)?.jaytab;
+      if (t) {
+        fromPop.current = true;
+        setCurTab(t);
+        setReloadKey((k) => k + 1);
+        setOpenMenu(null);
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!navMounted.current) { navMounted.current = true; return; } // 초기 렌더는 replaceState가 처리
+    if (fromPop.current) { fromPop.current = false; return; } // 뒤로가기로 인한 변경은 push 안 함
+    history.pushState({ jaytab: curTab }, '');
+  }, [curTab]);
 
   // 탭 이동: 화면 remount(key 변경)로 데이터 새로고침. 청구서 작성은 항상 새 청구서부터.
   function goTab(id: string) {

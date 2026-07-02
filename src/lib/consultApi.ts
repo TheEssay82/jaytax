@@ -85,6 +85,8 @@ export interface Consultation {
   id: string;
   authorId: string | null;
   authorEmail: string;
+  /** 작성자 담당자명(profiles.name). 없으면 이메일로 대체. */
+  authorName: string;
   title: string;
   question: string;
   answerMd: string;
@@ -116,6 +118,7 @@ function rowToConsultation(r: ConsultRow): Consultation {
     id: r.id,
     authorId: r.author_id,
     authorEmail: r.author_email || '',
+    authorName: r.author_email || '',
     title: r.title || '',
     question: r.question || '',
     answerMd: r.answer_md || '',
@@ -135,7 +138,15 @@ export async function listConsultations(): Promise<Consultation[]> {
     .select('*')
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
-  return (data as ConsultRow[]).map(rowToConsultation);
+  const rows = (data as ConsultRow[]).map(rowToConsultation);
+  // 작성자 담당자명 매핑 (consultations.author_id → profiles.name). 없으면 이메일 유지.
+  const { data: profs } = await supabase.from('profiles').select('id, name');
+  const nameById = new Map((profs ?? []).map((p) => [p.id as string, (p.name as string) || '']));
+  for (const c of rows) {
+    const nm = c.authorId ? nameById.get(c.authorId) : '';
+    if (nm) c.authorName = nm;
+  }
+  return rows;
 }
 
 export interface ConsultInput {

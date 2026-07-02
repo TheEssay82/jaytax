@@ -6,7 +6,7 @@ import { normalizeRole, type Role } from '../lib/roles';
 // 세션 유휴 타임아웃 — 마지막 활동 후 이 시간이 지나면 자동 로그아웃.
 // (Supabase는 리프레시 토큰으로 무기한 유지되므로, 이 계층에서 유휴 만료를 강제한다.)
 const IDLE_KEY = 'jaytax:lastActive';
-const IDLE_LIMIT_MS = 8 * 60 * 60 * 1000; // 8시간
+const IDLE_LIMIT_MS = 30 * 60 * 1000; // 30분 (마지막 사용자 활동 기준)
 
 const touchActivity = () => { try { localStorage.setItem(IDLE_KEY, String(Date.now())); } catch { /* ignore */ } };
 const idleExceeded = (): boolean => {
@@ -68,14 +68,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return;
       }
-      if (data.session) touchActivity();
+      if (data.session) { signedInRef.current = true; touchActivity(); }
       setSession(data.session);
       if (data.session?.user) await loadProfile(data.session.user.id);
       setLoading(false);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, s) => {
       signedInRef.current = !!s;
-      if (s) touchActivity();
+      // 활동 시각은 '실제 로그인' 때만 초기화한다. 토큰 자동갱신(TOKEN_REFRESHED)·초기세션 이벤트로
+      // 리셋하면 유휴 타이머가 영영 도달하지 못해 자동 로그아웃이 동작하지 않는다.
+      if (event === 'SIGNED_IN') touchActivity();
       setSession(s);
       if (s?.user) await loadProfile(s.user.id);
       else {

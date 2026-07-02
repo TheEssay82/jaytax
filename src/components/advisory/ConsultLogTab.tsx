@@ -38,10 +38,18 @@ export default function ConsultLogTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 확정(final) 건 순번: 오래된 순으로 1,2,3… (표시용, 저장 안 함)
+  const finalSeq = new Map<string, number>();
+  [...(items ?? [])]
+    .filter((c) => c.status === 'final')
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .forEach((c, i) => finalSeq.set(c.id, i + 1));
+
   if (selected) {
     return (
       <Detail
         item={selected}
+        seq={selected.status === 'final' ? finalSeq.get(selected.id) : undefined}
         isOwner={!!user && selected.authorId === user.id}
         onBack={() => setSelected(null)}
         onChanged={reload}
@@ -52,7 +60,7 @@ export default function ConsultLogTab() {
   const f = filter.trim();
   const filtered = (items ?? []).filter((c) => {
     const textOk =
-      !f || c.title.includes(f) || c.question.includes(f) || c.authorEmail.includes(f) || c.tags.some((t) => t.includes(f));
+      !f || c.title.includes(f) || c.question.includes(f) || c.authorName.includes(f) || c.authorEmail.includes(f) || c.tags.some((t) => t.includes(f));
     const tagOk = !tagFilter || c.tags.includes(tagFilter);
     return textOk && tagOk;
   });
@@ -112,10 +120,13 @@ export default function ConsultLogTab() {
           <button key={c.id} onClick={() => setSelected(c)} style={rowStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
               <StatusBadge status={c.status} />
+              {finalSeq.has(c.id) && (
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#1A6E3C', whiteSpace: 'nowrap' }}>#{finalSeq.get(c.id)}</span>
+              )}
               <span style={{ flex: 1, fontWeight: 600, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {c.title || '(제목 없음)'}
               </span>
-              <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>{c.authorEmail}</span>
+              <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>{c.authorName}</span>
               <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>{dtFmt(c.createdAt)}</span>
             </div>
             {c.tags.length > 0 && (
@@ -132,11 +143,13 @@ export default function ConsultLogTab() {
 
 function Detail({
   item,
+  seq,
   isOwner,
   onBack,
   onChanged,
 }: {
   item: Consultation;
+  seq?: number;
   isOwner: boolean;
   onBack: () => void;
   onChanged: () => Promise<void>;
@@ -212,6 +225,9 @@ function Detail({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
         <StatusBadge status={item.status} />
+        {seq != null && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#1A6E3C' }}>확정 #{seq}</span>
+        )}
         {editing ? (
           <input
             type="text"
@@ -224,7 +240,7 @@ function Detail({
         )}
       </div>
       <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 14 }}>
-        {item.authorEmail} · 작성 {dtFmt(item.createdAt)}
+        {item.authorName} · 작성 {dtFmt(item.createdAt)}
         {item.updatedAt !== item.createdAt && ` · 수정 ${dtFmt(item.updatedAt)}`}
         {item.llmModel && ` · ${modelLabel(item.llmModel)}`}
       </div>
