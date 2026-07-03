@@ -196,6 +196,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
                 onPrint={() => setPrintRec(r)}
                 canDelete={canDelete}
                 canFinalize={canFinalize}
+                canEdit={canFinalize || (r.status === 'draft' && isOwnRecord(r, user?.id ?? '', profileName))}
               />
             ))}
           </tbody>
@@ -253,9 +254,10 @@ interface RowProps {
   onPrint: () => void;
   canDelete: boolean;
   canFinalize: boolean;
+  canEdit: boolean;
 }
 
-function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, onPrint, canDelete, canFinalize }: RowProps) {
+function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, onPrint, canDelete, canFinalize, canEdit }: RowProps) {
   return (
     <>
       <tr onClick={onToggle} title="클릭: 업무량 상세" style={{ cursor: 'pointer' }}>
@@ -301,7 +303,7 @@ function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, onPr
                 확정
               </button>
             )}
-            {(canFinalize || r.status === 'draft') && (
+            {canEdit && (
               <button className="btn-sm btn-sm-grn" onClick={onEdit}>
                 수정
               </button>

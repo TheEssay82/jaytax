@@ -96,11 +96,11 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
         </>
       ) : (
         <button className="btn-green no-print" onClick={saveRec} disabled={saving || readonly || !canSave}
-          title={readonly ? '읽기 전용 계정 — 저장할 수 없습니다' : !canSave ? '기장팀원은 청구서를 저장할 수 없습니다 (조회·PDF만 가능)' : undefined}>
+          title={readonly ? '읽기 전용 계정 — 저장할 수 없습니다' : !canSave ? '청구서 저장 권한이 없습니다 (조회·PDF만 가능)' : undefined}>
           {readonly
             ? '🔒 저장 불가 (읽기전용 계정)'
             : !canSave
-            ? '🔒 저장 불가 (기장팀원 — 조회·PDF만)'
+            ? '🔒 저장 불가 (조회·PDF만)'
             : saving
             ? '저장 중…'
             : editId
