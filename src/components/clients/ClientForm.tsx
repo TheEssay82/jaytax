@@ -21,11 +21,13 @@ interface Props {
   /** 수정 대상 (없으면 신규 추가) */
   initial?: Client;
   isAdd: boolean;
+  /** 일부 필드만 수정(기장팀원): 사업자번호·대표자명·가상계좌·성실신고만 노출·저장 */
+  limited?: boolean;
   onSubmit: (data: ClientFormData, mgrYear: number, modelYear: number) => void | Promise<void>;
   onCancel: () => void;
 }
 
-export default function ClientForm({ initial, isAdd, onSubmit, onCancel }: Props) {
+export default function ClientForm({ initial, isAdd, limited = false, onSubmit, onCancel }: Props) {
   const [bizType, setBizType] = useState<BizType>(initial?.bizType ?? '법인');
   const [manager, setManager] = useState(initial?.manager ?? '');
   const [companyName, setCompanyName] = useState(initial?.companyName ?? '');
@@ -50,7 +52,7 @@ export default function ClientForm({ initial, isAdd, onSubmit, onCancel }: Props
   const modelEntries = Object.entries(initial?.modelYears || {}).sort((a, b) => Number(b[0]) - Number(a[0]));
 
   async function handleSave() {
-    if (!companyName.trim()) {
+    if (!limited && !companyName.trim()) {
       alert('회사명은 필수입니다.');
       return;
     }
@@ -81,38 +83,47 @@ export default function ClientForm({ initial, isAdd, onSubmit, onCancel }: Props
   return (
     <div className="card" style={{ borderColor: '#1A2B52', marginTop: 8 }}>
       <div className="chdr">
-        {isAdd ? '새 거래처 추가' : '거래처 수정'}: {companyName || '신규'}
+        {isAdd ? '새 거래처 추가' : limited ? '거래처 일부 수정' : '거래처 수정'}: {companyName || '신규'}
       </div>
+      {limited && (
+        <div className="alert-i" style={{ fontSize: 11, marginBottom: 8 }}>
+          🔧 사업자번호·대표자명·가상계좌·성실신고만 수정됩니다. 나머지 항목은 변경되지 않습니다.
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
-        <div className="frow">
-          <span className="fl">
-            구분<span className="req">*</span>
-          </span>
-          <div className="pills">
-            <span className={`pill${bizType === '법인' ? ' on' : ''}`} onClick={() => setBizType('법인')}>
-              법인
-            </span>
-            <span className={`pill${bizType === '개인' ? ' on' : ''}`} onClick={() => setBizType('개인')}>
-              개인
-            </span>
-          </div>
-        </div>
-        <div className="frow">
-          <span className="fl">
-            담당자<span className="req">*</span>
-          </span>
-          <input value={manager} onChange={(e) => setManager(e.target.value)} placeholder="담당자" />
-        </div>
-        <div className="frow">
-          <span className="fl">
-            회사명<span className="req">*</span>
-          </span>
-          <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="회사명" />
-        </div>
-        <div className="frow">
-          <span className="fl">상호명</span>
-          <input value={tradeName} onChange={(e) => setTradeName(e.target.value)} placeholder="상호명" />
-        </div>
+        {!limited && (
+          <>
+            <div className="frow">
+              <span className="fl">
+                구분<span className="req">*</span>
+              </span>
+              <div className="pills">
+                <span className={`pill${bizType === '법인' ? ' on' : ''}`} onClick={() => setBizType('법인')}>
+                  법인
+                </span>
+                <span className={`pill${bizType === '개인' ? ' on' : ''}`} onClick={() => setBizType('개인')}>
+                  개인
+                </span>
+              </div>
+            </div>
+            <div className="frow">
+              <span className="fl">
+                담당자<span className="req">*</span>
+              </span>
+              <input value={manager} onChange={(e) => setManager(e.target.value)} placeholder="담당자" />
+            </div>
+            <div className="frow">
+              <span className="fl">
+                회사명<span className="req">*</span>
+              </span>
+              <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="회사명" />
+            </div>
+            <div className="frow">
+              <span className="fl">상호명</span>
+              <input value={tradeName} onChange={(e) => setTradeName(e.target.value)} placeholder="상호명" />
+            </div>
+          </>
+        )}
         <div className="frow">
           <span className="fl">사업자번호</span>
           <input value={taxId} onChange={(e) => setTaxId(e.target.value)} placeholder="000-00-00000" />
@@ -138,6 +149,7 @@ export default function ClientForm({ initial, isAdd, onSubmit, onCancel }: Props
         </div>
       </div>
 
+      {!limited && (
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #EDE9E2' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 7 }}>📊 귀속연도별 매출액</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 7 }}>
@@ -158,7 +170,9 @@ export default function ClientForm({ initial, isAdd, onSubmit, onCancel }: Props
           ※ 여기 없는 연도는 [매출액 일괄입력]을 이용하거나 청구서 저장 시 자동 반영됩니다.
         </div>
       </div>
+      )}
 
+      {!limited && (
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #EDE9E2' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 7 }}>
           📅 귀속연도별 담당자 / 성실신고
@@ -204,6 +218,7 @@ export default function ClientForm({ initial, isAdd, onSubmit, onCancel }: Props
           </div>
         )}
       </div>
+      )}
 
       <div style={{ display: 'flex', gap: 7, marginTop: 10 }}>
         <button className="btn-p" onClick={handleSave} disabled={saving}>

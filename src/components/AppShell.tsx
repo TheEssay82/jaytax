@@ -28,7 +28,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     label: '세무조정수수료 관리시스템',
     items: [
       { id: 'wizard', label: '📝 청구서 작성' },
-      { id: 'clients', label: '🏢 거래처 관리', cap: 'manageClients' },
+      { id: 'clients', label: '🏢 거래처 관리', cap: 'viewClients' },
       { id: 'targets', label: '✅ 청구대상', cap: 'manageTargets' },
       { id: 'history', label: '📋 청구기록' },
       { id: 'stats', label: '📊 통계' },

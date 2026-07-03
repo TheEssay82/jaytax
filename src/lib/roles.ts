@@ -29,7 +29,8 @@ export function normalizeRole(r: string | null | undefined): Role {
 export type Capability =
   | 'saveInvoice' // 청구서 임시저장(작성중 draft) — 전 직원(팀원 포함). 확정(final)은 finalizeInvoice(팀장+)
   | 'finalizeInvoice' // 청구서 확정 — 팀장+
-  | 'manageClients' // 거래처 관리(추가/수정/삭제·일괄·엑셀)
+  | 'viewClients' // 거래처 관리 메뉴 접근 — 전 직원(팀원 포함). 팀원은 일부 필드만 수정(등록·삭제 불가)
+  | 'manageClients' // 거래처 관리 전체(추가/수정/삭제·일괄·엑셀) — 팀장+
   | 'manageTargets' // 청구대상 확정
   | 'deleteBilling' // 청구기록 삭제
   | 'viewAllBilling' // 청구기록 전체 조회(아니면 본인것만) — 전 직원(팀원 포함)
@@ -43,6 +44,8 @@ const MATRIX: Record<Capability, Role[]> = {
   // 임시저장(작성중 draft): 전 직원(팀원 포함, 본인 초안만 — RLS) / 확정(final): 팀장+
   saveInvoice: ['superuser', 'accountant', 'team_lead', 'team_member'],
   finalizeInvoice: ['superuser', 'accountant', 'team_lead'],
+  // 거래처관리 메뉴 접근: 전 직원(팀원은 일부 필드 수정만) / 전체 CRUD: 팀장+
+  viewClients: ['superuser', 'accountant', 'team_lead', 'team_member'],
   manageClients: ['superuser', 'accountant', 'team_lead'],
   manageTargets: ['superuser', 'accountant', 'team_lead'],
   deleteBilling: ['superuser', 'accountant', 'team_lead'],

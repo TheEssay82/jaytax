@@ -7,12 +7,15 @@ import { createClient, updateClient, deleteClient, deleteClients } from '../../l
 import { downloadTemplate, parseClientsFile } from '../../lib/clientsExcel';
 import { useClients } from '../../hooks/useClients';
 import { useAuth } from '../../context/AuthContext';
+import { can } from '../../lib/roles';
 import ClientForm, { type ClientFormData } from './ClientForm';
 import BulkRevenue from './BulkRevenue';
 
 export default function ClientsTab() {
   const { clients, loading, error, refresh } = useClients();
-  const { readonly } = useAuth();
+  const { role, readonly } = useAuth();
+  // 전체 관리(등록·삭제·일괄·엑셀·모든 필드) 권한. 없으면(기장팀원) 일부 필드만 수정.
+  const canManage = can(role, 'manageClients');
   const [filter, setFilter] = useState('');
   const [bizFilter, setBizFilter] = useState('');
   const [displayYear, setDisplayYear] = useState(CURRENT_YEAR);
@@ -173,20 +176,27 @@ export default function ClientsTab() {
     mgrYear: number,
     modelYear: number,
   ) {
-    const revenues = { ...(target.revenues || {}), ...data.revenues };
-    const upd: Partial<Client> = {
-      bizType: data.bizType,
-      manager: data.manager,
-      companyName: data.companyName,
-      tradeName: data.tradeName,
-      taxId: data.taxId,
-      repName: data.repName,
-      bankAccount: data.bankAccount,
-      isModel: data.isModel,
-      revenues,
-    };
-    if (mgrYear && data.manager) upd.managers = { ...(target.managers || {}), [mgrYear]: data.manager };
-    if (modelYear) upd.modelYears = { ...(target.modelYears || {}), [modelYear]: data.isModel };
+    // 기장팀원(일부수정): 사업자번호·대표자명·가상계좌·성실신고만 반영(나머지·매출·귀속연도 이력 미변경).
+    const upd: Partial<Client> = canManage
+      ? {
+          bizType: data.bizType,
+          manager: data.manager,
+          companyName: data.companyName,
+          tradeName: data.tradeName,
+          taxId: data.taxId,
+          repName: data.repName,
+          bankAccount: data.bankAccount,
+          isModel: data.isModel,
+          revenues: { ...(target.revenues || {}), ...data.revenues },
+        }
+      : {
+          taxId: data.taxId,
+          repName: data.repName,
+          bankAccount: data.bankAccount,
+          isModel: data.isModel,
+        };
+    if (canManage && mgrYear && data.manager) upd.managers = { ...(target.managers || {}), [mgrYear]: data.manager };
+    if (canManage && modelYear) upd.modelYears = { ...(target.modelYears || {}), [modelYear]: data.isModel };
     try {
       await updateClient(target.id, upd);
       setEditingId(null);
@@ -266,7 +276,8 @@ export default function ClientsTab() {
     return <BulkRevenue clients={clients} onBack={() => setMode('list')} onChanged={refresh} />;
   }
 
-  const colCount = 7 + dispYears.length + 3;
+  // 체크박스 열은 관리자(일괄삭제)만 → 팀원은 열 하나 줄어든다.
+  const colCount = (canManage ? 7 : 6) + dispYears.length + 3;
 
   return (
     <div className="card">
@@ -281,7 +292,7 @@ export default function ClientsTab() {
             alignItems: 'center',
           }}
         >
-          {!readonly && (
+          {!readonly && canManage && (
             <>
               {selected.size > 0 && (
                 <button className="btn-sm btn-sm-red" onClick={handleBulkDelete} disabled={busy}>
@@ -322,9 +333,15 @@ export default function ClientsTab() {
       </div>
 
       {error && <div className="alert-w">{error}</div>}
-      <div className="alert-i" style={{ fontSize: 11 }}>
-        매출 셀: <b>숫자</b>=매출액 · <b style={{ color: '#6B7280' }}>0</b>=매출 0원(기록됨) · <b style={{ color: '#CCC' }}>—</b>=데이터 없음 · <span className="bdg b-loss">상실</span>=거래종료(‘상실?’ 버튼으로 처리/‘해제’로 취소). 사업자번호가 같은 거래처를 새로 추가하면 기존 정보가 갱신됩니다.
-      </div>
+      {canManage ? (
+        <div className="alert-i" style={{ fontSize: 11 }}>
+          매출 셀: <b>숫자</b>=매출액 · <b style={{ color: '#6B7280' }}>0</b>=매출 0원(기록됨) · <b style={{ color: '#CCC' }}>—</b>=데이터 없음 · <span className="bdg b-loss">상실</span>=거래종료(‘상실?’ 버튼으로 처리/‘해제’로 취소). 사업자번호가 같은 거래처를 새로 추가하면 기존 정보가 갱신됩니다.
+        </div>
+      ) : (
+        <div className="alert-i" style={{ fontSize: 11 }}>
+          🔧 기장팀원은 <b>사업자번호·대표자명·가상계좌·성실신고</b>만 수정할 수 있습니다. 거래처 등록·삭제·매출/담당자 변경은 기장팀장 이상만 가능합니다.
+        </div>
+      )}
 
       {showAdd && editingId === null && (
         <ClientForm isAdd onSubmit={handleAdd} onCancel={() => setShowAdd(false)} />
@@ -364,9 +381,11 @@ export default function ClientsTab() {
         <table className="tbl">
           <thead>
             <tr>
-              <th style={{ width: 36 }}>
-                <input type="checkbox" checked={allSel} onChange={toggleAll} title="전체선택" />
-              </th>
+              {canManage && (
+                <th style={{ width: 36 }}>
+                  <input type="checkbox" checked={allSel} onChange={toggleAll} title="전체선택" />
+                </th>
+              )}
               <th onClick={() => clientSort('bizType')} style={{ cursor: 'pointer' }}>
                 구분{sortIndicator('bizType', sortKey, sortDir)}
               </th>
@@ -410,6 +429,7 @@ export default function ClientsTab() {
                   displayYear={displayYear}
                   mvBg={mvBg}
                   mv={mv}
+                  canManage={canManage}
                   selected={selected.has(c.id)}
                   editing={editingId === c.id}
                   colCount={colCount}
@@ -439,6 +459,7 @@ interface RowProps {
   displayYear: number;
   mvBg: string;
   mv: boolean | undefined;
+  canManage: boolean;
   selected: boolean;
   editing: boolean;
   colCount: number;
@@ -456,6 +477,7 @@ function ClientRow({
   dispYears,
   mv,
   mvBg,
+  canManage,
   selected,
   editing,
   colCount,
@@ -471,9 +493,11 @@ function ClientRow({
   return (
     <>
       <tr>
-        <td>
-          <input type="checkbox" checked={selected} onChange={onToggleSel} />
-        </td>
+        {canManage && (
+          <td>
+            <input type="checkbox" checked={selected} onChange={onToggleSel} />
+          </td>
+        )}
         <td>
           <span className={`bdg ${c.bizType === '법인' ? 'b-law' : 'b-per'}`}>{c.bizType}</span>
         </td>
@@ -482,24 +506,28 @@ function ClientRow({
         <td>{c.tradeName}</td>
         <td style={{ fontSize: 11 }}>{c.taxId}</td>
         <td style={{ textAlign: 'center' }}>
-          <select
-            value={mv === true ? 'O' : mv === false ? 'X' : ''}
-            onChange={(e) => onModelYear(e.target.value)}
-            style={{
-              width: 82,
-              padding: '2px 3px',
-              fontSize: 11,
-              border: '1px solid #D0CCC4',
-              borderRadius: 4,
-              fontFamily: 'inherit',
-              cursor: 'pointer',
-              background: mvBg,
-            }}
-          >
-            <option value="">❓ 미확정</option>
-            <option value="O">✅ O 해당</option>
-            <option value="X">✗ X 미해당</option>
-          </select>
+          {canManage ? (
+            <select
+              value={mv === true ? 'O' : mv === false ? 'X' : ''}
+              onChange={(e) => onModelYear(e.target.value)}
+              style={{
+                width: 82,
+                padding: '2px 3px',
+                fontSize: 11,
+                border: '1px solid #D0CCC4',
+                borderRadius: 4,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                background: mvBg,
+              }}
+            >
+              <option value="">❓ 미확정</option>
+              <option value="O">✅ O 해당</option>
+              <option value="X">✗ X 미해당</option>
+            </select>
+          ) : (
+            <span style={{ fontSize: 11, color: '#555' }}>{mv === true ? '✅ O' : mv === false ? '✗ X' : '❓'}</span>
+          )}
         </td>
         {dispYears.map((y) => {
           const rv = getRevForYear(c, y);
@@ -511,14 +539,16 @@ function ClientRow({
               <td key={y} className="r" style={{ fontFamily: 'monospace', fontSize: 11 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
                   <span className="bdg b-loss">상실</span>
-                  <button
-                    className="btn-sm btn-sm-del"
-                    style={{ fontSize: 10, padding: '1px 6px' }}
-                    onClick={() => onToggleLoss(y, false)}
-                    title="상실 해제"
-                  >
-                    해제
-                  </button>
+                  {canManage && (
+                    <button
+                      className="btn-sm btn-sm-del"
+                      style={{ fontSize: 10, padding: '1px 6px' }}
+                      onClick={() => onToggleLoss(y, false)}
+                      title="상실 해제"
+                    >
+                      해제
+                    </button>
+                  )}
                 </div>
               </td>
             );
@@ -541,14 +571,16 @@ function ClientRow({
                 >
                   {hasKey ? '0' : '—'}
                 </span>
-                <button
-                  className="btn-sm btn-sm-del"
-                  style={{ fontSize: 10, padding: '1px 6px' }}
-                  onClick={() => onToggleLoss(y, true)}
-                  title="이 연도를 상실(거래종료)로 처리"
-                >
-                  상실?
-                </button>
+                {canManage && (
+                  <button
+                    className="btn-sm btn-sm-del"
+                    style={{ fontSize: 10, padding: '1px 6px' }}
+                    onClick={() => onToggleLoss(y, true)}
+                    title="이 연도를 상실(거래종료)로 처리"
+                  >
+                    상실?
+                  </button>
+                )}
               </div>
             </td>
           );
@@ -558,14 +590,14 @@ function ClientRow({
         <td>
           <div style={{ display: 'flex', gap: 4 }}>
             {!readonly && (
-              <>
-                <button className="btn-sm btn-sm-blue" onClick={onEdit} title="수정">
-                  ✏️
-                </button>
-                <button className="btn-sm btn-sm-del" onClick={onDelete} title="삭제">
-                  🗑
-                </button>
-              </>
+              <button className="btn-sm btn-sm-blue" onClick={onEdit} title="수정">
+                ✏️
+              </button>
+            )}
+            {!readonly && canManage && (
+              <button className="btn-sm btn-sm-del" onClick={onDelete} title="삭제">
+                🗑
+              </button>
             )}
           </div>
         </td>
@@ -573,7 +605,7 @@ function ClientRow({
       {editing && (
         <tr>
           <td colSpan={colCount}>
-            <ClientForm isAdd={false} initial={c} onSubmit={onSubmitEdit} onCancel={onCancelEdit} />
+            <ClientForm isAdd={false} initial={c} limited={!canManage} onSubmit={onSubmitEdit} onCancel={onCancelEdit} />
           </td>
         </tr>
       )}
