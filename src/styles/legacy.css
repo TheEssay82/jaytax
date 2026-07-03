@@ -153,6 +153,10 @@ input:focus,select:focus{border-color:#1A2B52}
 .ic-v{text-align:center;font-size:10px;color:#888;writing-mode:vertical-rl;letter-spacing:2px}
 .inv-sign{margin-top:12px;font-size:12px;text-align:right;padding-top:9px;border-top:1px solid #EEE}
 .inv-bank{margin-top:10px;padding:8px 10px;border:1px solid #D0CCC4;border-radius:7px;font-size:11px}
+.inv-draft{margin-bottom:10px;padding:5px 10px;border:1px dashed #DC2626;border-radius:6px;background:#FEF2F2;color:#B91C1C;font-size:11px;font-weight:700;text-align:center}
+/* 청구기록 → 청구서 PDF 모달 (body 포털). 화면에선 오버레이, 인쇄 시 청구서만. */
+.inv-print-modal{position:fixed;inset:0;z-index:2000;background:rgba(20,25,40,.45);overflow:auto;padding:24px}
+.inv-print-sheet{max-width:820px;margin:0 auto}
 .stat-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:7px;margin-bottom:12px}
 .stat-card{background:#fff;border:1px solid #E0DCD4;border-radius:8px;padding:9px 11px}
 .stat-card .label{font-size:10px;color:#888;margin-bottom:2px}
@@ -198,6 +202,8 @@ input:focus,select:focus{border-color:#1A2B52}
 .bdg-draft{background:#FEF3C7;color:#92400E;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:700}
 .draft-banner{background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:7px 12px;margin-bottom:8px;display:flex;align-items:center;gap:8px;font-size:12px;color:#92400E}
 @media print{#hdr,.no-print{display:none!important}#main{max-width:100%;padding:0!important}.inv{border:none;border-radius:0;padding:16px}body{background:#fff}}
+/* 청구기록 PDF 모달이 열린 동안에는 앱(#root)을 숨기고 body 포털의 청구서만 인쇄한다. */
+@media print{body.print-mode #root{display:none!important}body.print-mode .inv-print-modal{position:static;inset:auto;background:#fff;overflow:visible;padding:0}body.print-mode .inv-print-sheet{max-width:100%;margin:0}}
 
 /* ── 도움말 툴팁 (body portal + fixed 위치라 잘리지 않음) ── */
 .help-icon{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;margin-left:4px;border-radius:50%;background:#1A2B52;color:#fff;font-size:10px;font-style:italic;font-weight:700;cursor:help;vertical-align:middle}

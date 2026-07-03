@@ -27,11 +27,12 @@ export function normalizeRole(r: string | null | undefined): Role {
 
 /** 권한 항목 */
 export type Capability =
-  | 'saveInvoice' // 청구서 저장(작성중 포함) — 전 직원
+  | 'saveInvoice' // 청구서 저장(작성중 포함) — 팀장+ (기장팀원은 조회·PDF만, 저장 불가)
   | 'finalizeInvoice' // 청구서 확정 — 팀장+
   | 'manageClients' // 거래처 관리(추가/수정/삭제·일괄·엑셀)
   | 'manageTargets' // 청구대상 확정
   | 'deleteBilling' // 청구기록 삭제
+  | 'viewAllBilling' // 청구기록 전체 조회(아니면 본인것만) — 전 직원(팀원 포함)
   | 'viewAllStats' // 통계 전체 조회(아니면 본인것만)
   | 'changeSettings' // 수수료 설정 변경
   | 'manageUsers' // 사용자/계정 관리
@@ -39,12 +40,14 @@ export type Capability =
 
 // 항목별 허용 역할 (매트릭스)
 const MATRIX: Record<Capability, Role[]> = {
-  // 저장(작성중 포함): 전 직원 / 확정: 팀장+
-  saveInvoice: ['superuser', 'accountant', 'team_lead', 'team_member'],
+  // 저장(작성중 포함): 팀장+ (기장팀원은 청구서 조회·PDF만) / 확정: 팀장+
+  saveInvoice: ['superuser', 'accountant', 'team_lead'],
   finalizeInvoice: ['superuser', 'accountant', 'team_lead'],
   manageClients: ['superuser', 'accountant', 'team_lead'],
   manageTargets: ['superuser', 'accountant', 'team_lead'],
   deleteBilling: ['superuser', 'accountant', 'team_lead'],
+  // 청구기록 전체 조회: 전 직원(기장팀원 포함). 통계 전체조회(viewAllStats)와는 분리.
+  viewAllBilling: ['superuser', 'accountant', 'team_lead', 'team_member'],
   viewAllStats: ['superuser', 'accountant', 'team_lead'],
   changeSettings: ['superuser', 'accountant'],
   manageUsers: ['superuser'],

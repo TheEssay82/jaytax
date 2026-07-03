@@ -1,13 +1,16 @@
-// 청구기록 탭 — 원본 rHistory 포팅 (목록·필터·정렬·상세펼침·수정·삭제)
-import { useMemo, useState } from 'react';
+// 청구기록 탭 — 원본 rHistory 포팅 (목록·필터·정렬·상세펼침·수정·삭제·청구서 PDF)
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { BillingRecord } from '../../types';
 import { useBillingData } from '../../hooks/useBillingData';
 import { useWizard } from '../../context/WizardContext';
+import { useConfig } from '../../context/ConfigContext';
 import { useAuth } from '../../context/AuthContext';
 import { can } from '../../lib/roles';
 import { deleteBillingRecord, finalizeBillingRecord } from '../../lib/billingApi';
 import { isNewForYear, isOwnRecord } from '../../lib/wizardHelpers';
 import { fm } from '../../lib/format';
+import InvoiceDocument from '../wizard/InvoiceDocument';
 
 const dt = (s?: string) => (s ? s.split('T')[0].replace(/-/g, '.') : '');
 
@@ -16,14 +19,21 @@ type SortKey = 'fiscalYear' | 'manager' | 'companyName' | 'rev' | 'A' | 'C' | 'd
 export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) => void }) {
   const { records: allRecords, loading, error, refresh } = useBillingData();
   const { loadRecord } = useWizard();
+  const { config } = useConfig();
   const { user, role, profileName } = useAuth();
   const canDelete = can(role, 'deleteBilling');
   const canFinalize = can(role, 'finalizeInvoice');
-  const ownOnly = !can(role, 'viewAllStats');
-  // 기장팀원은 본인 청구기록만 (담당자 계정ID 우선, 없으면 이름)
+  const ownOnly = !can(role, 'viewAllBilling');
+  // 전체 조회 권한이 없으면 본인 담당 청구기록만 (담당자 계정ID 우선, 없으면 이름)
   const records = ownOnly
     ? allRecords.filter((r) => isOwnRecord(r, user?.id ?? '', profileName))
     : allRecords;
+  const [printRec, setPrintRec] = useState<BillingRecord | null>(null);
+  // 청구서 인쇄 모달이 열리면 body에 print-mode를 걸어 인쇄 시 앱(#root) 대신 청구서만 출력한다.
+  useEffect(() => {
+    document.body.classList.toggle('print-mode', !!printRec);
+    return () => document.body.classList.remove('print-mode');
+  }, [printRec]);
   const [filter, setFilter] = useState('');
   const [year, setYear] = useState('');
   const [biz, setBiz] = useState('');
@@ -183,6 +193,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
                 onEdit={() => edit(r)}
                 onDel={() => del(r)}
                 onFinalize={() => finalize(r)}
+                onPrint={() => setPrintRec(r)}
                 canDelete={canDelete}
                 canFinalize={canFinalize}
               />
@@ -213,6 +224,20 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
           )}
         </table>
       </div>
+
+      {printRec &&
+        createPortal(
+          <div className="inv-print-modal" onClick={() => setPrintRec(null)}>
+            <div className="inv-print-sheet" onClick={(e) => e.stopPropagation()}>
+              <div className="no-print" style={{ display: 'flex', gap: 7, justifyContent: 'flex-end', marginBottom: 9 }}>
+                <button className="btn-gold" onClick={() => window.print()}>🖨 인쇄/PDF</button>
+                <button className="btn-sm" onClick={() => setPrintRec(null)}>닫기 ✕</button>
+              </div>
+              <InvoiceDocument S={printRec} config={config} draft={printRec.status !== 'final'} />
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -225,11 +250,12 @@ interface RowProps {
   onEdit: () => void;
   onDel: () => void;
   onFinalize: () => void;
+  onPrint: () => void;
   canDelete: boolean;
   canFinalize: boolean;
 }
 
-function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, canDelete, canFinalize }: RowProps) {
+function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, onPrint, canDelete, canFinalize }: RowProps) {
   return (
     <>
       <tr onClick={onToggle} title="클릭: 업무량 상세" style={{ cursor: 'pointer' }}>
@@ -267,6 +293,9 @@ function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, canD
         <td style={{ fontSize: 10, color: '#999' }}>{dt(r.savedAt)}</td>
         <td>
           <div style={{ display: 'flex', gap: 3 }} onClick={(e) => e.stopPropagation()}>
+            <button className="btn-sm" onClick={onPrint} title="청구서 PDF/인쇄">
+              📄 PDF
+            </button>
             {r.status === 'draft' && canFinalize && (
               <button className="btn-sm btn-sm-navy" onClick={onFinalize}>
                 확정
