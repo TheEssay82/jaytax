@@ -194,7 +194,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
                 onDel={() => del(r)}
                 onFinalize={() => finalize(r)}
                 onPrint={() => setPrintRec(r)}
-                canDelete={canDelete}
+                canDelete={canDelete || (r.status === 'draft' && isOwnRecord(r, user?.id ?? '', profileName))}
                 canFinalize={canFinalize}
                 canEdit={canFinalize || (r.status === 'draft' && isOwnRecord(r, user?.id ?? '', profileName))}
               />
