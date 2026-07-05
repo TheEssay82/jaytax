@@ -592,22 +592,28 @@ function QnaModal({ item, onClose }: { item: QnaIndexItem; onClose: () => void }
           </div>
         )}
 
-        {/* 완전성 대조 — KASB 가공 전 원문(fullContent)을 앱 내에서 펼쳐 위 본문과 대조 */}
-        {content && content.raw && (
-          <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid #ece8e0' }}>
-            <button type="button" className="btn-sm" onClick={() => setShowRaw((v) => !v)} aria-expanded={showRaw}>
-              {showRaw ? '▾' : '▸'} 가공 전 원문 대조 <span style={{ color: '#9aa0ad' }}>(KASB 원본 전체 — 위 본문과 대조용)</span>
-            </button>
-            {showRaw && (
-              <div style={{ marginTop: 8, padding: '10px 12px', background: '#faf9f5', border: '1px solid #ece8e0', borderRadius: 8, fontSize: 12.5, lineHeight: 1.7, color: '#4b5563', whiteSpace: 'pre-wrap', maxHeight: 320, overflow: 'auto' }}>
-                {content.raw}
-              </div>
+        <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid #ece8e0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <a href={content?.link || item.link} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: '#C8963C', fontWeight: 700, textDecoration: 'none' }}
+              title="KASB 회계기준열람서비스의 해당 질의회신 페이지를 새 탭에서 엽니다">
+              📖 KASB 페이지에서 열기 ↗
+            </a>
+            {content && content.raw && (
+              <button type="button" className="btn-sm" onClick={() => setShowRaw((v) => !v)} aria-expanded={showRaw}>
+                {showRaw ? '▾' : '▸'} 가공 전 원문
+              </button>
             )}
-            <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6 }}>
-              위 본문은 KASB 원문 데이터를 요약·가공 없이 그대로 표시합니다. 원본 전체는 여기서 대조하세요. (출처: 한국회계기준원 KASB)
-            </div>
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9aa0ad' }}>출처: 한국회계기준원(KASB)</span>
           </div>
-        )}
+          {showRaw && content?.raw && (
+            <div style={{ marginTop: 8, padding: '10px 12px', background: '#faf9f5', border: '1px solid #ece8e0', borderRadius: 8, fontSize: 12.5, lineHeight: 1.7, color: '#4b5563', whiteSpace: 'pre-wrap', maxHeight: 320, overflow: 'auto' }}>
+              {content.raw}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6, lineHeight: 1.6 }}>
+            KASB 페이지가 <b>빈 화면</b>으로 뜨면, 브라우저 <b>구글 번역</b>이 페이지 렌더를 방해하는 경우가 많습니다 — 해당 페이지에서 번역을 꺼보세요. 위 본문은 KASB 원문을 가공 없이 그대로 표시합니다.
+          </div>
+        </div>
       </div>
     </div>,
     document.body,
