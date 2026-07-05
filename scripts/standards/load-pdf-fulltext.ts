@@ -21,8 +21,17 @@ function extractNo(base: string): string | null {
   if (setsForNo(b).length) return b;
   const m = b.match(/제\s*(\d{3,4})\s*호/);
   if (m && setsForNo(m[1]).length) return m[1];
+  const chap = b.match(/제\s*(\d{1,2})\s*장/); // 일반기업회계기준 '제10장_유형자산...' → '10장'
+  if (chap && setsForNo(`${chap[1]}장`).length) return `${chap[1]}장`;
   if (/재무보고를[_\s]*위한[_\s]*개념체계/.test(b)) return '개념체계';
+  if (/재무회계개념체계/.test(b)) return '재무회계개념체계';
   return null;
+}
+// 번호 표기: '10장'은 '제10장', 숫자호는 '제0000호', 그 외(개념체계 등)는 그대로.
+function refLabel(no: string): string {
+  if (/장$/.test(no)) return `제${no}`;
+  if (/^\d{3,4}$/.test(no)) return `제${no}호`;
+  return no;
 }
 
 // 한글 비율(공백 제외)
@@ -89,10 +98,10 @@ for (const file of files) {
   const data = await pdf(readFileSync(file));
   const chunks = toChunks(data.text);
   totalChunks += chunks.length;
-  console.log(`${set} 제${no}호 · ${data.numpages}p → 청크 ${chunks.length}개  (${title.slice(0, 20)})`);
+  console.log(`${set} ${refLabel(no)} · ${data.numpages}p → 청크 ${chunks.length}개  (${title.slice(0, 20)})`);
   if (dry || !supabase) continue;
 
-  const embeddings = await embedBatch(chunks.map((c) => `${set} 제${no}호 ${title} ${c}`));
+  const embeddings = await embedBatch(chunks.map((c) => `${set} ${refLabel(no)} ${title} ${c}`));
   const rows = chunks.map((content, i) => ({
     standard_set: set,
     standard_no: no,

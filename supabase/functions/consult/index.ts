@@ -419,11 +419,15 @@ Deno.serve(async (req) => {
         filter_standard_no: nStd,
       });
       if (eFull) return json({ ok: false, error: `원문 근거 검색 실패: ${eFull.message}` }, 500);
-      fullCites = (fullRows ?? []).map((r: Record<string, unknown>) => ({
-        type: '회계기준(원문)',
-        ref: `${r.standard_set} 제${r.standard_no}호 「${r.standard_title}」 원문 발췌`,
-        text: String(r.content),
-      }));
+      fullCites = (fullRows ?? []).map((r: Record<string, unknown>) => {
+        const no = String(r.standard_no);
+        const noLabel = /장$/.test(no) ? `제${no}` : `제${no}호`; // 일반기업회계기준 '10장' → '제10장'
+        return {
+          type: '회계기준(원문)',
+          ref: `${r.standard_set} ${noLabel} 「${r.standard_title}」 원문 발췌`,
+          text: String(r.content),
+        };
+      });
 
       // 1-b) 요지(정리본) 근거 — 적재된 기준서만, 보조
       const { data: gistRows } = await caller.rpc('match_accounting_standards', {
