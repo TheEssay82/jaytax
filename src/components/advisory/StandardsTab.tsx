@@ -594,15 +594,15 @@ function QnaModal({ item, onClose }: { item: QnaIndexItem; onClose: () => void }
 
         <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid #ece8e0' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <a href={content?.link || item.link} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: '#C8963C', fontWeight: 700, textDecoration: 'none' }}
-              title="KASB 회계기준열람서비스의 해당 질의회신 페이지를 새 탭에서 엽니다">
-              📖 KASB 페이지에서 열기 ↗
-            </a>
             {content && content.raw && (
               <button type="button" className="btn-sm" onClick={() => setShowRaw((v) => !v)} aria-expanded={showRaw}>
-                {showRaw ? '▾' : '▸'} 가공 전 원문
+                {showRaw ? '▾' : '▸'} 가공 전 원문 <span style={{ color: '#9aa0ad' }}>(원본 대조)</span>
               </button>
             )}
+            <a href="https://db.kasb.or.kr/qnas" target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: '#C8963C', fontWeight: 700, textDecoration: 'none' }}
+              title="KASB 질의회신요약 목록을 열어 제목으로 검색하세요 (개별 직접 링크는 KASB가 지원하지 않음)">
+              KASB 질의회신요약 목록 ↗
+            </a>
             <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9aa0ad' }}>출처: 한국회계기준원(KASB)</span>
           </div>
           {showRaw && content?.raw && (
@@ -611,7 +611,7 @@ function QnaModal({ item, onClose }: { item: QnaIndexItem; onClose: () => void }
             </div>
           )}
           <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6, lineHeight: 1.6 }}>
-            KASB 페이지가 <b>빈 화면</b>으로 뜨면, 브라우저 <b>구글 번역</b>이 페이지 렌더를 방해하는 경우가 많습니다 — 해당 페이지에서 번역을 꺼보세요. 위 본문은 KASB 원문을 가공 없이 그대로 표시합니다.
+            KASB 사이트는 개별 질의회신 <b>직접 링크(딥링크)</b>를 지원하지 않아 직접 열면 빈 화면이 뜹니다(목록에서 클릭해야만 표시). 그래서 본문을 <b>여기 앱에서 그대로</b> 보여드립니다 — 위 내용이 KASB 원문 전체입니다.
           </div>
         </div>
       </div>
