@@ -31,6 +31,8 @@ function extractNo(base: string): string | null {
   if (setsForNo(b).length) return b;
   const m = b.match(/제\s*(\d{3,4})\s*호/); // '시행중_K-IFRS_제1115호_...' → 1115 (첫 번호)
   if (m && setsForNo(m[1]).length) return m[1];
+  const chap = b.match(/제\s*(\d{1,2})\s*장/); // 일반기업회계기준 '제10장_유형자산...' → '10장'
+  if (chap && setsForNo(`${chap[1]}장`).length) return `${chap[1]}장`;
   if (/재무보고를[_\s]*위한[_\s]*개념체계/.test(b)) return '개념체계';
   if (/재무회계개념체계/.test(b)) return '재무회계개념체계';
   if (/중소기업회계기준/.test(b)) return '중소기업회계기준';
