@@ -581,8 +581,9 @@ function QnaModal({ item, onClose }: { item: QnaIndexItem; onClose: () => void }
           <div style={{ marginTop: 10 }}>
             {content.body.split('\n').map((line, i) => {
               const t = line.trim();
-              if (t.startsWith('### ')) {
-                return <div key={i} style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', margin: '12px 0 4px' }}>{t.slice(4)}</div>;
+              if (t.startsWith('###')) {
+                const h = t.replace(/^#+\s*/, '').trim();
+                return h ? <div key={i} style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', margin: '12px 0 4px' }}>{h}</div> : null;
               }
               if (!t) return <div key={i} style={{ height: 6 }} />;
               return <div key={i} style={{ fontSize: 13.5, lineHeight: 1.7, color: '#1f2937', whiteSpace: 'pre-wrap' }}>{line}</div>;
@@ -590,12 +591,13 @@ function QnaModal({ item, onClose }: { item: QnaIndexItem; onClose: () => void }
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 10, borderTop: '1px solid #ece8e0' }}>
-          <a href={(content?.link) || item.link} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#C8963C', fontWeight: 700, textDecoration: 'none' }}>
-            📖 KASB 원문 ↗
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 10, borderTop: '1px solid #ece8e0', flexWrap: 'wrap' }}>
+          <a href={`https://db.kasb.or.kr/api/qnas/${item.id}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#C8963C', fontWeight: 700, textDecoration: 'none' }}
+            title="KASB 원본 데이터(JSON)를 새 탭에서 엽니다 — 표시된 본문의 완전성을 대조할 수 있습니다">
+            🔎 KASB 원문 데이터(대조용) ↗
           </a>
           <span style={{ fontSize: 11, color: '#9aa0ad', marginLeft: 'auto' }}>
-            출처: 한국회계기준원(KASB) 회계기준열람서비스
+            위 본문은 KASB 원문 데이터(content)를 가공 없이 그대로 표시합니다.
           </span>
         </div>
       </div>
