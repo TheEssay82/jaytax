@@ -4,12 +4,14 @@
 //  3) 질의회신: KASB 질의회신 제목 인덱스(본문은 KASB 원문 링크)
 // 근거 문단은 요지 정리본이므로 인용 시 "(요지)"·원문 대조 권고를 함께 노출한다.
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   queryStandards,
   loadedStandardKeys,
   fetchStandardParagraphs,
   loadQnaIndex,
   filterQnasByStandardNo,
+  fetchQnaContent,
   KASB_STANDARDS_URL,
   loadStandardPdfKeys,
   uploadStandardPdf,
@@ -18,6 +20,7 @@ import {
   type StandardMatch,
   type ParagraphRow,
   type QnaIndexItem,
+  type QnaContent,
 } from '../../lib/standardsApi';
 import { CATALOG, type CatalogItem, type StandardSet } from '../../lib/standardsCatalog';
 
@@ -28,6 +31,7 @@ export default function StandardsTab() {
   const [loadedKeys, setLoadedKeys] = useState<Set<string>>(new Set());
   const [qnaIndex, setQnaIndex] = useState<QnaIndexItem[]>([]);
   const [pdfKeys, setPdfKeys] = useState<Set<string>>(new Set());
+  const [qnaOpen, setQnaOpen] = useState<QnaIndexItem | null>(null); // 질의회신 본문 모달
 
   const reloadPdfKeys = () =>
     loadStandardPdfKeys(CATALOG.map((c) => c.set)).then(setPdfKeys).catch(() => setPdfKeys(new Set()));
@@ -63,9 +67,11 @@ export default function StandardsTab() {
 
       {mode === 'search' && <SearchView />}
       {mode === 'browse' && (
-        <BrowseView loadedKeys={loadedKeys} qnaIndex={qnaIndex} pdfKeys={pdfKeys} onPdfChange={reloadPdfKeys} />
+        <BrowseView loadedKeys={loadedKeys} qnaIndex={qnaIndex} pdfKeys={pdfKeys} onPdfChange={reloadPdfKeys} onOpenQna={setQnaOpen} />
       )}
-      {mode === 'qna' && <QnaView items={qnaIndex} />}
+      {mode === 'qna' && <QnaView items={qnaIndex} onOpenQna={setQnaOpen} />}
+
+      {qnaOpen && <QnaModal item={qnaOpen} onClose={() => setQnaOpen(null)} />}
     </div>
   );
 }
@@ -175,11 +181,13 @@ function BrowseView({
   qnaIndex,
   pdfKeys,
   onPdfChange,
+  onOpenQna,
 }: {
   loadedKeys: Set<string>;
   qnaIndex: QnaIndexItem[];
   pdfKeys: Set<string>;
   onPdfChange: () => void;
+  onOpenQna: (q: QnaIndexItem) => void;
 }) {
   const [catIdx, setCatIdx] = useState(0);
   const [selected, setSelected] = useState<{ set: StandardSet; item: CatalogItem } | null>(null);
@@ -193,6 +201,7 @@ function BrowseView({
         loaded={loadedKeys.has(`${selected.set} ${selected.item.no}`)}
         hasPdf={pdfKeys.has(`${selected.set} ${selected.item.no}`)}
         onPdfChange={onPdfChange}
+        onOpenQna={onOpenQna}
         onBack={() => setSelected(null)}
       />
     );
@@ -283,6 +292,7 @@ function StandardDetail({
   loaded,
   hasPdf,
   onPdfChange,
+  onOpenQna,
   onBack,
 }: {
   set: StandardSet;
@@ -291,6 +301,7 @@ function StandardDetail({
   loaded: boolean;
   hasPdf: boolean;
   onPdfChange: () => void;
+  onOpenQna: (q: QnaIndexItem) => void;
   onBack: () => void;
 }) {
   const [paras, setParas] = useState<ParagraphRow[] | null>(null);
@@ -371,15 +382,15 @@ function StandardDetail({
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {related.map((q) => (
-              <a key={q.id} href={q.link} target="_blank" rel="noreferrer" style={qnaLinkStyle}>
-                <span style={{ flex: 1 }}>{q.title}</span>
+              <button key={q.id} type="button" onClick={() => onOpenQna(q)} style={qnaLinkStyle}>
+                <span style={{ flex: 1, textAlign: 'left' }}>{q.title}</span>
                 {q.date && <span style={{ fontSize: 11, color: '#9aa0ad' }}>{q.date}</span>}
-                <span style={{ fontSize: 11, color: '#C8963C' }}>KASB ↗</span>
-              </a>
+                <span style={{ fontSize: 11, color: '#C8963C' }}>본문 보기</span>
+              </button>
             ))}
           </div>
           <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6 }}>
-            질의회신 본문은 KASB 원문에서 확인하세요(제목·연결만 제공).
+            제목을 클릭하면 질의회신 본문을 앱에서 바로 봅니다(KASB 원문 링크도 함께 제공).
           </div>
         </div>
       )}
@@ -486,7 +497,7 @@ function StandardPdfSection({
 }
 
 // ─────────────────────────────────────────── 3) 질의회신 인덱스
-function QnaView({ items }: { items: QnaIndexItem[] }) {
+function QnaView({ items, onOpenQna }: { items: QnaIndexItem[]; onOpenQna: (q: QnaIndexItem) => void }) {
   const [filter, setFilter] = useState('');
   const LIMIT = 80;
   const f = filter.trim();
@@ -508,21 +519,88 @@ function QnaView({ items }: { items: QnaIndexItem[] }) {
         />
       </div>
       <div style={{ fontSize: 12, color: '#6b7280', margin: '6px 0 10px' }}>
-        총 {items.length}건 중 {filtered.length}건 {filtered.length > LIMIT && `(상위 ${LIMIT}건 표시)`} · 본문은 KASB 원문 링크
+        총 {items.length}건 중 {filtered.length}건 {filtered.length > LIMIT && `(상위 ${LIMIT}건 표시)`} · 제목 클릭 시 본문 표시
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {shown.map((q) => (
-          <a key={q.id} href={q.link} target="_blank" rel="noreferrer" style={qnaLinkStyle}>
-            <span style={{ flex: 1 }}>
+          <button key={q.id} type="button" onClick={() => onOpenQna(q)} style={qnaLinkStyle}>
+            <span style={{ flex: 1, textAlign: 'left' }}>
               {q.title}
               {q.deprecated && <span className="bdg" style={{ marginLeft: 6, fontSize: 9, color: '#b91c1c' }}>폐지</span>}
             </span>
             {q.relStds && <span style={{ fontSize: 11, color: '#6b7280', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.relStds}</span>}
-            <span style={{ fontSize: 11, color: '#C8963C' }}>KASB ↗</span>
-          </a>
+            <span style={{ fontSize: 11, color: '#C8963C' }}>본문 보기</span>
+          </button>
         ))}
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────── 질의회신 본문 모달
+// KASB SPA가 직접 링크로 본문을 렌더하지 않아, kasb-qna Edge로 API 본문을 받아 앱에서 표시한다.
+function QnaModal({ item, onClose }: { item: QnaIndexItem; onClose: () => void }) {
+  const [content, setContent] = useState<QnaContent | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setContent(null);
+    setError(null);
+    fetchQnaContent(item.id)
+      .then((c) => { if (alive) setContent(c); })
+      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { alive = false; };
+  }, [item.id]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div onClick={onClose} style={qnaBackdrop}>
+      <div onClick={(e) => e.stopPropagation()} style={qnaSheet}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15.5, fontWeight: 700, color: '#1A2B52', lineHeight: 1.4 }}>
+              {item.title}
+              {item.deprecated && <span className="bdg" style={{ marginLeft: 6, fontSize: 9, color: '#b91c1c' }}>폐지</span>}
+            </div>
+            <div style={{ fontSize: 11.5, color: '#8a8170', marginTop: 3 }}>
+              {[item.relStds, content?.docNumber || item.docNumber, content?.date || item.date].filter(Boolean).join(' · ')}
+            </div>
+          </div>
+          <button className="btn-sm" onClick={onClose}>닫기 ✕</button>
+        </div>
+
+        {!content && !error && <div className="alert-i" style={{ marginTop: 10 }}>본문을 불러오는 중…</div>}
+        {error && <div className="alert-w" style={{ marginTop: 10 }}>본문을 불러오지 못했습니다: {error}</div>}
+        {content && (
+          <div style={{ marginTop: 10 }}>
+            {content.body.split('\n').map((line, i) => {
+              const t = line.trim();
+              if (t.startsWith('### ')) {
+                return <div key={i} style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', margin: '12px 0 4px' }}>{t.slice(4)}</div>;
+              }
+              if (!t) return <div key={i} style={{ height: 6 }} />;
+              return <div key={i} style={{ fontSize: 13.5, lineHeight: 1.7, color: '#1f2937', whiteSpace: 'pre-wrap' }}>{line}</div>;
+            })}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 10, borderTop: '1px solid #ece8e0' }}>
+          <a href={(content?.link) || item.link} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#C8963C', fontWeight: 700, textDecoration: 'none' }}>
+            📖 KASB 원문 ↗
+          </a>
+          <span style={{ fontSize: 11, color: '#9aa0ad', marginLeft: 'auto' }}>
+            출처: 한국회계기준원(KASB) 회계기준열람서비스
+          </span>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -532,7 +610,15 @@ const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', g
 const subStyle: React.CSSProperties = { fontSize: 12, color: '#6b7280' };
 const contentStyle: React.CSSProperties = { fontSize: 13.5, lineHeight: 1.65, color: '#1f2937', whiteSpace: 'pre-wrap' };
 const qnaLinkStyle: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
+  display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', width: '100%',
   border: '1px solid #ececec', borderRadius: 6, padding: '8px 11px', background: '#fff',
-  color: '#1f2937', fontSize: 13,
+  color: '#1f2937', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+};
+const qnaBackdrop: React.CSSProperties = {
+  position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(20,25,40,.45)',
+  display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflow: 'auto', padding: '40px 16px',
+};
+const qnaSheet: React.CSSProperties = {
+  background: '#fff', borderRadius: 10, padding: '18px 20px', maxWidth: 760, width: '100%',
+  boxShadow: '0 10px 40px rgba(0,0,0,.25)', margin: 'auto',
 };

@@ -110,6 +110,27 @@ export function filterQnasByStandardNo(items: QnaIndexItem[], no: string): QnaIn
   return items.filter((q) => q.relStds && q.relStds.includes(no));
 }
 
+/** 질의회신 본문 (kasb-qna Edge가 KASB API에서 받아 정제한 텍스트). */
+export interface QnaContent {
+  id: number;
+  title: string;
+  relStds: string;
+  date: string;
+  docNumber: string;
+  deprecated: boolean;
+  link: string;
+  /** 정제된 본문(섹션 제목은 '### '로 시작). */
+  body: string;
+}
+
+/** 질의회신 본문 조회 — KASB SPA가 직접 링크로 본문을 렌더하지 않아, Edge 프록시로 API 본문을 받아 표시한다. */
+export async function fetchQnaContent(id: number): Promise<QnaContent> {
+  const { data, error } = await supabase.functions.invoke('kasb-qna', { body: { id } });
+  if (error) throw new Error(error.message);
+  if (!data || data.ok === false) throw new Error(data?.error || '질의회신 본문을 불러오지 못했습니다.');
+  return data as QnaContent;
+}
+
 // ── KASB 회계기준열람서비스 링크 ─────────────────────────────────
 // 본문은 KASB 저작물이라 저장하지 않고(요지만 유지), 원문은 KASB에서 직접 열람·내려받게 링크만 제공.
 // 주의: KASB 열람서비스(db.kasb.or.kr)는 기준서별 deep-link를 지원하지 않는다(SPA 라우트가 /·/qnas/:id 뿐,
