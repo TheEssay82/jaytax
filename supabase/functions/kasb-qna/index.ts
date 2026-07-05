@@ -68,6 +68,10 @@ Deno.serve(async (req) => {
       body = secs.join('\n\n').trim();
     }
 
+    // 대조용 '가공 전 원문' — KASB fullContent(평문 전체) 우선, 없으면 content 태그만 제거.
+    const raw = decodeEntities(String(q.fullContent || '').trim())
+      || decodeEntities(String(q.content || '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+
     return json({
       ok: true,
       id: q.id,
@@ -78,6 +82,7 @@ Deno.serve(async (req) => {
       deprecated: q.deprecatedYn === 1,
       link: `https://db.kasb.or.kr/qnas/${q.id}`,
       body: body || '(본문이 제공되지 않습니다. KASB 원문을 확인하세요.)',
+      raw,
     });
   } catch (e) {
     return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);

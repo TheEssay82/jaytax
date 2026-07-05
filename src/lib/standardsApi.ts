@@ -121,6 +121,8 @@ export interface QnaContent {
   link: string;
   /** 정제된 본문(섹션 제목은 '### '로 시작). */
   body: string;
+  /** 가공 전 원문(KASB fullContent) — 완전성 대조용. */
+  raw: string;
 }
 
 /** 질의회신 본문 조회 — KASB SPA가 직접 링크로 본문을 렌더하지 않아, Edge 프록시로 API 본문을 받아 표시한다. */

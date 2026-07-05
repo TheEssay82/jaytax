@@ -542,6 +542,7 @@ function QnaView({ items, onOpenQna }: { items: QnaIndexItem[]; onOpenQna: (q: Q
 function QnaModal({ item, onClose }: { item: QnaIndexItem; onClose: () => void }) {
   const [content, setContent] = useState<QnaContent | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -591,15 +592,22 @@ function QnaModal({ item, onClose }: { item: QnaIndexItem; onClose: () => void }
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 10, borderTop: '1px solid #ece8e0', flexWrap: 'wrap' }}>
-          <a href={`https://db.kasb.or.kr/api/qnas/${item.id}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#C8963C', fontWeight: 700, textDecoration: 'none' }}
-            title="KASB 원본 데이터(JSON)를 새 탭에서 엽니다 — 표시된 본문의 완전성을 대조할 수 있습니다">
-            🔎 KASB 원문 데이터(대조용) ↗
-          </a>
-          <span style={{ fontSize: 11, color: '#9aa0ad', marginLeft: 'auto' }}>
-            위 본문은 KASB 원문 데이터(content)를 가공 없이 그대로 표시합니다.
-          </span>
-        </div>
+        {/* 완전성 대조 — KASB 가공 전 원문(fullContent)을 앱 내에서 펼쳐 위 본문과 대조 */}
+        {content && content.raw && (
+          <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid #ece8e0' }}>
+            <button type="button" className="btn-sm" onClick={() => setShowRaw((v) => !v)} aria-expanded={showRaw}>
+              {showRaw ? '▾' : '▸'} 가공 전 원문 대조 <span style={{ color: '#9aa0ad' }}>(KASB 원본 전체 — 위 본문과 대조용)</span>
+            </button>
+            {showRaw && (
+              <div style={{ marginTop: 8, padding: '10px 12px', background: '#faf9f5', border: '1px solid #ece8e0', borderRadius: 8, fontSize: 12.5, lineHeight: 1.7, color: '#4b5563', whiteSpace: 'pre-wrap', maxHeight: 320, overflow: 'auto' }}>
+                {content.raw}
+              </div>
+            )}
+            <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6 }}>
+              위 본문은 KASB 원문 데이터를 요약·가공 없이 그대로 표시합니다. 원본 전체는 여기서 대조하세요. (출처: 한국회계기준원 KASB)
+            </div>
+          </div>
+        )}
       </div>
     </div>,
     document.body,
