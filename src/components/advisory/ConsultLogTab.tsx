@@ -330,7 +330,7 @@ function Detail({
             style={{ width: '100%', resize: 'vertical', lineHeight: 1.65, fontSize: 13.5, fontFamily: 'inherit' }}
           />
         ) : (
-          <Markdown text={item.answerMd} />
+          <Markdown text={item.answerMd} boxed hideFirstH1 />
         )}
       </Section>
 

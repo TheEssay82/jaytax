@@ -55,7 +55,7 @@ export default function SharedConsult({ token }: { token: string }) {
             </Section>
 
             <Section label="회신">
-              <Markdown text={data.answerMd} />
+              <Markdown text={data.answerMd} boxed hideFirstH1 />
             </Section>
 
             {data.citations.length > 0 && (
