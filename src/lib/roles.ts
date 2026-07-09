@@ -37,6 +37,7 @@ export type Capability =
   | 'viewAllStats' // 통계 전체 조회(아니면 본인것만)
   | 'changeSettings' // 수수료 설정 변경
   | 'manageUsers' // 사용자/계정 관리
+  | 'viewAiUsage' // AI(상담) 사용량 집계 열람 — 최고관리자 전용
   | 'finalizeConsult'; // 상담기록 확정(초안↔확정) — 작성자 외에도 확정권한자 허용
 
 // 항목별 허용 역할 (매트릭스)
@@ -54,6 +55,7 @@ const MATRIX: Record<Capability, Role[]> = {
   viewAllStats: ['superuser', 'accountant', 'team_lead'],
   changeSettings: ['superuser', 'accountant'],
   manageUsers: ['superuser'],
+  viewAiUsage: ['superuser'],
   finalizeConsult: ['superuser', 'accountant', 'team_lead'],
 };
 

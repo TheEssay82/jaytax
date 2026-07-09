@@ -7,6 +7,8 @@ import {
   listConsultations,
   updateConsultation,
   deleteConsultation,
+  setConsultShare,
+  shareConsultPath,
   modelLabel,
   type Consultation,
   type ConsultStatus,
@@ -302,6 +304,9 @@ function Detail({
         )}
       </div>
 
+      {/* 외부 공유 링크 (작성자·확정권한자) */}
+      {(isOwner || canFinalize) && !editing && <ShareControl item={item} onChanged={onChanged} />}
+
       {/* 키워드 해시태그 */}
       {(editing || item.tags.length > 0) && (
         <Section label="키워드 해시태그">
@@ -375,6 +380,65 @@ function StatusBadge({ status }: { status: ConsultStatus }) {
     >
       {final ? '확정' : '초안'}
     </span>
+  );
+}
+
+function ShareControl({ item, onChanged }: { item: Consultation; onChanged: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const shared = !!item.shareToken;
+  const url = item.shareToken ? `${window.location.origin}${shareConsultPath(item.shareToken)}` : '';
+
+  async function toggle() {
+    if (busy) return;
+    if (shared && !window.confirm('공유를 해제하면 기존 링크로 더 이상 열람할 수 없습니다. 해제할까요?')) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await setConsultShare(item.id, !shared);
+      await onChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '공유 설정 중 오류가 발생했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* 클립보드 권한 없음 — 무시 */
+    }
+  }
+
+  return (
+    <div style={{ border: '1px dashed #d8d2c6', borderRadius: 8, background: '#fbfaf6', padding: '10px 12px', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1A2B52' }}>🔗 외부 공유</span>
+        <span style={{ fontSize: 11.5, color: shared ? '#1A6E3C' : '#9aa0ad' }}>
+          {shared ? '공유 중 — 링크가 있으면 로그인 없이 열람 가능' : '비공개'}
+        </span>
+        <button className="btn-sm" onClick={toggle} disabled={busy} style={{ marginLeft: 'auto' }}>
+          {busy ? '처리 중…' : shared ? '공유 해제' : '공유 링크 만들기'}
+        </button>
+      </div>
+      {shared && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
+          <input readOnly value={url} onFocus={(e) => e.target.select()} style={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }} />
+          <button className="btn-sm" onClick={copy}>{copied ? '복사됨 ✓' : '📋 복사'}</button>
+          <a className="btn-sm" href={url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>열기 ↗</a>
+        </div>
+      )}
+      {err && <div className="alert-w" style={{ marginTop: 6 }}>{err}</div>}
+      {shared && (
+        <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6 }}>
+          이 링크를 아는 사람은 누구나 이 회신을 볼 수 있습니다. 고객정보가 포함됐다면 주의하세요.
+        </div>
+      )}
+    </div>
   );
 }
 

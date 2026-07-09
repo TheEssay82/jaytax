@@ -107,6 +107,8 @@ export interface Consultation {
   /** 확정 저장한 사람 담당자명(profiles.name). */
   finalizedByName: string;
   finalizedAt: string | null;
+  /** 외부 공유 토큰(있으면 공유 링크로 비로그인 열람 가능). null이면 비공개. */
+  shareToken: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -127,6 +129,7 @@ interface ConsultRow {
   status: string | null;
   finalized_by: string | null;
   finalized_at: string | null;
+  share_token: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -150,6 +153,7 @@ function rowToConsultation(r: ConsultRow): Consultation {
     finalizedById: r.finalized_by,
     finalizedByName: '',
     finalizedAt: r.finalized_at,
+    shareToken: r.share_token ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -231,4 +235,84 @@ export async function updateConsultation(
 export async function deleteConsultation(id: string): Promise<void> {
   const { error } = await supabase.from('consultations').delete().eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+// ── 외부 공유 링크 ───────────────────────────────────────────────
+/** 공유 페이지 경로(비로그인 열람). window.location.origin + 이 경로. */
+export const shareConsultPath = (token: string) => `/share/consult/${token}`;
+
+/** 공유 켜기/끄기 (작성자·확정권한자만 — RLS). 켜면 새 토큰 발급, 끄면 null. 반환: 현재 토큰(또는 null). */
+export async function setConsultShare(id: string, enabled: boolean): Promise<string | null> {
+  const token = enabled ? crypto.randomUUID() : null;
+  const { error } = await supabase.from('consultations').update({ share_token: token }).eq('id', id);
+  if (error) throw new Error(error.message);
+  return token;
+}
+
+/** 공유된 상담 1건 (비로그인 anon 접근 — SECURITY DEFINER RPC, 토큰 일치 시만). */
+export interface SharedConsult {
+  title: string;
+  question: string;
+  answerMd: string;
+  citations: Citation[];
+  tags: string[];
+  status: ConsultStatus;
+  createdAt: string;
+  authorName: string;
+}
+export async function getSharedConsult(token: string): Promise<SharedConsult | null> {
+  const { data, error } = await supabase.rpc('get_shared_consult', { p_token: token });
+  if (error) throw new Error(error.message);
+  const r = Array.isArray(data) ? data[0] : data;
+  if (!r) return null;
+  return {
+    title: r.title || '',
+    question: r.question || '',
+    answerMd: r.answer_md || '',
+    citations: r.citations || [],
+    tags: r.tags || [],
+    status: (r.status as ConsultStatus) || 'draft',
+    createdAt: r.created_at,
+    authorName: r.author_name || '',
+  };
+}
+
+// ── AI(상담) 사용량 ──────────────────────────────────────────────
+/** '회신 초안 작성/보완' 1회 기록. 실패해도 무시(사용량 로깅이 기능을 막지 않게). */
+export async function logConsultUsage(opts: { model?: string; domain?: string; action?: 'generate' | 'refine' }): Promise<void> {
+  try {
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) return;
+    await supabase.from('consult_usage').insert({
+      user_id: u.user.id,
+      user_email: u.user.email ?? null,
+      model: opts.model ?? null,
+      domain: opts.domain ?? null,
+      action: opts.action ?? 'generate',
+    });
+  } catch {
+    /* 로깅 실패는 조용히 무시 */
+  }
+}
+
+/** 사용자별 AI 사용량 집계 (최고관리자만 — RPC 내부에서 검사, 아니면 빈 배열). */
+export interface AiUsageRow {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  total: number;
+  thisMonth: number;
+  lastUsed: string | null;
+}
+export async function listAiUsage(): Promise<AiUsageRow[]> {
+  const { data, error } = await supabase.rpc('ai_usage_by_user');
+  if (error) throw new Error(error.message);
+  return ((data as Record<string, unknown>[]) ?? []).map((r) => ({
+    userId: r.user_id as string,
+    userName: (r.user_name as string) || '',
+    userEmail: (r.user_email as string) || '',
+    total: Number(r.total) || 0,
+    thisMonth: Number(r.this_month) || 0,
+    lastUsed: (r.last_used as string) || null,
+  }));
 }

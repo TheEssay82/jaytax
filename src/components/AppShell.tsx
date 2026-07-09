@@ -17,6 +17,7 @@ import TaxLawTab from './advisory/TaxLawTab';
 import ConsultTab from './advisory/ConsultTab';
 import LibraryTab from './advisory/LibraryTab';
 import ConsultLogTab from './advisory/ConsultLogTab';
+import AiUsageTab from './advisory/AiUsageTab';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
 type MenuItem = { id: string; label: string; cap?: Capability };
@@ -44,6 +45,7 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'consult', label: '🧑‍💼 상담진행' },
       { id: 'consult-log', label: '🗂️ 상담기록' },
       { id: 'library', label: '📁 자료실' },
+      { id: 'ai-usage', label: '📊 AI 사용량', cap: 'viewAiUsage' },
     ],
   },
 ];
@@ -282,6 +284,8 @@ function TabContent({
       return <ConsultLogTab />;
     case 'library':
       return <LibraryTab />;
+    case 'ai-usage':
+      return <AiUsageTab />;
     default:
       return (
         <div className="card">

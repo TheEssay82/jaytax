@@ -5,6 +5,7 @@ import { useState } from 'react';
 import {
   runConsult,
   createConsultation,
+  logConsultUsage,
   modelLabel,
   CONSULT_MODELS,
   DEFAULT_CONSULT_MODEL,
@@ -102,6 +103,7 @@ export default function ConsultTab() {
       setTags(res.tags);
       setModel(res.model);
       setSubmittedQuestion(q);
+      void logConsultUsage({ model: res.model, domain, action: 'generate' });
       if (!title.trim()) setTitle(deriveTitle(res.answer_md, question));
     } catch (err) {
       setError(err instanceof Error ? err.message : '회신 초안 작성 중 오류가 발생했습니다.');
@@ -160,6 +162,7 @@ export default function ConsultTab() {
       setCitations(res.citations);
       setTags(res.tags);
       setModel(res.model);
+      void logConsultUsage({ model: res.model, domain, action: 'refine' });
       setFollowup('');
       setSaved(false);
     } catch (err) {
