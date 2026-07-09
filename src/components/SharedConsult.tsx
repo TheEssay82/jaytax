@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getSharedConsult, type SharedConsult as Shared } from '../lib/consultApi';
 import { dtFmt } from '../lib/format';
+import Markdown from './common/Markdown';
 
 export default function SharedConsult({ token }: { token: string }) {
   const [data, setData] = useState<Shared | null>(null);
@@ -39,40 +40,41 @@ export default function SharedConsult({ token }: { token: string }) {
 
         {state === 'ok' && data && (
           <div style={card}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-              <span className="bdg" style={{ fontSize: 10, fontWeight: 700, color: data.status === 'final' ? '#1A6E3C' : '#8a5a00', background: data.status === 'final' ? '#e6f4ec' : '#fdf3e0', border: `1px solid ${data.status === 'final' ? '#bfe3cc' : '#f0dcb4'}`, borderRadius: 4, padding: '1px 7px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: data.status === 'final' ? '#1A6E3C' : '#8a5a00', background: data.status === 'final' ? '#e6f4ec' : '#fdf3e0', border: `1px solid ${data.status === 'final' ? '#bfe3cc' : '#f0dcb4'}`, borderRadius: 4, padding: '2px 8px' }}>
                 {data.status === 'final' ? '확정' : '초안'}
               </span>
-              <span style={{ fontSize: 18, fontWeight: 700, color: '#1A2B52' }}>{data.title || '(제목 없음)'}</span>
+              <span style={{ fontSize: 20, fontWeight: 800, color: '#1A2B52', letterSpacing: '-0.01em' }}>{data.title || '(제목 없음)'}</span>
             </div>
-            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: '#9aa0ad', marginBottom: 20 }}>
               {data.authorName && `작성 ${data.authorName} · `}{dtFmt(data.createdAt)}
             </div>
 
             <Section label="질문 · 사실관계">
-              <div style={body}>{data.question}</div>
+              <div style={questionBox}>{data.question}</div>
             </Section>
+
             <Section label="회신">
-              <div style={body}>{data.answerMd}</div>
+              <Markdown text={data.answerMd} />
             </Section>
 
             {data.citations.length > 0 && (
               <Section label={`근거 (${data.citations.length})`}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {data.citations.map((c, i) => (
-                    <div key={i} style={{ border: '1px solid #e4e0d8', borderRadius: 8, padding: '10px 12px', background: '#fffdf6' }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
-                        <span className="bdg" style={{ fontSize: 10, color: c.type === '세법' ? '#1A2B52' : '#8a5a00' }}>{c.type}</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#1A2B52' }}>{c.ref}</span>
+                    <div key={i} style={citeBox}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 5, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 9.5, fontWeight: 700, color: c.type === '세법' ? '#1A2B52' : '#8a5a00', background: c.type === '세법' ? '#eef2fb' : '#fbf3e3', border: '1px solid ' + (c.type === '세법' ? '#d4ddf0' : '#efe0c4'), borderRadius: 4, padding: '1px 6px' }}>{c.type}</span>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1A2B52' }}>{c.ref}</span>
                       </div>
-                      <div style={{ fontSize: 12.5, lineHeight: 1.6, color: '#4b5563', whiteSpace: 'pre-wrap' }}>{c.text}</div>
+                      <div style={{ fontSize: 12.5, lineHeight: 1.7, color: '#5a6270', whiteSpace: 'pre-wrap' }}>{c.text}</div>
                     </div>
                   ))}
                 </div>
               </Section>
             )}
 
-            <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 14, lineHeight: 1.6, borderTop: '1px solid #ece8e0', paddingTop: 10 }}>
+            <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 20, lineHeight: 1.6, borderTop: '1px solid #ece8e0', paddingTop: 12 }}>
               본 회신은 참고용 AI 보조 자료이며, 회계기준 근거는 요지 정리본입니다. 최종 판단·서명은 담당 회계사·세무사가 합니다.
             </div>
           </div>
@@ -84,15 +86,21 @@ export default function SharedConsult({ token }: { token: string }) {
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', marginBottom: 6 }}>{label}</div>
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#a89b80', letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 8 }}>{label}</div>
       {children}
     </div>
   );
 }
 
 const card: React.CSSProperties = {
-  background: '#fff', border: '1px solid #e4e0d8', borderRadius: 12, padding: '20px 22px',
-  boxShadow: '0 2px 10px rgba(0,0,0,.04)',
+  background: '#fff', border: '1px solid #e7e2d8', borderRadius: 14, padding: '28px 30px',
+  boxShadow: '0 4px 18px rgba(26,43,82,.06)',
 };
-const body: React.CSSProperties = { fontSize: 13.5, lineHeight: 1.7, color: '#1f2937', whiteSpace: 'pre-wrap' };
+const questionBox: React.CSSProperties = {
+  fontSize: 13.5, lineHeight: 1.75, color: '#3a4150', whiteSpace: 'pre-wrap',
+  background: '#f8f6f1', border: '1px solid #ece7dd', borderRadius: 10, padding: '13px 15px',
+};
+const citeBox: React.CSSProperties = {
+  border: '1px solid #ece7dd', borderLeft: '3px solid #c9b88a', borderRadius: '4px 8px 8px 4px', padding: '11px 14px', background: '#fffdf8',
+};

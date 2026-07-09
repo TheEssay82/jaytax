@@ -14,6 +14,7 @@ import {
   type ConsultStatus,
 } from '../../lib/consultApi';
 import { TagList, TagEditor } from './TagsField';
+import Markdown from '../common/Markdown';
 
 export default function ConsultLogTab() {
   const { user, role } = useAuth();
@@ -329,7 +330,7 @@ function Detail({
             style={{ width: '100%', resize: 'vertical', lineHeight: 1.65, fontSize: 13.5, fontFamily: 'inherit' }}
           />
         ) : (
-          <div style={{ fontSize: 13.5, lineHeight: 1.65, color: '#1f2937', whiteSpace: 'pre-wrap' }}>{item.answerMd}</div>
+          <Markdown text={item.answerMd} />
         )}
       </Section>
 
