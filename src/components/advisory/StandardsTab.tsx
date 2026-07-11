@@ -232,9 +232,19 @@ function BrowseView({
         ))}
       </div>
 
-      {cat.groups.map((g) => (
+      {cat.groups.map((g, gi) => {
+        const showSection = g.section && g.section !== cat.groups[gi - 1]?.section;
+        return (
         <div key={g.label} style={{ marginBottom: 14 }}>
+          {showSection && (
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#1A2B52', margin: '18px 0 10px', paddingBottom: 6, borderBottom: '2px solid #e7e2d8' }}>
+              ⚖️ {g.section}
+            </div>
+          )}
           <div style={{ fontSize: 12, fontWeight: 700, color: '#8a8170', marginBottom: 6 }}>{g.label}</div>
+          {g.items.length === 0 ? (
+            <div style={{ fontSize: 12, color: '#b0a89a', padding: '4px 2px' }}>세부 법령·규정을 준비 중입니다.</div>
+          ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 6 }}>
             {g.items.map((item, i) => {
               const loaded = item.no !== '' && loadedKeys.has(`${cat.set} ${item.no}`);
@@ -269,8 +279,10 @@ function BrowseView({
               );
             })}
           </div>
+          )}
         </div>
-      ))}
+        );
+      })}
       <div className="alert-i" style={{ fontSize: 12, lineHeight: 1.6 }}>
         기준서를 클릭하면 <b>원문 PDF</b>를 게시·열람하고, <b>요지 정리본</b>(적재된 경우)을 함께 볼 수 있습니다.
         <span className="bdg" style={{ fontSize: 9, color: '#b91c1c', background: '#fdeaea', border: '1px solid #f3caca', margin: '0 3px' }}>PDF</span>는 원문 게시,

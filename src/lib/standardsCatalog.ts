@@ -9,6 +9,8 @@ export interface CatalogItem {
 export interface CatalogSubgroup {
   label: string;
   items: CatalogItem[];
+  /** 상위 섹션명(선택). 같은 set 안에서 여러 그룹을 하나의 섹션으로 묶어 표시한다. */
+  section?: string;
 }
 export interface CatalogCategory {
   set: StandardSet;
@@ -172,6 +174,11 @@ export const CATALOG: CatalogCategory[] = [
       { label: '중소기업회계기준', items: [{ no: '중소기업회계기준', title: '중소기업회계기준' }] },
       { label: '비영리조직회계기준', items: [{ no: '비영리조직회계기준', title: '비영리조직회계기준' }] },
       { label: '기업회계기준전문', items: [{ no: '기업회계기준전문', title: '기업회계기준전문' }] },
+
+      // 회계사 관련 법령 및 규칙 — 하위 법령·규정은 순차 추가 예정.
+      { section: '회계사 관련 법령 및 규칙', label: '공인회계사법 및 관련규정', items: [] },
+      { section: '회계사 관련 법령 및 규칙', label: '주식회사 등의 외부감사에 관한 법률 및 관련규정', items: [] },
+      { section: '회계사 관련 법령 및 규칙', label: '자본시장과 금융투자업에 관한 법률 및 관련규정', items: [] },
     ],
   },
 ];
