@@ -247,6 +247,26 @@ function BrowseView({
           ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 6 }}>
             {g.items.map((item, i) => {
+              // 전문을 외부 링크(법제처 등)로 여는 항목 — PDF/요지 대신 링크로.
+              if (item.link) {
+                return (
+                  <a
+                    key={`${item.title}-${i}`}
+                    href={item.link}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="전문 열람 (법제처 국가법령정보센터 ↗)"
+                    style={{
+                      textAlign: 'left', border: '1px solid #e4e0d8', background: '#fff', color: '#1f2937',
+                      borderRadius: 6, padding: '7px 10px', cursor: 'pointer', fontSize: 12.5,
+                      display: 'flex', gap: 6, alignItems: 'baseline', textDecoration: 'none',
+                    }}
+                  >
+                    <span style={{ flex: 1 }}>{item.title}</span>
+                    <span style={{ fontSize: 11, color: '#C8963C', fontWeight: 700, whiteSpace: 'nowrap' }}>전문 ↗</span>
+                  </a>
+                );
+              }
               const loaded = item.no !== '' && loadedKeys.has(`${cat.set} ${item.no}`);
               const hasPdf = item.no !== '' && pdfKeys.has(`${cat.set} ${item.no}`);
               const clickable = item.no !== ''; // 번호 있는 기준서는 PDF 게시·열람 위해 항상 진입 가능
@@ -271,7 +291,7 @@ function BrowseView({
                     alignItems: 'baseline',
                   }}
                 >
-                  {item.no && <span style={{ fontWeight: 700, minWidth: 38, color: active ? '#1A2B52' : clickable ? '#6b7280' : '#bbb' }}>{item.no}</span>}
+                  {item.no && /^\d/.test(item.no) && <span style={{ fontWeight: 700, minWidth: 38, color: active ? '#1A2B52' : clickable ? '#6b7280' : '#bbb' }}>{item.no}</span>}
                   <span style={{ flex: 1 }}>{item.title}</span>
                   {hasPdf && <span className="bdg" style={{ fontSize: 9, color: '#b91c1c', background: '#fdeaea', border: '1px solid #f3caca' }}>PDF</span>}
                   {loaded && <span className="bdg b-on" style={{ fontSize: 9 }}>요지</span>}
@@ -348,7 +368,7 @@ function StandardDetail({
         </a>
       </div>
       <div style={{ fontSize: 16, fontWeight: 700, color: '#1A2B52', marginBottom: 10 }}>
-        {set} {item.no && `제${item.no}호 `}{item.title}
+        {set} {item.no && /^\d/.test(item.no) ? `제${item.no}호 ` : ''}{item.title}
       </div>
 
       {/* 원문 PDF (게시·열람·다운로드) */}
