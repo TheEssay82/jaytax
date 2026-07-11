@@ -421,10 +421,11 @@ Deno.serve(async (req) => {
       if (eFull) return json({ ok: false, error: `원문 근거 검색 실패: ${eFull.message}` }, 500);
       fullCites = (fullRows ?? []).map((r: Record<string, unknown>) => {
         const no = String(r.standard_no);
-        const noLabel = /장$/.test(no) ? `제${no}` : `제${no}호`; // 일반기업회계기준 '10장' → '제10장'
+        // 숫자 기준서번호 → '제1115호', 일반기업 장 → '제10장', 그 외(법령 등 한글 키) → 접두 없이 제목만.
+        const noLabel = /^\d/.test(no) ? `제${no}호 ` : /장$/.test(no) ? `제${no} ` : '';
         return {
           type: '회계기준(원문)',
-          ref: `${r.standard_set} ${noLabel} 「${r.standard_title}」 원문 발췌`,
+          ref: `${r.standard_set} ${noLabel}「${r.standard_title}」 원문 발췌`,
           text: String(r.content),
         };
       });
