@@ -284,6 +284,15 @@ function DocRow({ doc, canManage, onChanged }: { doc: LibraryDoc; canManage: boo
         <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>
           {doc.fileExt && <b style={{ textTransform: 'uppercase' }}>{doc.fileExt}</b>}{doc.fileSize ? ` · ${fmtFileSize(doc.fileSize)}` : ''}
         </span>
+        {doc.ragIndexed && (
+          <span
+            className="bdg"
+            title={`상담진행 근거 검색에 편입됨 (${doc.ragChunks}청크)`}
+            style={{ fontSize: 10, fontWeight: 700, color: '#1A6E3C', background: '#eafaef', border: '1px solid #bfe6cc', whiteSpace: 'nowrap' }}
+          >
+            🔎 RAG
+          </span>
+        )}
         <span style={{ display: 'inline-flex', gap: 6, whiteSpace: 'nowrap' }}>
           <button className="btn-sm" onClick={() => open(false)}>열기</button>
           <button className="btn-sm" onClick={() => open(true)}>⬇️</button>

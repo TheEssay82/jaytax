@@ -17,6 +17,7 @@
     "std:upload:pdfs": "tsx scripts/standards/upload-pdfs.ts",
     "std:load:fulltext": "tsx scripts/standards/load-pdf-fulltext.ts",
     "std:gen:gist": "tsx scripts/standards/gen-gist.ts",
+    "lib:load:rag": "tsx scripts/library/load-library-rag.ts",
     "skill:sync": "tsx scripts/standards/sync-skill.ts"
   },
   "dependencies": {

@@ -31,6 +31,10 @@ export interface LibraryDoc {
   uploadedByName: string;
   createdAt: string;
   updatedAt: string;
+  /** RAG 편입 여부(상담진행 근거 검색 대상). 참고자료 PDF만 대상, 적재 스크립트가 갱신. */
+  ragIndexed: boolean;
+  /** 편입된 청크 수(0이면 미편입). */
+  ragChunks: number;
 }
 
 interface LibraryRow {
@@ -49,6 +53,8 @@ interface LibraryRow {
   uploaded_email: string | null;
   created_at: string;
   updated_at: string;
+  rag_indexed: boolean | null;
+  rag_chunks: number | null;
 }
 
 function rowToDoc(r: LibraryRow): LibraryDoc {
@@ -69,6 +75,8 @@ function rowToDoc(r: LibraryRow): LibraryDoc {
     uploadedByName: r.uploaded_email || '',
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    ragIndexed: !!r.rag_indexed,
+    ragChunks: r.rag_chunks || 0,
   };
 }
 
