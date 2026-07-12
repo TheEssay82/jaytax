@@ -13,6 +13,24 @@ const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const ALLOWED_MODELS = new Set(['claude-sonnet-4-6', 'claude-opus-4-8']);
 const TAG_MODEL = 'claude-haiku-4-5'; // 키워드 추출(저비용)
 
+// 원문/자료실 RAG 근거 선택 — 고정 top-N 대신 '유사도 임계값 + 넉넉한 상한'으로 동적 선택.
+// (질문마다 관련 근거 수가 달라, 고정 6개는 넓은 법령형 질문에서 정작 필요한 조문을 잘라냈다.
+//  예: 외부감사 감사계약 해지 질문에서 제15조 원문이 18위 → 6개 창 밖으로 탈락 → [확인 불가].)
+const FT_FETCH = 24;      // HNSW로 가져올 원문 후보 수
+const FT_MIN_SIM = 0.40;  // 근거 채택 유사도 하한
+const FT_MIN_KEEP = 6;    // 하한 미달이어도 최소 유지(근거 기아 방지)
+const FT_MAX_KEEP = 20;   // 근거 폭주 방지 상한
+const LIB_FETCH = 12;     // 자료실 후보 수
+const LIB_MIN_SIM = 0.40; // 자료실 채택 하한
+const LIB_MAX_KEEP = 6;   // 자료실 상한
+
+// RPC가 유사도 내림차순으로 준 행에서, 임계값 이상만 채택하되 미달이면 최소 minKeep개는 유지, 상한 maxKeep.
+function pickByThreshold<T extends { similarity: number }>(rows: T[], minSim: number, minKeep: number, maxKeep: number): T[] {
+  const above = rows.filter((r) => Number(r.similarity) >= minSim);
+  const base = above.length >= minKeep ? above : rows.slice(0, minKeep);
+  return base.slice(0, maxKeep);
+}
+
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -393,7 +411,8 @@ Deno.serve(async (req) => {
     if (!user) return json({ ok: false, error: '로그인이 필요합니다.' }, 401);
 
     const lawOc = Deno.env.get('LAW_API_OC');
-    const { question, standardNo = '1115', matchCount = 6, lawRefs = [], model, includePrecedents = false, includeTaxLaw = true, domain = '공통', priorAnswer = '', followup = '' } =
+    // standardNo: 기본 '' = 전체 기준서(전 원문 대상 의미검색). 특정 기준서 한정은 선택(현재 프런트 미노출, 고급용).
+    const { question, standardNo = '', lawRefs = [], model, includePrecedents = false, includeTaxLaw = true, domain = '공통', priorAnswer = '', followup = '' } =
       await req.json().catch(() => ({}));
     if (!question || typeof question !== 'string' || !question.trim()) {
       return json({ ok: false, error: '질문(question)은 필수입니다.' }, 400);
@@ -415,14 +434,16 @@ Deno.serve(async (req) => {
     if (doAccounting) {
       const nStd = standardNo || null; // 미지정 시 전 기준서 검색
 
-      // 1-a) 원문(게시 PDF 추출) 근거 — 전 기준서(61종) 대상, 주 근거
+      // 1-a) 원문(게시 PDF 추출) 근거 — 전 기준서 대상, 주 근거.
+      //   상위 FT_FETCH개를 가져와 유사도 임계값으로 동적 선택(질문 폭에 맞춰 근거 수 자동 조절).
       const { data: fullRows, error: eFull } = await caller.rpc('match_standard_fulltext', {
         query_embedding: qe,
-        match_count: Math.min(Math.max(Number(matchCount) || 6, 1), 12),
+        match_count: FT_FETCH,
         filter_standard_no: nStd,
       });
       if (eFull) return json({ ok: false, error: `원문 근거 검색 실패: ${eFull.message}` }, 500);
-      fullCites = (fullRows ?? []).map((r: Record<string, unknown>) => {
+      const fullPicked = pickByThreshold((fullRows ?? []) as (Record<string, unknown> & { similarity: number })[], FT_MIN_SIM, FT_MIN_KEEP, FT_MAX_KEEP);
+      fullCites = fullPicked.map((r: Record<string, unknown>) => {
         const no = String(r.standard_no);
         // 숫자 기준서번호 → '제1115호', 일반기업 장 → '제10장', 그 외(법령 등 한글 키) → 접두 없이 제목만.
         const noLabel = /^\d/.test(no) ? `제${no}호 ` : /장$/.test(no) ? `제${no} ` : '';
@@ -447,12 +468,14 @@ Deno.serve(async (req) => {
     }
 
     // 1-a') 자료실 근거 (공통) — 사무소 내부 참고자료(reference) PDF 원문 청크. 회계·세무 모두에 유효.
+    //   원문과 동일하게 임계값으로 동적 선택(관련 없으면 0건, minKeep=0).
     const { data: libRows } = await caller.rpc('match_library_fulltext', {
       query_embedding: qe,
-      match_count: 4,
+      match_count: LIB_FETCH,
       filter_kind: 'reference',
     });
-    const libCites = (libRows ?? []).map((r: Record<string, unknown>) => ({
+    const libPicked = pickByThreshold((libRows ?? []) as (Record<string, unknown> & { similarity: number })[], LIB_MIN_SIM, 0, LIB_MAX_KEEP);
+    const libCites = libPicked.map((r: Record<string, unknown>) => ({
       type: '자료실',
       ref: `자료실 「${String(r.title)}」${r.category ? ` · ${String(r.category)}` : ''} 발췌(내부자료)`,
       text: String(r.content),

@@ -30,8 +30,6 @@ export default function ConsultTab() {
   const [clientId, setClientId] = useState('');
   const [title, setTitle] = useState('');
   const [domain, setDomain] = useState<Domain>('공통');
-  const [standardNo, setStandardNo] = useState(''); // 회계 분야에서만 사용
-  const [matchCount, setMatchCount] = useState(6);
   const [selModel, setSelModel] = useState<string>(DEFAULT_CONSULT_MODEL);
   const [includePrec, setIncludePrec] = useState(true); // 판례 자동참조 (세무·공통 기본 ON)
   const [includeTaxLaw, setIncludeTaxLaw] = useState(true); // 세법 조문 자동근거 (기본 ON)
@@ -67,10 +65,8 @@ export default function ConsultTab() {
   const selClient = clients.find((c) => c.id === clientId) ?? null;
   const classified = clientType === 'general' || (clientType === 'client' && !!clientId);
 
-  // 분야가 회계가 아니면 근거기준서 한정은 의미 없음 → 전체로 되돌림
   function changeDomain(d: Domain) {
     setDomain(d);
-    if (d !== '회계') setStandardNo('');
     // 회계 전용이면 판례 자동참조는 기본 끔(세무·공통은 켬)
     setIncludePrec(d !== '회계');
   }
@@ -97,7 +93,7 @@ export default function ConsultTab() {
     setError(null);
     setSaved(false);
     try {
-      const res = await runConsult(q, { standardNo, matchCount, lawRefs, model: selModel, includePrecedents: includePrec, includeTaxLaw, domain });
+      const res = await runConsult(q, { lawRefs, model: selModel, includePrecedents: includePrec, includeTaxLaw, domain });
       setAnswer(res.answer_md);
       setCitations(res.citations);
       setTags(res.tags);
@@ -155,7 +151,7 @@ export default function ConsultTab() {
     setError(null);
     try {
       const res = await runConsult(submittedQuestion || buildQuestion(), {
-        standardNo, matchCount, lawRefs, model: selModel, includePrecedents: includePrec, includeTaxLaw, domain,
+        lawRefs, model: selModel, includePrecedents: includePrec, includeTaxLaw, domain,
         priorAnswer: answer, followup: fu,
       });
       setAnswer(res.answer_md);
@@ -201,7 +197,6 @@ export default function ConsultTab() {
     setIncludePrec(true);
     setStructured(false);
     setDomain('공통');
-    setStandardNo('');
     setTarget('공통');
     setAssumptions('');
     setSelfReview('');
@@ -311,25 +306,6 @@ export default function ConsultTab() {
               </select>
             </div>
           )}
-          {domain === '회계' && (
-            <div style={{ flex: '0 1 190px' }}>
-              <label className="fl">근거 기준서</label>
-              <select value={standardNo} onChange={(e) => setStandardNo(e.target.value)}>
-                <option value="">전체 기준서 (원문 61종)</option>
-                <option value="1115">K-IFRS 제1115호 (수익)</option>
-                <option value="1116">K-IFRS 제1116호 (리스)</option>
-                <option value="1109">K-IFRS 제1109호 (금융상품)</option>
-              </select>
-            </div>
-          )}
-          <div style={{ flex: '0 1 90px' }}>
-            <label className="fl">근거 수</label>
-            <select value={matchCount} onChange={(e) => setMatchCount(Number(e.target.value))}>
-              {[4, 6, 8, 10].map((n) => (
-                <option key={n} value={n}>{n}개</option>
-              ))}
-            </select>
-          </div>
           <div style={{ flex: '1 1 180px' }}>
             <label className="fl">작성 모델</label>
             <select value={selModel} onChange={(e) => setSelModel(e.target.value)}>
