@@ -1,7 +1,7 @@
 // 문서발송 › 발송요청 — 공통 문서정보 + 수신자 다중선택(거래처 담당자 관리 연동, 스냅샷) 요청 등록/목록/수정
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { listDocClients, type DocClient } from '../../lib/docClientsApi';
+import { listDocClients, type DocClient, type DocContact } from '../../lib/docClientsApi';
 import {
   listSendRequests,
   createSendRequests,
@@ -55,8 +55,6 @@ export default function DocSendRequestTab() {
   const [msg, setMsg] = useState('');
 
   const [q, setQ] = useState('');
-  const [statusF, setStatusF] = useState('');
-  const [workF, setWorkF] = useState('');
 
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -84,18 +82,17 @@ export default function DocSendRequestTab() {
     setTimeout(() => setMsg(''), 2500);
   }
 
+  // 기본은 최근 10건만(전체 현황은 '발송업무 현황'에서). 검색 시엔 편집·삭제를 위해 전체에서 찾는다.
+  const searching = q.trim().length > 0;
   const view = useMemo(() => {
-    let list = reqs;
-    if (statusF) list = list.filter((r) => r.status === statusF);
-    if (workF) list = list.filter((r) => r.workType === workF);
-    if (q.trim()) {
+    if (searching) {
       const s = q.trim().toLowerCase();
-      list = list.filter((r) =>
+      return reqs.filter((r) =>
         [r.companyName, r.recipientName, r.docName, r.sendKind, r.requester].some((v) => (v || '').toLowerCase().includes(s)),
       );
     }
-    return list;
-  }, [reqs, q, statusF, workF]);
+    return reqs.slice(0, 10);
+  }, [reqs, q, searching]);
 
   async function handleAdd(common: SendCommon, recipients: SendRecipient[]) {
     try {
@@ -177,16 +174,13 @@ export default function DocSendRequestTab() {
       )}
 
       <div className="sbar">
-        <input placeholder="🔍 거래처·수신자·문서명·송부종류·의뢰인" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select value={statusF} onChange={(e) => setStatusF(e.target.value)}>
-          <option value="">상태 전체</option>
-          {SEND_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={workF} onChange={(e) => setWorkF(e.target.value)}>
-          <option value="">업무구분 전체</option>
-          {WORK_TYPES.map((w) => <option key={w} value={w}>{w}</option>)}
-        </select>
-        <span style={{ fontSize: 11, color: '#888' }}>{view.length}건 표시</span>
+        <input placeholder="🔍 거래처·수신자·문서명·송부종류·의뢰인 (전체에서 검색)" value={q} onChange={(e) => setQ(e.target.value)} />
+        <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>
+          {searching ? `${view.length}건 검색됨` : `최근 ${view.length}건 표시`}
+        </span>
+        {!searching && (
+          <span style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap' }}>· 전체 내역·처리현황은 ‘발송업무 현황’에서</span>
+        )}
       </div>
 
       <div className="tbl-scroll">
@@ -330,6 +324,75 @@ function toRecipient(client: DocClient, contactId: string): SendRecipient | null
   };
 }
 
+// ── 담당자 검색(타입어헤드) — 담당자명/거래처명으로 필터, 클릭하면 선택 ─────
+function ContactSearch({
+  clients,
+  excludeIds,
+  onPick,
+  onPickAll,
+  placeholder,
+}: {
+  clients: DocClient[];
+  excludeIds?: string[];
+  onPick: (client: DocClient, contact: DocContact) => void;
+  onPickAll?: (client: DocClient) => void;
+  placeholder?: string;
+}) {
+  const [q, setQ] = useState('');
+  const matches = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return [];
+    const ex = new Set(excludeIds || []);
+    const out: { cl: DocClient; ct: DocContact }[] = [];
+    for (const cl of clients) {
+      for (const ct of cl.contacts) {
+        if (ex.has(ct.id)) continue;
+        if (ct.contactName.toLowerCase().includes(s) || cl.companyName.toLowerCase().includes(s)) {
+          out.push({ cl, ct });
+          if (out.length >= 50) return out;
+        }
+      }
+    }
+    return out;
+  }, [q, clients, excludeIds]);
+  // 검색 결과가 한 거래처로만 좁혀지면 '전체 담당자 추가' 제안
+  const soleCompany = useMemo(() => {
+    if (!onPickAll || matches.length < 2) return null;
+    const ids = new Set(matches.map((m) => m.cl.id));
+    return ids.size === 1 ? matches[0].cl : null;
+  }, [matches, onPickAll]);
+
+  return (
+    <div style={{ position: 'relative', flex: 1, minWidth: 300, maxWidth: 560 }}>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder || '🔍 담당자명 또는 거래처명 입력…'} style={{ width: '100%' }} />
+      {q.trim() && (
+        <div style={{ position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #D0CCC4', borderRadius: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 6px 18px rgba(0,0,0,0.15)' }}>
+          {matches.length === 0 && <div style={{ padding: 8, color: '#999', fontSize: 12 }}>일치하는 담당자가 없습니다.</div>}
+          {soleCompany && (
+            <button
+              type="button"
+              onClick={() => { onPickAll!(soleCompany); setQ(''); }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', border: 'none', borderBottom: '1px solid #E3DED3', background: '#F5F1EB', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#345' }}
+            >
+              ＋ {soleCompany.companyName} 전체 담당자 추가 ({matches.length}명)
+            </button>
+          )}
+          {matches.map(({ cl, ct }) => (
+            <button
+              key={ct.id}
+              type="button"
+              onClick={() => { onPick(cl, ct); setQ(''); }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', border: 'none', borderBottom: '1px solid #F0ECE4', background: '#fff', cursor: 'pointer', fontSize: 12.5 }}
+            >
+              <b>{ct.contactName}</b> <span style={{ color: '#888' }}>{ct.honorific}</span> · <span style={{ color: '#1A2B52' }}>{cl.companyName}</span> <span style={{ color: '#aaa', fontSize: 11 }}>({cl.accountant})</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 새 발송요청 폼 (공통 + 수신자 다중) ─────────────────────
 function AddRequestForm({
   clients,
@@ -343,31 +406,30 @@ function AddRequestForm({
   onCancel: () => void;
 }) {
   const [c, setCState] = useState<SendCommon>(emptyCommon(defaultRequester));
-  const setC = (patch: Partial<SendCommon>) => setCState((p) => ({ ...p, ...patch }));
+  const docNameEdited = useRef(false);
+  const setC = (patch: Partial<SendCommon>) => {
+    if ('docName' in patch) docNameEdited.current = true; // 사용자가 문서명을 직접 손대면 자동채움 중단
+    setCState((p) => ({ ...p, ...patch }));
+  };
   const [recipients, setRecipients] = useState<SendRecipient[]>([]);
-  const [pickClient, setPickClient] = useState('');
-  const [pickContact, setPickContact] = useState('');
 
-  const curClient = clients.find((x) => x.id === pickClient);
+  // 문서명 자동 채움: (첫 수신자 거래처명) + (송부종류). 직접 수정 전까지만 자동 갱신.
+  useEffect(() => {
+    if (docNameEdited.current) return;
+    const company = recipients[0]?.companyName;
+    if (!company) return;
+    setCState((p) => ({ ...p, docName: `${company} ${p.sendKind}` }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipients, c.sendKind]);
 
-  function addRecipient() {
-    if (!curClient || !pickContact) {
-      alert('거래처와 담당자를 선택하세요.');
-      return;
-    }
-    const rc = toRecipient(curClient, pickContact);
-    if (!rc) return;
-    if (recipients.some((x) => x.contactId === rc.contactId)) {
-      alert('이미 추가된 수신자입니다.');
-      return;
-    }
-    setRecipients((p) => [...p, rc]);
-    setPickContact('');
+  function addContact(client: DocClient, contact: DocContact) {
+    if (recipients.some((x) => x.contactId === contact.id)) return;
+    const rc = toRecipient(client, contact.id);
+    if (rc) setRecipients((p) => [...p, rc]);
   }
-  function addAllContacts() {
-    if (!curClient) return;
-    const adds = curClient.contacts
-      .map((ct) => toRecipient(curClient, ct.id))
+  function addAllContacts(client: DocClient) {
+    const adds = client.contacts
+      .map((ct) => toRecipient(client, ct.id))
       .filter((x): x is SendRecipient => !!x && !recipients.some((r) => r.contactId === x.contactId));
     setRecipients((p) => [...p, ...adds]);
   }
@@ -389,27 +451,15 @@ function AddRequestForm({
       <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>＋ 새 발송요청</div>
       <CommonFields c={c} setC={setC} />
 
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#345', margin: '10px 0 6px' }}>· 수신자 (거래처 담당자)</div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div className="frow" style={{ minWidth: 220 }}>
-          <span className="fl">거래처</span>
-          <select value={pickClient} onChange={(e) => { setPickClient(e.target.value); setPickContact(''); }} style={{ padding: '4px 7px', fontSize: 12 }}>
-            <option value="">거래처 선택…</option>
-            {clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.companyName} ({cl.accountant})</option>)}
-          </select>
-        </div>
-        <div className="frow" style={{ minWidth: 200 }}>
-          <span className="fl">담당자</span>
-          <select value={pickContact} onChange={(e) => setPickContact(e.target.value)} disabled={!curClient} style={{ padding: '4px 7px', fontSize: 12 }}>
-            <option value="">담당자 선택…</option>
-            {curClient?.contacts.map((ct) => <option key={ct.id} value={ct.id}>{ct.contactName} {ct.honorific}</option>)}
-          </select>
-        </div>
-        <button className="btn-sm btn-sm-blue" onClick={addRecipient}>＋ 추가</button>
-        {curClient && curClient.contacts.length > 1 && (
-          <button className="btn-sm" onClick={addAllContacts} title="이 거래처의 모든 담당자 추가">전체 담당자 추가</button>
-        )}
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#345', margin: '10px 0 6px' }}>
+        · 수신자 <span style={{ fontWeight: 400, color: '#888' }}>— 담당자명 또는 거래처명을 입력해 검색 후 클릭하면 추가됩니다.</span>
       </div>
+      <ContactSearch
+        clients={clients}
+        excludeIds={recipients.map((r) => r.contactId || '')}
+        onPick={addContact}
+        onPickAll={addAllContacts}
+      />
 
       {recipients.length > 0 && (
         <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -454,13 +504,11 @@ function EditRequestForm({
     etcRequest: req.etcRequest,
   });
   const setC = (patch: Partial<SendCommon>) => setCState((p) => ({ ...p, ...patch }));
-  const [pickClient, setPickClient] = useState(req.clientId || '');
-  const [pickContact, setPickContact] = useState(req.contactId || '');
-  const curClient = clients.find((x) => x.id === pickClient);
+  const [picked, setPicked] = useState<SendRecipient | null>(null);
 
   function save() {
-    // 수신자: 재선택했으면 스냅샷 갱신, 아니면 기존 스냅샷 유지
-    let recipient: SendRecipient = {
+    // 재선택했으면 스냅샷 갱신, 아니면 기존 스냅샷 유지
+    const recipient: SendRecipient = picked ?? {
       clientId: req.clientId || '',
       contactId: req.contactId,
       companyName: req.companyName,
@@ -469,13 +517,6 @@ function EditRequestForm({
       address: req.address,
       phone: req.phone,
     };
-    if (curClient && pickContact && pickContact !== req.contactId) {
-      const rc = toRecipient(curClient, pickContact);
-      if (rc) recipient = rc;
-    } else if (curClient && pickClient !== req.clientId) {
-      // 회사만 바뀌고 담당자 미선택 → 회사명만 갱신
-      recipient = { ...recipient, clientId: curClient.id, companyName: curClient.companyName };
-    }
     onSave(c, recipient);
   }
 
@@ -484,24 +525,14 @@ function EditRequestForm({
       <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>✏️ 발송요청 수정 (미접수)</div>
       <CommonFields c={c} setC={setC} />
       <div style={{ fontSize: 11.5, fontWeight: 700, color: '#345', margin: '10px 0 6px' }}>
-        · 수신자 <span style={{ fontWeight: 400, color: '#888' }}>(현재: {req.companyName} · {req.recipientName} {req.recipientTitle} — 바꾸려면 아래에서 재선택)</span>
+        · 수신자 <span style={{ fontWeight: 400, color: '#888' }}>(현재: {req.companyName} · {req.recipientName} {req.recipientTitle} — 바꾸려면 검색해 선택, 미선택 시 유지)</span>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div className="frow" style={{ minWidth: 220 }}>
-          <span className="fl">거래처</span>
-          <select value={pickClient} onChange={(e) => { setPickClient(e.target.value); setPickContact(''); }} style={{ padding: '4px 7px', fontSize: 12 }}>
-            <option value="">거래처 선택…</option>
-            {clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.companyName} ({cl.accountant})</option>)}
-          </select>
+      {picked && (
+        <div style={{ fontSize: 12, color: '#059669', marginBottom: 6 }}>
+          → 변경: <b>{picked.companyName}</b> · {picked.recipientName} {picked.recipientTitle}
         </div>
-        <div className="frow" style={{ minWidth: 200 }}>
-          <span className="fl">담당자</span>
-          <select value={pickContact} onChange={(e) => setPickContact(e.target.value)} disabled={!curClient} style={{ padding: '4px 7px', fontSize: 12 }}>
-            <option value="">담당자 선택…</option>
-            {curClient?.contacts.map((ct) => <option key={ct.id} value={ct.id}>{ct.contactName} {ct.honorific}</option>)}
-          </select>
-        </div>
-      </div>
+      )}
+      <ContactSearch clients={clients} onPick={(cl, ct) => setPicked(toRecipient(cl, ct.id))} placeholder="🔍 바꿀 담당자 검색…" />
       <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
         <button className="btn-p" onClick={save}>저장</button>
         <button className="btn-sm" onClick={onCancel}>취소</button>
