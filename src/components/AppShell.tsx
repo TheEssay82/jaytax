@@ -26,6 +26,7 @@ import ConsultTab from './advisory/ConsultTab';
 import LibraryTab from './advisory/LibraryTab';
 import ConsultLogTab from './advisory/ConsultLogTab';
 import AiUsageTab from './advisory/AiUsageTab';
+import DocClientsTab from './docsend/DocClientsTab';
 import PlaceholderTab from './common/PlaceholderTab';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
@@ -382,7 +383,7 @@ function TabContent({
       return <PlaceholderTab title="🧾 기장 및 개별업무 청구관리" desc="기장·개별 업무 건별 청구를 관리하는 대분류입니다. (설계 예정)" />;
     // 일반업무관리 › 문서발송관리
     case 'doc-contacts':
-      return <PlaceholderTab title="👤 거래처 담당자 관리" desc="문서를 보낼 거래처별 담당자를 등록·관리합니다. (설계 예정 — 향후 거래처관리 대분류와 연동/이관)" />;
+      return <DocClientsTab />;
     case 'doc-request':
       return <PlaceholderTab title="✉️ 발송요청" desc="거래처 담당자에게 보낼 문서 발송을 요청합니다. (설계 예정 · 전 직원 + 인당회계사 등급 요청 가능 예정)" />;
     case 'doc-process':
