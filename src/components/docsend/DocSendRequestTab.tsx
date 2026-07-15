@@ -7,6 +7,12 @@ import {
   createSendRequests,
   updateSendRequest,
   deleteSendRequest,
+  listAttachments,
+  uploadSendFile,
+  addAttachmentRecords,
+  signedAttachmentUrl,
+  deleteAttachment,
+  ATTACH_ACCEPT,
   WORK_TYPES,
   SEND_KINDS,
   DEADLINES,
@@ -15,6 +21,7 @@ import {
   type SendRequest,
   type SendCommon,
   type SendRecipient,
+  type SendAttachment,
 } from '../../lib/docSendApi';
 import { listAuditLog, type DocAudit } from '../../lib/docClientsApi';
 
@@ -29,6 +36,11 @@ const statusStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
   if (s === '진행중') return { background: '#DBEAFE', color: '#1E40AF' };
   return { background: '#F3F4F6', color: '#6B7280' }; // 미접수
+};
+const fmtSize = (b: number): string => {
+  if (b < 1024) return `${b}B`;
+  if (b < 1024 * 1024) return `${Math.round(b / 1024)}KB`;
+  return `${(b / 1024 / 1024).toFixed(1)}MB`;
 };
 
 const emptyCommon = (requester: string): SendCommon => ({
@@ -50,6 +62,7 @@ export default function DocSendRequestTab() {
 
   const [reqs, setReqs] = useState<SendRequest[]>([]);
   const [clients, setClients] = useState<DocClient[]>([]);
+  const [attByBatch, setAttByBatch] = useState<Record<string, SendAttachment[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
@@ -60,13 +73,17 @@ export default function DocSendRequestTab() {
   const [editId, setEditId] = useState<string | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [logRows, setLogRows] = useState<DocAudit[]>([]);
+  const [attachFor, setAttachFor] = useState<SendRequest | null>(null);
 
   async function load() {
     try {
       setError(null);
-      const [r, c] = await Promise.all([listSendRequests(), listDocClients()]);
+      const [r, c, atts] = await Promise.all([listSendRequests(), listDocClients(), listAttachments()]);
       setReqs(r);
       setClients(c);
+      const map: Record<string, SendAttachment[]> = {};
+      for (const a of atts) (map[a.batchId] ||= []).push(a);
+      setAttByBatch(map);
     } catch (e) {
       setError(e instanceof Error ? e.message : '불러오지 못했습니다.');
     } finally {
@@ -94,12 +111,17 @@ export default function DocSendRequestTab() {
     return reqs.slice(0, 10);
   }, [reqs, q, searching]);
 
-  async function handleAdd(common: SendCommon, recipients: SendRecipient[]) {
+  async function handleAdd(common: SendCommon, recipients: SendRecipient[], files: File[]) {
     try {
-      const n = await createSendRequests(common, recipients);
+      const batchId = crypto.randomUUID();
+      // 파일 먼저 업로드(실패 시 요청 미생성) → 요청 생성 → 첨부 메타 기록
+      const metas = [];
+      for (const f of files) metas.push(await uploadSendFile(batchId, f));
+      const n = await createSendRequests(common, recipients, batchId);
+      if (metas.length) await addAttachmentRecords(batchId, metas);
       setShowAdd(false);
       await load();
-      flash(`✓ 발송요청 ${n}건 등록됨`);
+      flash(`✓ 발송요청 ${n}건 등록됨${metas.length ? ` · 첨부 ${metas.length}개` : ''}`);
     } catch (e) {
       alert('등록 실패: ' + (e instanceof Error ? e.message : e));
     }
@@ -144,6 +166,10 @@ export default function DocSendRequestTab() {
   }
 
   const counts = SEND_STATUS.map((s) => ({ s, n: reqs.filter((r) => r.status === s).length }));
+  // batch_id 별 요청 수(묶음 배지는 2건 이상일 때만)
+  const batchCounts: Record<string, number> = {};
+  for (const r of reqs) if (r.batchId) batchCounts[r.batchId] = (batchCounts[r.batchId] || 0) + 1;
+  const attCount = (r: SendRequest) => (r.batchId ? (attByBatch[r.batchId]?.length ?? 0) : 0);
 
   return (
     <div className="card">
@@ -196,18 +222,19 @@ export default function DocSendRequestTab() {
               <th style={{ textAlign: 'center' }}>부수</th>
               <th style={{ textAlign: 'center' }}>날인</th>
               <th style={{ textAlign: 'center' }}>기한</th>
+              <th style={{ textAlign: 'center' }}>첨부</th>
               <th style={{ textAlign: 'center' }}>상태</th>
               {canWrite && <th style={{ width: 72 }}>관리</th>}
             </tr>
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={canWrite ? 11 : 10} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>발송요청이 없습니다.</td></tr>
+              <tr><td colSpan={canWrite ? 12 : 11} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>발송요청이 없습니다.</td></tr>
             )}
             {view.map((r) =>
               editId === r.id ? (
                 <tr key={r.id}>
-                  <td colSpan={canWrite ? 11 : 10} style={{ background: '#EEF6FF' }}>
+                  <td colSpan={canWrite ? 12 : 11} style={{ background: '#EEF6FF' }}>
                     <EditRequestForm req={r} clients={clients} onSave={(c, rc) => handleSaveEdit(r.id, c, rc)} onCancel={() => setEditId(null)} />
                   </td>
                 </tr>
@@ -218,7 +245,9 @@ export default function DocSendRequestTab() {
                   <td style={{ fontSize: 12 }}>
                     <b style={{ color: '#1A2B52' }}>{r.companyName}</b>
                     {r.recipientName && <span style={{ color: '#555' }}> · {r.recipientName} {r.recipientTitle}</span>}
-                    {r.batchId && <span className="bdg b-on" style={{ marginLeft: 5, fontSize: 9 }} title="여러 수신자 묶음">묶음</span>}
+                    {r.batchId && batchCounts[r.batchId] > 1 && (
+                      <span className="bdg b-on" style={{ marginLeft: 5, fontSize: 9 }} title="여러 수신자 묶음">묶음 {batchCounts[r.batchId]}</span>
+                    )}
                   </td>
                   <td style={{ fontSize: 12 }}>{r.workType}</td>
                   <td style={{ fontSize: 12 }}>{r.sendKind}</td>
@@ -226,6 +255,16 @@ export default function DocSendRequestTab() {
                   <td style={{ textAlign: 'center', fontSize: 12 }}>{r.copies}</td>
                   <td style={{ textAlign: 'center', fontSize: 11 }}>{r.sealRequired ? '🔖 날인요' : '—'}</td>
                   <td style={{ textAlign: 'center', fontSize: 11 }}>{r.deadline === '긴급' ? <b style={{ color: '#dc2626' }}>긴급</b> : r.deadline}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button
+                      className="btn-sm"
+                      style={{ fontSize: 11, padding: '1px 7px', color: attCount(r) ? '#1A2B52' : '#bbb' }}
+                      title={attCount(r) ? '첨부파일 보기/다운로드' : '첨부 없음 (클릭해 추가)'}
+                      onClick={() => setAttachFor(r)}
+                    >
+                      📎 {attCount(r) || ''}
+                    </button>
+                  </td>
                   <td style={{ textAlign: 'center' }}>
                     <span className="bdg" style={{ fontSize: 10, ...statusStyle(r.status) }}>{r.status}</span>
                   </td>
@@ -249,6 +288,16 @@ export default function DocSendRequestTab() {
       </div>
 
       {showLog && <LogModal rows={logRows} onClose={() => setShowLog(false)} />}
+      {attachFor && (
+        <AttachmentsModal
+          req={attachFor}
+          attachments={attachFor.batchId ? attByBatch[attachFor.batchId] ?? [] : []}
+          shared={!!attachFor.batchId && batchCounts[attachFor.batchId] > 1}
+          canWrite={canWrite}
+          onClose={() => setAttachFor(null)}
+          onChanged={async () => { await load(); }}
+        />
+      )}
     </div>
   );
 }
@@ -402,7 +451,7 @@ function AddRequestForm({
 }: {
   clients: DocClient[];
   defaultRequester: string;
-  onSubmit: (common: SendCommon, recipients: SendRecipient[]) => void;
+  onSubmit: (common: SendCommon, recipients: SendRecipient[], files: File[]) => void;
   onCancel: () => void;
 }) {
   const [c, setCState] = useState<SendCommon>(emptyCommon(defaultRequester));
@@ -412,6 +461,7 @@ function AddRequestForm({
     setCState((p) => ({ ...p, ...patch }));
   };
   const [recipients, setRecipients] = useState<SendRecipient[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
 
   // 문서명 자동 채움: (첫 수신자 거래처명) + (송부종류). 직접 수정 전까지만 자동 갱신.
   useEffect(() => {
@@ -443,7 +493,7 @@ function AddRequestForm({
       alert('수신자를 1명 이상 추가하세요.');
       return;
     }
-    onSubmit(c, recipients);
+    onSubmit(c, recipients, files);
   }
 
   return (
@@ -472,7 +522,36 @@ function AddRequestForm({
         </div>
       )}
 
-      <div style={{ marginTop: 10, display: 'flex', gap: 6, alignItems: 'center' }}>
+      {/* 첨부파일 (인쇄·발송용) — 선택. 대부분은 사무실에서 인쇄본 전달이라 생략. */}
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#345', margin: '12px 0 6px' }}>
+        · 첨부파일 <span style={{ fontWeight: 400, color: '#888' }}>— 인쇄해서 발송할 문서가 있으면 첨부(docx·hwp·pdf 등, 20MB 이하). 없으면 생략.</span>
+      </div>
+      <label className="btn-sm btn-sm-blue" style={{ cursor: 'pointer', display: 'inline-block' }}>
+        📎 파일 선택
+        <input
+          type="file"
+          multiple
+          accept={ATTACH_ACCEPT}
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const fs = Array.from(e.target.files ?? []);
+            setFiles((p) => [...p, ...fs.filter((f) => !p.some((x) => x.name === f.name && x.size === f.size))]);
+            e.target.value = '';
+          }}
+        />
+      </label>
+      {files.length > 0 && (
+        <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {files.map((f, i) => (
+            <span key={f.name + i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #D0CCC4', borderRadius: 6, padding: '3px 8px', fontSize: 11.5 }}>
+              📄 {f.name} <span style={{ color: '#999' }}>({fmtSize(f.size)})</span>
+              <button onClick={() => setFiles((p) => p.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#c00', fontWeight: 700 }} title="제거">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 12, display: 'flex', gap: 6, alignItems: 'center' }}>
         <button className="btn-p" onClick={submit}>발송요청 등록 {recipients.length > 0 && `(${recipients.length}건)`}</button>
         <button className="btn-sm" onClick={onCancel}>취소</button>
       </div>
@@ -536,6 +615,115 @@ function EditRequestForm({
       <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
         <button className="btn-p" onClick={save}>저장</button>
         <button className="btn-sm" onClick={onCancel}>취소</button>
+      </div>
+    </div>
+  );
+}
+
+// ── 첨부파일 모달 (조회·다운로드 + 미접수 시 추가·삭제) ─────
+function AttachmentsModal({
+  req,
+  attachments,
+  shared,
+  canWrite,
+  onClose,
+  onChanged,
+}: {
+  req: SendRequest;
+  attachments: SendAttachment[];
+  shared: boolean;
+  canWrite: boolean;
+  onClose: () => void;
+  onChanged: () => Promise<void> | void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const editable = canWrite && req.status === '미접수' && !!req.batchId;
+
+  async function download(a: SendAttachment) {
+    try {
+      const url = await signedAttachmentUrl(a.storagePath, a.fileName);
+      const el = document.createElement('a');
+      el.href = url;
+      el.target = '_blank';
+      el.rel = 'noopener';
+      el.click();
+    } catch (e) {
+      alert('다운로드 실패: ' + (e instanceof Error ? e.message : e));
+    }
+  }
+  async function addFiles(fileList: FileList | null) {
+    if (!fileList || !req.batchId) return;
+    setBusy(true);
+    try {
+      const metas = [];
+      for (const f of Array.from(fileList)) metas.push(await uploadSendFile(req.batchId, f));
+      await addAttachmentRecords(req.batchId, metas);
+      await onChanged();
+    } catch (e) {
+      alert('첨부 실패: ' + (e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove(a: SendAttachment) {
+    if (!confirm(`"${a.fileName}"을(를) 삭제하시겠습니까?`)) return;
+    setBusy(true);
+    try {
+      await deleteAttachment(a);
+      await onChanged();
+    } catch (e) {
+      alert('삭제 실패: ' + (e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, maxWidth: 640, width: '100%', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff' }}>
+          <span style={{ fontWeight: 700, color: '#1A2B52' }}>📎 첨부파일 — {req.companyName} · {req.sendKind}</span>
+          <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
+        </div>
+        <div style={{ padding: 12 }}>
+          {attachments.length === 0 ? (
+            <div style={{ padding: 12, color: '#888', fontSize: 12.5 }}>
+              첨부파일이 없습니다.{editable && ' 아래에서 추가할 수 있습니다.'}
+            </div>
+          ) : (
+            <table className="tbl">
+              <thead><tr><th>파일명</th><th style={{ width: 80 }}>크기</th><th style={{ width: editable ? 160 : 100 }}>관리</th></tr></thead>
+              <tbody>
+                {attachments.map((a) => (
+                  <tr key={a.id}>
+                    <td style={{ fontSize: 12 }}>📄 {a.fileName}</td>
+                    <td style={{ fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>{fmtSize(a.sizeBytes)}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn-sm btn-sm-blue" onClick={() => download(a)}>⬇ 다운로드</button>
+                        {editable && <button className="btn-sm btn-sm-del" onClick={() => remove(a)} disabled={busy}>🗑</button>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {editable && (
+            <label className="btn-sm btn-sm-blue" style={{ cursor: 'pointer', display: 'inline-block', marginTop: 10 }}>
+              {busy ? '처리 중…' : '📎 파일 추가'}
+              <input type="file" multiple accept={ATTACH_ACCEPT} style={{ display: 'none' }} disabled={busy}
+                onChange={(e) => { void addFiles(e.target.files); e.target.value = ''; }} />
+            </label>
+          )}
+          {canWrite && req.status !== '미접수' && (
+            <div style={{ marginTop: 10, fontSize: 11, color: '#8a5a00' }}>※ 처리 시작된 요청의 첨부는 변경할 수 없습니다(다운로드만 가능).</div>
+          )}
+          {shared && (
+            <div style={{ marginTop: 8, fontSize: 11, color: '#888' }}>※ 이 첨부는 같은 요청(문서)의 모든 수신자에게 공유됩니다.</div>
+          )}
+        </div>
       </div>
     </div>
   );

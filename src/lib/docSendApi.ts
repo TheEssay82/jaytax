@@ -127,10 +127,9 @@ export async function listSendRequests(): Promise<SendRequest[]> {
   return (data as Row[]).map(toReq);
 }
 
-/** 발송요청 생성 — 공통 정보 + 수신자 N명(각 개별 건, 같은 batch_id) */
-export async function createSendRequests(common: SendCommon, recipients: SendRecipient[]): Promise<number> {
+/** 발송요청 생성 — 공통 정보 + 수신자 N명(각 개별 건, 같은 batch_id). batchId 는 호출부에서 생성(첨부와 공유). */
+export async function createSendRequests(common: SendCommon, recipients: SendRecipient[], batchId: string): Promise<number> {
   if (!recipients.length) throw new Error('수신자를 1명 이상 선택하세요.');
-  const batchId = recipients.length > 1 ? crypto.randomUUID() : null;
   const rows = recipients.map((rc) => ({
     batch_id: batchId,
     request_date: common.requestDate,
@@ -176,8 +175,107 @@ export async function updateSendRequest(
   if (error) throw new Error(error.message);
 }
 
-/** 발송요청 삭제 (미접수 건만 — 서버 트리거가 그 외 차단) */
+/** 발송요청 삭제 (미접수 건만 — 서버 트리거가 그 외 차단). 배치의 마지막 건이면 첨부도 정리. */
 export async function deleteSendRequest(id: string): Promise<void> {
+  const { data: row } = await supabase.from('doc_send_requests').select('batch_id').eq('id', id).maybeSingle();
   const { error } = await supabase.from('doc_send_requests').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  const batchId = (row as { batch_id: string | null } | null)?.batch_id;
+  if (!batchId) return;
+  const { count } = await supabase
+    .from('doc_send_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('batch_id', batchId);
+  if ((count ?? 0) > 0) return; // 아직 배치에 남은 요청 있음 → 첨부 유지
+  const { data: atts } = await supabase.from('doc_send_attachments').select('id, storage_path').eq('batch_id', batchId);
+  const list = (atts as { id: string; storage_path: string }[] | null) ?? [];
+  if (list.length) {
+    await supabase.storage.from('doc-send').remove(list.map((a) => a.storage_path));
+    await supabase.from('doc_send_attachments').delete().eq('batch_id', batchId);
+  }
+}
+
+// ── 첨부파일(인쇄·발송용) ───────────────────────────────────
+export const ATTACH_ACCEPT = '.hwp,.hwpx,.doc,.docx,.pdf,.xls,.xlsx';
+export const ATTACH_MAX_BYTES = 20 * 1024 * 1024; // 20MB
+
+export interface SendAttachment {
+  id: string;
+  batchId: string;
+  fileName: string;
+  storagePath: string;
+  mime: string;
+  sizeBytes: number;
+  uploadedAt: string;
+}
+
+/** 파일을 doc-send 버킷에 업로드 → 메타 반환(아직 DB 미기록) */
+export async function uploadSendFile(
+  batchId: string,
+  file: File,
+): Promise<{ fileName: string; storagePath: string; mime: string; sizeBytes: number }> {
+  if (file.size > ATTACH_MAX_BYTES) throw new Error(`"${file.name}" — 20MB 이하만 첨부할 수 있습니다.`);
+  // 스토리지 키는 ASCII만 허용(한글 파일명은 'Invalid key' 오류). uuid+확장자로 저장하고,
+  // 원본 파일명(한글 포함)은 DB file_name 에 보관 → 다운로드 시 원본명으로 내려준다.
+  const ext = (file.name.match(/\.([A-Za-z0-9]+)$/)?.[1] || 'bin').toLowerCase();
+  const path = `${batchId}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from('doc-send').upload(path, file, {
+    upsert: false,
+    contentType: file.type || undefined,
+  });
+  if (error) throw new Error(error.message);
+  return { fileName: file.name, storagePath: path, mime: file.type || '', sizeBytes: file.size };
+}
+
+/** 업로드한 파일들의 메타를 DB에 기록 */
+export async function addAttachmentRecords(
+  batchId: string,
+  metas: { fileName: string; storagePath: string; mime: string; sizeBytes: number }[],
+): Promise<void> {
+  if (!metas.length) return;
+  const rows = metas.map((m) => ({
+    batch_id: batchId,
+    file_name: m.fileName,
+    storage_path: m.storagePath,
+    mime: m.mime || null,
+    size_bytes: m.sizeBytes,
+  }));
+  const { error } = await supabase.from('doc_send_attachments').insert(rows);
+  if (error) throw new Error(error.message);
+}
+
+/** 전체 첨부 조회 (컴포넌트에서 batchId 로 매핑) */
+export async function listAttachments(): Promise<SendAttachment[]> {
+  const { data, error } = await supabase
+    .from('doc_send_attachments')
+    .select('id, batch_id, file_name, storage_path, mime, size_bytes, uploaded_at')
+    .order('uploaded_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data as {
+    id: string; batch_id: string; file_name: string; storage_path: string; mime: string | null; size_bytes: number | null; uploaded_at: string;
+  }[]).map((r) => ({
+    id: r.id,
+    batchId: r.batch_id,
+    fileName: r.file_name,
+    storagePath: r.storage_path,
+    mime: r.mime || '',
+    sizeBytes: r.size_bytes ?? 0,
+    uploadedAt: r.uploaded_at,
+  }));
+}
+
+/** 다운로드용 서명 URL (2분). downloadName 지정 시 원본 파일명으로 내려받게 한다. */
+export async function signedAttachmentUrl(storagePath: string, downloadName?: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from('doc-send')
+    .createSignedUrl(storagePath, 120, downloadName ? { download: downloadName } : undefined);
+  if (error) throw new Error(error.message);
+  return data.signedUrl;
+}
+
+/** 첨부 삭제 (스토리지 + 메타) */
+export async function deleteAttachment(att: SendAttachment): Promise<void> {
+  await supabase.storage.from('doc-send').remove([att.storagePath]);
+  const { error } = await supabase.from('doc_send_attachments').delete().eq('id', att.id);
   if (error) throw new Error(error.message);
 }
