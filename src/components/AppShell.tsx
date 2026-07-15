@@ -225,38 +225,32 @@ function Shell() {
                 <div className="h-dropdown" role="menu">
                   {g.items.map((it) =>
                     it.children ? (
-                      // 중분류(컨테이너): 클릭/호버 시 하위 소분류를 오른쪽 플라이아웃으로.
-                      <div
-                        key={it.id}
-                        style={{ position: 'relative' }}
-                        onMouseEnter={() => setOpenSub(it.id)}
-                        onMouseLeave={() => setOpenSub((s) => (s === it.id ? null : s))}
-                      >
+                      // 중분류(컨테이너): 클릭/호버 시 하위 소분류를 바로 아래로 펼침(아코디언).
+                      <div key={it.id}>
                         <button
                           className={`h-dropdown-item${it.children.some((c) => c.id === cur) ? ' on' : ''}`}
                           role="menuitem"
                           aria-haspopup="true"
                           aria-expanded={openSub === it.id}
-                          onClick={() => setOpenSub((s) => (s === it.id ? null : it.id))}
+                          onClick={() => setOpenSub(it.id)}
+                          onMouseEnter={() => setOpenSub(it.id)}
                           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%' }}
                         >
                           <span>{it.label}</span>
-                          <span style={{ color: '#9aa0ad', fontSize: 11 }}>▸</span>
+                          <span style={{ color: '#9aa0ad', fontSize: 11 }}>{openSub === it.id ? '▾' : '▸'}</span>
                         </button>
-                        {openSub === it.id && (
-                          <div className="h-dropdown" role="menu" style={{ position: 'absolute', left: '100%', top: 0, marginLeft: 3, minWidth: 190 }}>
-                            {it.children.map((c) => (
-                              <button
-                                key={c.id}
-                                className={`h-dropdown-item${cur === c.id ? ' on' : ''}`}
-                                role="menuitem"
-                                onClick={() => goTab(c.id)}
-                              >
-                                {c.label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                        {openSub === it.id &&
+                          it.children.map((c) => (
+                            <button
+                              key={c.id}
+                              className={`h-dropdown-item${cur === c.id ? ' on' : ''}`}
+                              role="menuitem"
+                              onClick={() => goTab(c.id)}
+                              style={{ paddingLeft: 28, fontSize: 12 }}
+                            >
+                              {c.label}
+                            </button>
+                          ))}
                       </div>
                     ) : (
                       <button
