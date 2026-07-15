@@ -18,15 +18,44 @@ import ConsultTab from './advisory/ConsultTab';
 import LibraryTab from './advisory/LibraryTab';
 import ConsultLogTab from './advisory/ConsultLogTab';
 import AiUsageTab from './advisory/AiUsageTab';
+import PlaceholderTab from './common/PlaceholderTab';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
-type MenuItem = { id: string; label: string; cap?: Capability };
+// section: 대분류 드롭다운 안에서 소분류를 묶는 중분류명(선택).
+type MenuItem = { id: string; label: string; cap?: Capability; section?: string };
 type MenuGroup = { id: string; label: string; items: MenuItem[] };
 
 export const MENU_GROUPS: MenuGroup[] = [
   {
+    id: 'clients-hub',
+    label: '거래처관리',
+    items: [
+      { id: 'clients-hub-home', label: '🏢 거래처관리 (준비 중)' },
+    ],
+  },
+  {
+    id: 'billing-req',
+    label: '기장및개별업무청구관리',
+    items: [
+      { id: 'billing-req-home', label: '🧾 기장·개별업무 청구 (준비 중)' },
+    ],
+  },
+  {
+    id: 'general',
+    label: '일반업무관리',
+    items: [
+      { id: 'doc-contacts', label: '👤 거래처 담당자 관리', section: '문서발송관리' },
+      { id: 'doc-request', label: '✉️ 발송요청', section: '문서발송관리' },
+      { id: 'doc-process', label: '🖨️ 발송요청 처리', section: '문서발송관리' },
+      { id: 'doc-status', label: '📊 발송업무 현황', section: '문서발송관리' },
+      { id: 'inquiry-send', label: '📮 조회서 발송관리' },
+      { id: 'vacation', label: '🌴 휴가관리' },
+      { id: 'estimate', label: '🧮 견적산출 시스템' },
+    ],
+  },
+  {
     id: 'billing',
-    label: '세무조정수수료 관리시스템',
+    label: '세무조정수수료관리',
     items: [
       { id: 'wizard', label: '📝 청구서 작성' },
       { id: 'clients', label: '🏢 거래처 관리', cap: 'viewClients' },
@@ -38,7 +67,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   },
   {
     id: 'advisory',
-    label: '회계및세무상담시스템',
+    label: '회계및세무상담관리',
     items: [
       { id: 'std-kifrs', label: '📚 회계기준 검색' },
       { id: 'std-tax', label: '⚖️ 세법 검색' },
@@ -183,16 +212,26 @@ function Shell() {
               </button>
               {openMenu === g.id && (
                 <div className="h-dropdown" role="menu">
-                  {g.items.map((it) => (
-                    <button
-                      key={it.id}
-                      className={`h-dropdown-item${cur === it.id ? ' on' : ''}`}
-                      role="menuitem"
-                      onClick={() => goTab(it.id)}
-                    >
-                      {it.label}
-                    </button>
-                  ))}
+                  {g.items.map((it, ii) => {
+                    const showSection = it.section && it.section !== g.items[ii - 1]?.section;
+                    return (
+                      <div key={it.id}>
+                        {showSection && (
+                          <div style={{ fontSize: 10.5, fontWeight: 700, color: '#9aa0ad', padding: '7px 12px 3px', letterSpacing: '0.02em' }}>
+                            {it.section}
+                          </div>
+                        )}
+                        <button
+                          className={`h-dropdown-item${cur === it.id ? ' on' : ''}`}
+                          role="menuitem"
+                          onClick={() => goTab(it.id)}
+                          style={it.section ? { paddingLeft: 22 } : undefined}
+                        >
+                          {it.label}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -286,6 +325,29 @@ function TabContent({
       return <LibraryTab />;
     case 'ai-usage':
       return <AiUsageTab />;
+
+    // ── 신규 대분류 (골격 — 기능 개발 예정) ──────────────────────
+    case 'clients-hub-home':
+      return <PlaceholderTab title="🏢 거래처관리" desc="거래처 정보를 통합 관리하는 대분류입니다. (개발 예정 — 향후 세무조정수수료관리의 거래처 관리가 이곳으로 이관될 예정)" />;
+    case 'billing-req-home':
+      return <PlaceholderTab title="🧾 기장 및 개별업무 청구관리" desc="기장·개별 업무 건별 청구를 관리하는 대분류입니다. (설계 예정)" />;
+    // 일반업무관리 › 문서발송관리
+    case 'doc-contacts':
+      return <PlaceholderTab title="👤 거래처 담당자 관리" desc="문서를 보낼 거래처별 담당자를 등록·관리합니다. (설계 예정 — 향후 거래처관리 대분류와 연동/이관)" />;
+    case 'doc-request':
+      return <PlaceholderTab title="✉️ 발송요청" desc="거래처 담당자에게 보낼 문서 발송을 요청합니다. (설계 예정 · 전 직원 + 인당회계사 등급 요청 가능 예정)" />;
+    case 'doc-process':
+      return <PlaceholderTab title="🖨️ 발송요청 처리" desc="요청된 발송 건을 담당자가 처리합니다. (설계 예정 · 최고관리자/기장팀장/기장팀원)" />;
+    case 'doc-status':
+      return <PlaceholderTab title="📊 발송업무 현황" desc="발송 요청·처리 내역을 결합해 진행현황을 보여주는 대시보드입니다. (설계 예정)" />;
+    // 일반업무관리 › 기타 중분류
+    case 'inquiry-send':
+      return <PlaceholderTab title="📮 조회서 발송관리" desc="설계 예정" />;
+    case 'vacation':
+      return <PlaceholderTab title="🌴 휴가관리" desc="설계 예정" />;
+    case 'estimate':
+      return <PlaceholderTab title="🧮 견적산출 시스템" desc="설계 예정" />;
+
     default:
       return (
         <div className="card">
