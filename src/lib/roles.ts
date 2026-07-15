@@ -1,15 +1,26 @@
 // 사용자 역할(등급) 및 권한 정의 — 권한 매트릭스(2026-06-27 확정)
-export type Role = 'superuser' | 'accountant' | 'team_lead' | 'team_member' | 'external';
+// per_head_accountant(인당회계사): 외부 위촉 성격의 제한 등급. '일반업무관리'와 '업데이트요청'만 노출하고
+//   문서발송관리의 '발송요청 처리'는 숨긴다. 고객 민감 데이터(거래처·청구·상담·자료실)는 외부인과 동일하게
+//   RLS에서 읽기 차단(is_perhead) — 메뉴 숨김 + API 차단 이중.
+export type Role = 'superuser' | 'accountant' | 'team_lead' | 'team_member' | 'per_head_accountant' | 'external';
 
-export const ROLES: Role[] = ['superuser', 'accountant', 'team_lead', 'team_member', 'external'];
+export const ROLES: Role[] = ['superuser', 'accountant', 'team_lead', 'team_member', 'per_head_accountant', 'external'];
 
 export const ROLE_LABELS: Record<Role, string> = {
   superuser: '최고관리자',
   accountant: '회계사',
   team_lead: '기장팀장',
   team_member: '기장팀원',
+  per_head_accountant: '인당회계사',
   external: '외부인',
 };
+
+/** 인당회계사가 접근 가능한 대분류(그룹) id — 일반업무관리만. */
+export const PER_HEAD_ALLOWED_GROUPS = new Set<string>(['general']);
+/** 인당회계사에게 숨기는 세부 탭 id — 문서발송관리 › 발송요청 처리. */
+export const PER_HEAD_HIDDEN_TABS = new Set<string>(['doc-process']);
+/** 인당회계사가 접근 가능한 우측 아이콘 메뉴 id — 업데이트요청만. */
+export const PER_HEAD_ALLOWED_ICONS = new Set<string>(['requests']);
 
 /** 외부인이 접근 가능한 메뉴 id (기능 시연용, 공개 참조데이터·AI만). 고객정보 화면(거래처관리·상담기록·청구)은
  *  제외하고, 쓰기는 readonly로, 고객정보 테이블 읽기는 RLS(is_external)로 별도 차단한다. */

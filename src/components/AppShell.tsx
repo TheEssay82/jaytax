@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { WizardProvider, useWizard } from '../context/WizardContext';
 import { ConfigProvider } from '../context/ConfigContext';
-import { can, ROLE_LABELS, EXTERNAL_ALLOWED_TABS, type Capability } from '../lib/roles';
+import {
+  can,
+  ROLE_LABELS,
+  EXTERNAL_ALLOWED_TABS,
+  PER_HEAD_ALLOWED_GROUPS,
+  PER_HEAD_HIDDEN_TABS,
+  PER_HEAD_ALLOWED_ICONS,
+  type Capability,
+} from '../lib/roles';
 import PasswordModal from './PasswordModal';
 import ClientsTab from './clients/ClientsTab';
 import WizardTab from './wizard/WizardTab';
@@ -113,10 +121,18 @@ function Shell() {
   const fromPop = useRef(false); // popstate로 인한 탭 변경이면 pushState 생략
   const navMounted = useRef(false);
 
-  // 권한 필터링된 메뉴 그룹/아이콘. 외부인은 정해진 조회 메뉴만(EXTERNAL_ALLOWED_TABS), 아이콘 메뉴 없음.
+  // 권한 필터링된 메뉴 그룹/아이콘.
+  //  · 외부인: 정해진 조회 메뉴만(EXTERNAL_ALLOWED_TABS), 아이콘 메뉴 없음.
+  //  · 인당회계사: 허용된 대분류(PER_HEAD_ALLOWED_GROUPS)만 + 숨김 탭 제외(PER_HEAD_HIDDEN_TABS) + 허용 아이콘만.
   const isExternal = role === 'external';
-  const allowed = (it: MenuItem) => (isExternal ? EXTERNAL_ALLOWED_TABS.has(it.id) : !it.cap || can(role, it.cap));
+  const isPerHead = role === 'per_head_accountant';
+  const allowed = (it: MenuItem) => {
+    if (isExternal) return EXTERNAL_ALLOWED_TABS.has(it.id);
+    if (isPerHead && PER_HEAD_HIDDEN_TABS.has(it.id)) return false;
+    return !it.cap || can(role, it.cap);
+  };
   const visibleGroups = MENU_GROUPS
+    .filter((g) => !isPerHead || PER_HEAD_ALLOWED_GROUPS.has(g.id))
     .map((g) => ({
       ...g,
       items: g.items
@@ -124,7 +140,9 @@ function Shell() {
         .filter((it) => (it.children ? it.children.length > 0 : allowed(it))),
     }))
     .filter((g) => g.items.length > 0);
-  const visibleIcons = isExternal ? [] : ICON_ITEMS.filter((it) => !it.cap || can(role, it.cap));
+  const visibleIcons = isExternal
+    ? []
+    : ICON_ITEMS.filter((it) => (!it.cap || can(role, it.cap)) && (!isPerHead || PER_HEAD_ALLOWED_ICONS.has(it.id)));
 
   // 실제 이동 가능한 항목(컨테이너는 제외, 하위 소분류로 대체)
   const navItems = visibleGroups.flatMap((g) => g.items.flatMap((it) => it.children ?? [it]));

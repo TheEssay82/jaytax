@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     const { email, password, name, role } = await req.json();
     if (!email || !password) return json({ ok: false, error: '이메일과 비밀번호는 필수입니다.' });
     if (String(password).length < 6) return json({ ok: false, error: '비밀번호는 6자 이상이어야 합니다.' });
-    const allowed = ['superuser', 'accountant', 'team_lead', 'team_member'];
+    const allowed = ['superuser', 'accountant', 'team_lead', 'team_member', 'per_head_accountant'];
     const newRole = allowed.includes(role) ? role : 'team_member';
 
     // 3) 계정 생성 (이메일 자동 확인)
