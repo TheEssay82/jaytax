@@ -185,7 +185,7 @@ export default function DocSendRequestTab() {
 
       {error && <div className="alert-w">{error}</div>}
       <div className="alert-i" style={{ fontSize: 11 }}>
-        ✉️ 거래처 담당자를 선택하면 회사명·주소·연락처가 <b>그 시점 값으로 저장(스냅샷)</b>되어, 이후 담당자 정보가 바뀌어도 과거 요청은 유지됩니다. 한 문서를 <b>여러 수신자</b>에게 한 번에 요청할 수 있습니다. 처리 전 <b>‘미접수’</b> 건만 수정·삭제할 수 있습니다.
+        ✉️ 거래처 담당자를 선택하면 회사명·주소·연락처가 <b>그 시점 값으로 저장(스냅샷)</b>되어, 이후 담당자 정보가 바뀌어도 과거 요청은 유지됩니다. 한 문서를 <b>여러 수신자</b>에게 한 번에 요청할 수 있습니다. 처리 전 <b>‘미접수’</b> 건만 수정·삭제할 수 있습니다. <b style={{ color: '#b45309' }}>⚡ 업무구분이 ‘퀵서비스’면 수신자 연락처가 필수</b>입니다.
         {!canWrite && <span style={{ color: '#8a5a00' }}> · 🔒 읽기전용 계정은 조회만 가능합니다.</span>}
       </div>
 
@@ -477,6 +477,11 @@ function AddRequestForm({
       .filter((x): x is SendRecipient => !!x && !recipients.some((r) => r.contactId === x.contactId));
     setRecipients((p) => [...p, ...adds]);
   }
+  function updateRecipientPhone(contactId: string | null, phone: string) {
+    setRecipients((p) => p.map((r) => (r.contactId === contactId ? { ...r, phone } : r)));
+  }
+
+  const isQuick = c.workType === '퀵서비스';
 
   function submit() {
     if (!c.requestDate || !c.requester || !c.workType || !c.sendKind) {
@@ -486,6 +491,13 @@ function AddRequestForm({
     if (!recipients.length) {
       alert('수신자를 1명 이상 추가하세요.');
       return;
+    }
+    if (isQuick) {
+      const missing = recipients.filter((r) => !r.phone?.trim());
+      if (missing.length) {
+        alert(`퀵서비스는 수신자 연락처가 필수입니다.\n연락처 미기재: ${missing.map((m) => `${m.companyName} ${m.recipientName}`).join(', ')}`);
+        return;
+      }
     }
     onSubmit(c, recipients, files);
   }
@@ -506,13 +518,32 @@ function AddRequestForm({
       />
 
       {recipients.length > 0 && (
-        <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {recipients.map((r) => (
-            <span key={r.contactId} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #D0CCC4', borderRadius: 14, padding: '3px 10px', fontSize: 11.5 }}>
-              <b>{r.companyName}</b> · {r.recipientName} {r.recipientTitle}
-              <button onClick={() => setRecipients((p) => p.filter((x) => x.contactId !== r.contactId))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#c00', fontWeight: 700 }} title="제거">×</button>
-            </span>
-          ))}
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {isQuick && (
+            <div style={{ fontSize: 11, color: '#b45309', fontWeight: 600 }}>⚡ 퀵서비스는 수신자 연락처가 필수입니다.</div>
+          )}
+          {recipients.map((r) => {
+            const missing = isQuick && !r.phone?.trim();
+            return (
+              <div key={r.contactId} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: `1px solid ${missing ? '#e11d48' : '#D0CCC4'}`, borderRadius: 8, padding: '4px 10px', fontSize: 11.5, flexWrap: 'wrap' }}>
+                <span><b>{r.companyName}</b> · {r.recipientName} {r.recipientTitle}</span>
+                {isQuick ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    📞
+                    <input
+                      value={r.phone}
+                      onChange={(e) => updateRecipientPhone(r.contactId, e.target.value)}
+                      placeholder="연락처 필수"
+                      style={{ width: 150, fontSize: 11.5, padding: '2px 6px', borderColor: missing ? '#e11d48' : undefined }}
+                    />
+                  </span>
+                ) : (
+                  r.phone && <span style={{ color: '#888' }}>📞 {r.phone}</span>
+                )}
+                <button onClick={() => setRecipients((p) => p.filter((x) => x.contactId !== r.contactId))} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#c00', fontWeight: 700 }} title="제거">×</button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -578,10 +609,16 @@ function EditRequestForm({
   });
   const setC = (patch: Partial<SendCommon>) => setCState((p) => ({ ...p, ...patch }));
   const [picked, setPicked] = useState<SendRecipient | null>(null);
+  const [phone, setPhone] = useState(req.phone);
+  const isQuick = c.workType === '퀵서비스';
 
   function save() {
-    // 재선택했으면 스냅샷 갱신, 아니면 기존 스냅샷 유지
-    const recipient: SendRecipient = picked ?? {
+    if (isQuick && !phone.trim()) {
+      alert('퀵서비스는 수신자 연락처가 필수입니다.');
+      return;
+    }
+    // 재선택했으면 스냅샷 갱신, 아니면 기존 스냅샷 유지. 연락처는 입력값으로 덮어씀.
+    const base: SendRecipient = picked ?? {
       clientId: req.clientId || '',
       contactId: req.contactId,
       companyName: req.companyName,
@@ -590,7 +627,7 @@ function EditRequestForm({
       address: req.address,
       phone: req.phone,
     };
-    onSave(c, recipient);
+    onSave(c, { ...base, phone: phone.trim() });
   }
 
   return (
@@ -605,7 +642,11 @@ function EditRequestForm({
           → 변경: <b>{picked.companyName}</b> · {picked.recipientName} {picked.recipientTitle}
         </div>
       )}
-      <ContactSearch clients={clients} onPick={(cl, ct) => setPicked(toRecipient(cl, ct.id))} placeholder="🔍 바꿀 담당자 검색…" />
+      <ContactSearch clients={clients} onPick={(cl, ct) => { const rc = toRecipient(cl, ct.id); setPicked(rc); if (rc) setPhone(rc.phone); }} placeholder="🔍 바꿀 담당자 검색…" />
+      <div className="frow" style={{ maxWidth: 300, marginTop: 8 }}>
+        <span className="fl">수신자 연락처{isQuick && <span className="req">*</span>}</span>
+        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={isQuick ? '퀵서비스 필수' : '(선택)'} style={{ borderColor: isQuick && !phone.trim() ? '#e11d48' : undefined }} />
+      </div>
       <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
         <button className="btn-p" onClick={save}>저장</button>
         <button className="btn-sm" onClick={onCancel}>취소</button>
