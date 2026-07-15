@@ -21,8 +21,8 @@ import AiUsageTab from './advisory/AiUsageTab';
 import PlaceholderTab from './common/PlaceholderTab';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
-// section: 대분류 드롭다운 안에서 소분류를 묶는 중분류명(선택).
-type MenuItem = { id: string; label: string; cap?: Capability; section?: string };
+// children: 중분류가 하위 소분류를 가지면 클릭·호버 시 플라이아웃 서브메뉴로 펼친다(컨테이너 자체는 페이지 없음).
+type MenuItem = { id: string; label: string; cap?: Capability; children?: MenuItem[] };
 type MenuGroup = { id: string; label: string; items: MenuItem[] };
 
 export const MENU_GROUPS: MenuGroup[] = [
@@ -44,10 +44,16 @@ export const MENU_GROUPS: MenuGroup[] = [
     id: 'general',
     label: '일반업무관리',
     items: [
-      { id: 'doc-contacts', label: '👤 거래처 담당자 관리', section: '문서발송관리' },
-      { id: 'doc-request', label: '✉️ 발송요청', section: '문서발송관리' },
-      { id: 'doc-process', label: '🖨️ 발송요청 처리', section: '문서발송관리' },
-      { id: 'doc-status', label: '📊 발송업무 현황', section: '문서발송관리' },
+      {
+        id: 'doc-send',
+        label: '📄 문서발송관리',
+        children: [
+          { id: 'doc-contacts', label: '👤 거래처 담당자 관리' },
+          { id: 'doc-request', label: '✉️ 발송요청' },
+          { id: 'doc-process', label: '🖨️ 발송요청 처리' },
+          { id: 'doc-status', label: '📊 발송업무 현황' },
+        ],
+      },
       { id: 'inquiry-send', label: '📮 조회서 발송관리' },
       { id: 'vacation', label: '🌴 휴가관리' },
       { id: 'estimate', label: '🧮 견적산출 시스템' },
@@ -102,40 +108,44 @@ function Shell() {
   const [reloadKey, setReloadKey] = useState(0);
   const [showPw, setShowPw] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [openSub, setOpenSub] = useState<string | null>(null); // 열린 중분류 플라이아웃 서브메뉴
   const navRef = useRef<HTMLElement>(null);
   const fromPop = useRef(false); // popstate로 인한 탭 변경이면 pushState 생략
   const navMounted = useRef(false);
 
   // 권한 필터링된 메뉴 그룹/아이콘. 외부인은 정해진 조회 메뉴만(EXTERNAL_ALLOWED_TABS), 아이콘 메뉴 없음.
   const isExternal = role === 'external';
+  const allowed = (it: MenuItem) => (isExternal ? EXTERNAL_ALLOWED_TABS.has(it.id) : !it.cap || can(role, it.cap));
   const visibleGroups = MENU_GROUPS
     .map((g) => ({
       ...g,
-      items: g.items.filter((it) => (isExternal ? EXTERNAL_ALLOWED_TABS.has(it.id) : !it.cap || can(role, it.cap))),
+      items: g.items
+        .map((it) => (it.children ? { ...it, children: it.children.filter(allowed) } : it))
+        .filter((it) => (it.children ? it.children.length > 0 : allowed(it))),
     }))
     .filter((g) => g.items.length > 0);
   const visibleIcons = isExternal ? [] : ICON_ITEMS.filter((it) => !it.cap || can(role, it.cap));
 
+  // 실제 이동 가능한 항목(컨테이너는 제외, 하위 소분류로 대체)
+  const navItems = visibleGroups.flatMap((g) => g.items.flatMap((it) => it.children ?? [it]));
   // 접근 가능한 전체 탭 id 집합 (방어용)
-  const allowedIds = new Set<string>([
-    ...visibleGroups.flatMap((g) => g.items.map((it) => it.id)),
-    ...visibleIcons.map((it) => it.id),
-  ]);
-  // 기본 탭: 접근 가능하면 현재 탭, 아니면 첫 접근가능 탭(외부인은 wizard 불가 → 거래처관리)
-  const firstAllowed = visibleGroups[0]?.items[0]?.id ?? 'wizard';
+  const allowedIds = new Set<string>([...navItems.map((it) => it.id), ...visibleIcons.map((it) => it.id)]);
+  // 기본 탭: 접근 가능하면 현재 탭, 아니면 첫 접근가능 탭
+  const firstItem = visibleGroups[0]?.items[0];
+  const firstAllowed = (firstItem?.children ? firstItem.children[0]?.id : firstItem?.id) ?? 'wizard';
   const cur = allowedIds.has(curTab) ? curTab : firstAllowed;
 
   // 현재 탭이 속한 대분류 (버튼 강조용)
-  const activeGroupId = visibleGroups.find((g) => g.items.some((it) => it.id === cur))?.id ?? null;
+  const activeGroupId = visibleGroups.find((g) => g.items.some((it) => it.id === cur || it.children?.some((c) => c.id === cur)))?.id ?? null;
 
   // 바깥 클릭 / ESC 로 드롭다운 닫기
   useEffect(() => {
     if (!openMenu) return;
     const onDown = (e: MouseEvent) => {
-      if (navRef.current && !navRef.current.contains(e.target as Node)) setOpenMenu(null);
+      if (navRef.current && !navRef.current.contains(e.target as Node)) { setOpenMenu(null); setOpenSub(null); }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpenMenu(null);
+      if (e.key === 'Escape') { setOpenMenu(null); setOpenSub(null); }
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -175,10 +185,11 @@ function Shell() {
     setCurTab(id);
     setReloadKey((k) => k + 1);
     setOpenMenu(null);
+    setOpenSub(null);
   }
 
   const curLabel =
-    visibleGroups.flatMap((g) => g.items).find((it) => it.id === cur)?.label ??
+    navItems.find((it) => it.id === cur)?.label ??
     visibleIcons.find((it) => it.id === cur)?.label ??
     '';
 
@@ -212,26 +223,52 @@ function Shell() {
               </button>
               {openMenu === g.id && (
                 <div className="h-dropdown" role="menu">
-                  {g.items.map((it, ii) => {
-                    const showSection = it.section && it.section !== g.items[ii - 1]?.section;
-                    return (
-                      <div key={it.id}>
-                        {showSection && (
-                          <div style={{ fontSize: 10.5, fontWeight: 700, color: '#9aa0ad', padding: '7px 12px 3px', letterSpacing: '0.02em' }}>
-                            {it.section}
+                  {g.items.map((it) =>
+                    it.children ? (
+                      // 중분류(컨테이너): 클릭/호버 시 하위 소분류를 오른쪽 플라이아웃으로.
+                      <div
+                        key={it.id}
+                        style={{ position: 'relative' }}
+                        onMouseEnter={() => setOpenSub(it.id)}
+                        onMouseLeave={() => setOpenSub((s) => (s === it.id ? null : s))}
+                      >
+                        <button
+                          className={`h-dropdown-item${it.children.some((c) => c.id === cur) ? ' on' : ''}`}
+                          role="menuitem"
+                          aria-haspopup="true"
+                          aria-expanded={openSub === it.id}
+                          onClick={() => setOpenSub((s) => (s === it.id ? null : it.id))}
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%' }}
+                        >
+                          <span>{it.label}</span>
+                          <span style={{ color: '#9aa0ad', fontSize: 11 }}>▸</span>
+                        </button>
+                        {openSub === it.id && (
+                          <div className="h-dropdown" role="menu" style={{ position: 'absolute', left: '100%', top: 0, marginLeft: 3, minWidth: 190 }}>
+                            {it.children.map((c) => (
+                              <button
+                                key={c.id}
+                                className={`h-dropdown-item${cur === c.id ? ' on' : ''}`}
+                                role="menuitem"
+                                onClick={() => goTab(c.id)}
+                              >
+                                {c.label}
+                              </button>
+                            ))}
                           </div>
                         )}
-                        <button
-                          className={`h-dropdown-item${cur === it.id ? ' on' : ''}`}
-                          role="menuitem"
-                          onClick={() => goTab(it.id)}
-                          style={it.section ? { paddingLeft: 22 } : undefined}
-                        >
-                          {it.label}
-                        </button>
                       </div>
-                    );
-                  })}
+                    ) : (
+                      <button
+                        key={it.id}
+                        className={`h-dropdown-item${cur === it.id ? ' on' : ''}`}
+                        role="menuitem"
+                        onClick={() => goTab(it.id)}
+                      >
+                        {it.label}
+                      </button>
+                    ),
+                  )}
                 </div>
               )}
             </div>
