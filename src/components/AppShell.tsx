@@ -29,6 +29,7 @@ import AiUsageTab from './advisory/AiUsageTab';
 import DocClientsTab from './docsend/DocClientsTab';
 import DocSendRequestTab from './docsend/DocSendRequestTab';
 import DocSendProcessTab from './docsend/DocSendProcessTab';
+import DocSendStatusTab from './docsend/DocSendStatusTab';
 import PlaceholderTab from './common/PlaceholderTab';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
@@ -391,7 +392,7 @@ function TabContent({
     case 'doc-process':
       return <DocSendProcessTab />;
     case 'doc-status':
-      return <PlaceholderTab title="📊 발송업무 현황" desc="발송 요청·처리 내역을 결합해 진행현황을 보여주는 대시보드입니다. (설계 예정)" />;
+      return <DocSendStatusTab />;
     // 일반업무관리 › 기타 중분류
     case 'inquiry-send':
       return <PlaceholderTab title="📮 조회서 발송관리" desc="설계 예정" />;
