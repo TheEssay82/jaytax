@@ -232,7 +232,7 @@ function Shell() {
                           role="menuitem"
                           aria-haspopup="true"
                           aria-expanded={openSub === it.id}
-                          onClick={() => setOpenSub(it.id)}
+                          onClick={() => setOpenSub((s) => (s === it.id ? null : it.id))}
                           onMouseEnter={() => setOpenSub(it.id)}
                           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%' }}
                         >
