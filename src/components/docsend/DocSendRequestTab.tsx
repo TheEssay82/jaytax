@@ -1,0 +1,546 @@
+// 문서발송 › 발송요청 — 공통 문서정보 + 수신자 다중선택(거래처 담당자 관리 연동, 스냅샷) 요청 등록/목록/수정
+import { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { listDocClients, type DocClient } from '../../lib/docClientsApi';
+import {
+  listSendRequests,
+  createSendRequests,
+  updateSendRequest,
+  deleteSendRequest,
+  WORK_TYPES,
+  SEND_KINDS,
+  DEADLINES,
+  SEND_STATUS,
+  DOC_REQUESTERS,
+  type SendRequest,
+  type SendCommon,
+  type SendRecipient,
+} from '../../lib/docSendApi';
+import { listAuditLog, type DocAudit } from '../../lib/docClientsApi';
+
+const today = () => new Date().toISOString().slice(0, 10);
+const dtTime = (s?: string): string => {
+  if (!s) return '';
+  const d = new Date(s);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const statusStyle = (s: string): React.CSSProperties => {
+  if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
+  if (s === '진행중') return { background: '#DBEAFE', color: '#1E40AF' };
+  return { background: '#F3F4F6', color: '#6B7280' }; // 미접수
+};
+
+const emptyCommon = (requester: string): SendCommon => ({
+  requestDate: today(),
+  requester,
+  workType: WORK_TYPES[0],
+  sendKind: SEND_KINDS[0],
+  docName: '',
+  copies: 1,
+  sealRequired: false,
+  deadline: '보통',
+  etcRequest: '',
+});
+
+export default function DocSendRequestTab() {
+  const { readonly, profileName } = useAuth();
+  const canWrite = !readonly;
+  const defaultRequester = (DOC_REQUESTERS as readonly string[]).includes(profileName) ? profileName : DOC_REQUESTERS[0];
+
+  const [reqs, setReqs] = useState<SendRequest[]>([]);
+  const [clients, setClients] = useState<DocClient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [msg, setMsg] = useState('');
+
+  const [q, setQ] = useState('');
+  const [statusF, setStatusF] = useState('');
+  const [workF, setWorkF] = useState('');
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [showLog, setShowLog] = useState(false);
+  const [logRows, setLogRows] = useState<DocAudit[]>([]);
+
+  async function load() {
+    try {
+      setError(null);
+      const [r, c] = await Promise.all([listSendRequests(), listDocClients()]);
+      setReqs(r);
+      setClients(c);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '불러오지 못했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+
+  function flash(t: string) {
+    setMsg(t);
+    setTimeout(() => setMsg(''), 2500);
+  }
+
+  const view = useMemo(() => {
+    let list = reqs;
+    if (statusF) list = list.filter((r) => r.status === statusF);
+    if (workF) list = list.filter((r) => r.workType === workF);
+    if (q.trim()) {
+      const s = q.trim().toLowerCase();
+      list = list.filter((r) =>
+        [r.companyName, r.recipientName, r.docName, r.sendKind, r.requester].some((v) => (v || '').toLowerCase().includes(s)),
+      );
+    }
+    return list;
+  }, [reqs, q, statusF, workF]);
+
+  async function handleAdd(common: SendCommon, recipients: SendRecipient[]) {
+    try {
+      const n = await createSendRequests(common, recipients);
+      setShowAdd(false);
+      await load();
+      flash(`✓ 발송요청 ${n}건 등록됨`);
+    } catch (e) {
+      alert('등록 실패: ' + (e instanceof Error ? e.message : e));
+    }
+  }
+  async function handleSaveEdit(id: string, common: SendCommon, recipient: SendRecipient) {
+    try {
+      await updateSendRequest(id, { ...common, ...recipient });
+      setEditId(null);
+      await load();
+      flash('✓ 수정됨');
+    } catch (e) {
+      alert('수정 실패: ' + (e instanceof Error ? e.message : e));
+    }
+  }
+  async function handleDelete(r: SendRequest) {
+    if (!confirm(`발송요청(${r.companyName} · ${r.sendKind})을 삭제하시겠습니까?`)) return;
+    try {
+      await deleteSendRequest(r.id);
+      await load();
+      flash('✓ 삭제됨');
+    } catch (e) {
+      alert('삭제 실패: ' + (e instanceof Error ? e.message : e));
+    }
+  }
+  async function openLog() {
+    setShowLog(true);
+    try {
+      const all = await listAuditLog(300);
+      setLogRows(all.filter((l) => l.entity === 'send_request'));
+    } catch {
+      setLogRows([]);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="card">
+        <div className="chdr">✉️ 발송요청</div>
+        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+      </div>
+    );
+  }
+
+  const counts = SEND_STATUS.map((s) => ({ s, n: reqs.filter((r) => r.status === s).length }));
+
+  return (
+    <div className="card">
+      <div className="chdr">
+        발송요청 (총 {reqs.length}건)
+        <span style={{ marginLeft: 10, fontSize: 11, color: '#888' }}>
+          {counts.map((c) => `${c.s} ${c.n}`).join(' · ')}
+        </span>
+        {msg && <span style={{ marginLeft: 12, fontSize: 11, color: '#059669' }}>{msg}</span>}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 5, alignItems: 'center' }}>
+          <button className="btn-sm btn-sm-blue" onClick={openLog}>📜 변경 로그</button>
+          {canWrite && (
+            <button className="btn-sm" onClick={() => { setShowAdd((v) => !v); setEditId(null); }}>
+              + 새 발송요청
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && <div className="alert-w">{error}</div>}
+      <div className="alert-i" style={{ fontSize: 11 }}>
+        ✉️ 거래처 담당자를 선택하면 회사명·주소·연락처가 <b>그 시점 값으로 저장(스냅샷)</b>되어, 이후 담당자 정보가 바뀌어도 과거 요청은 유지됩니다. 한 문서를 <b>여러 수신자</b>에게 한 번에 요청할 수 있습니다. 처리 전 <b>‘미접수’</b> 건만 수정·삭제할 수 있습니다.
+        {!canWrite && <span style={{ color: '#8a5a00' }}> · 🔒 읽기전용 계정은 조회만 가능합니다.</span>}
+      </div>
+
+      {showAdd && canWrite && (
+        <AddRequestForm clients={clients} defaultRequester={defaultRequester} onSubmit={handleAdd} onCancel={() => setShowAdd(false)} />
+      )}
+
+      <div className="sbar">
+        <input placeholder="🔍 거래처·수신자·문서명·송부종류·의뢰인" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select value={statusF} onChange={(e) => setStatusF(e.target.value)}>
+          <option value="">상태 전체</option>
+          {SEND_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={workF} onChange={(e) => setWorkF(e.target.value)}>
+          <option value="">업무구분 전체</option>
+          {WORK_TYPES.map((w) => <option key={w} value={w}>{w}</option>)}
+        </select>
+        <span style={{ fontSize: 11, color: '#888' }}>{view.length}건 표시</span>
+      </div>
+
+      <div className="tbl-scroll">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>의뢰일자</th>
+              <th>의뢰인</th>
+              <th>거래처 · 수신자</th>
+              <th>업무구분</th>
+              <th>송부종류</th>
+              <th>문서명</th>
+              <th style={{ textAlign: 'center' }}>부수</th>
+              <th style={{ textAlign: 'center' }}>날인</th>
+              <th style={{ textAlign: 'center' }}>기한</th>
+              <th style={{ textAlign: 'center' }}>상태</th>
+              {canWrite && <th style={{ width: 72 }}>관리</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {view.length === 0 && (
+              <tr><td colSpan={canWrite ? 11 : 10} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>발송요청이 없습니다.</td></tr>
+            )}
+            {view.map((r) =>
+              editId === r.id ? (
+                <tr key={r.id}>
+                  <td colSpan={canWrite ? 11 : 10} style={{ background: '#EEF6FF' }}>
+                    <EditRequestForm req={r} clients={clients} onSave={(c, rc) => handleSaveEdit(r.id, c, rc)} onCancel={() => setEditId(null)} />
+                  </td>
+                </tr>
+              ) : (
+                <tr key={r.id}>
+                  <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.requestDate?.replace(/-/g, '.')}</td>
+                  <td style={{ fontSize: 12 }}>{r.requester}</td>
+                  <td style={{ fontSize: 12 }}>
+                    <b style={{ color: '#1A2B52' }}>{r.companyName}</b>
+                    {r.recipientName && <span style={{ color: '#555' }}> · {r.recipientName} {r.recipientTitle}</span>}
+                    {r.batchId && <span className="bdg b-on" style={{ marginLeft: 5, fontSize: 9 }} title="여러 수신자 묶음">묶음</span>}
+                  </td>
+                  <td style={{ fontSize: 12 }}>{r.workType}</td>
+                  <td style={{ fontSize: 12 }}>{r.sendKind}</td>
+                  <td style={{ fontSize: 12 }}>{r.docName || <span style={{ color: '#CCC' }}>—</span>}</td>
+                  <td style={{ textAlign: 'center', fontSize: 12 }}>{r.copies}</td>
+                  <td style={{ textAlign: 'center', fontSize: 11 }}>{r.sealRequired ? '🔖 날인요' : '—'}</td>
+                  <td style={{ textAlign: 'center', fontSize: 11 }}>{r.deadline === '긴급' ? <b style={{ color: '#dc2626' }}>긴급</b> : r.deadline}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <span className="bdg" style={{ fontSize: 10, ...statusStyle(r.status) }}>{r.status}</span>
+                  </td>
+                  {canWrite && (
+                    <td>
+                      {r.status === '미접수' ? (
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button className="btn-sm btn-sm-blue" title="수정" onClick={() => { setEditId(r.id); setShowAdd(false); }}>✏️</button>
+                          <button className="btn-sm btn-sm-del" title="삭제" onClick={() => handleDelete(r)}>🗑</button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 10, color: '#AAA' }}>처리중/완료</span>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ),
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showLog && <LogModal rows={logRows} onClose={() => setShowLog(false)} />}
+    </div>
+  );
+}
+
+// ── 공통 문서정보 입력 필드 ─────────────────────────────────
+function CommonFields({ c, setC }: { c: SendCommon; setC: (patch: Partial<SendCommon>) => void }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0 14px' }}>
+      <div className="frow">
+        <span className="fl">의뢰일자<span className="req">*</span></span>
+        <input type="date" value={c.requestDate} onChange={(e) => setC({ requestDate: e.target.value })} />
+      </div>
+      <div className="frow">
+        <span className="fl">의뢰인<span className="req">*</span></span>
+        <select value={c.requester} onChange={(e) => setC({ requester: e.target.value })} style={{ padding: '4px 7px', fontSize: 12 }}>
+          {DOC_REQUESTERS.map((r) => <option key={r} value={r}>{r}</option>)}
+          {!(DOC_REQUESTERS as readonly string[]).includes(c.requester) && <option value={c.requester}>{c.requester}</option>}
+        </select>
+      </div>
+      <div className="frow">
+        <span className="fl">업무구분<span className="req">*</span></span>
+        <select value={c.workType} onChange={(e) => setC({ workType: e.target.value })} style={{ padding: '4px 7px', fontSize: 12 }}>
+          {WORK_TYPES.map((w) => <option key={w} value={w}>{w}</option>)}
+        </select>
+      </div>
+      <div className="frow">
+        <span className="fl">송부종류<span className="req">*</span></span>
+        <select value={c.sendKind} onChange={(e) => setC({ sendKind: e.target.value })} style={{ padding: '4px 7px', fontSize: 12 }}>
+          {SEND_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
+      </div>
+      <div className="frow">
+        <span className="fl">문서명</span>
+        <input value={c.docName} onChange={(e) => setC({ docName: e.target.value })} placeholder="(선택) 예: PEF1호감사계약서" />
+      </div>
+      <div className="frow">
+        <span className="fl">발송부수</span>
+        <input type="number" min={1} value={c.copies} onChange={(e) => setC({ copies: Math.max(1, parseInt(e.target.value) || 1) })} />
+      </div>
+      <div className="frow">
+        <span className="fl">날인필요</span>
+        <select value={c.sealRequired ? 'Y' : 'N'} onChange={(e) => setC({ sealRequired: e.target.value === 'Y' })} style={{ padding: '4px 7px', fontSize: 12 }}>
+          <option value="N">X (불필요)</option>
+          <option value="Y">🔖 날인요</option>
+        </select>
+      </div>
+      <div className="frow">
+        <span className="fl">발송기한</span>
+        <select value={c.deadline} onChange={(e) => setC({ deadline: e.target.value })} style={{ padding: '4px 7px', fontSize: 12 }}>
+          {DEADLINES.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </div>
+      <div className="frow">
+        <span className="fl">기타요청사항</span>
+        <input value={c.etcRequest} onChange={(e) => setC({ etcRequest: e.target.value })} placeholder="(선택)" />
+      </div>
+    </div>
+  );
+}
+
+// 거래처/담당자 → 수신자 스냅샷 헬퍼
+function toRecipient(client: DocClient, contactId: string): SendRecipient | null {
+  const ct = client.contacts.find((x) => x.id === contactId);
+  if (!ct) return null;
+  return {
+    clientId: client.id,
+    contactId: ct.id,
+    companyName: client.companyName,
+    recipientName: ct.contactName,
+    recipientTitle: ct.honorific,
+    address: ct.address,
+    phone: ct.phone,
+  };
+}
+
+// ── 새 발송요청 폼 (공통 + 수신자 다중) ─────────────────────
+function AddRequestForm({
+  clients,
+  defaultRequester,
+  onSubmit,
+  onCancel,
+}: {
+  clients: DocClient[];
+  defaultRequester: string;
+  onSubmit: (common: SendCommon, recipients: SendRecipient[]) => void;
+  onCancel: () => void;
+}) {
+  const [c, setCState] = useState<SendCommon>(emptyCommon(defaultRequester));
+  const setC = (patch: Partial<SendCommon>) => setCState((p) => ({ ...p, ...patch }));
+  const [recipients, setRecipients] = useState<SendRecipient[]>([]);
+  const [pickClient, setPickClient] = useState('');
+  const [pickContact, setPickContact] = useState('');
+
+  const curClient = clients.find((x) => x.id === pickClient);
+
+  function addRecipient() {
+    if (!curClient || !pickContact) {
+      alert('거래처와 담당자를 선택하세요.');
+      return;
+    }
+    const rc = toRecipient(curClient, pickContact);
+    if (!rc) return;
+    if (recipients.some((x) => x.contactId === rc.contactId)) {
+      alert('이미 추가된 수신자입니다.');
+      return;
+    }
+    setRecipients((p) => [...p, rc]);
+    setPickContact('');
+  }
+  function addAllContacts() {
+    if (!curClient) return;
+    const adds = curClient.contacts
+      .map((ct) => toRecipient(curClient, ct.id))
+      .filter((x): x is SendRecipient => !!x && !recipients.some((r) => r.contactId === x.contactId));
+    setRecipients((p) => [...p, ...adds]);
+  }
+
+  function submit() {
+    if (!c.requestDate || !c.requester || !c.workType || !c.sendKind) {
+      alert('의뢰일자·의뢰인·업무구분·송부종류는 필수입니다.');
+      return;
+    }
+    if (!recipients.length) {
+      alert('수신자를 1명 이상 추가하세요.');
+      return;
+    }
+    onSubmit(c, recipients);
+  }
+
+  return (
+    <div className="card" style={{ background: '#F5F1EB' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>＋ 새 발송요청</div>
+      <CommonFields c={c} setC={setC} />
+
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#345', margin: '10px 0 6px' }}>· 수신자 (거래처 담당자)</div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div className="frow" style={{ minWidth: 220 }}>
+          <span className="fl">거래처</span>
+          <select value={pickClient} onChange={(e) => { setPickClient(e.target.value); setPickContact(''); }} style={{ padding: '4px 7px', fontSize: 12 }}>
+            <option value="">거래처 선택…</option>
+            {clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.companyName} ({cl.accountant})</option>)}
+          </select>
+        </div>
+        <div className="frow" style={{ minWidth: 200 }}>
+          <span className="fl">담당자</span>
+          <select value={pickContact} onChange={(e) => setPickContact(e.target.value)} disabled={!curClient} style={{ padding: '4px 7px', fontSize: 12 }}>
+            <option value="">담당자 선택…</option>
+            {curClient?.contacts.map((ct) => <option key={ct.id} value={ct.id}>{ct.contactName} {ct.honorific}</option>)}
+          </select>
+        </div>
+        <button className="btn-sm btn-sm-blue" onClick={addRecipient}>＋ 추가</button>
+        {curClient && curClient.contacts.length > 1 && (
+          <button className="btn-sm" onClick={addAllContacts} title="이 거래처의 모든 담당자 추가">전체 담당자 추가</button>
+        )}
+      </div>
+
+      {recipients.length > 0 && (
+        <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {recipients.map((r) => (
+            <span key={r.contactId} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #D0CCC4', borderRadius: 14, padding: '3px 10px', fontSize: 11.5 }}>
+              <b>{r.companyName}</b> · {r.recipientName} {r.recipientTitle}
+              <button onClick={() => setRecipients((p) => p.filter((x) => x.contactId !== r.contactId))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#c00', fontWeight: 700 }} title="제거">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 10, display: 'flex', gap: 6, alignItems: 'center' }}>
+        <button className="btn-p" onClick={submit}>발송요청 등록 {recipients.length > 0 && `(${recipients.length}건)`}</button>
+        <button className="btn-sm" onClick={onCancel}>취소</button>
+      </div>
+    </div>
+  );
+}
+
+// ── 발송요청 수정 폼 (단일 건) ──────────────────────────────
+function EditRequestForm({
+  req,
+  clients,
+  onSave,
+  onCancel,
+}: {
+  req: SendRequest;
+  clients: DocClient[];
+  onSave: (common: SendCommon, recipient: SendRecipient) => void;
+  onCancel: () => void;
+}) {
+  const [c, setCState] = useState<SendCommon>({
+    requestDate: req.requestDate,
+    requester: req.requester,
+    workType: req.workType,
+    sendKind: req.sendKind,
+    docName: req.docName,
+    copies: req.copies,
+    sealRequired: req.sealRequired,
+    deadline: req.deadline,
+    etcRequest: req.etcRequest,
+  });
+  const setC = (patch: Partial<SendCommon>) => setCState((p) => ({ ...p, ...patch }));
+  const [pickClient, setPickClient] = useState(req.clientId || '');
+  const [pickContact, setPickContact] = useState(req.contactId || '');
+  const curClient = clients.find((x) => x.id === pickClient);
+
+  function save() {
+    // 수신자: 재선택했으면 스냅샷 갱신, 아니면 기존 스냅샷 유지
+    let recipient: SendRecipient = {
+      clientId: req.clientId || '',
+      contactId: req.contactId,
+      companyName: req.companyName,
+      recipientName: req.recipientName,
+      recipientTitle: req.recipientTitle,
+      address: req.address,
+      phone: req.phone,
+    };
+    if (curClient && pickContact && pickContact !== req.contactId) {
+      const rc = toRecipient(curClient, pickContact);
+      if (rc) recipient = rc;
+    } else if (curClient && pickClient !== req.clientId) {
+      // 회사만 바뀌고 담당자 미선택 → 회사명만 갱신
+      recipient = { ...recipient, clientId: curClient.id, companyName: curClient.companyName };
+    }
+    onSave(c, recipient);
+  }
+
+  return (
+    <div style={{ padding: 4 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>✏️ 발송요청 수정 (미접수)</div>
+      <CommonFields c={c} setC={setC} />
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#345', margin: '10px 0 6px' }}>
+        · 수신자 <span style={{ fontWeight: 400, color: '#888' }}>(현재: {req.companyName} · {req.recipientName} {req.recipientTitle} — 바꾸려면 아래에서 재선택)</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div className="frow" style={{ minWidth: 220 }}>
+          <span className="fl">거래처</span>
+          <select value={pickClient} onChange={(e) => { setPickClient(e.target.value); setPickContact(''); }} style={{ padding: '4px 7px', fontSize: 12 }}>
+            <option value="">거래처 선택…</option>
+            {clients.map((cl) => <option key={cl.id} value={cl.id}>{cl.companyName} ({cl.accountant})</option>)}
+          </select>
+        </div>
+        <div className="frow" style={{ minWidth: 200 }}>
+          <span className="fl">담당자</span>
+          <select value={pickContact} onChange={(e) => setPickContact(e.target.value)} disabled={!curClient} style={{ padding: '4px 7px', fontSize: 12 }}>
+            <option value="">담당자 선택…</option>
+            {curClient?.contacts.map((ct) => <option key={ct.id} value={ct.id}>{ct.contactName} {ct.honorific}</option>)}
+          </select>
+        </div>
+      </div>
+      <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
+        <button className="btn-p" onClick={save}>저장</button>
+        <button className="btn-sm" onClick={onCancel}>취소</button>
+      </div>
+    </div>
+  );
+}
+
+// ── 변경 로그 모달 ──────────────────────────────────────────
+function LogModal({ rows, onClose }: { rows: DocAudit[]; onClose: () => void }) {
+  const actLabel = (a: DocAudit['action']) => (a === 'insert' ? '등록' : a === 'update' ? '수정' : '삭제');
+  const actColor = (a: DocAudit['action']) => (a === 'insert' ? '#059669' : a === 'update' ? '#2563eb' : '#dc2626');
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, maxWidth: 820, width: '100%', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff' }}>
+          <span style={{ fontWeight: 700, color: '#1A2B52' }}>📜 발송요청 변경 로그 (최근순)</span>
+          <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
+        </div>
+        <div style={{ padding: 12 }}>
+          {rows.length === 0 ? (
+            <div style={{ padding: 16, color: '#888', fontSize: 12.5 }}>기록이 없습니다.</div>
+          ) : (
+            <table className="tbl">
+              <thead><tr><th style={{ minWidth: 120 }}>일시</th><th>담당자</th><th>작업</th><th>내용</th></tr></thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{dtTime(r.at)}</td>
+                    <td style={{ fontWeight: 600 }}>{r.actorName}</td>
+                    <td style={{ color: actColor(r.action), fontWeight: 700, fontSize: 11 }}>{actLabel(r.action)}</td>
+                    <td style={{ fontSize: 12 }}>{r.summary}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

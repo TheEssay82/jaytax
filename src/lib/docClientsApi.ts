@@ -39,7 +39,7 @@ export interface DocNameHistory {
 
 export interface DocAudit {
   id: number;
-  entity: 'client' | 'contact';
+  entity: 'client' | 'contact' | 'send_request';
   action: 'insert' | 'update' | 'delete';
   entityId: string | null;
   clientId: string | null;
@@ -232,7 +232,7 @@ export async function listAuditLog(limit = 200): Promise<DocAudit[]> {
   return (
     data as {
       id: number;
-      entity: 'client' | 'contact';
+      entity: 'client' | 'contact' | 'send_request';
       action: 'insert' | 'update' | 'delete';
       entity_id: string | null;
       client_id: string | null;

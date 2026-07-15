@@ -27,6 +27,7 @@ import LibraryTab from './advisory/LibraryTab';
 import ConsultLogTab from './advisory/ConsultLogTab';
 import AiUsageTab from './advisory/AiUsageTab';
 import DocClientsTab from './docsend/DocClientsTab';
+import DocSendRequestTab from './docsend/DocSendRequestTab';
 import PlaceholderTab from './common/PlaceholderTab';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
@@ -385,7 +386,7 @@ function TabContent({
     case 'doc-contacts':
       return <DocClientsTab />;
     case 'doc-request':
-      return <PlaceholderTab title="✉️ 발송요청" desc="거래처 담당자에게 보낼 문서 발송을 요청합니다. (설계 예정 · 전 직원 + 인당회계사 등급 요청 가능 예정)" />;
+      return <DocSendRequestTab />;
     case 'doc-process':
       return <PlaceholderTab title="🖨️ 발송요청 처리" desc="요청된 발송 건을 담당자가 처리합니다. (설계 예정 · 최고관리자/기장팀장/기장팀원)" />;
     case 'doc-status':
