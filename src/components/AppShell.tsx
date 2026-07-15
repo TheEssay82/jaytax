@@ -28,6 +28,7 @@ import ConsultLogTab from './advisory/ConsultLogTab';
 import AiUsageTab from './advisory/AiUsageTab';
 import DocClientsTab from './docsend/DocClientsTab';
 import DocSendRequestTab from './docsend/DocSendRequestTab';
+import DocSendProcessTab from './docsend/DocSendProcessTab';
 import PlaceholderTab from './common/PlaceholderTab';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
@@ -60,7 +61,7 @@ export const MENU_GROUPS: MenuGroup[] = [
         children: [
           { id: 'doc-contacts', label: '👤 거래처 담당자 관리' },
           { id: 'doc-request', label: '✉️ 발송요청' },
-          { id: 'doc-process', label: '🖨️ 발송요청 처리' },
+          { id: 'doc-process', label: '🖨️ 발송요청 처리', cap: 'processDispatch' },
           { id: 'doc-status', label: '📊 발송업무 현황' },
         ],
       },
@@ -388,7 +389,7 @@ function TabContent({
     case 'doc-request':
       return <DocSendRequestTab />;
     case 'doc-process':
-      return <PlaceholderTab title="🖨️ 발송요청 처리" desc="요청된 발송 건을 담당자가 처리합니다. (설계 예정 · 최고관리자/기장팀장/기장팀원)" />;
+      return <DocSendProcessTab />;
     case 'doc-status':
       return <PlaceholderTab title="📊 발송업무 현황" desc="발송 요청·처리 내역을 결합해 진행현황을 보여주는 대시보드입니다. (설계 예정)" />;
     // 일반업무관리 › 기타 중분류

@@ -195,6 +195,26 @@ export async function deleteSendRequest(id: string): Promise<void> {
   }
 }
 
+// ── 발송요청 처리(상태·발송일·등기번호) ─────────────────────
+/** 처리 필드 갱신 — 서버 트리거가 권한 없는 자를 차단한다. */
+export async function setProcessing(
+  id: string,
+  patch: { status?: string; sentDate?: string | null; trackingNo?: string },
+): Promise<void> {
+  const row: Record<string, unknown> = {};
+  if (patch.status !== undefined) row.status = patch.status;
+  if (patch.sentDate !== undefined) row.sent_date = patch.sentDate || null;
+  if (patch.trackingNo !== undefined) row.tracking_no = patch.trackingNo?.trim() ? patch.trackingNo.trim() : null;
+  const { error } = await supabase.from('doc_send_requests').update(row).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/** 등기번호 → 우체국(epost) 국내등기 배달조회 딥링크(GET, 새 창에서 결과 바로 표시) */
+export function epostTrackingUrl(trackingNo: string): string {
+  const digits = (trackingNo || '').replace(/\D/g, '');
+  return `https://service.epost.go.kr/trace.RetrieveDomRigiTraceList.comm?sid1=${digits}&displayHeader=N`;
+}
+
 // ── 첨부파일(인쇄·발송용) ───────────────────────────────────
 export const ATTACH_ACCEPT = '.hwp,.hwpx,.doc,.docx,.pdf,.xls,.xlsx';
 export const ATTACH_MAX_BYTES = 20 * 1024 * 1024; // 20MB
