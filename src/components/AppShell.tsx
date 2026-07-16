@@ -30,6 +30,7 @@ import DocClientsTab from './docsend/DocClientsTab';
 import DocSendRequestTab from './docsend/DocSendRequestTab';
 import DocSendProcessTab from './docsend/DocSendProcessTab';
 import DocSendStatusTab from './docsend/DocSendStatusTab';
+import EvidenceTab from './evidence/EvidenceTab';
 import PlaceholderTab from './common/PlaceholderTab';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
@@ -66,6 +67,7 @@ export const MENU_GROUPS: MenuGroup[] = [
           { id: 'doc-status', label: '📊 발송업무 현황' },
         ],
       },
+      { id: 'evidence', label: '📑 증빙 자료실' },
       { id: 'inquiry-send', label: '📮 조회서 발송관리' },
       { id: 'vacation', label: '🌴 휴가관리' },
       { id: 'estimate', label: '🧮 견적산출 시스템' },
@@ -393,6 +395,9 @@ function TabContent({
       return <DocSendProcessTab />;
     case 'doc-status':
       return <DocSendStatusTab />;
+    // 일반업무관리 › 증빙 자료실
+    case 'evidence':
+      return <EvidenceTab />;
     // 일반업무관리 › 기타 중분류
     case 'inquiry-send':
       return <PlaceholderTab title="📮 조회서 발송관리" desc="설계 예정" />;
