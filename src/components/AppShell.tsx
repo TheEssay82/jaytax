@@ -32,6 +32,7 @@ import DocSendProcessTab from './docsend/DocSendProcessTab';
 import DocSendStatusTab from './docsend/DocSendStatusTab';
 import EvidenceTab from './evidence/EvidenceTab';
 import PlaceholderTab from './common/PlaceholderTab';
+import DevNotesModal from './common/DevNotesModal';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
 // children: 중분류가 하위 소분류를 가지면 클릭·호버 시 플라이아웃 서브메뉴로 펼친다(컨테이너 자체는 페이지 없음).
@@ -121,6 +122,7 @@ function Shell() {
   const [curTab, setCurTab] = useState('wizard');
   const [reloadKey, setReloadKey] = useState(0);
   const [showPw, setShowPw] = useState(false);
+  const [showDevNotes, setShowDevNotes] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [openSub, setOpenSub] = useState<string | null>(null); // 열린 중분류 플라이아웃 서브메뉴
   const navRef = useRef<HTMLElement>(null);
@@ -225,13 +227,18 @@ function Shell() {
           alt="JAY · 세무회계 지원"
           style={{ height: 56, display: 'block', flexShrink: 0 }}
         />
-        <span
+        <button
+          type="button"
           className="h-ver"
-          title={`앱 버전 v${__APP_VERSION__}`}
-          style={{ fontSize: 11, color: '#9aa0ad', fontWeight: 600, marginLeft: 6 }}
+          title="개발노트 보기"
+          onClick={() => setShowDevNotes(true)}
+          style={{
+            fontSize: 11, color: '#9aa0ad', fontWeight: 600, marginLeft: 6,
+            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+          }}
         >
-          v{__APP_VERSION__}
-        </span>
+          v{__APP_VERSION__} 📓
+        </button>
 
         {/* 대분류 드롭다운 메뉴 */}
         <nav className="h-menus" ref={navRef}>
@@ -322,6 +329,7 @@ function Shell() {
       </header>
 
       {showPw && <PasswordModal onClose={() => setShowPw(false)} />}
+      {showDevNotes && <DevNotesModal onClose={() => setShowDevNotes(false)} />}
 
       {readonly && (
         <div
