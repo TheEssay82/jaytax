@@ -31,6 +31,7 @@ import DocSendRequestTab from './docsend/DocSendRequestTab';
 import DocSendProcessTab from './docsend/DocSendProcessTab';
 import DocSendStatusTab from './docsend/DocSendStatusTab';
 import EvidenceTab from './evidence/EvidenceTab';
+import InternalHome from './home/InternalHome';
 import PlaceholderTab from './common/PlaceholderTab';
 import DevNotesModal from './common/DevNotesModal';
 
@@ -119,7 +120,7 @@ export default function AppShell() {
 function Shell() {
   const { user, signOut, role, readonly } = useAuth();
   const { resetNew } = useWizard();
-  const [curTab, setCurTab] = useState('wizard');
+  const [curTab, setCurTab] = useState('home');
   const [reloadKey, setReloadKey] = useState(0);
   const [showPw, setShowPw] = useState(false);
   const [showDevNotes, setShowDevNotes] = useState(false);
@@ -154,8 +155,9 @@ function Shell() {
 
   // 실제 이동 가능한 항목(컨테이너는 제외, 하위 소분류로 대체)
   const navItems = visibleGroups.flatMap((g) => g.items.flatMap((it) => it.children ?? [it]));
-  // 접근 가능한 전체 탭 id 집합 (방어용)
+  // 접근 가능한 전체 탭 id 집합 (방어용). 내부홈은 외부인 제외 전원에게 허용(로고 클릭 랜딩).
   const allowedIds = new Set<string>([...navItems.map((it) => it.id), ...visibleIcons.map((it) => it.id)]);
+  if (!isExternal) allowedIds.add('home');
   // 기본 탭: 접근 가능하면 현재 탭, 아니면 첫 접근가능 탭
   const firstItem = visibleGroups[0]?.items[0];
   const firstAllowed = (firstItem?.children ? firstItem.children[0]?.id : firstItem?.id) ?? 'wizard';
@@ -222,11 +224,19 @@ function Shell() {
   return (
     <>
       <header id="hdr">
-        <img
-          src="/logo2.png"
-          alt="JAY · 세무회계 지원"
-          style={{ height: 56, display: 'block', flexShrink: 0 }}
-        />
+        <button
+          type="button"
+          onClick={() => goTab('home')}
+          title="홈으로"
+          aria-label="홈으로"
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', flexShrink: 0 }}
+        >
+          <img
+            src="/logo2.png"
+            alt="JAY · 세무회계 지원"
+            style={{ height: 56, display: 'block' }}
+          />
+        </button>
         <button
           type="button"
           className="h-ver"
@@ -344,7 +354,7 @@ function Shell() {
       )}
 
       <main id="main" key={`${cur}-${reloadKey}`}>
-        <TabContent cur={cur} setCurTab={setCurTab} curLabel={curLabel} />
+        <TabContent cur={cur} setCurTab={setCurTab} curLabel={curLabel} onNavigate={goTab} onOpenDevNotes={() => setShowDevNotes(true)} />
       </main>
     </>
   );
@@ -354,12 +364,18 @@ function TabContent({
   cur,
   setCurTab,
   curLabel,
+  onNavigate,
+  onOpenDevNotes,
 }: {
   cur: string;
   setCurTab: (id: string) => void;
   curLabel: string;
+  onNavigate: (id: string) => void;
+  onOpenDevNotes: () => void;
 }) {
   switch (cur) {
+    case 'home':
+      return <InternalHome onNavigate={onNavigate} onOpenDevNotes={onOpenDevNotes} />;
     case 'wizard':
       return <WizardTab />;
     case 'clients':
