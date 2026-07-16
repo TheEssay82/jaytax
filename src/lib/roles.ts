@@ -50,6 +50,7 @@ export type Capability =
   | 'manageUsers' // 사용자/계정 관리
   | 'viewAiUsage' // AI(상담) 사용량 집계 열람 — 최고관리자 전용
   | 'finalizeConsult' // 상담기록 확정(초안↔확정) — 작성자 외에도 확정권한자 허용
+  | 'viewDispatch' // 문서발송 › 발송요청 처리 '조회' — 처리권한자 + 회계사(조회전용)
   | 'processDispatch'; // 문서발송 › 발송요청 처리(상태변경·발송일·등기번호) — 최고관리자·기장팀장·기장팀원
 
 // 항목별 허용 역할 (매트릭스)
@@ -69,7 +70,9 @@ const MATRIX: Record<Capability, Role[]> = {
   manageUsers: ['superuser'],
   viewAiUsage: ['superuser'],
   finalizeConsult: ['superuser', 'accountant', 'team_lead'],
-  // 발송요청 처리: 최고관리자·기장팀장·기장팀원(회계사·인당회계사·외부인 제외)
+  // 발송요청 처리 조회: 처리권한자 + 회계사(조회 전용). 인당회계사·외부인 제외.
+  viewDispatch: ['superuser', 'team_lead', 'team_member', 'accountant'],
+  // 발송요청 처리(쓰기): 최고관리자·기장팀장·기장팀원(회계사·인당회계사·외부인 제외)
   processDispatch: ['superuser', 'team_lead', 'team_member'],
 };
 

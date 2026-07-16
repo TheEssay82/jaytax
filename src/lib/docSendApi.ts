@@ -10,6 +10,8 @@ export const SEND_KINDS = [
 ] as const;
 export const DEADLINES = ['긴급', '보통', '지연가능'] as const;
 export const SEND_STATUS = ['미접수', '진행중', '발송완료'] as const;
+/** 발송완료 이후 후속 상태(반송·재발송완료) — 사유(status_note) 함께 기록 */
+export const POST_SEND_STATUS = ['반송', '재발송완료'] as const;
 /** 의뢰인 후보(변수정리) — 대리 지정용 */
 export const DOC_REQUESTERS = ['조현규', '김준성', '정우철', '송현주', '정남지', '김민섭', '김동주', '안지연'] as const;
 
@@ -35,6 +37,7 @@ export interface SendRequest {
   status: string;
   sentDate: string | null;
   trackingNo: string;
+  statusNote: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -84,6 +87,7 @@ interface Row {
   status: string;
   sent_date: string | null;
   tracking_no: string | null;
+  status_note: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -111,6 +115,7 @@ function toReq(r: Row): SendRequest {
     status: r.status || '미접수',
     sentDate: r.sent_date,
     trackingNo: r.tracking_no || '',
+    statusNote: r.status_note || '',
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -199,12 +204,13 @@ export async function deleteSendRequest(id: string): Promise<void> {
 /** 처리 필드 갱신 — 서버 트리거가 권한 없는 자를 차단한다. */
 export async function setProcessing(
   id: string,
-  patch: { status?: string; sentDate?: string | null; trackingNo?: string },
+  patch: { status?: string; sentDate?: string | null; trackingNo?: string; statusNote?: string | null },
 ): Promise<void> {
   const row: Record<string, unknown> = {};
   if (patch.status !== undefined) row.status = patch.status;
   if (patch.sentDate !== undefined) row.sent_date = patch.sentDate || null;
   if (patch.trackingNo !== undefined) row.tracking_no = patch.trackingNo?.trim() ? patch.trackingNo.trim() : null;
+  if (patch.statusNote !== undefined) row.status_note = patch.statusNote?.trim() ? patch.statusNote.trim() : null;
   const { error } = await supabase.from('doc_send_requests').update(row).eq('id', id);
   if (error) throw new Error(error.message);
 }

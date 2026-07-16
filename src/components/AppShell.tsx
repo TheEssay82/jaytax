@@ -62,7 +62,7 @@ export const MENU_GROUPS: MenuGroup[] = [
         children: [
           { id: 'doc-contacts', label: '👤 거래처 담당자 관리' },
           { id: 'doc-request', label: '✉️ 발송요청' },
-          { id: 'doc-process', label: '🖨️ 발송요청 처리', cap: 'processDispatch' },
+          { id: 'doc-process', label: '🖨️ 발송요청 처리', cap: 'viewDispatch' },
           { id: 'doc-status', label: '📊 발송업무 현황' },
         ],
       },

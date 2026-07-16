@@ -14,6 +14,8 @@ import AttachmentsModal from './AttachmentsModal';
 
 const statusStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
+  if (s === '재발송완료') return { background: '#CFFAFE', color: '#155E75' };
+  if (s === '반송') return { background: '#FEE2E2', color: '#B91C1C' };
   if (s === '진행중') return { background: '#DBEAFE', color: '#1E40AF' };
   return { background: '#F3F4F6', color: '#6B7280' };
 };
