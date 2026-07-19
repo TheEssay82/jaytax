@@ -18,6 +18,7 @@ const statusStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
   if (s === '재발송완료') return { background: '#CFFAFE', color: '#155E75' };
   if (s === '반송') return { background: '#FEE2E2', color: '#B91C1C' };
+  if (s === '재발송요청') return { background: '#FEF3C7', color: '#92400E' };
   if (s === '진행중') return { background: '#DBEAFE', color: '#1E40AF' };
   return { background: '#F3F4F6', color: '#6B7280' };
 };
@@ -65,6 +66,7 @@ export default function DocSendProcessTab() {
   const counts = useMemo(() => ({
     미접수: reqs.filter((r) => r.status === '미접수').length,
     진행중: reqs.filter((r) => r.status === '진행중').length,
+    재발송요청: reqs.filter((r) => r.status === '재발송요청').length,
     발송완료: reqs.filter((r) => r.status === '발송완료').length,
     반송: reqs.filter((r) => r.status === '반송').length,
   }), [reqs]);
@@ -78,7 +80,7 @@ export default function DocSendProcessTab() {
       );
     }
     // 처리 우선순위: 미접수 → 진행중 → 반송(후속) → 발송완료 → 재발송완료, 긴급 먼저, 의뢰일자 순
-    const order: Record<string, number> = { 미접수: 0, 진행중: 1, 반송: 2, 발송완료: 3, 재발송완료: 4 };
+    const order: Record<string, number> = { 미접수: 0, 재발송요청: 1, 진행중: 2, 반송: 3, 발송완료: 4, 재발송완료: 5 };
     const rank = (r: SendRequest) => order[r.status] ?? 5;
     return [...list].sort((a, b) => rank(a) - rank(b) || (a.deadline === '긴급' ? -1 : 0) - (b.deadline === '긴급' ? -1 : 0) || a.requestDate.localeCompare(b.requestDate));
   }, [reqs, q, showDone]);
@@ -110,10 +112,11 @@ export default function DocSendProcessTab() {
       return;
     }
     try {
-      await setProcessing(r.id, { status: '발송완료', sentDate, trackingNo });
+      const to = r.status === '재발송요청' ? '재발송완료' : '발송완료';
+      await setProcessing(r.id, { status: to, sentDate, trackingNo });
       await load();
       setOpenId(null);
-      flash('✅ 발송완료 처리');
+      flash(r.status === '재발송요청' ? '✅ 재발송완료 처리' : '✅ 발송완료 처리');
     } catch (e) {
       alert('완료 처리 실패: ' + (e instanceof Error ? e.message : e));
     }
@@ -170,6 +173,7 @@ export default function DocSendProcessTab() {
         <span style={{ marginLeft: 10, fontSize: 11, color: '#888' }}>
           미접수 {counts.미접수} · 진행중 {counts.진행중} · 발송완료 {counts.발송완료}
           {counts.반송 > 0 && <span style={{ color: '#B91C1C', fontWeight: 700 }}> · 반송 {counts.반송}</span>}
+          {counts.재발송요청 > 0 && <span style={{ color: '#92400E', fontWeight: 700 }}> · 재발송요청 {counts.재발송요청}</span>}
         </span>
         {msg && <span style={{ marginLeft: 12, fontSize: 11, color: '#059669' }}>{msg}</span>}
       </div>
@@ -177,7 +181,7 @@ export default function DocSendProcessTab() {
       {error && <div className="alert-w">{error}</div>}
       {canProcess ? (
         <div className="alert-i" style={{ fontSize: 11 }}>
-          🖨️ 요청된 발송 건이 여기 모입니다. <b>‘처리 시작’</b>을 누르면 상태가 <b>진행중</b>으로 바뀝니다. 발송일(등기면 등기번호)을 입력하고 <b>‘완료’</b>를 누르면 <b>발송완료</b>됩니다. 발송완료 후에는 <b>반송·재발송완료</b>(사유 기재)로 후속 처리할 수 있습니다. 등기번호를 클릭하면 우체국 배달조회가 새 창으로 열립니다.
+          🖨️ 요청된 발송 건이 여기 모입니다. <b>‘처리 시작’</b>을 누르면 상태가 <b>진행중</b>으로 바뀝니다. 발송일(등기면 등기번호)을 입력하고 <b>‘완료’</b>를 누르면 <b>발송완료</b>됩니다. 발송완료 후에는 <b>반송·재발송완료</b>(사유 기재)로 후속 처리할 수 있습니다. 반송 건은 <b>요청자가 ‘재발송요청’</b>을 올리면 다시 대기열 상단에 나타나며, 발송일·등기번호를 입력해 <b>재발송완료</b>로 마감합니다. 등기번호를 클릭하면 우체국 배달조회가 새 창으로 열립니다.
         </div>
       ) : (
         <div className="alert-i" style={{ fontSize: 11 }}>
@@ -296,6 +300,8 @@ function ProcessRow({
   const [trackingNo, setTrackingNo] = useState(r.trackingNo || '');
   const [note, setNote] = useState(r.statusNote || '');
   const isPost = r.status === '발송완료' || r.status === '반송' || r.status === '재발송완료';
+  // 발송일·등기번호를 입력해 마감하는 단계(진행중 → 발송완료 / 재발송요청 → 재발송완료)
+  const isActive = r.status === '진행중' || r.status === '재발송요청';
 
   return (
     <>
@@ -338,7 +344,7 @@ function ProcessRow({
               {r.status === '미접수' && (
                 <button className="btn-sm btn-p" style={{ fontSize: 11, padding: '2px 8px' }} onClick={onStart}>▶ 처리 시작</button>
               )}
-              {r.status === '진행중' && (
+              {isActive && (
                 <button className="btn-sm btn-sm-blue" style={{ fontSize: 11 }} onClick={onToggle}>{open ? '접기' : '✏️ 처리'}</button>
               )}
               {isPost && (
@@ -348,7 +354,7 @@ function ProcessRow({
           )}
         </td>
       </tr>
-      {open && canProcess && r.status === '진행중' && (
+      {open && canProcess && isActive && (
         <tr>
           <td colSpan={14} style={{ background: '#EEF6FF' }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', padding: '4px 2px' }}>
@@ -361,7 +367,9 @@ function ProcessRow({
                 <input value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} placeholder="예: 1234567890123" />
               </div>
               <button className="btn-sm btn-sm-blue" onClick={() => onSaveProgress(sentDate, trackingNo)}>💾 저장(진행중 유지)</button>
-              <button className="btn-p" onClick={() => onComplete(sentDate, trackingNo)}>✅ 완료(발송완료)</button>
+              <button className="btn-p" onClick={() => onComplete(sentDate, trackingNo)}>
+                {r.status === '재발송요청' ? '✅ 재발송완료' : '✅ 완료(발송완료)'}
+              </button>
               <button className="btn-sm" onClick={() => onRevert('미접수')} title="요청자가 다시 수정·삭제할 수 있도록 미접수로 되돌립니다">↩ 미접수로</button>
             </div>
           </td>

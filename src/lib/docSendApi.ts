@@ -10,8 +10,11 @@ export const SEND_KINDS = [
 ] as const;
 export const DEADLINES = ['긴급', '보통', '지연가능'] as const;
 export const SEND_STATUS = ['미접수', '진행중', '발송완료'] as const;
-/** 발송완료 이후 후속 상태(반송·재발송완료) — 사유(status_note) 함께 기록 */
-export const POST_SEND_STATUS = ['반송', '재발송완료'] as const;
+/** 발송완료 이후 후속 상태 — 사유·메모(status_note) 함께 기록
+ *  흐름: 발송완료 → [처리자]반송 → [원 요청자]재발송요청 → [처리자]재발송완료 */
+export const POST_SEND_STATUS = ['반송', '재발송요청', '재발송완료'] as const;
+/** 처리 대기열(미완결) 상태 — 재발송요청은 처리자가 다시 처리해야 하는 건 */
+export const isClosedStatus = (s: string) => s === '발송완료' || s === '재발송완료';
 /** 의뢰인 후보(변수정리) — 대리 지정용 */
 export const DOC_REQUESTERS = ['조현규', '김준성', '정우철', '송현주', '정남지', '김민섭', '김동주', '안지연'] as const;
 
@@ -38,6 +41,9 @@ export interface SendRequest {
   sentDate: string | null;
   trackingNo: string;
   statusNote: string;
+  /** 원 요청자(작성 계정) — 반송 건 재발송요청 권한 판정용 */
+  requesterId: string | null;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -88,6 +94,8 @@ interface Row {
   sent_date: string | null;
   tracking_no: string | null;
   status_note: string | null;
+  requester_id: string | null;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -116,6 +124,8 @@ function toReq(r: Row): SendRequest {
     sentDate: r.sent_date,
     trackingNo: r.tracking_no || '',
     statusNote: r.status_note || '',
+    requesterId: r.requester_id,
+    createdBy: r.created_by,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -212,6 +222,19 @@ export async function setProcessing(
   if (patch.trackingNo !== undefined) row.tracking_no = patch.trackingNo?.trim() ? patch.trackingNo.trim() : null;
   if (patch.statusNote !== undefined) row.status_note = patch.statusNote?.trim() ? patch.statusNote.trim() : null;
   const { error } = await supabase.from('doc_send_requests').update(row).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/** 반송 건의 재발송요청 — 원 요청자만 가능(서버 가드 0039). 발송일·등기번호는 1차 기록으로 보존한다.
+ *  사유 칸은 하나뿐이므로 처리자가 맥락을 잃지 않도록 반송 사유를 앞에 남겨 함께 표시한다. */
+export async function requestResend(id: string, memo: string, bounceNote?: string): Promise<void> {
+  const m = memo.trim();
+  const b = (bounceNote || '').trim();
+  const note = b ? `반송: ${b} / 재발송요청: ${m}` : m;
+  const { error } = await supabase
+    .from('doc_send_requests')
+    .update({ status: '재발송요청', status_note: note || null })
+    .eq('id', id);
   if (error) throw new Error(error.message);
 }
 

@@ -16,6 +16,7 @@ const statusStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
   if (s === '재발송완료') return { background: '#CFFAFE', color: '#155E75' };
   if (s === '반송') return { background: '#FEE2E2', color: '#B91C1C' };
+  if (s === '재발송요청') return { background: '#FEF3C7', color: '#92400E' };
   if (s === '진행중') return { background: '#DBEAFE', color: '#1E40AF' };
   return { background: '#F3F4F6', color: '#6B7280' };
 };
@@ -23,12 +24,13 @@ const statusStyle = (s: string): React.CSSProperties => {
 // 완결계열(발송완료·재발송완료). 반송은 후속조치가 필요하므로 '처리중'에 포함한다.
 const isClosed = (s: string) => s === '발송완료' || s === '재발송완료';
 
-// 상태 필터 옵션 (기본 active = 미접수+진행중+반송)
+// 상태 필터 옵션 (기본 active = 미접수+진행중+반송+재발송요청)
 const STATUS_FILTERS = [
-  { v: 'active', label: '처리중 (미접수·진행중·반송)' },
+  { v: 'active', label: '처리중 (미접수·진행중·반송·재발송요청)' },
   { v: '미접수', label: '미접수' },
   { v: '진행중', label: '진행중' },
   { v: '반송', label: '반송' },
+  { v: '재발송요청', label: '재발송요청' },
   { v: '발송완료', label: '발송완료' },
   { v: '재발송완료', label: '재발송완료' },
   { v: 'all', label: '전체' },
@@ -70,6 +72,7 @@ export default function DocSendStatusTab() {
     미접수: reqs.filter((r) => r.status === '미접수').length,
     진행중: reqs.filter((r) => r.status === '진행중').length,
     반송: reqs.filter((r) => r.status === '반송').length,
+    재발송요청: reqs.filter((r) => r.status === '재발송요청').length,
     발송완료: reqs.filter((r) => r.status === '발송완료').length,
     재발송완료: reqs.filter((r) => r.status === '재발송완료').length,
     전체: reqs.length,
@@ -112,6 +115,7 @@ export default function DocSendStatusTab() {
     { key: '미접수', label: '미접수', n: counts.미접수, filter: '미접수', color: '#6B7280' },
     { key: '진행중', label: '진행중', n: counts.진행중, filter: '진행중', color: '#1E40AF' },
     { key: '반송', label: '반송(조치 필요)', n: counts.반송, filter: '반송', color: '#B91C1C' },
+    { key: '재발송요청', label: '재발송요청', n: counts.재발송요청, filter: '재발송요청', color: '#92400E' },
     { key: '발송완료', label: `발송완료${counts.재발송완료 ? ` (+재발송 ${counts.재발송완료})` : ''}`, n: counts.발송완료, filter: '발송완료', color: '#065F46' },
     { key: '전체', label: '전체', n: counts.전체, filter: 'all', color: '#1A2B52' },
   ];
@@ -141,7 +145,7 @@ export default function DocSendStatusTab() {
       </div>
 
       <div className="alert-i" style={{ fontSize: 11 }}>
-        📊 발송요청·처리 전체 내역입니다(조회 전용). 기본은 <b>처리중(미접수·진행중·반송)</b>만 표시되며, <b>발송완료·재발송완료</b>는 상태 필터에서 선택하면 나타납니다. <b>반송</b>은 재발송 등 후속조치가 필요한 건이라 처리중에 함께 표시됩니다. 실제 처리는 <b>‘발송요청 처리’</b>에서 합니다.
+        📊 발송요청·처리 전체 내역입니다(조회 전용). 기본은 <b>처리중(미접수·진행중·반송·재발송요청)</b>만 표시되며, <b>발송완료·재발송완료</b>는 상태 필터에서 선택하면 나타납니다. <b>반송</b>은 요청자가 <b>재발송요청</b>을 올려야 하는 건, <b>재발송요청</b>은 처리자가 다시 발송해야 하는 건이라 처리중에 함께 표시됩니다. 실제 처리는 <b>‘발송요청 처리’</b>에서 합니다.
       </div>
 
       <div className="sbar">

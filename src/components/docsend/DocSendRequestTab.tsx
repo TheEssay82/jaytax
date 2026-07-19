@@ -17,12 +17,13 @@ import {
   SEND_STATUS,
   POST_SEND_STATUS,
   DOC_REQUESTERS,
+  requestResend,
   type SendRequest,
   type SendCommon,
   type SendRecipient,
   type SendAttachment,
 } from '../../lib/docSendApi';
-import { listAuditLog, type DocAudit } from '../../lib/docClientsApi';
+import { listAuditLog, auditChanges, type DocAudit } from '../../lib/docClientsApi';
 import AttachmentsModal, { fmtSize } from './AttachmentsModal';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -36,6 +37,7 @@ const statusStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
   if (s === '재발송완료') return { background: '#CFFAFE', color: '#155E75' };
   if (s === '반송') return { background: '#FEE2E2', color: '#B91C1C' };
+  if (s === '재발송요청') return { background: '#FEF3C7', color: '#92400E' };
   if (s === '진행중') return { background: '#DBEAFE', color: '#1E40AF' };
   return { background: '#F3F4F6', color: '#6B7280' }; // 미접수
 };
@@ -53,7 +55,7 @@ const emptyCommon = (requester: string): SendCommon => ({
 });
 
 export default function DocSendRequestTab() {
-  const { readonly, profileName } = useAuth();
+  const { readonly, profileName, user } = useAuth();
   const canWrite = !readonly;
   const defaultRequester = (DOC_REQUESTERS as readonly string[]).includes(profileName) ? profileName : DOC_REQUESTERS[0];
 
@@ -71,6 +73,10 @@ export default function DocSendRequestTab() {
   const [showLog, setShowLog] = useState(false);
   const [logRows, setLogRows] = useState<DocAudit[]>([]);
   const [attachFor, setAttachFor] = useState<SendRequest | null>(null);
+  const [resendFor, setResendFor] = useState<SendRequest | null>(null);
+
+  /** 재발송요청은 원 요청자만 가능(서버 가드와 동일 기준) */
+  const isMine = (r: SendRequest) => !!user?.id && (r.requesterId === user.id || r.createdBy === user.id);
 
   async function load() {
     try {
@@ -283,8 +289,19 @@ export default function DocSendRequestTab() {
                           <button className="btn-sm btn-sm-blue" title="수정" onClick={() => { setEditId(r.id); setShowAdd(false); }}>✏️</button>
                           <button className="btn-sm btn-sm-del" title="삭제" onClick={() => handleDelete(r)}>🗑</button>
                         </div>
+                      ) : r.status === '반송' && isMine(r) ? (
+                        <button
+                          className="btn-sm"
+                          style={{ fontSize: 10, padding: '2px 6px', background: '#FEF3C7', color: '#92400E', fontWeight: 700 }}
+                          title="주소 등을 확인한 뒤 재발송을 요청합니다"
+                          onClick={() => setResendFor(r)}
+                        >
+                          🔄 재발송요청
+                        </button>
                       ) : (
-                        <span style={{ fontSize: 10, color: '#AAA' }}>처리중/완료</span>
+                        <span style={{ fontSize: 10, color: '#AAA' }}>
+                          {r.status === '재발송요청' ? '재발송 대기' : '처리중/완료'}
+                        </span>
                       )}
                     </td>
                   )}
@@ -295,6 +312,17 @@ export default function DocSendRequestTab() {
         </table>
       </div>
 
+      {resendFor && (
+        <ResendModal
+          req={resendFor}
+          onClose={() => setResendFor(null)}
+          onDone={async () => {
+            setResendFor(null);
+            await load();
+            flash('재발송을 요청했습니다. 처리 담당자가 확인 후 재발송합니다.');
+          }}
+        />
+      )}
       {showLog && <LogModal rows={logRows} onClose={() => setShowLog(false)} />}
       {attachFor && (
         <AttachmentsModal
@@ -670,6 +698,69 @@ function EditRequestForm({
 }
 
 
+// ── 재발송요청 모달 (반송 건, 원 요청자) ────────────────────
+function ResendModal({ req, onClose, onDone }: { req: SendRequest; onClose: () => void; onDone: () => void | Promise<void> }) {
+  const [memo, setMemo] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    if (!memo.trim()) { setErr('재발송 사유·조치 내용을 입력하세요.'); return; }
+    setBusy(true);
+    setErr(null);
+    try {
+      await requestResend(req.id, memo, req.statusNote);
+      await onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '재발송요청에 실패했습니다.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, maxWidth: 480, width: '100%', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #eee' }}>
+          <span style={{ fontWeight: 700, color: '#92400E' }}>🔄 재발송요청</span>
+          <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
+        </div>
+        <div style={{ padding: 16 }}>
+          <div style={{ fontSize: 12.5, marginBottom: 10 }}>
+            <b>{req.companyName}</b> · {req.docName || req.workType}
+            <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>
+              {req.recipientName} {req.recipientTitle} · {req.address || '주소 없음'}
+            </div>
+          </div>
+          {req.statusNote && (
+            <div style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 11.5, padding: '7px 10px', borderRadius: 6, marginBottom: 10 }}>
+              반송 사유: {req.statusNote}
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: '#666', marginBottom: 6 }}>
+            ⚠️ 주소·수신자가 잘못되었다면 <b>거래처 담당자 관리</b>에서 먼저 정보를 고친 뒤 요청하세요.
+            (이 건의 수신자 정보는 발송 당시 스냅샷이라 자동으로 바뀌지 않습니다.)
+          </div>
+          <textarea
+            className="inp"
+            rows={3}
+            placeholder="재발송 사유·조치 내용 (예: 주소 확인함 — 3층 → 5층으로 정정, 수신자 변경 등)"
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            style={{ width: '100%', fontSize: 12.5 }}
+          />
+          {err && <div style={{ color: '#dc2626', fontSize: 11.5, marginTop: 6 }}>{err}</div>}
+          <div style={{ display: 'flex', gap: 6, marginTop: 12, justifyContent: 'flex-end' }}>
+            <button className="btn-sm" onClick={onClose} disabled={busy}>취소</button>
+            <button className="btn-sm btn-sm-blue" onClick={() => void submit()} disabled={busy}>
+              {busy ? '요청 중…' : '재발송요청'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 변경 로그 모달 ──────────────────────────────────────────
 function LogModal({ rows, onClose }: { rows: DocAudit[]; onClose: () => void }) {
   const actLabel = (a: DocAudit['action']) => (a === 'insert' ? '등록' : a === 'update' ? '수정' : '삭제');
@@ -693,7 +784,12 @@ function LogModal({ rows, onClose }: { rows: DocAudit[]; onClose: () => void }) 
                     <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{dtTime(r.at)}</td>
                     <td style={{ fontWeight: 600 }}>{r.actorName}</td>
                     <td style={{ color: actColor(r.action), fontWeight: 700, fontSize: 11 }}>{actLabel(r.action)}</td>
-                    <td style={{ fontSize: 12 }}>{r.summary}</td>
+                    <td style={{ fontSize: 12 }}>
+                      {r.summary}
+                      {auditChanges(r).map((c, i) => (
+                        <div key={i} style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>↳ {c}</div>
+                      ))}
+                    </td>
                   </tr>
                 ))}
               </tbody>

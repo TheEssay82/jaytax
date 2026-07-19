@@ -46,6 +46,31 @@ export interface DocAudit {
   actorName: string;
   summary: string;
   at: string;
+  /** 변경 전/후 스냅샷 — 상태 전이·사유를 화면에 풀어 보여주는 데 사용 */
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}
+
+/** 감사로그 1건에서 사람이 읽을 변경 내역을 뽑아낸다(상태 전이·사유·발송일·등기번호). */
+export function auditChanges(a: DocAudit): string[] {
+  const b = a.before ?? {};
+  const f = a.after ?? {};
+  const s = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
+  const out: string[] = [];
+  const label: Record<string, string> = {
+    status: '상태',
+    status_note: '사유·메모',
+    sent_date: '발송일',
+    tracking_no: '등기번호',
+  };
+  if (a.action === 'update') {
+    for (const k of Object.keys(label)) {
+      if (s(b[k]) !== s(f[k])) out.push(`${label[k]}: ${s(b[k])} → ${s(f[k])}`);
+    }
+  } else if (a.action === 'insert') {
+    if (f.status) out.push(`상태: ${s(f.status)}`);
+  }
+  return out;
 }
 
 interface ContactRow {
@@ -225,7 +250,7 @@ export async function listNameHistory(clientId: string): Promise<DocNameHistory[
 export async function listAuditLog(limit = 200): Promise<DocAudit[]> {
   const { data, error } = await supabase
     .from('doc_audit_log')
-    .select('id, entity, action, entity_id, client_id, actor_name, summary, at')
+    .select('id, entity, action, entity_id, client_id, actor_name, summary, before, after, at')
     .order('at', { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);
@@ -238,6 +263,8 @@ export async function listAuditLog(limit = 200): Promise<DocAudit[]> {
       client_id: string | null;
       actor_name: string | null;
       summary: string | null;
+      before: Record<string, unknown> | null;
+      after: Record<string, unknown> | null;
       at: string;
     }[]
   ).map((r) => ({
@@ -248,6 +275,8 @@ export async function listAuditLog(limit = 200): Promise<DocAudit[]> {
     clientId: r.client_id,
     actorName: r.actor_name || '',
     summary: r.summary || '',
+    before: r.before,
+    after: r.after,
     at: r.at,
   }));
 }
