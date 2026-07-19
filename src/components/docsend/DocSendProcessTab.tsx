@@ -7,11 +7,11 @@ import {
   listSendRequests,
   listAttachments,
   setProcessing,
-  epostTrackingUrl,
   type SendRequest,
   type SendAttachment,
 } from '../../lib/docSendApi';
 import AttachmentsModal from './AttachmentsModal';
+import TrackingLink from './TrackingLink';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const statusStyle = (s: string): React.CSSProperties => {
@@ -58,6 +58,13 @@ export default function DocSendProcessTab() {
     void load();
   }, []);
 
+  const [busy, setBusy] = useState(false);
+  async function refresh() {
+    setBusy(true);
+    await load();
+    setBusy(false);
+  }
+
   function flash(t: string) {
     setMsg(t);
     setTimeout(() => setMsg(''), 2500);
@@ -86,6 +93,55 @@ export default function DocSendProcessTab() {
   }, [reqs, q, showDone]);
 
   const attCount = (r: SendRequest) => (r.batchId ? (attByBatch[r.batchId]?.length ?? 0) : 0);
+
+  // ── 일괄처리 ────────────────────────────────────────────────
+  // 한 문서를 여러 수신자에게 보낸 건(같은 batch_id)을 한 번에 처리하기 위한 다중선택.
+  // 등기번호는 건마다 달라서 일괄 대상이 아니고, 발송일만 공통으로 찍는다.
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [bulkDate, setBulkDate] = useState(today());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const toggleSel = (id: string) =>
+    setSel((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  /** 같은 배치(동일 문서·동일 요청) 전체를 한 번에 선택/해제 */
+  const toggleBatch = (batchId: string | null) => {
+    if (!batchId) return;
+    const ids = view.filter((r) => r.batchId === batchId).map((r) => r.id);
+    setSel((s) => {
+      const n = new Set(s);
+      const allOn = ids.every((i) => n.has(i));
+      ids.forEach((i) => (allOn ? n.delete(i) : n.add(i)));
+      return n;
+    });
+  };
+
+  const selected = useMemo(() => view.filter((r) => sel.has(r.id)), [view, sel]);
+  const selStartable = selected.filter((r) => r.status === '미접수');
+  const selCompletable = selected.filter((r) => r.status === '진행중' || r.status === '재발송요청');
+
+  /** 선택 건에 같은 작업을 순차 적용. 일부 실패해도 나머지는 진행하고 결과를 요약한다. */
+  async function runBulk(targets: SendRequest[], job: (r: SendRequest) => Promise<void>, label: string) {
+    if (!targets.length) return;
+    setBulkBusy(true);
+    let ok = 0;
+    const fails: string[] = [];
+    for (const r of targets) {
+      try {
+        await job(r);
+        ok++;
+      } catch (e) {
+        fails.push(`${r.companyName}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    await load();
+    setSel(new Set());
+    setBulkBusy(false);
+    flash(fails.length ? `${label} ${ok}건 완료, ${fails.length}건 실패 — ${fails[0]}` : `${label} ${ok}건 완료`);
+  }
 
   async function startProcessing(r: SendRequest) {
     try {
@@ -196,12 +252,71 @@ export default function DocSendProcessTab() {
           발송완료 포함
         </label>
         <span style={{ fontSize: 11, color: '#888' }}>{view.length}건</span>
+        <button className="btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => void refresh()} disabled={busy} title="최신 내역을 다시 불러옵니다">
+          {busy ? '⏳' : '🔄'} 새로고침
+        </button>
       </div>
+
+      {/* 일괄처리 바 — 선택이 있을 때만 나타난다 */}
+      {canProcess && selected.length > 0 && (
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+            background: '#EEF6FF', border: '1px solid #BFD4F2', borderRadius: 8,
+            padding: '8px 12px', marginBottom: 8,
+          }}
+        >
+          <b style={{ fontSize: 12, color: '#1A2B52' }}>☑ {selected.length}건 선택</b>
+          <button className="btn-sm" style={{ fontSize: 11 }} onClick={() => setSel(new Set())} disabled={bulkBusy}>
+            선택해제
+          </button>
+
+          <span style={{ width: 1, height: 18, background: '#BFD4F2' }} />
+
+          <button
+            className="btn-sm btn-p"
+            style={{ fontSize: 11 }}
+            disabled={bulkBusy || selStartable.length === 0}
+            title="선택한 미접수 건을 한 번에 진행중으로 바꿉니다"
+            onClick={() => void runBulk(selStartable, (r) => setProcessing(r.id, { status: '진행중' }), '처리 시작')}
+          >
+            ▶ 처리 시작 {selStartable.length > 0 && `(${selStartable.length})`}
+          </button>
+
+          <span style={{ width: 1, height: 18, background: '#BFD4F2' }} />
+
+          <label style={{ fontSize: 11, color: '#555', display: 'flex', alignItems: 'center', gap: 4 }}>
+            발송일
+            <input type="date" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} style={{ fontSize: 12 }} />
+          </label>
+          <button
+            className="btn-p"
+            style={{ fontSize: 11 }}
+            disabled={bulkBusy || selCompletable.length === 0 || !bulkDate}
+            title="선택한 진행중·재발송요청 건을 이 발송일로 한 번에 완료 처리합니다 (등기번호는 건별로 입력)"
+            onClick={() =>
+              void runBulk(
+                selCompletable,
+                (r) => setProcessing(r.id, { status: r.status === '재발송요청' ? '재발송완료' : '발송완료', sentDate: bulkDate }),
+                '완료',
+              )
+            }
+          >
+            ✅ 완료 {selCompletable.length > 0 && `(${selCompletable.length})`}
+          </button>
+
+          {bulkBusy && <span style={{ fontSize: 11, color: '#888' }}>처리 중…</span>}
+          <span style={{ fontSize: 10.5, color: '#8a5a00', marginLeft: 'auto' }}>
+            ⚠️ 등기번호는 건마다 달라 일괄 입력되지 않습니다 — 각 행에서 개별 입력하세요.
+          </span>
+        </div>
+      )}
 
       <div className="tbl-scroll">
         <table className="tbl">
           <thead>
             <tr>
+              {canProcess && <th style={{ width: 30, textAlign: 'center' }} title="일괄처리 선택">☑</th>}
               <th style={{ textAlign: 'center' }}>상태</th>
               <th>의뢰일자</th>
               <th>의뢰인</th>
@@ -220,13 +335,16 @@ export default function DocSendProcessTab() {
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={14} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>처리할 발송요청이 없습니다.</td></tr>
+              <tr><td colSpan={canProcess ? 15 : 14} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>처리할 발송요청이 없습니다.</td></tr>
             )}
             {view.map((r) => (
               <ProcessRow
                 key={r.id}
                 r={r}
                 canProcess={canProcess}
+                checked={sel.has(r.id)}
+                onCheck={() => toggleSel(r.id)}
+                onCheckBatch={() => toggleBatch(r.batchId)}
                 attCount={attCount(r)}
                 open={openId === r.id}
                 onOpenAttach={() => setAttachFor(r)}
@@ -257,20 +375,6 @@ export default function DocSendProcessTab() {
 }
 
 // 등기번호 → 우체국 조회(새 창)
-function TrackingLink({ no }: { no: string }) {
-  if (!no) return <span style={{ color: '#CCC' }}>—</span>;
-  return (
-    <button
-      className="btn-sm btn-sm-blue"
-      style={{ fontSize: 11, padding: '1px 6px' }}
-      title="우체국 배달조회 (새 창)"
-      onClick={() => window.open(epostTrackingUrl(no), '_blank', 'noopener')}
-    >
-      🔎 {no}
-    </button>
-  );
-}
-
 function ProcessRow({
   r,
   canProcess,
@@ -283,9 +387,15 @@ function ProcessRow({
   onComplete,
   onRevert,
   onChangeStatus,
+  checked,
+  onCheck,
+  onCheckBatch,
 }: {
   r: SendRequest;
   canProcess: boolean;
+  checked: boolean;
+  onCheck: () => void;
+  onCheckBatch: () => void;
   attCount: number;
   open: boolean;
   onOpenAttach: () => void;
@@ -305,7 +415,18 @@ function ProcessRow({
 
   return (
     <>
-      <tr>
+      <tr style={checked ? { background: '#F3F8FF' } : undefined}>
+        {canProcess && (
+          <td style={{ textAlign: 'center' }}>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={onCheck}
+              onClick={(e) => { if (e.shiftKey) { e.preventDefault(); onCheckBatch(); } }}
+              title="일괄처리 선택 (Shift+클릭: 같은 문서의 수신자 전체)"
+            />
+          </td>
+        )}
         <td style={{ textAlign: 'center' }}>
           <span className="bdg" style={{ fontSize: 10, ...statusStyle(r.status) }}>{r.status}</span>
           {r.statusNote && (
@@ -356,7 +477,7 @@ function ProcessRow({
       </tr>
       {open && canProcess && isActive && (
         <tr>
-          <td colSpan={14} style={{ background: '#EEF6FF' }}>
+          <td colSpan={15} style={{ background: '#EEF6FF' }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', padding: '4px 2px' }}>
               <div className="frow" style={{ minWidth: 170 }}>
                 <span className="fl">발송일<span className="req">*</span></span>
@@ -377,7 +498,7 @@ function ProcessRow({
       )}
       {open && canProcess && isPost && (
         <tr>
-          <td colSpan={14} style={{ background: '#FEF9F3' }}>
+          <td colSpan={15} style={{ background: '#FEF9F3' }}>
             <div style={{ padding: '4px 2px' }}>
               <div style={{ fontSize: 11, color: '#8a5a00', marginBottom: 6 }}>
                 발송완료 이후 <b>반송</b>(수취 실패 등) 또는 <b>재발송완료</b>로 후속 처리할 수 있습니다. 사유를 남겨 두면 현황에서 함께 확인됩니다.

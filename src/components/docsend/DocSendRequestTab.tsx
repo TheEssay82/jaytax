@@ -25,6 +25,7 @@ import {
 } from '../../lib/docSendApi';
 import { listAuditLog, auditChanges, type DocAudit } from '../../lib/docClientsApi';
 import AttachmentsModal, { fmtSize } from './AttachmentsModal';
+import TrackingLink from './TrackingLink';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const dtTime = (s?: string): string => {
@@ -96,6 +97,13 @@ export default function DocSendRequestTab() {
   useEffect(() => {
     void load();
   }, []);
+
+  const [busy, setBusy] = useState(false);
+  async function refresh() {
+    setBusy(true);
+    await load();
+    setBusy(false);
+  }
 
   function flash(t: string) {
     setMsg(t);
@@ -187,6 +195,7 @@ export default function DocSendRequestTab() {
         {msg && <span style={{ marginLeft: 12, fontSize: 11, color: '#059669' }}>{msg}</span>}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 5, alignItems: 'center' }}>
           <button className="btn-sm btn-sm-blue" onClick={openLog}>📜 변경 로그</button>
+          <button className="btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => void refresh()} disabled={busy} title="최신 내역을 다시 불러옵니다">{busy ? '⏳' : '🔄'} 새로고침</button>
           {canWrite && (
             <button className="btn-sm" onClick={() => { setShowAdd((v) => !v); setEditId(null); }}>
               + 새 발송요청
@@ -229,18 +238,20 @@ export default function DocSendRequestTab() {
               <th style={{ textAlign: 'center' }}>날인</th>
               <th style={{ textAlign: 'center' }}>기한</th>
               <th style={{ textAlign: 'center' }}>첨부</th>
+              <th style={{ textAlign: 'center' }}>발송일</th>
+              <th style={{ textAlign: 'center' }}>등기번호</th>
               <th style={{ textAlign: 'center' }}>상태</th>
               {canWrite && <th style={{ width: 72 }}>관리</th>}
             </tr>
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={canWrite ? 12 : 11} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>발송요청이 없습니다.</td></tr>
+              <tr><td colSpan={canWrite ? 14 : 13} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>발송요청이 없습니다.</td></tr>
             )}
             {view.map((r) =>
               editId === r.id ? (
                 <tr key={r.id}>
-                  <td colSpan={canWrite ? 12 : 11} style={{ background: '#EEF6FF' }}>
+                  <td colSpan={canWrite ? 14 : 13} style={{ background: '#EEF6FF' }}>
                     <EditRequestForm req={r} clients={clients} onSave={(c, rc) => handleSaveEdit(r.id, c, rc)} onCancel={() => setEditId(null)} />
                   </td>
                 </tr>
@@ -271,6 +282,10 @@ export default function DocSendRequestTab() {
                       📎 {attCount(r) || ''}
                     </button>
                   </td>
+                  <td style={{ textAlign: 'center', fontSize: 11, whiteSpace: 'nowrap' }}>
+                    {r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: '#CCC' }}>—</span>}
+                  </td>
+                  <td style={{ textAlign: 'center' }}><TrackingLink no={r.trackingNo} /></td>
                   <td style={{ textAlign: 'center' }}>
                     <span className="bdg" style={{ fontSize: 10, ...statusStyle(r.status) }}>{r.status}</span>
                     {r.statusNote && (

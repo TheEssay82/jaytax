@@ -221,8 +221,16 @@ export async function setProcessing(
   if (patch.sentDate !== undefined) row.sent_date = patch.sentDate || null;
   if (patch.trackingNo !== undefined) row.tracking_no = patch.trackingNo?.trim() ? patch.trackingNo.trim() : null;
   if (patch.statusNote !== undefined) row.status_note = patch.statusNote?.trim() ? patch.statusNote.trim() : null;
-  const { error } = await supabase.from('doc_send_requests').update(row).eq('id', id);
+  const { data, error } = await supabase.from('doc_send_requests').update(row).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertChanged(data);
+}
+
+/** RLS가 막으면 예외 없이 "0행 변경"으로 끝나 성공처럼 보인다. 실제로 바뀐 행이 있는지 확인한다. */
+function assertChanged(data: unknown[] | null): void {
+  if (!data || data.length === 0) {
+    throw new Error('변경되지 않았습니다 — 권한이 없거나(읽기전용 계정) 대상 건이 없습니다.');
+  }
 }
 
 /** 반송 건의 재발송요청 — 원 요청자만 가능(서버 가드 0039). 발송일·등기번호는 1차 기록으로 보존한다.
@@ -231,11 +239,13 @@ export async function requestResend(id: string, memo: string, bounceNote?: strin
   const m = memo.trim();
   const b = (bounceNote || '').trim();
   const note = b ? `반송: ${b} / 재발송요청: ${m}` : m;
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('doc_send_requests')
     .update({ status: '재발송요청', status_note: note || null })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
   if (error) throw new Error(error.message);
+  assertChanged(data);
 }
 
 /** 등기번호 → 우체국(epost) 국내등기 배달조회 딥링크(GET, 새 창에서 결과 바로 표시) */

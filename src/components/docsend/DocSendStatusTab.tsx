@@ -4,13 +4,14 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   listSendRequests,
   listAttachments,
-  epostTrackingUrl,
   WORK_TYPES,
   DOC_REQUESTERS,
   type SendRequest,
   type SendAttachment,
 } from '../../lib/docSendApi';
 import AttachmentsModal from './AttachmentsModal';
+import TrackingLink from './TrackingLink';
+import { exportSendStatus } from '../../lib/docSendExcel';
 
 const statusStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
@@ -96,6 +97,13 @@ export default function DocSendStatusTab() {
   useEffect(() => {
     void load();
   }, []);
+
+  const [busy, setBusy] = useState(false);
+  async function refresh() {
+    setBusy(true);
+    await load();
+    setBusy(false);
+  }
 
   // 기간으로 먼저 좁힌다 — 집계 타일도 이 결과 기준이라 선택한 기간의 숫자가 나온다.
   const ranged = useMemo(() => {
@@ -204,6 +212,31 @@ export default function DocSendStatusTab() {
           {DOC_REQUESTERS.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
         <span style={{ fontSize: 11, color: '#888' }}>{view.length}건</span>
+        <button
+          className="btn-sm"
+          style={{ fontSize: 11, padding: '2px 8px' }}
+          onClick={() => void refresh()}
+          disabled={busy}
+          title="최신 내역을 다시 불러옵니다"
+        >
+          {busy ? '⏳' : '🔄'} 새로고침
+        </button>
+        <button
+          className="btn-sm btn-sm-blue"
+          style={{ fontSize: 11, padding: '2px 8px' }}
+          disabled={view.length === 0}
+          onClick={() =>
+            exportSendStatus(view, {
+              basis: dateBasis === 'sent' ? '발송일' : '의뢰일자',
+              from,
+              to,
+              statusLabel: STATUS_FILTERS.find((s) => s.v === statusF)?.label ?? statusF,
+            })
+          }
+          title="지금 화면에 보이는 목록(필터·정렬 그대로)을 엑셀로 저장합니다"
+        >
+          ⬇ 엑셀
+        </button>
       </div>
 
       {/* 기간 필터 — 과거 기록 조회용. 기준일을 발송일로 바꾸면 실제 발송된 시점으로 집계된다. */}
@@ -334,7 +367,7 @@ export default function DocSendStatusTab() {
                 <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: '#CCC' }}>—</span>}</td>
                 <td>
                   {r.trackingNo ? (
-                    <button className="btn-sm btn-sm-blue" style={{ fontSize: 11, padding: '1px 6px' }} title="우체국 배달조회 (새 창)" onClick={() => window.open(epostTrackingUrl(r.trackingNo), '_blank', 'noopener')}>🔎 {r.trackingNo}</button>
+                    <TrackingLink no={r.trackingNo} />
                   ) : <span style={{ color: '#CCC' }}>—</span>}
                 </td>
               </tr>
