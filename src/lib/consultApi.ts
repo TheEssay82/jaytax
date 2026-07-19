@@ -1,7 +1,7 @@
 // 상담진행/상담기록 데이터 레이어.
 //  - runConsult: 질문 → consult Edge Function(회계기준 RAG 근거 + Claude 회신 초안).
 //  - consultations 테이블 CRUD: 전체 열람(공유 이력), 작성/수정/삭제는 본인 것만(RLS 0014).
-import { supabase, assertWrote } from './supabase';
+import { supabase } from './supabase';
 
 // ── 근거(citation) ───────────────────────────────────────────────
 // consult Edge가 돌려주고 consultations.citations(jsonb)에 그대로 저장하는 형태.
@@ -227,15 +227,43 @@ export async function updateConsultation(
   if (patch.status !== undefined) row.status = patch.status;
   if (patch.tags !== undefined) row.tags = patch.tags;
   const { data, error } = await supabase.from('consultations').update(row).eq('id', id).select('id');
-  if (error) throw new Error(error.message);
-  assertWrote(data, '저장');
+  if (error) throw await explainConsultBlocked(id, '수정', error);
+  if (!data?.length) throw await explainConsultBlocked(id, '수정');
+}
+
+/**
+ * 상담기록 쓰기가 RLS에 막혀 0행으로 끝났을 때 실제 이유를 조회해 안내한다.
+ * (수정: 작성자 본인 또는 최고관리자·회계사·기장팀장 / 삭제: 작성자 본인만)
+ */
+async function explainConsultBlocked(
+  id: string,
+  action: '수정' | '삭제' | '공유 설정',
+  cause?: { code?: string; message: string },
+): Promise<Error> {
+  // RLS 외의 진짜 오류는 원문을 살린다.
+  if (cause && cause.code !== '42501') return new Error(cause.message);
+  const { data } = await supabase
+    .from('consultations')
+    .select('author_id, author_name, title')
+    .eq('id', id)
+    .maybeSingle();
+  const rec = data as { author_id: string | null; author_name: string | null; title: string | null } | null;
+  if (!rec) return new Error('대상 상담기록을 찾을 수 없습니다 — 이미 삭제되었을 수 있습니다. 새로고침 후 다시 확인해 주세요.');
+
+  const { data: u } = await supabase.auth.getUser();
+  const me = u.user?.id ?? null;
+  if (rec.author_id && me && rec.author_id !== me) {
+    const who = rec.author_name ? `${rec.author_name}님이` : '다른 담당자가';
+    return new Error(`${who} 작성한 상담기록은 ${action}할 수 없습니다. 본인이 작성한 기록만 ${action} 가능합니다.`);
+  }
+  return new Error(`${action} 권한이 없습니다. 읽기전용 계정이거나 권한이 부족합니다.`);
 }
 
 /** 상담기록 삭제 (본인 것만 — RLS). */
 export async function deleteConsultation(id: string): Promise<void> {
   const { data, error } = await supabase.from('consultations').delete().eq('id', id).select('id');
-  if (error) throw new Error(error.message);
-  assertWrote(data, '삭제');
+  if (error) throw await explainConsultBlocked(id, '삭제', error);
+  if (!data?.length) throw await explainConsultBlocked(id, '삭제');
 }
 
 // ── 외부 공유 링크 ───────────────────────────────────────────────
@@ -246,8 +274,8 @@ export const shareConsultPath = (token: string) => `/share/consult/${token}`;
 export async function setConsultShare(id: string, enabled: boolean): Promise<string | null> {
   const token = enabled ? crypto.randomUUID() : null;
   const { data, error } = await supabase.from('consultations').update({ share_token: token }).eq('id', id).select('id');
-  if (error) throw new Error(error.message);
-  assertWrote(data, '저장');
+  if (error) throw await explainConsultBlocked(id, '공유 설정', error);
+  if (!data?.length) throw await explainConsultBlocked(id, '공유 설정');
   return token;
 }
 

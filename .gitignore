@@ -25,3 +25,7 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+
+# 테스트 계정 비밀번호 등 로컬 메모 (커밋 금지)
+테스트계정및비번.txt
+새 텍스트 문서.txt

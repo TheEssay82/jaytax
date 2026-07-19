@@ -50,7 +50,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   },
   {
     id: 'billing-req',
-    label: '기장및개별업무청구관리',
+    label: '기장등청구관리',
     items: [
       { id: 'billing-req-home', label: '🧾 기장·개별업무 청구 (준비 중)' },
     ],
