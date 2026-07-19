@@ -31,6 +31,22 @@ body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;font-size:13px
 .h-iconbtn{width:33px;height:31px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:15px;line-height:1;flex-shrink:0}
 .h-iconbtn:hover{background:rgba(255,255,255,.16)}
 .h-iconbtn.on{background:rgba(200,150,60,.25);border-color:rgba(200,150,60,.45)}
+.h-logoimg{height:56px;display:block}
+
+/* 좁은 화면(≤1439px): 대분류 메뉴 명칭이 길어 한 줄에 안 들어가므로 헤더를 2줄로 접는다.
+   1줄 = 로고·버전 + 우측 계정영역, 2줄 = 대분류 메뉴(전체 폭). 1440px 이상은 기존 1줄 유지. */
+@media (max-width:1439px){
+  #hdr{flex-wrap:wrap;height:auto;min-height:64px;padding:6px 14px;row-gap:4px}
+  .h-logoimg{height:44px}
+  .h-right{order:2}
+  .h-menus{order:3;flex-basis:100%;width:100%;margin-left:0;flex-wrap:wrap}
+  .h-menu-btn{padding:6px 10px;font-size:12px}
+}
+/* 더 좁은 화면: 계정 이메일은 감추고 역할 배지만 남긴다(줄 수 증가 억제). */
+@media (max-width:820px){
+  .h-title .h-email{display:none}
+  .h-title .bdg{margin-left:0!important}
+}
 #main{max-width:1440px;margin:0 auto;padding:16px 16px 56px}
 .card{background:#fff;border:1px solid #E0DCD4;border-radius:12px;padding:12px 14px;margin-bottom:9px}
 .chdr{font-size:12px;font-weight:700;color:#555;border-bottom:1px solid #EDE9E2;padding-bottom:6px;margin-bottom:10px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}

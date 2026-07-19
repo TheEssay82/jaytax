@@ -231,11 +231,7 @@ function Shell() {
           aria-label="홈으로"
           style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', flexShrink: 0 }}
         >
-          <img
-            src="/logo2.png"
-            alt="JAY · 세무회계 지원"
-            style={{ height: 56, display: 'block' }}
-          />
+          <img className="h-logoimg" src="/logo2.png" alt="JAY · 세무회계 지원" />
         </button>
         <button
           type="button"
@@ -324,7 +320,7 @@ function Shell() {
             </button>
           ))}
           <span className="h-title">
-            {user?.email}
+            <span className="h-email">{user?.email}</span>
             <span className="bdg b-on" style={{ marginLeft: 6, fontSize: 10 }}>
               {ROLE_LABELS[role]}
             </span>
