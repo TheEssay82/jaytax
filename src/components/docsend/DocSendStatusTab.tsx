@@ -50,6 +50,35 @@ export default function DocSendStatusTab() {
   const [sortDir, setSortDir] = useState(-1); // -1 최신순
   const [attachFor, setAttachFor] = useState<SendRequest | null>(null);
 
+  // 기간 필터 — 기준일(의뢰일자/발송일) + 시작·종료. 비우면 전체 기간.
+  const [dateBasis, setDateBasis] = useState<'request' | 'sent'>('request');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [preset, setPreset] = useState('all');
+
+  function applyPreset(p: string) {
+    const n = new Date();
+    const y = n.getFullYear();
+    const m = n.getMonth();
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const endOf = (yy: number, mm: number) => iso(new Date(yy, mm + 1, 0)); // 해당 월 말일
+    if (p === 'all') { setFrom(''); setTo(''); }
+    else if (p === 'thisMonth') { setFrom(iso(new Date(y, m, 1))); setTo(endOf(y, m)); }
+    else if (p === 'lastMonth') { setFrom(iso(new Date(y, m - 1, 1))); setTo(endOf(y, m - 1)); }
+    else if (p === 'last3m') { setFrom(iso(new Date(y, m - 2, 1))); setTo(endOf(y, m)); }
+    else if (p === 'thisYear') { setFrom(`${y}-01-01`); setTo(`${y}-12-31`); }
+    else if (p === 'lastYear') { setFrom(`${y - 1}-01-01`); setTo(`${y - 1}-12-31`); }
+    setPreset(p);
+  }
+  const PRESETS = [
+    { v: 'all', label: '전체기간' },
+    { v: 'thisMonth', label: '이번달' },
+    { v: 'lastMonth', label: '지난달' },
+    { v: 'last3m', label: '최근3개월' },
+    { v: 'thisYear', label: '올해' },
+    { v: 'lastYear', label: '작년' },
+  ];
+
   async function load() {
     try {
       setError(null);
@@ -68,18 +97,31 @@ export default function DocSendStatusTab() {
     void load();
   }, []);
 
+  // 기간으로 먼저 좁힌다 — 집계 타일도 이 결과 기준이라 선택한 기간의 숫자가 나온다.
+  const ranged = useMemo(() => {
+    if (!from && !to) return reqs;
+    const key = (r: SendRequest) => (dateBasis === 'sent' ? r.sentDate || '' : r.requestDate || '');
+    return reqs.filter((r) => {
+      const d = key(r);
+      if (!d) return false; // 발송일 기준인데 아직 발송 전인 건은 기간 조회에서 제외
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+  }, [reqs, dateBasis, from, to]);
+
   const counts = useMemo(() => ({
-    미접수: reqs.filter((r) => r.status === '미접수').length,
-    진행중: reqs.filter((r) => r.status === '진행중').length,
-    반송: reqs.filter((r) => r.status === '반송').length,
-    재발송요청: reqs.filter((r) => r.status === '재발송요청').length,
-    발송완료: reqs.filter((r) => r.status === '발송완료').length,
-    재발송완료: reqs.filter((r) => r.status === '재발송완료').length,
-    전체: reqs.length,
-  }), [reqs]);
+    미접수: ranged.filter((r) => r.status === '미접수').length,
+    진행중: ranged.filter((r) => r.status === '진행중').length,
+    반송: ranged.filter((r) => r.status === '반송').length,
+    재발송요청: ranged.filter((r) => r.status === '재발송요청').length,
+    발송완료: ranged.filter((r) => r.status === '발송완료').length,
+    재발송완료: ranged.filter((r) => r.status === '재발송완료').length,
+    전체: ranged.length,
+  }), [ranged]);
 
   const view = useMemo(() => {
-    let list = reqs;
+    let list = ranged;
     if (statusF === 'active') list = list.filter((r) => !isClosed(r.status));
     else if (statusF !== 'all') list = list.filter((r) => r.status === statusF);
     if (workF) list = list.filter((r) => r.workType === workF);
@@ -92,7 +134,7 @@ export default function DocSendStatusTab() {
     }
     const key = (r: SendRequest) => (sortBySent ? (r.sentDate || '') : r.requestDate) || '';
     return [...list].sort((a, b) => key(a).localeCompare(key(b)) * sortDir);
-  }, [reqs, statusF, workF, reqF, q, sortBySent, sortDir]);
+  }, [ranged, statusF, workF, reqF, q, sortBySent, sortDir]);
 
   const attCount = (r: SendRequest) => (r.batchId ? (attByBatch[r.batchId]?.length ?? 0) : 0);
 
@@ -162,6 +204,75 @@ export default function DocSendStatusTab() {
           {DOC_REQUESTERS.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
         <span style={{ fontSize: 11, color: '#888' }}>{view.length}건</span>
+      </div>
+
+      {/* 기간 필터 — 과거 기록 조회용. 기준일을 발송일로 바꾸면 실제 발송된 시점으로 집계된다. */}
+      <div
+        className="sbar"
+        style={{ marginTop: 6, alignItems: 'center', flexWrap: 'wrap', gap: 6 }}
+      >
+        <select
+          value={dateBasis}
+          onChange={(e) => setDateBasis(e.target.value as 'request' | 'sent')}
+          title="기간을 어떤 날짜로 따질지 선택합니다"
+        >
+          <option value="request">기준일: 의뢰일자</option>
+          <option value="sent">기준일: 발송일</option>
+        </select>
+
+        <div style={{ display: 'flex', gap: 3 }}>
+          {PRESETS.map((p) => (
+            <button
+              key={p.v}
+              className="btn-sm"
+              onClick={() => applyPreset(p.v)}
+              style={{
+                fontSize: 11,
+                padding: '2px 8px',
+                background: preset === p.v ? '#1A2B52' : '#fff',
+                color: preset === p.v ? '#fff' : '#555',
+                fontWeight: preset === p.v ? 700 : 400,
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <input
+          type="date"
+          value={from}
+          max={to || undefined}
+          onChange={(e) => { setFrom(e.target.value); setPreset('custom'); }}
+          style={{ fontSize: 12 }}
+          title="시작일"
+        />
+        <span style={{ fontSize: 11, color: '#888' }}>~</span>
+        <input
+          type="date"
+          value={to}
+          min={from || undefined}
+          onChange={(e) => { setTo(e.target.value); setPreset('custom'); }}
+          style={{ fontSize: 12 }}
+          title="종료일"
+        />
+        {(from || to) && (
+          <button className="btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => applyPreset('all')}>
+            ✕ 기간해제
+          </button>
+        )}
+
+        <span style={{ fontSize: 11, color: '#888', marginLeft: 'auto' }}>
+          {from || to ? (
+            <>
+              <b style={{ color: '#1A2B52' }}>{dateBasis === 'sent' ? '발송일' : '의뢰일자'}</b>{' '}
+              {from || '처음'} ~ {to || '오늘'} · 이 기간 {counts.전체}건
+              {dateBasis === 'sent' && <span style={{ color: '#8a5a00' }}> (미발송 건 제외)</span>}
+            </>
+          ) : (
+            '전체 기간'
+          )}
+        </span>
       </div>
 
       <div className="tbl-scroll">
