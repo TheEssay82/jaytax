@@ -1,6 +1,6 @@
 // 거래처(clients) Supabase 데이터 접근 레이어
 // DB(snake_case) ↔ 도메인 타입(camelCase) 매핑을 담당한다.
-import { supabase } from './supabase';
+import { supabase, assertWrote } from './supabase';
 import type { Client } from '../types';
 
 /** DB row 형태 (public.clients) */
@@ -87,19 +87,26 @@ export async function createClient(c: Partial<Client>): Promise<void> {
 
 /** 거래처 수정 (제공된 필드만) */
 export async function updateClient(id: string, data: Partial<Client>): Promise<void> {
-  const { error } = await supabase.from('clients').update(clientToRow(data)).eq('id', id);
+  const { data: wrote, error } = await supabase.from('clients').update(clientToRow(data)).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(wrote, '저장');
 }
 
 /** 거래처 삭제 */
 export async function deleteClient(id: string): Promise<void> {
-  const { error } = await supabase.from('clients').delete().eq('id', id);
+  const { data, error } = await supabase.from('clients').delete().eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '삭제');
 }
 
 /** 거래처 일괄 삭제 */
 export async function deleteClients(ids: string[]): Promise<void> {
   if (!ids.length) return;
-  const { error } = await supabase.from('clients').delete().in('id', ids);
+  const { data, error } = await supabase.from('clients').delete().in('id', ids).select('id');
   if (error) throw new Error(error.message);
+  // 일부만 지워지는 경우(권한 없는 건이 섞임)를 성공으로 넘기지 않는다.
+  const done = data?.length ?? 0;
+  if (done < ids.length) {
+    throw new Error(`${ids.length}건 중 ${done}건만 삭제되었습니다 — 나머지는 권한이 없거나 이미 삭제된 건입니다.`);
+  }
 }

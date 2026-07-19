@@ -1,6 +1,6 @@
 // 청구기록(billing_records) Supabase 데이터 레이어
 // payload(jsonb)에 WizardState+CalcResult 전체 스냅샷을 저장하고, 조회용 핵심 컬럼을 별도 보관한다.
-import { supabase } from './supabase';
+import { supabase, assertWrote } from './supabase';
 import type { BillingRecord } from '../types';
 
 interface BillingRow {
@@ -84,18 +84,21 @@ export async function updateBillingRecord(id: string, rec: BillingRecord): Promi
     status: rec.status || 'final',
     saved_at: rec.savedAt,
   };
-  const { error } = await supabase.from('billing_records').update(row).eq('id', id);
+  const { data, error } = await supabase.from('billing_records').update(row).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '저장');
 }
 
 /** 청구기록 확정 (작성중 → 확정). RLS상 팀장+ 만 가능. */
 export async function finalizeBillingRecord(id: string): Promise<void> {
-  const { error } = await supabase.from('billing_records').update({ status: 'final' }).eq('id', id);
+  const { data, error } = await supabase.from('billing_records').update({ status: 'final' }).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '저장');
 }
 
 /** 청구기록 삭제 */
 export async function deleteBillingRecord(id: string): Promise<void> {
-  const { error } = await supabase.from('billing_records').delete().eq('id', id);
+  const { data, error } = await supabase.from('billing_records').delete().eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '삭제');
 }

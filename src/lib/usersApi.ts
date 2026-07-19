@@ -1,5 +1,5 @@
 // 사용자(프로필) 관리 데이터 레이어 — 최고관리자 전용
-import { supabase } from './supabase';
+import { supabase, assertWrote } from './supabase';
 import { normalizeRole, type Role } from './roles';
 
 export interface UserProfile {
@@ -30,8 +30,9 @@ export async function listProfiles(): Promise<UserProfile[]> {
 
 /** 프로필 수정 (역할·이름) — RLS상 superuser만 타인 수정 가능 */
 export async function updateProfile(id: string, patch: { role?: Role; name?: string }): Promise<void> {
-  const { error } = await supabase.from('profiles').update(patch).eq('id', id);
+  const { data, error } = await supabase.from('profiles').update(patch).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '저장');
 }
 
 /** 직원 계정 생성 — Edge Function(create-employee) 호출. 최고관리자만 성공. */

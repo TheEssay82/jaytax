@@ -1,6 +1,6 @@
 // 문서발송 › 거래처 담당자 관리 데이터 레이어
 // 계층형: 거래처(회사) → 담당자 N명. CRUD 는 트리거로 감사로그·회사명 변경이력이 자동 기록된다.
-import { supabase } from './supabase';
+import { supabase, assertWrote } from './supabase';
 
 /** 담당회계사 드롭다운 선택지 */
 export const DOC_ACCOUNTANTS = ['정우철', '송현주', '조현규', '김준성'] as const;
@@ -158,14 +158,16 @@ export async function updateDocClient(
   if (patch.companyName !== undefined) row.company_name = patch.companyName;
   if (patch.accountant !== undefined) row.accountant = patch.accountant;
   if (patch.note !== undefined) row.note = patch.note || null;
-  const { error } = await supabase.from('doc_clients').update(row).eq('id', id);
+  const { data, error } = await supabase.from('doc_clients').update(row).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '저장');
 }
 
 /** 거래처 삭제 (담당자 cascade 삭제, 각각 로그 기록) */
 export async function deleteDocClient(id: string): Promise<void> {
-  const { error } = await supabase.from('doc_clients').delete().eq('id', id);
+  const { data, error } = await supabase.from('doc_clients').delete().eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '삭제');
 }
 
 /** 담당자 생성 (호칭 미기재 시 '님') */
@@ -209,14 +211,16 @@ export async function updateDocContact(
   if (patch.email !== undefined) row.email = patch.email || null;
   if (patch.address !== undefined) row.address = patch.address || null;
   if (patch.note !== undefined) row.note = patch.note || null;
-  const { error } = await supabase.from('doc_contacts').update(row).eq('id', id);
+  const { data, error } = await supabase.from('doc_contacts').update(row).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '저장');
 }
 
 /** 담당자 삭제 */
 export async function deleteDocContact(id: string): Promise<void> {
-  const { error } = await supabase.from('doc_contacts').delete().eq('id', id);
+  const { data, error } = await supabase.from('doc_contacts').delete().eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '삭제');
 }
 
 /** 특정 거래처의 회사명 변경이력 (최신순) */

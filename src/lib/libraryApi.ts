@@ -2,7 +2,7 @@
 //  - reference: 내부 참고자료(예규·해석사례·개정세법·체크리스트 등, 검색·열람)
 //  - template : 서식·템플릿(회신 서식·검토보고서·위임장 등, 재사용·다운로드)
 //  파일은 Storage 'library' 비공개 버킷, 메타데이터는 library_documents 테이블(0024).
-import { supabase } from './supabase';
+import { supabase, assertWrote } from './supabase';
 
 const BUCKET = 'library';
 
@@ -162,14 +162,16 @@ export async function updateDocument(
   if (patch.description !== undefined) row.description = patch.description;
   if (patch.category !== undefined) row.category = patch.category;
   if (patch.tags !== undefined) row.tags = patch.tags;
-  const { error } = await supabase.from('library_documents').update(row).eq('id', id);
+  const { data, error } = await supabase.from('library_documents').update(row).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '저장');
 }
 
 /** 자료 삭제 — Storage 파일 + 메타데이터 행. */
 export async function deleteDocument(doc: Pick<LibraryDoc, 'id' | 'storagePath'>): Promise<void> {
-  const { error } = await supabase.from('library_documents').delete().eq('id', doc.id);
+  const { data, error } = await supabase.from('library_documents').delete().eq('id', doc.id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '삭제');
   await supabase.storage.from(BUCKET).remove([doc.storagePath]);
 }
 

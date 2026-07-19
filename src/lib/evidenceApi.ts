@@ -2,7 +2,7 @@
 //  각종 계약서·사업자등록증·위임장·통장사본 등을 업로드·검색·다운로드한다.
 //  파일은 Storage 'evidence' 비공개 버킷, 메타데이터는 evidence_documents 테이블(0038).
 //  열람=외부인 제외(인당회계사 허용), 업로드=읽기전용·외부인 제외, 수정·삭제=업로더/관리자.
-import { supabase } from './supabase';
+import { supabase, assertWrote } from './supabase';
 
 const BUCKET = 'evidence';
 
@@ -147,14 +147,16 @@ export async function updateEvidence(
   if (patch.category !== undefined) row.category = patch.category;
   if (patch.counterparty !== undefined) row.counterparty = patch.counterparty;
   if (patch.tags !== undefined) row.tags = patch.tags;
-  const { error } = await supabase.from('evidence_documents').update(row).eq('id', id);
+  const { data, error } = await supabase.from('evidence_documents').update(row).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '저장');
 }
 
 /** 증빙 삭제 — Storage 파일 + 메타데이터 행. */
 export async function deleteEvidence(doc: Pick<EvidenceDoc, 'id' | 'storagePath'>): Promise<void> {
-  const { error } = await supabase.from('evidence_documents').delete().eq('id', doc.id);
+  const { data, error } = await supabase.from('evidence_documents').delete().eq('id', doc.id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '삭제');
   await supabase.storage.from(BUCKET).remove([doc.storagePath]);
 }
 

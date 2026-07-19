@@ -1,7 +1,7 @@
 // 상담진행/상담기록 데이터 레이어.
 //  - runConsult: 질문 → consult Edge Function(회계기준 RAG 근거 + Claude 회신 초안).
 //  - consultations 테이블 CRUD: 전체 열람(공유 이력), 작성/수정/삭제는 본인 것만(RLS 0014).
-import { supabase } from './supabase';
+import { supabase, assertWrote } from './supabase';
 
 // ── 근거(citation) ───────────────────────────────────────────────
 // consult Edge가 돌려주고 consultations.citations(jsonb)에 그대로 저장하는 형태.
@@ -226,14 +226,16 @@ export async function updateConsultation(
   if (patch.answerMd !== undefined) row.answer_md = patch.answerMd;
   if (patch.status !== undefined) row.status = patch.status;
   if (patch.tags !== undefined) row.tags = patch.tags;
-  const { error } = await supabase.from('consultations').update(row).eq('id', id);
+  const { data, error } = await supabase.from('consultations').update(row).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '저장');
 }
 
 /** 상담기록 삭제 (본인 것만 — RLS). */
 export async function deleteConsultation(id: string): Promise<void> {
-  const { error } = await supabase.from('consultations').delete().eq('id', id);
+  const { data, error } = await supabase.from('consultations').delete().eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '삭제');
 }
 
 // ── 외부 공유 링크 ───────────────────────────────────────────────
@@ -243,8 +245,9 @@ export const shareConsultPath = (token: string) => `/share/consult/${token}`;
 /** 공유 켜기/끄기 (작성자·확정권한자만 — RLS). 켜면 새 토큰 발급, 끄면 null. 반환: 현재 토큰(또는 null). */
 export async function setConsultShare(id: string, enabled: boolean): Promise<string | null> {
   const token = enabled ? crypto.randomUUID() : null;
-  const { error } = await supabase.from('consultations').update({ share_token: token }).eq('id', id);
+  const { data, error } = await supabase.from('consultations').update({ share_token: token }).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '저장');
   return token;
 }
 

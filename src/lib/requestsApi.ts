@@ -1,5 +1,5 @@
 // 업데이트요청(update_requests) Supabase 데이터 레이어 — 게시판 + 댓글
-import { supabase } from './supabase';
+import { supabase, assertWrote } from './supabase';
 import type { RequestComment, RequestStatus, UpdateRequest } from '../types';
 
 interface RequestRow {
@@ -49,14 +49,16 @@ export async function createRequest(requester: string, content: string): Promise
 
 /** 상태 변경 */
 export async function updateRequestStatus(id: string, status: RequestStatus): Promise<void> {
-  const { error } = await supabase.from('update_requests').update({ status }).eq('id', id);
+  const { data, error } = await supabase.from('update_requests').update({ status }).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '저장');
 }
 
 /** 요청 삭제 */
 export async function deleteRequest(id: string): Promise<void> {
-  const { error } = await supabase.from('update_requests').delete().eq('id', id);
+  const { data, error } = await supabase.from('update_requests').delete().eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  assertWrote(data, '삭제');
 }
 
 /** 댓글 추가 (현재 comments 읽어 append 후 갱신) */
@@ -74,6 +76,7 @@ export async function addComment(id: string, author: string, text: string): Prom
     text,
     createdAt: new Date().toISOString(),
   });
-  const { error: e2 } = await supabase.from('update_requests').update({ comments }).eq('id', id);
+  const { data: d2, error: e2 } = await supabase.from('update_requests').update({ comments }).eq('id', id).select('id');
   if (e2) throw new Error(e2.message);
+  assertWrote(d2, '댓글 저장');
 }
