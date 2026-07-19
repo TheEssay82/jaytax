@@ -15,6 +15,7 @@ import {
   SEND_KINDS,
   DEADLINES,
   SEND_STATUS,
+  POST_SEND_STATUS,
   DOC_REQUESTERS,
   type SendRequest,
   type SendCommon,
@@ -161,7 +162,10 @@ export default function DocSendRequestTab() {
     );
   }
 
-  const counts = SEND_STATUS.map((s) => ({ s, n: reqs.filter((r) => r.status === s).length }));
+  // 기본 3단계는 항상, 후속상태(반송·재발송완료)는 건이 있을 때만 표시
+  const counts = [...SEND_STATUS, ...POST_SEND_STATUS]
+    .map((s) => ({ s, n: reqs.filter((r) => r.status === s).length }))
+    .filter((c) => (SEND_STATUS as readonly string[]).includes(c.s) || c.n > 0);
   // batch_id 별 요청 수(묶음 배지는 2건 이상일 때만)
   const batchCounts: Record<string, number> = {};
   for (const r of reqs) if (r.batchId) batchCounts[r.batchId] = (batchCounts[r.batchId] || 0) + 1;
@@ -263,6 +267,14 @@ export default function DocSendRequestTab() {
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <span className="bdg" style={{ fontSize: 10, ...statusStyle(r.status) }}>{r.status}</span>
+                    {r.statusNote && (
+                      <div
+                        style={{ fontSize: 10, color: '#B91C1C', marginTop: 2, maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                        title={`사유: ${r.statusNote}`}
+                      >
+                        {r.statusNote}
+                      </div>
+                    )}
                   </td>
                   {canWrite && (
                     <td>

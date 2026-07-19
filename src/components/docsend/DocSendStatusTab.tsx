@@ -20,12 +20,17 @@ const statusStyle = (s: string): React.CSSProperties => {
   return { background: '#F3F4F6', color: '#6B7280' };
 };
 
-// 상태 필터 옵션 (기본 active = 미접수+진행중)
+// 완결계열(발송완료·재발송완료). 반송은 후속조치가 필요하므로 '처리중'에 포함한다.
+const isClosed = (s: string) => s === '발송완료' || s === '재발송완료';
+
+// 상태 필터 옵션 (기본 active = 미접수+진행중+반송)
 const STATUS_FILTERS = [
-  { v: 'active', label: '처리중 (미접수·진행중)' },
+  { v: 'active', label: '처리중 (미접수·진행중·반송)' },
   { v: '미접수', label: '미접수' },
   { v: '진행중', label: '진행중' },
+  { v: '반송', label: '반송' },
   { v: '발송완료', label: '발송완료' },
+  { v: '재발송완료', label: '재발송완료' },
   { v: 'all', label: '전체' },
 ] as const;
 
@@ -64,13 +69,15 @@ export default function DocSendStatusTab() {
   const counts = useMemo(() => ({
     미접수: reqs.filter((r) => r.status === '미접수').length,
     진행중: reqs.filter((r) => r.status === '진행중').length,
+    반송: reqs.filter((r) => r.status === '반송').length,
     발송완료: reqs.filter((r) => r.status === '발송완료').length,
+    재발송완료: reqs.filter((r) => r.status === '재발송완료').length,
     전체: reqs.length,
   }), [reqs]);
 
   const view = useMemo(() => {
     let list = reqs;
-    if (statusF === 'active') list = list.filter((r) => r.status !== '발송완료');
+    if (statusF === 'active') list = list.filter((r) => !isClosed(r.status));
     else if (statusF !== 'all') list = list.filter((r) => r.status === statusF);
     if (workF) list = list.filter((r) => r.workType === workF);
     if (reqF) list = list.filter((r) => r.requester === reqF);
@@ -104,7 +111,8 @@ export default function DocSendStatusTab() {
   const tiles: { key: string; label: string; n: number; filter: string; color: string }[] = [
     { key: '미접수', label: '미접수', n: counts.미접수, filter: '미접수', color: '#6B7280' },
     { key: '진행중', label: '진행중', n: counts.진행중, filter: '진행중', color: '#1E40AF' },
-    { key: '발송완료', label: '발송완료', n: counts.발송완료, filter: '발송완료', color: '#065F46' },
+    { key: '반송', label: '반송(조치 필요)', n: counts.반송, filter: '반송', color: '#B91C1C' },
+    { key: '발송완료', label: `발송완료${counts.재발송완료 ? ` (+재발송 ${counts.재발송완료})` : ''}`, n: counts.발송완료, filter: '발송완료', color: '#065F46' },
     { key: '전체', label: '전체', n: counts.전체, filter: 'all', color: '#1A2B52' },
   ];
 
@@ -133,7 +141,7 @@ export default function DocSendStatusTab() {
       </div>
 
       <div className="alert-i" style={{ fontSize: 11 }}>
-        📊 발송요청·처리 전체 내역입니다(조회 전용). 기본은 <b>처리중(미접수·진행중)</b>만 표시되며, <b>발송완료</b>는 상태 필터에서 선택하면 나타납니다. 실제 처리(발송일·등기번호 입력)는 <b>‘발송요청 처리’</b>에서 합니다.
+        📊 발송요청·처리 전체 내역입니다(조회 전용). 기본은 <b>처리중(미접수·진행중·반송)</b>만 표시되며, <b>발송완료·재발송완료</b>는 상태 필터에서 선택하면 나타납니다. <b>반송</b>은 재발송 등 후속조치가 필요한 건이라 처리중에 함께 표시됩니다. 실제 처리는 <b>‘발송요청 처리’</b>에서 합니다.
       </div>
 
       <div className="sbar">
@@ -179,6 +187,14 @@ export default function DocSendStatusTab() {
               <tr key={r.id}>
                 <td style={{ textAlign: 'center' }}>
                   <span className="bdg" style={{ fontSize: 10, ...statusStyle(r.status) }}>{r.status}</span>
+                  {r.statusNote && (
+                    <div
+                      style={{ fontSize: 10, color: '#B91C1C', marginTop: 2, maxWidth: 110, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                      title={`사유: ${r.statusNote}`}
+                    >
+                      {r.statusNote}
+                    </div>
+                  )}
                 </td>
                 <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.requestDate?.replace(/-/g, '.')}</td>
                 <td style={{ fontSize: 12 }}>{r.requester}</td>
@@ -188,7 +204,12 @@ export default function DocSendStatusTab() {
                 </td>
                 <td style={{ fontSize: 12 }}>{r.workType}</td>
                 <td style={{ fontSize: 12 }}>{r.sendKind}</td>
-                <td style={{ fontSize: 12 }}>{r.docName || <span style={{ color: '#CCC' }}>—</span>}</td>
+                <td style={{ fontSize: 12 }}>
+                  {r.docName || <span style={{ color: '#CCC' }}>—</span>}
+                  {r.etcRequest && (
+                    <div style={{ fontSize: 10.5, color: '#8a5a00', marginTop: 2, whiteSpace: 'pre-wrap' }} title="기타요청사항">📝 {r.etcRequest}</div>
+                  )}
+                </td>
                 <td style={{ textAlign: 'center', fontSize: 12 }}>{r.copies}</td>
                 <td style={{ textAlign: 'center', fontSize: 11 }}>{r.sealRequired ? '🔖' : '—'}</td>
                 <td style={{ textAlign: 'center', fontSize: 11 }}>{r.deadline === '긴급' ? <b style={{ color: '#dc2626' }}>긴급</b> : r.deadline}</td>
