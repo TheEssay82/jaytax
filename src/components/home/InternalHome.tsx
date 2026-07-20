@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { can, ROLE_LABELS, type Role } from '../../lib/roles';
 import { CHANGELOG } from '../../lib/changelog';
+import AnnouncementBar from './AnnouncementBar';
 import {
   countDispatchPending,
   countMyDispatchActive,
@@ -114,6 +115,9 @@ export default function InternalHome({
         </div>
         <div style={{ marginLeft: 'auto', fontSize: 12, color: '#9aa0ad', whiteSpace: 'nowrap' }}>🏠 내부홈</div>
       </div>
+
+      {/* 공지사항 전광판 — 로그인 직후 가장 먼저 보이도록 '내 할 일' 위에 둔다 */}
+      <AnnouncementBar />
 
       {/* 내 할 일 */}
       <SectionTitle>내 할 일{loaded && myTodos.length === 0 ? ' · 표시할 항목이 없습니다' : ''}</SectionTitle>
