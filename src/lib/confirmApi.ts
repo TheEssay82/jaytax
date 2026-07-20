@@ -38,7 +38,17 @@ export interface ConfirmItem {
   contactName: string;
   contactTitle: string;
   note: string;
+  // 발송·회수 진행
+  sent: boolean;
+  sentDate: string | null;
+  trackingNo: string;
+  collectStatus: CollectStatus;
+  collectDate: string | null;
+  returnReason: string;
 }
+
+/** 회수 상태 — null 은 아직 처리 전 */
+export type CollectStatus = '회수완료' | '반송' | null;
 
 /** 회계연도 기본값 — 등록 시점의 직전 연도(2026년에 등록하면 2025 회계연도) */
 export const defaultFiscalYear = (): number => new Date().getFullYear() - 1;
@@ -188,6 +198,12 @@ interface ItemRow {
   contact_name: string | null;
   contact_title: string | null;
   note: string | null;
+  sent: boolean | null;
+  sent_date: string | null;
+  tracking_no: string | null;
+  collect_status: string | null;
+  collect_date: string | null;
+  return_reason: string | null;
 }
 
 const toItem = (r: ItemRow): ConfirmItem => ({
@@ -204,6 +220,12 @@ const toItem = (r: ItemRow): ConfirmItem => ({
   contactName: r.contact_name || '',
   contactTitle: r.contact_title || '',
   note: r.note || '',
+  sent: !!r.sent,
+  sentDate: r.sent_date,
+  trackingNo: r.tracking_no || '',
+  collectStatus: (r.collect_status as CollectStatus) ?? null,
+  collectDate: r.collect_date,
+  returnReason: r.return_reason || '',
 });
 
 export async function listItems(confirmationId: string): Promise<ConfirmItem[]> {
@@ -216,7 +238,11 @@ export async function listItems(confirmationId: string): Promise<ConfirmItem[]> 
   return (data as ItemRow[]).map(toItem);
 }
 
-export type ItemInput = Omit<ConfirmItem, 'id' | 'confirmationId'>;
+/** 등록(조회처 명세) 입력 — 발송·회수 진행상태는 포함하지 않는다 */
+export type ItemInput = Omit<
+  ConfirmItem,
+  'id' | 'confirmationId' | 'sent' | 'sentDate' | 'trackingNo' | 'collectStatus' | 'collectDate' | 'returnReason'
+>;
 
 const toItemRow = (confirmationId: string, it: ItemInput) => ({
   confirmation_id: confirmationId,
@@ -323,4 +349,140 @@ function friendly(e: { code?: string; message: string }): string {
   if (e.code === '42501') return '조회서를 등록·수정할 권한이 없습니다. 읽기전용 계정이거나 권한이 부족합니다.';
   if (e.code === '23505') return '같은 회계연도에 이미 등록된 거래처입니다. 기존 등록건을 수정해 주세요.';
   return e.message;
+}
+
+// ── 발송 / 회수 진행 ────────────────────────────────────────
+/** 발송 처리 — 전자조회는 클릭 토글, 실물발송은 등기번호와 함께. */
+export async function setSent(
+  itemId: string,
+  patch: { sent?: boolean; sentDate?: string | null; trackingNo?: string },
+): Promise<void> {
+  const row: Record<string, unknown> = {};
+  if (patch.sent !== undefined) {
+    row.sent = patch.sent;
+    // 발송을 해제하면 발송일도 지워 상태가 어긋나지 않게 한다.
+    if (!patch.sent) row.sent_date = null;
+  }
+  if (patch.sentDate !== undefined) row.sent_date = patch.sentDate || null;
+  if (patch.trackingNo !== undefined) row.tracking_no = patch.trackingNo.trim() || null;
+  const { data, error } = await supabase.from('confirmation_items').update(row).eq('id', itemId).select('id');
+  if (error) throw new Error(friendly(error));
+  assertWrote(data, '저장');
+}
+
+/** 회수 처리 — '회수완료' / '반송'(사유 필수) / null(되돌리기) */
+export async function setCollect(
+  itemId: string,
+  status: CollectStatus,
+  opts?: { date?: string; reason?: string },
+): Promise<void> {
+  if (status === '반송' && !opts?.reason?.trim()) throw new Error('반송 사유를 입력하세요.');
+  const { data, error } = await supabase
+    .from('confirmation_items')
+    .update({
+      collect_status: status,
+      collect_date: status ? opts?.date || new Date().toISOString().slice(0, 10) : null,
+      // 회수완료로 바꾸면 이전 반송사유는 지운다(재발송 후 회수된 경우).
+      return_reason: status === '반송' ? opts?.reason?.trim() : null,
+    })
+    .eq('id', itemId)
+    .select('id');
+  if (error) throw new Error(friendly(error));
+  assertWrote(data, '저장');
+}
+
+/** 여러 건 일괄 처리 — 일부 실패해도 나머지를 진행하고 결과를 요약한다. */
+export async function bulkApply(
+  ids: string[],
+  job: (id: string) => Promise<void>,
+): Promise<{ ok: number; fails: string[] }> {
+  let ok = 0;
+  const fails: string[] = [];
+  for (const id of ids) {
+    try {
+      await job(id);
+      ok++;
+    } catch (e) {
+      fails.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  return { ok, fails };
+}
+
+// ── 현황 집계 ───────────────────────────────────────────────
+/** 발송·회수 집계 한 덩어리. 전자/실물을 나눠 세고 비율까지 함께 낸다. */
+export interface Progress {
+  total: number;
+  sent: number;
+  collected: number;
+  returned: number;
+  elecTotal: number;
+  elecSent: number;
+  elecCollected: number;
+  postTotal: number;
+  postSent: number;
+  postCollected: number;
+  /** 발송일 범위 — 최초/최종 */
+  firstSentDate: string | null;
+  lastSentDate: string | null;
+}
+
+export const emptyProgress = (): Progress => ({
+  total: 0, sent: 0, collected: 0, returned: 0,
+  elecTotal: 0, elecSent: 0, elecCollected: 0,
+  postTotal: 0, postSent: 0, postCollected: 0,
+  firstSentDate: null, lastSentDate: null,
+});
+
+/** 조회처 목록 → 집계. 화면·엑셀이 같은 함수를 쓰므로 숫자가 어긋날 수 없다. */
+export function summarize(items: ConfirmItem[]): Progress {
+  const p = emptyProgress();
+  for (const it of items) {
+    p.total++;
+    if (it.isElectronic) p.elecTotal++; else p.postTotal++;
+    if (it.sent) {
+      p.sent++;
+      if (it.isElectronic) p.elecSent++; else p.postSent++;
+      if (it.sentDate) {
+        if (!p.firstSentDate || it.sentDate < p.firstSentDate) p.firstSentDate = it.sentDate;
+        if (!p.lastSentDate || it.sentDate > p.lastSentDate) p.lastSentDate = it.sentDate;
+      }
+    }
+    if (it.collectStatus === '회수완료') {
+      p.collected++;
+      if (it.isElectronic) p.elecCollected++; else p.postCollected++;
+    } else if (it.collectStatus === '반송') {
+      p.returned++;
+    }
+  }
+  return p;
+}
+
+/** 비율(%) — 분모 0이면 0 */
+export const pct = (n: number, d: number): number => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
+
+/** 여러 집계를 합산(연도 전체 합계용) */
+export function sumProgress(list: Progress[]): Progress {
+  const t = emptyProgress();
+  for (const p of list) {
+    t.total += p.total; t.sent += p.sent; t.collected += p.collected; t.returned += p.returned;
+    t.elecTotal += p.elecTotal; t.elecSent += p.elecSent; t.elecCollected += p.elecCollected;
+    t.postTotal += p.postTotal; t.postSent += p.postSent; t.postCollected += p.postCollected;
+    if (p.firstSentDate && (!t.firstSentDate || p.firstSentDate < t.firstSentDate)) t.firstSentDate = p.firstSentDate;
+    if (p.lastSentDate && (!t.lastSentDate || p.lastSentDate > t.lastSentDate)) t.lastSentDate = p.lastSentDate;
+  }
+  return t;
+}
+
+/** 연도 전체의 조회처를 거래처별로 묶어 한 번에 가져온다(현황 화면용). */
+export async function listItemsByYear(year: number): Promise<Record<string, ConfirmItem[]>> {
+  const { data, error } = await supabase
+    .from('confirmation_items')
+    .select('*, confirmations!inner(fiscal_year)')
+    .eq('confirmations.fiscal_year', year)
+    .order('seq', { ascending: true });
+  if (error) throw new Error(error.message);
+  const out: Record<string, ConfirmItem[]> = {};
+  for (const r of data as ItemRow[]) (out[r.confirmation_id] ||= []).push(toItem(r));
+  return out;
 }

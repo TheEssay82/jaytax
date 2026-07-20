@@ -32,6 +32,9 @@ import DocSendProcessTab from './docsend/DocSendProcessTab';
 import DocSendStatusTab from './docsend/DocSendStatusTab';
 import EvidenceTab from './evidence/EvidenceTab';
 import ConfirmRegisterTab from './confirm/ConfirmRegisterTab';
+import ConfirmDispatchTab from './confirm/ConfirmDispatchTab';
+import ConfirmCollectTab from './confirm/ConfirmCollectTab';
+import ConfirmStatusTab from './confirm/ConfirmStatusTab';
 import InternalHome from './home/InternalHome';
 import PlaceholderTab from './common/PlaceholderTab';
 import DevNotesModal from './common/DevNotesModal';
@@ -433,11 +436,11 @@ function TabContent({
     case 'conf-register':
       return <ConfirmRegisterTab />;
     case 'conf-dispatch':
-      return <PlaceholderTab title="📮 조회서 발송및진행" desc="설계 예정" />;
+      return <ConfirmDispatchTab />;
     case 'conf-collect':
-      return <PlaceholderTab title="📬 조회서 회수관리" desc="설계 예정" />;
+      return <ConfirmCollectTab />;
     case 'conf-status':
-      return <PlaceholderTab title="📊 조회현황" desc="설계 예정" />;
+      return <ConfirmStatusTab />;
     case 'vacation':
       return <PlaceholderTab title="🌴 휴가관리" desc="설계 예정" />;
     case 'estimate':

@@ -165,3 +165,124 @@ export async function parseItemsFile(file: File): Promise<ParseResult> {
   const summary = [...fixed.entries()].map(([k, n]) => `구분 표기 정리 ${k} ${n}건`);
   return { items, warnings: [...summary, ...warnings] };
 }
+
+// ── 진행현황 조서 출력 ──────────────────────────────────────
+import type { Confirmation, ConfirmItem, Progress } from './confirmApi';
+import { summarize, pct } from './confirmApi';
+
+const d = (s: string | null) => (s ? s.replace(/-/g, '.') : '');
+
+/**
+ * 거래처별 진행현황 조서(.xlsx) — 2025 control sheet 의 개별 시트 형태를 따른다.
+ * 머리(회사명·기준일·담당회계사·발송일) / 본문(조회처 명세 + 발송·회수) / 꼬리(회수율 확인란).
+ */
+export function exportConfirmationSheet(conf: Confirmation, items: ConfirmItem[]): void {
+  const p = summarize(items);
+  const aoa: (string | number)[][] = [
+    ['금융기관조회서(적극적 조회) Control Sheet'],
+    [],
+    ['회사명', conf.companyName, '', '조회서발송', '일    자', d(p.firstSentDate)],
+    ['조회발송기준일', d(conf.baseDate), '', '', '담    당', ''],
+    ['담당회계사', conf.accountantName, '', '', '서    명', ''],
+    [],
+    ['No.', '구분', '금융기관명', '조회방식', '주소', '우편번호', '전화번호',
+     '부서', '담당자명', '직책', '등기번호', '발송일', '회수', '반송사유', '발송대상'],
+  ];
+
+  items.forEach((it, i) => {
+    aoa.push([
+      i + 1,
+      it.kind,
+      it.institution,
+      it.isElectronic ? '전자조회' : '실물발송',
+      it.isElectronic ? '전자조회' : it.address,
+      it.isElectronic ? '' : it.postalCode,
+      it.phone,
+      it.dept,
+      it.contactName,
+      it.contactTitle,
+      it.isElectronic ? '' : it.trackingNo,
+      d(it.sentDate),
+      it.collectStatus === '회수완료' ? 'O' : it.collectStatus === '반송' ? '반송' : '',
+      it.returnReason,
+      it.sent ? 1 : '',
+    ]);
+  });
+
+  aoa.push([]);
+  aoa.push(['합계', '', '', '', '', '', '', '', '', '', '', '', `${p.collected}`, '', `${p.sent}`]);
+  aoa.push([
+    '발송', `전자 ${p.elecSent}/${p.elecTotal}`, `실물 ${p.postSent}/${p.postTotal}`,
+    `합계 ${p.sent}/${p.total} (${pct(p.sent, p.total)}%)`,
+  ]);
+  aoa.push([
+    '회수', `전자 ${p.elecCollected}/${p.elecSent}`, `실물 ${p.postCollected}/${p.postSent}`,
+    `합계 ${p.collected}/${p.sent} (${pct(p.collected, p.sent)}%)`,
+    p.returned ? `반송 ${p.returned}건` : '',
+  ]);
+  aoa.push([]);
+  aoa.push(['', '1차 회수율', '일    자', '', '조치내용']);
+  aoa.push(['', '확인및조치', '담    당']);
+  aoa.push(['', '', '서    명']);
+  aoa.push([]);
+  aoa.push(['', '2차 회수율', '일    자', '', '조치내용']);
+  aoa.push(['', '확인및조치', '담    당']);
+  aoa.push(['', '', '서    명']);
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [
+    { wch: 5 }, { wch: 12 }, { wch: 24 }, { wch: 10 }, { wch: 40 }, { wch: 9 }, { wch: 14 },
+    { wch: 12 }, { wch: 18 }, { wch: 9 }, { wch: 18 }, { wch: 11 }, { wch: 7 }, { wch: 26 }, { wch: 9 },
+  ];
+  ws['!freeze'] = { xSplit: 0, ySplit: 7 };
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '조회서');
+  XLSX.writeFile(wb, `금융기관조회서_${conf.companyName}_${conf.fiscalYear}_진행현황.xlsx`);
+}
+
+/** 연도 총괄 — 거래처 한 줄씩. 2025 파일의 '조회서 총괄시트'에 대응한다. */
+export function exportYearSummary(
+  year: number,
+  rows: { conf: Confirmation; progress: Progress }[],
+): void {
+  const head = [
+    '거래처명', '조회서 구분', '조회처수', '전자조회', '실물발송',
+    '발송', '발송률(%)', '회수', '회수률(%)', '반송',
+    '전자 발송/회수', '실물 발송/회수', '최초발송일', '최종발송일', '담당회계사', '기준일',
+  ];
+  const body = rows.map(({ conf: c, progress: p }) => [
+    c.companyName, '금융기관조회서', p.total, p.elecTotal, p.postTotal,
+    p.sent, pct(p.sent, p.total), p.collected, pct(p.collected, p.sent), p.returned,
+    `${p.elecSent}/${p.elecCollected}`, `${p.postSent}/${p.postCollected}`,
+    d(p.firstSentDate), d(p.lastSentDate), c.accountantName, d(c.baseDate),
+  ]);
+
+  const t = rows.reduce(
+    (a, { progress: p }) => {
+      a.total += p.total; a.elec += p.elecTotal; a.post += p.postTotal;
+      a.sent += p.sent; a.collected += p.collected; a.returned += p.returned;
+      a.elecSent += p.elecSent; a.elecCol += p.elecCollected;
+      a.postSent += p.postSent; a.postCol += p.postCollected;
+      return a;
+    },
+    { total: 0, elec: 0, post: 0, sent: 0, collected: 0, returned: 0, elecSent: 0, elecCol: 0, postSent: 0, postCol: 0 },
+  );
+
+  const aoa: (string | number)[][] = [
+    [`${year} 회계연도 금융기관조회서 총괄`],
+    [],
+    head,
+    ...body,
+    [],
+    ['합계', '', t.total, t.elec, t.post, t.sent, pct(t.sent, t.total), t.collected, pct(t.collected, t.sent), t.returned,
+     `${t.elecSent}/${t.elecCol}`, `${t.postSent}/${t.postCol}`],
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = head.map((h) => ({ wch: h === '거래처명' ? 28 : h.length > 8 ? 15 : 11 }));
+  ws['!freeze'] = { xSplit: 0, ySplit: 3 };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '총괄');
+  XLSX.writeFile(wb, `금융기관조회서_총괄_${year}.xlsx`);
+}
