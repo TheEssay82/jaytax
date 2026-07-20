@@ -31,6 +31,7 @@ import DocSendRequestTab from './docsend/DocSendRequestTab';
 import DocSendProcessTab from './docsend/DocSendProcessTab';
 import DocSendStatusTab from './docsend/DocSendStatusTab';
 import EvidenceTab from './evidence/EvidenceTab';
+import ConfirmRegisterTab from './confirm/ConfirmRegisterTab';
 import InternalHome from './home/InternalHome';
 import PlaceholderTab from './common/PlaceholderTab';
 import DevNotesModal from './common/DevNotesModal';
@@ -70,7 +71,16 @@ export const MENU_GROUPS: MenuGroup[] = [
         ],
       },
       { id: 'evidence', label: '📑 증빙 자료실' },
-      { id: 'inquiry-send', label: '📮 조회서 발송관리' },
+      {
+        id: 'inquiry-send',
+        label: '📮 조회서 발송관리',
+        children: [
+          { id: 'conf-register', label: '📝 조회서등록' },
+          { id: 'conf-dispatch', label: '📮 조회서 발송및진행' },
+          { id: 'conf-collect', label: '📬 조회서 회수관리' },
+          { id: 'conf-status', label: '📊 조회현황' },
+        ],
+      },
       { id: 'vacation', label: '🌴 휴가관리' },
       { id: 'estimate', label: '🧮 견적산출 시스템' },
     ],
@@ -420,7 +430,14 @@ function TabContent({
       return <EvidenceTab />;
     // 일반업무관리 › 기타 중분류
     case 'inquiry-send':
-      return <PlaceholderTab title="📮 조회서 발송관리" desc="설계 예정" />;
+    case 'conf-register':
+      return <ConfirmRegisterTab />;
+    case 'conf-dispatch':
+      return <PlaceholderTab title="📮 조회서 발송및진행" desc="설계 예정" />;
+    case 'conf-collect':
+      return <PlaceholderTab title="📬 조회서 회수관리" desc="설계 예정" />;
+    case 'conf-status':
+      return <PlaceholderTab title="📊 조회현황" desc="설계 예정" />;
     case 'vacation':
       return <PlaceholderTab title="🌴 휴가관리" desc="설계 예정" />;
     case 'estimate':
