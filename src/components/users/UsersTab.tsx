@@ -35,6 +35,29 @@ export default function UsersTab() {
     void load();
   }, []);
 
+  const [lockingId, setLockingId] = useState<string | null>(null);
+
+  /** 쓰기잠금 토글 — 서버에서도 최고관리자만 바꿀 수 있다(0042). */
+  async function toggleLock(r: UserProfile) {
+    const next = !r.readonly;
+    const q = next
+      ? `‘${r.name || r.email}’ 계정을 쓰기잠금할까요?
+조회는 되지만 저장·변경·삭제가 서버에서 차단됩니다.`
+      : `‘${r.name || r.email}’ 계정의 쓰기잠금을 해제할까요?
+이 계정으로 실제 데이터를 저장·삭제할 수 있게 됩니다.`;
+    if (!confirm(q)) return;
+    setLockingId(r.id);
+    try {
+      await updateProfile(r.id, { readonly: next });
+      await load();
+      flash(next ? `🔒 ${r.name} 계정을 잠갔습니다.` : `🔓 ${r.name} 계정의 잠금을 해제했습니다.`);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '변경하지 못했습니다.');
+    } finally {
+      setLockingId(null);
+    }
+  }
+
   function flash(t: string) {
     setMsg(t);
     setTimeout(() => setMsg(''), 2500);
@@ -145,6 +168,7 @@ export default function UsersTab() {
               <th>담당자명 (이름)</th>
               <th>이메일</th>
               <th style={{ minWidth: 130 }}>역할</th>
+              <th style={{ width: 118, textAlign: 'center' }}>쓰기잠금</th>
               <th>가입일</th>
               <th>관리</th>
             </tr>
@@ -182,6 +206,30 @@ export default function UsersTab() {
                         </option>
                       ))}
                     </select>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button
+                      className="btn-sm"
+                      disabled={isMe || lockingId === r.id}
+                      title={
+                        isMe
+                          ? '본인 계정은 잠글 수 없습니다'
+                          : r.readonly
+                            ? '잠금 해제 — 저장·변경·삭제가 가능해집니다'
+                            : '쓰기잠금 — 조회만 가능해집니다(서버에서 차단)'
+                      }
+                      onClick={() => void toggleLock(r)}
+                      style={{
+                        fontSize: 10.5,
+                        padding: '2px 8px',
+                        fontWeight: 700,
+                        ...(r.readonly
+                          ? { background: '#FEE2E2', color: '#B91C1C' }
+                          : { background: '#D1FAE5', color: '#065F46' }),
+                      }}
+                    >
+                      {lockingId === r.id ? '…' : r.readonly ? '🔒 잠김' : '🔓 쓰기가능'}
+                    </button>
                   </td>
                   <td style={{ fontSize: 10, color: '#999', whiteSpace: 'nowrap' }}>
                     {r.createdAt ? r.createdAt.split('T')[0].replace(/-/g, '.') : ''}

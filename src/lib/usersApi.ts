@@ -7,6 +7,8 @@ export interface UserProfile {
   name: string;
   email: string;
   role: Role;
+  /** 쓰기잠금 — true 면 조회만 가능하고 저장·변경·삭제가 서버(RLS)에서 차단된다 */
+  readonly: boolean;
   createdAt: string;
 }
 
@@ -14,22 +16,26 @@ export interface UserProfile {
 export async function listProfiles(): Promise<UserProfile[]> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, name, email, role, created_at')
+    .select('id, name, email, role, readonly, created_at')
     .order('created_at', { ascending: true });
   if (error) throw new Error(error.message);
-  return (data as { id: string; name: string; email: string | null; role: string; created_at: string }[]).map(
-    (r) => ({
-      id: r.id,
-      name: r.name || '',
-      email: r.email || '',
-      role: normalizeRole(r.role),
-      createdAt: r.created_at,
-    }),
-  );
+  return (
+    data as { id: string; name: string; email: string | null; role: string; readonly: boolean | null; created_at: string }[]
+  ).map((r) => ({
+    id: r.id,
+    name: r.name || '',
+    email: r.email || '',
+    role: normalizeRole(r.role),
+    readonly: !!r.readonly,
+    createdAt: r.created_at,
+  }));
 }
 
 /** 프로필 수정 (역할·이름) — RLS상 superuser만 타인 수정 가능 */
-export async function updateProfile(id: string, patch: { role?: Role; name?: string }): Promise<void> {
+export async function updateProfile(
+  id: string,
+  patch: { role?: Role; name?: string; readonly?: boolean },
+): Promise<void> {
   const { data, error } = await supabase.from('profiles').update(patch).eq('id', id).select('id');
   if (error) throw new Error(error.message);
   assertWrote(data, '저장');
