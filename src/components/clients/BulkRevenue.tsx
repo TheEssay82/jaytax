@@ -34,19 +34,32 @@ export default function BulkRevenue({
     return l;
   }, [clients, filter, biz]);
 
+  // 입력값 키는 '연도:거래처' — 연도를 바꿨을 때 이전 연도 입력이 넘어와
+  // 다른 연도 값으로 저장되는 것을 막는다.
+  const key = (clientId: string, y: number = year) => `${y}:${clientId}`;
+
   // 입력값(없으면 현재값) 조회
   const revVal = (c: Client) => {
-    const k = c.id;
+    const k = key(c.id);
     if (revInputs[k] !== undefined) return revInputs[k];
     const cur = getRevForYear(c, year);
     return cur ? String(cur) : '';
   };
   const modelVal = (c: Client) => {
-    const k = c.id;
+    const k = key(c.id);
     if (modelInputs[k] !== undefined) return modelInputs[k];
     const mv = (c.modelYears || {})[String(year)];
     return mv === true ? 'O' : mv === false ? 'X' : '';
   };
+
+  /** 현재 연도에 아직 저장하지 않은 입력 수 — 화면에 표시해 잊고 넘어가지 않게 한다. */
+  const pendingCount = useMemo(() => {
+    const pre = `${year}:`;
+    return (
+      Object.keys(revInputs).filter((k) => k.startsWith(pre)).length +
+      Object.keys(modelInputs).filter((k) => k.startsWith(pre)).length
+    );
+  }, [revInputs, modelInputs, year]);
 
   async function saveAll() {
     setBusy(true);
@@ -54,33 +67,35 @@ export default function BulkRevenue({
     let modelSaved = 0;
     try {
       const ops: Promise<void>[] = [];
-      for (const c of list) {
+      // 필터가 걸려 있어도 입력해 둔 값은 모두 저장한다.
+      // (list 만 순회하면 화면에서 가려진 거래처의 입력이 저장되지 않은 채 지워졌다)
+      for (const c of clients) {
         const revs = { ...(c.revenues || {}) };
         const mys = { ...(c.modelYears || {}) };
         let changed = false;
-        const rin = revInputs[c.id];
+        const rin = revInputs[key(c.id)];
         if (rin !== undefined) {
           const v = parseFloat(rin);
           if (v > 0) {
             if (revs[String(year)] !== v) {
               revs[String(year)] = v;
               changed = true;
+              saved++;
             }
-            saved++;
           } else if ((v === 0 || rin === '') && revs[String(year)] !== undefined) {
             delete revs[String(year)];
             changed = true;
           }
         }
-        const min = modelInputs[c.id];
+        const min = modelInputs[key(c.id)];
         if (min !== undefined) {
           if (min === 'O' || min === 'X') {
             const mv = min === 'O';
             if (mys[String(year)] !== mv) {
               mys[String(year)] = mv;
               changed = true;
+              modelSaved++;
             }
-            modelSaved++;
           } else if (min === '' && mys[String(year)] !== undefined) {
             delete mys[String(year)];
             changed = true;
@@ -89,8 +104,11 @@ export default function BulkRevenue({
         if (changed) ops.push(updateClient(c.id, { revenues: revs, modelYears: mys }));
       }
       await Promise.all(ops);
-      setRevInputs({});
-      setModelInputs({});
+      const pre = `${year}:`;
+      const dropYear = (m: Record<string, string>) =>
+        Object.fromEntries(Object.entries(m).filter(([k]) => !k.startsWith(pre)));
+      setRevInputs(dropYear);
+      setModelInputs(dropYear);
       await onChanged();
       alert(`✅ ${year}년 저장 완료\n매출액 입력 ${saved}건 · 성실신고 ${modelSaved}건`);
     } catch (e) {
@@ -164,8 +182,14 @@ export default function BulkRevenue({
             </span>
           ))}
         </div>
-        <button className="btn-p" style={{ marginLeft: 'auto' }} onClick={saveAll} disabled={busy}>
-          💾 일괄 저장 ({year}년)
+        <button
+          className="btn-p"
+          style={{ marginLeft: 'auto' }}
+          onClick={saveAll}
+          disabled={busy}
+          title={pendingCount > 0 ? '검색으로 가려진 거래처의 입력도 함께 저장됩니다' : undefined}
+        >
+          💾 일괄 저장 ({year}년){pendingCount > 0 ? ` · 미저장 ${pendingCount}` : ''}
         </button>
       </div>
 
@@ -217,14 +241,14 @@ export default function BulkRevenue({
                       type="number"
                       value={revVal(c)}
                       placeholder="미입력시 기존값 유지"
-                      onChange={(e) => setRevInputs((p) => ({ ...p, [c.id]: e.target.value }))}
+                      onChange={(e) => setRevInputs((p) => ({ ...p, [key(c.id)]: e.target.value }))}
                       style={{ width: '100%', textAlign: 'right' }}
                     />
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <select
                       value={modelVal(c)}
-                      onChange={(e) => setModelInputs((p) => ({ ...p, [c.id]: e.target.value }))}
+                      onChange={(e) => setModelInputs((p) => ({ ...p, [key(c.id)]: e.target.value }))}
                       style={{ width: '100%', padding: '4px 6px', fontSize: 12 }}
                     >
                       <option value="">❓ 미확정</option>

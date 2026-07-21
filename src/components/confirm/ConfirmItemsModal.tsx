@@ -8,6 +8,8 @@ import {
   updateItem,
   deleteItem,
   replaceItems,
+  nextSeq,
+  renumberItems,
   updateConfirmation,
   ITEM_KINDS,
   DEFAULT_CONTACT,
@@ -49,6 +51,9 @@ export default function ConfirmItemsModal({
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  // 부모가 넘긴 confirmation 은 모달이 열린 시점의 스냅샷이라, 여기서 상태를 바꿔도
+  // prop 은 그대로다. 화면 표시는 로컬 상태로 들고 가야 토글이 반영된다.
+  const [status, setStatus] = useState(confirmation.status);
 
   const [draft, setDraft] = useState<ItemInput>(emptyInput(1));
   const [editId, setEditId] = useState<string | null>(null);
@@ -184,26 +189,30 @@ export default function ConfirmItemsModal({
                 className="bdg"
                 style={{
                   fontSize: 10,
-                  ...(confirmation.status === '등록완료'
+                  ...(status === '등록완료'
                     ? { background: '#D1FAE5', color: '#065F46' }
                     : { background: '#FEF3C7', color: '#92400E' }),
                 }}
               >
-                {confirmation.status}
+                {status}
               </span>
               <button
                 className="btn-p"
                 style={{ fontSize: 11 }}
                 disabled={busy || !canComplete}
                 title={canComplete ? undefined : '조회처를 1건 이상 등록해야 완료할 수 있습니다'}
-                onClick={() =>
+                onClick={() => {
+                  const next = status === '등록완료' ? '작성중' : '등록완료';
                   void run(
-                    () => updateConfirmation(confirmation.id, { status: confirmation.status === '등록완료' ? '작성중' : '등록완료' }),
-                    confirmation.status === '등록완료' ? '작성중으로 되돌렸습니다.' : '✅ 등록완료로 표시했습니다.',
-                  )
-                }
+                    async () => {
+                      await updateConfirmation(confirmation.id, { status: next });
+                      setStatus(next);
+                    },
+                    next === '등록완료' ? '✅ 등록완료로 표시했습니다.' : '작성중으로 되돌렸습니다.',
+                  );
+                }}
               >
-                {confirmation.status === '등록완료' ? '↩ 작성중으로' : '✅ 등록완료'}
+                {status === '등록완료' ? '↩ 작성중으로' : '✅ 등록완료'}
               </button>
             </span>
           </div>
@@ -290,7 +299,10 @@ export default function ConfirmItemsModal({
                               disabled={busy}
                               onClick={() => {
                                 if (!confirm(`‘${it.institution}’을 삭제할까요?`)) return;
-                                void run(() => deleteItem(it.id), '🗑 삭제했습니다.');
+                                void run(async () => {
+                                  await deleteItem(it.id);
+                                  await renumberItems(confirmation.id); // 번호를 1..N 으로 다시 매김
+                                }, '🗑 삭제했습니다.');
                               }}
                             >
                               🗑
@@ -310,7 +322,7 @@ export default function ConfirmItemsModal({
                     onSubmit={() =>
                       void run(async () => {
                         if (!draft.institution.trim()) throw new Error('금융기관명을 입력하세요.');
-                        await addItems(confirmation.id, [{ ...draft, seq: items.length + 1 }]);
+                        await addItems(confirmation.id, [{ ...draft, seq: await nextSeq(confirmation.id) }]);
                       }, '＋ 추가했습니다.')
                     }
                     submitLabel="＋ 추가"

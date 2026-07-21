@@ -111,7 +111,9 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
         </button>
       )}
 
-      <InvoiceDocument S={S} config={config} />
+      {/* 확정권한이 없으면 이 청구서는 '작성중'으로 저장된다(45행 status 결정과 같은 기준).
+          인쇄·PDF 에도 그 사실이 찍혀야 확정 전 청구서가 확정본처럼 대외로 나가지 않는다. */}
+      <InvoiceDocument S={S} config={config} draft={!isFinalizer} />
     </>
   );
 }

@@ -269,6 +269,34 @@ export async function addItems(confirmationId: string, items: ItemInput[]): Prom
   return items.length;
 }
 
+/** 현재 조회처의 최대 seq. 중간 행을 지운 뒤 추가해도 번호가 겹치지 않게 한다. */
+export async function nextSeq(confirmationId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('confirmation_items')
+    .select('seq')
+    .eq('confirmation_id', confirmationId)
+    .order('seq', { ascending: false })
+    .limit(1);
+  if (error) throw new Error(error.message);
+  const rows = data as { seq: number }[] | null;
+  return (rows?.[0]?.seq ?? 0) + 1;
+}
+
+/** 조회처 번호를 1..N 으로 다시 매긴다(삭제로 생긴 빈 번호 정리). */
+export async function renumberItems(confirmationId: string): Promise<void> {
+  const items = await listItems(confirmationId);
+  const wrong = items.filter((it, i) => it.seq !== i + 1);
+  if (!wrong.length) return;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].seq === i + 1) continue;
+    const { error } = await supabase
+      .from('confirmation_items')
+      .update({ seq: i + 1 })
+      .eq('id', items[i].id);
+    if (error) throw new Error(friendly(error));
+  }
+}
+
 export async function updateItem(id: string, it: ItemInput): Promise<void> {
   const row = toItemRow('', it) as Record<string, unknown>;
   delete row.confirmation_id; // 소속은 바꾸지 않는다
@@ -283,14 +311,24 @@ export async function deleteItem(id: string): Promise<void> {
   assertWrote(data, '삭제');
 }
 
-/** 조회처 전체 교체(엑셀 업로드 시). 기존 행을 지우고 새로 넣는다. */
+/**
+ * 조회처 전체 교체(엑셀 업로드 시).
+ * 새 명세를 **먼저 넣고** 성공한 뒤에 옛 행을 지운다.
+ * (지우고 넣으면 중간에 실패했을 때 기존 명세가 복구 불가로 사라진다)
+ */
 export async function replaceItems(confirmationId: string, items: ItemInput[]): Promise<number> {
-  const { error: delErr } = await supabase
-    .from('confirmation_items')
-    .delete()
-    .eq('confirmation_id', confirmationId);
-  if (delErr) throw new Error(friendly(delErr));
-  return addItems(confirmationId, items);
+  if (!items.length) throw new Error('교체할 조회처가 없습니다.');
+  const before = await listItems(confirmationId);
+  const oldIds = before.map((i) => i.id);
+  // 새 행은 기존 번호와 겹치지 않게 뒤에 붙였다가, 옛 행을 지운 뒤 1..N 으로 정리한다.
+  const offset = before.reduce((m, i) => Math.max(m, i.seq), 0);
+  await addItems(confirmationId, items.map((it, i) => ({ ...it, seq: offset + i + 1 })));
+  if (oldIds.length) {
+    const { error } = await supabase.from('confirmation_items').delete().in('id', oldIds);
+    if (error) throw new Error(friendly(error));
+  }
+  await renumberItems(confirmationId);
+  return items.length;
 }
 
 // ── 전기 조회서 가져오기 ────────────────────────────────────
@@ -360,8 +398,14 @@ export async function setSent(
   const row: Record<string, unknown> = {};
   if (patch.sent !== undefined) {
     row.sent = patch.sent;
-    // 발송을 해제하면 발송일도 지워 상태가 어긋나지 않게 한다.
-    if (!patch.sent) row.sent_date = null;
+    // 발송을 해제하면 그에 딸린 기록도 함께 지운다.
+    // (회수 상태를 남겨두면 '회수 > 발송' 이 되어 회수율이 100%를 넘는다)
+    if (!patch.sent) {
+      row.sent_date = null;
+      row.collect_status = null;
+      row.collect_date = null;
+      row.return_reason = null;
+    }
   }
   if (patch.sentDate !== undefined) row.sent_date = patch.sentDate || null;
   if (patch.trackingNo !== undefined) row.tracking_no = patch.trackingNo.trim() || null;
