@@ -60,7 +60,7 @@ export interface ParseResult {
   warnings: string[];
 }
 
-/** 헤더 행을 찾는다. 양식이 아니어도 '금융기관명'/'거래처명' 열이 있으면 읽는다. */
+/** 헤더 행을 찾는다. '금융기관명' 열(옛 양식은 '거래처명' 칸에 금융기관을 적었으므로 이것도 허용)이 있으면 읽는다. */
 function findHeaderRow(rows: unknown[][]): number {
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
     const cells = (rows[i] || []).map((c) => String(c ?? '').replace(/\s/g, ''));
@@ -109,7 +109,13 @@ export async function parseItemsFile(file: File): Promise<ParseResult> {
   const col = (...names: string[]) => head.findIndex((c) => names.includes(c));
 
   const cKind = col('구분');
-  const cName = col('금융기관명', '거래처명');
+  // '금융기관명'을 최우선으로 찾는다. '거래처'는 이 시스템에서 '감사대상 회사'를 뜻하므로
+  // 금융기관 열로 오인하면 안 된다. 옛 control sheet 가 금융기관을 '거래처명' 칸에 적어둔 경우에만
+  // (금융기관명 열이 아예 없을 때) 그 열을 대신 읽는다.
+  const cInstitution = col('금융기관명');
+  const cLegacyName = col('거래처명');
+  const cName = cInstitution >= 0 ? cInstitution : cLegacyName;
+  const usedLegacyName = cInstitution < 0 && cLegacyName >= 0;
   const cWay = col('조회방식');
   const cAddr = col('주소');
   const cPost = col('우편번호');
@@ -163,7 +169,10 @@ export async function parseItemsFile(file: File): Promise<ParseResult> {
   if (!items.length) throw new Error('읽어들일 조회처가 없습니다. 금융기관명이 채워진 행이 있는지 확인해 주세요.');
   // 표기 정리는 묶음 안내를 앞에 둔다(개별 문제 행보다 덜 급한 정보라서).
   const summary = [...fixed.entries()].map(([k, n]) => `구분 표기 정리 ${k} ${n}건`);
-  return { items, warnings: [...summary, ...warnings] };
+  const legacy = usedLegacyName
+    ? [`옛 양식의 ‘거래처명’ 칸을 금융기관명으로 읽었습니다(이 시스템에서 거래처는 감사대상 회사를 뜻합니다).`]
+    : [];
+  return { items, warnings: [...legacy, ...summary, ...warnings] };
 }
 
 // ── 진행현황 조서 출력 ──────────────────────────────────────
