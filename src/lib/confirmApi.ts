@@ -486,3 +486,49 @@ export async function listItemsByYear(year: number): Promise<Record<string, Conf
   for (const r of data as ItemRow[]) (out[r.confirmation_id] ||= []).push(toItem(r));
   return out;
 }
+
+// ── 변경이력(감사증빙) ──────────────────────────────────────
+export interface ConfirmAudit {
+  id: number;
+  confirmationId: string | null;
+  itemId: string | null;
+  entity: 'confirmation' | 'item';
+  action: 'insert' | 'update' | 'delete';
+  actorName: string;
+  summary: string;
+  at: string;
+}
+
+interface AuditRow {
+  id: number;
+  confirmation_id: string | null;
+  item_id: string | null;
+  entity: string;
+  action: string;
+  actor_name: string | null;
+  summary: string | null;
+  at: string;
+}
+
+/**
+ * 변경이력 조회. confirmationId 를 주면 그 거래처 건만.
+ * 트리거가 기록하므로 앱에서 쓰거나 지울 수 없다(조회 전용).
+ */
+export async function listAudit(confirmationId?: string, limit = 300): Promise<ConfirmAudit[]> {
+  let q = supabase
+    .from('confirmation_audit_log')
+    .select('id, confirmation_id, item_id, entity, action, actor_name, summary, at');
+  if (confirmationId) q = q.eq('confirmation_id', confirmationId);
+  const { data, error } = await q.order('at', { ascending: false }).order('id', { ascending: false }).limit(limit);
+  if (error) throw new Error(error.message);
+  return (data as AuditRow[]).map((r) => ({
+    id: r.id,
+    confirmationId: r.confirmation_id,
+    itemId: r.item_id,
+    entity: r.entity as ConfirmAudit['entity'],
+    action: r.action as ConfirmAudit['action'],
+    actorName: r.actor_name || '',
+    summary: r.summary || '',
+    at: r.at,
+  }));
+}

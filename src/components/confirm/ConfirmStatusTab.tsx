@@ -15,6 +15,7 @@ import {
 } from '../../lib/confirmApi';
 import { exportConfirmationSheet, exportYearSummary } from '../../lib/confirmExcel';
 import TrackingLink from '../docsend/TrackingLink';
+import ConfirmAuditModal from './ConfirmAuditModal';
 
 export default function ConfirmStatusTab() {
   const [rows, setRows] = useState<Confirmation[]>([]);
@@ -24,6 +25,8 @@ export default function ConfirmStatusTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  // 변경이력 — null 이면 닫힘, {id:undefined} 면 연도 전체
+  const [auditFor, setAuditFor] = useState<{ id?: string; title: string } | null>(null);
 
   async function load(y = year) {
     try {
@@ -131,6 +134,14 @@ export default function ConfirmStatusTab() {
         >
           ⬇ 총괄 엑셀
         </button>
+        <button
+          className="btn-sm"
+          style={{ fontSize: 11, padding: '2px 8px' }}
+          onClick={() => setAuditFor({ title: `${year}년 전체` })}
+          title="발송·회수 처리 기록(감사증빙)"
+        >
+          🕘 변경이력
+        </button>
       </div>
 
       {/* 거래처별 현황 */}
@@ -146,7 +157,7 @@ export default function ConfirmStatusTab() {
               <th style={{ width: 120, textAlign: 'center' }}>회수율</th>
               <th style={{ width: 58, textAlign: 'center' }}>반송</th>
               <th style={{ width: 96, textAlign: 'center' }}>최초발송일</th>
-              <th style={{ width: 46, textAlign: 'center' }}>조서</th>
+              <th style={{ width: 82, textAlign: 'center' }}>조서 · 이력</th>
             </tr>
           </thead>
           <tbody>
@@ -176,14 +187,24 @@ export default function ConfirmStatusTab() {
                   {p.firstSentDate ? p.firstSentDate.replace(/-/g, '.') : <span style={{ color: '#CCC' }}>—</span>}
                 </td>
                 <td style={{ textAlign: 'center' }}>
-                  <button
-                    className="btn-sm"
-                    style={{ fontSize: 10.5, padding: '1px 6px' }}
-                    title="이 거래처의 진행현황 조서를 엑셀로 내려받습니다"
-                    onClick={() => void exportConfirmationSheet(c, items[c.id] ?? [])}
-                  >
-                    ⬇
-                  </button>
+                  <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
+                    <button
+                      className="btn-sm"
+                      style={{ fontSize: 10.5, padding: '1px 6px' }}
+                      title="이 거래처의 진행현황 조서를 엑셀로 내려받습니다"
+                      onClick={() => void exportConfirmationSheet(c, items[c.id] ?? [])}
+                    >
+                      ⬇
+                    </button>
+                    <button
+                      className="btn-sm"
+                      style={{ fontSize: 10.5, padding: '1px 6px' }}
+                      title="이 거래처의 발송·회수 처리 기록"
+                      onClick={() => setAuditFor({ id: c.id, title: c.companyName })}
+                    >
+                      🕘
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -202,6 +223,14 @@ export default function ConfirmStatusTab() {
           </tbody>
         </table>
       </div>
+
+      {auditFor && (
+        <ConfirmAuditModal
+          confirmationId={auditFor.id}
+          title={auditFor.title}
+          onClose={() => setAuditFor(null)}
+        />
+      )}
 
       {/* 반송 목록 — 조치가 필요한 건 */}
       {returnedList.length > 0 && (
