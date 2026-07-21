@@ -2,6 +2,7 @@
 // 발송한 조회처를 거래처별로 펼쳐 회수완료/반송을 처리한다. 체크해서 일괄 반영도 된다.
 // 반송은 사유가 필수이고, 그 사유가 조회현황에 그대로 나타난다.
 import { useEffect, useMemo, useState } from 'react';
+import { todayYmd } from '../../lib/format';
 import {
   listConfirmations,
   listFiscalYears,
@@ -22,7 +23,6 @@ import {
 import TrackingLink from '../docsend/TrackingLink';
 import { Bar } from './ConfirmDispatchTab';
 
-const today = () => new Date().toISOString().slice(0, 10);
 
 /** 거래처 회수 단계 — 조회처 집계에서 파생 */
 function collectStage(collected: number, sent: number, returned: number): string {
@@ -223,7 +223,7 @@ function ClientRows({
   onRun: (job: () => Promise<void>, done?: string) => Promise<void>;
 }) {
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [date, setDate] = useState(today());
+  const [date, setDate] = useState(todayYmd());
 
   // 회수 대상은 '발송한' 조회처뿐이다.
   const sentItems = items.filter((i) => i.sent);
@@ -484,7 +484,7 @@ function OverdueView({
   onRun: (job: () => Promise<void>, done?: string) => Promise<void>;
 }) {
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayYmd();
 
   const toggle = (id: string) =>
     setSel((s) => {

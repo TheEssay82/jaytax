@@ -4,6 +4,7 @@
 //  · 실물발송 — 등기번호를 넣으면 발송 처리 + 우체국 조회 링크
 // 모두 발송되면 그 거래처가 '발송완료'가 되고 발송일이 표시된다(집계는 조회처에서 계산).
 import { useEffect, useMemo, useState } from 'react';
+import { todayYmd } from '../../lib/format';
 import {
   listConfirmations,
   listFiscalYears,
@@ -17,7 +18,6 @@ import {
 } from '../../lib/confirmApi';
 import TrackingLink from '../docsend/TrackingLink';
 
-const today = () => new Date().toISOString().slice(0, 10);
 
 /** 거래처 발송 단계 — 조회처 집계에서 파생한다 */
 export function sendStage(sent: number, total: number): '미발송' | '발송중' | '발송완료' {
@@ -177,7 +177,7 @@ function ClientRows({
   onToggle: () => void;
   onRun: (job: () => Promise<void>, done?: string) => Promise<void>;
 }) {
-  const [date, setDate] = useState(today());
+  const [date, setDate] = useState(todayYmd());
   const unsentIds = items.filter((i) => !i.sent).map((i) => i.id);
   const unsentElecIds = items.filter((i) => !i.sent && i.isElectronic).map((i) => i.id);
 

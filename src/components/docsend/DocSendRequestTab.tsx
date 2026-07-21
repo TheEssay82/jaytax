@@ -1,5 +1,6 @@
 // 문서발송 › 발송요청 — 공통 문서정보 + 수신자 다중선택(거래처 담당자 관리 연동, 스냅샷) 요청 등록/목록/수정
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { todayYmd } from '../../lib/format';
 import { useAuth } from '../../context/AuthContext';
 import { listDocClients, type DocClient, type DocContact } from '../../lib/docClientsApi';
 import {
@@ -27,7 +28,6 @@ import { listAuditLog, auditChanges, type DocAudit } from '../../lib/docClientsA
 import AttachmentsModal, { fmtSize } from './AttachmentsModal';
 import TrackingLink from './TrackingLink';
 
-const today = () => new Date().toISOString().slice(0, 10);
 const dtTime = (s?: string): string => {
   if (!s) return '';
   const d = new Date(s);
@@ -44,7 +44,7 @@ const statusStyle = (s: string): React.CSSProperties => {
 };
 
 const emptyCommon = (requester: string): SendCommon => ({
-  requestDate: today(),
+  requestDate: todayYmd(),
   requester,
   workType: WORK_TYPES[0],
   sendKind: SEND_KINDS[0],

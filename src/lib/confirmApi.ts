@@ -2,6 +2,7 @@
 // 구조: confirmations(거래처 × 회계연도) → confirmation_items(조회처 명세)
 // 권한: 조회·쓰기 모두 내부 구성원(외부인 제외). 읽기전용 계정은 서버에서 차단(0041).
 import { supabase, assertWrote } from './supabase';
+import { todayYmd as localToday } from './format';
 
 /** 조회처 구분 — 2025년 실데이터 기준 6종 */
 export const ITEM_KINDS = ['은행', '보험', '보증기관', '증권', '여신전문', '비은행금융'] as const;
@@ -425,7 +426,7 @@ export async function setCollect(
     .from('confirmation_items')
     .update({
       collect_status: status,
-      collect_date: status ? opts?.date || new Date().toISOString().slice(0, 10) : null,
+      collect_date: status ? opts?.date || localToday() : null,
       // 회수완료로 바꾸면 이전 반송사유는 지운다(재발송 후 회수된 경우).
       return_reason: status === '반송' ? opts?.reason?.trim() : null,
     })
@@ -584,7 +585,7 @@ const toDayNumber = (ymd: string): number => Math.floor(Date.parse(`${ymd}T00:00
 /** 발송일로부터 오늘까지 지난 날수. 발송일이 없으면 null. */
 export function daysSince(ymd: string | null, todayYmd?: string): number | null {
   if (!ymd) return null;
-  const today = todayYmd ?? new Date().toISOString().slice(0, 10);
+  const today = todayYmd ?? localToday();
   return toDayNumber(today) - toDayNumber(ymd);
 }
 

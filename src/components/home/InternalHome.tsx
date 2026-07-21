@@ -53,13 +53,13 @@ const READY: ShortcutDef[] = [
   { key: 'bill', label: '청구서 작성', emoji: '🧾', color: 'amber', tab: 'wizard', allow: (r) => can(r, 'saveInvoice') },
   { key: 'consult', label: '상담진행', emoji: '🧑‍💼', color: 'teal', tab: 'consult', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member'].includes(r) },
   { key: 'library', label: '자료실', emoji: '📁', color: 'teal', tab: 'library', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member'].includes(r) },
+  { key: 'inquiry', label: '조회서 발송', emoji: '📮', color: 'blue', tab: 'conf-register', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member', 'per_head_accountant'].includes(r) },
 ];
 
 // 준비 중(미개발) — 로드맵 노출용. 클릭 불가.
 const COMING: ShortcutDef[] = [
   { key: 'clients', label: '거래처관리', emoji: '🏢', color: 'purple', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member'].includes(r) },
   { key: 'indiv', label: '개별업무 청구', emoji: '💰', color: 'amber', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member'].includes(r) },
-  { key: 'inquiry', label: '조회서 발송', emoji: '📮', color: 'blue', allow: (r) => r !== 'external' },
   { key: 'vacation', label: '휴가관리', emoji: '🌴', color: 'coral', allow: (r) => r !== 'external' },
   { key: 'estimate', label: '견적산출', emoji: '🧮', color: 'green', allow: (r) => r !== 'external' },
 ];

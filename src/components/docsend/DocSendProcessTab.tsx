@@ -1,6 +1,7 @@
 // 문서발송 › 발송요청 처리 — 권한자(최고관리자·기장팀장·기장팀원)가 발송 상태·발송일·등기번호를 처리
 // 흐름: 미접수 → (처리 시작) 진행중 → 발송일 입력·완료 → 발송완료. 등기번호는 우체국 조회 딥링크.
 import { useEffect, useMemo, useState } from 'react';
+import { todayYmd } from '../../lib/format';
 import { useAuth } from '../../context/AuthContext';
 import { can } from '../../lib/roles';
 import {
@@ -13,7 +14,6 @@ import {
 import AttachmentsModal from './AttachmentsModal';
 import TrackingLink from './TrackingLink';
 
-const today = () => new Date().toISOString().slice(0, 10);
 const statusStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
   if (s === '재발송완료') return { background: '#CFFAFE', color: '#155E75' };
@@ -98,7 +98,7 @@ export default function DocSendProcessTab() {
   // 한 문서를 여러 수신자에게 보낸 건(같은 batch_id)을 한 번에 처리하기 위한 다중선택.
   // 등기번호는 건마다 달라서 일괄 대상이 아니고, 발송일만 공통으로 찍는다.
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [bulkDate, setBulkDate] = useState(today());
+  const [bulkDate, setBulkDate] = useState(todayYmd());
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const toggleSel = (id: string) =>
@@ -406,7 +406,7 @@ function ProcessRow({
   onRevert: (to: string) => void;
   onChangeStatus: (to: string, note: string) => void;
 }) {
-  const [sentDate, setSentDate] = useState(r.sentDate || today());
+  const [sentDate, setSentDate] = useState(r.sentDate || todayYmd());
   const [trackingNo, setTrackingNo] = useState(r.trackingNo || '');
   const [note, setNote] = useState(r.statusNote || '');
   const isPost = r.status === '발송완료' || r.status === '반송' || r.status === '재발송완료';
