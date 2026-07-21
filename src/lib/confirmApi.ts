@@ -532,3 +532,59 @@ export async function listAudit(confirmationId?: string, limit = 300): Promise<C
     at: r.at,
   }));
 }
+
+// ── 회수 독촉 대상 ──────────────────────────────────────────
+/** 'YYYY-MM-DD' → 일(day) 단위 정수. 시간대 영향을 받지 않도록 UTC 자정 기준으로 센다. */
+const toDayNumber = (ymd: string): number => Math.floor(Date.parse(`${ymd}T00:00:00Z`) / 86_400_000);
+
+/** 발송일로부터 오늘까지 지난 날수. 발송일이 없으면 null. */
+export function daysSince(ymd: string | null, todayYmd?: string): number | null {
+  if (!ymd) return null;
+  const today = todayYmd ?? new Date().toISOString().slice(0, 10);
+  return toDayNumber(today) - toDayNumber(ymd);
+}
+
+/** 독촉 임계일 선택지 — 전자조회는 며칠, 우편은 2주 남짓 걸리는 것이 보통이라 14일을 기본으로 둔다. */
+export const OVERDUE_THRESHOLDS = [7, 14, 21, 30] as const;
+export const DEFAULT_OVERDUE_DAYS = 14;
+
+export interface OverdueRow {
+  conf: Confirmation;
+  item: ConfirmItem;
+  /** 발송 후 경과일 */
+  days: number;
+}
+
+/**
+ * 독촉 대상 = 발송했는데 아직 회수도 반송도 아닌 건 중 임계일이 지난 것.
+ * 반송은 이미 '조치 필요'로 따로 다루므로 여기서 제외한다.
+ * 오래 밀린 것부터 위로 올린다.
+ */
+export function findOverdue(
+  rows: Confirmation[],
+  itemsByConf: Record<string, ConfirmItem[]>,
+  thresholdDays: number,
+  todayYmd?: string,
+): OverdueRow[] {
+  const out: OverdueRow[] = [];
+  for (const conf of rows) {
+    for (const item of itemsByConf[conf.id] ?? []) {
+      if (!item.sent || item.collectStatus !== null) continue;
+      const days = daysSince(item.sentDate, todayYmd);
+      if (days === null || days < thresholdDays) continue;
+      out.push({ conf, item, days });
+    }
+  }
+  return out.sort((a, b) => b.days - a.days || a.conf.companyName.localeCompare(b.conf.companyName, 'ko'));
+}
+
+/** 발송했지만 아직 미회수인 건(임계일 무관) — 요약 숫자용 */
+export function countPending(rows: Confirmation[], itemsByConf: Record<string, ConfirmItem[]>): number {
+  let n = 0;
+  for (const conf of rows) {
+    for (const item of itemsByConf[conf.id] ?? []) {
+      if (item.sent && item.collectStatus === null) n++;
+    }
+  }
+  return n;
+}

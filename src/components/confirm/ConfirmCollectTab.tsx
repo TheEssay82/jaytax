@@ -12,7 +12,12 @@ import {
   defaultFiscalYear,
   type Confirmation,
   type ConfirmItem,
+  findOverdue,
+  countPending,
+  OVERDUE_THRESHOLDS,
+  DEFAULT_OVERDUE_DAYS,
   type CollectStatus,
+  type OverdueRow,
 } from '../../lib/confirmApi';
 import TrackingLink from '../docsend/TrackingLink';
 import { Bar } from './ConfirmDispatchTab';
@@ -43,6 +48,9 @@ export default function ConfirmCollectTab() {
   const [msg, setMsg] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 독촉 대상 — 발송했는데 임계일이 지나도록 회신이 없는 건. 거래처를 가로질러 본다.
+  const [mode, setMode] = useState<'client' | 'overdue'>('client');
+  const [overdueDays, setOverdueDays] = useState<number>(DEFAULT_OVERDUE_DAYS);
 
   async function load(y = year) {
     try {
@@ -82,6 +90,8 @@ export default function ConfirmCollectTab() {
 
   const yearOptions = useMemo(() => [...new Set([defaultFiscalYear(), ...years])].sort((a, b) => b - a), [years]);
   const totals = useMemo(() => summarize(rows.flatMap((r) => items[r.id] ?? [])), [rows, items]);
+  const overdue = useMemo(() => findOverdue(rows, items, overdueDays), [rows, items, overdueDays]);
+  const pending = useMemo(() => countPending(rows, items), [rows, items]);
 
   if (loading) {
     return (
@@ -115,8 +125,45 @@ export default function ConfirmCollectTab() {
           <span style={{ fontSize: 11.5, color: '#B91C1C', fontWeight: 700 }}>반송 {totals.returned}</span>
         )}
         <button className="btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => void load()}>🔄 새로고침</button>
+
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button
+            className="btn-sm"
+            style={{
+              fontSize: 11, padding: '2px 8px', fontWeight: 700,
+              ...(mode === 'overdue'
+                ? { background: '#FEE2E2', color: '#B91C1C' }
+                : overdue.length > 0
+                  ? { background: '#FEF3C7', color: '#92400E' }
+                  : {}),
+            }}
+            onClick={() => { setMode(mode === 'overdue' ? 'client' : 'overdue'); setOpenId(null); }}
+            title="발송했는데 회신이 없는 건을 거래처 구분 없이 모아 봅니다"
+          >
+            {mode === 'overdue' ? '← 거래처별로' : `⏰ 독촉 대상 ${overdue.length}`}
+          </button>
+          {mode === 'overdue' && (
+            <select
+              value={overdueDays}
+              onChange={(e) => setOverdueDays(Number(e.target.value))}
+              style={{ fontSize: 11.5 }}
+              title="발송 후 며칠이 지난 건을 독촉 대상으로 볼지"
+            >
+              {OVERDUE_THRESHOLDS.map((d) => <option key={d} value={d}>{d}일 경과</option>)}
+            </select>
+          )}
+        </span>
       </div>
 
+      {mode === 'overdue' ? (
+        <OverdueView
+          rows={overdue}
+          days={overdueDays}
+          pending={pending}
+          busy={busy}
+          onRun={run}
+        />
+      ) : (
       <div className="tbl-scroll">
         <table className="tbl">
           <thead>
@@ -158,6 +205,7 @@ export default function ConfirmCollectTab() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
@@ -419,5 +467,162 @@ function CollectRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+/**
+ * 독촉 대상 — 발송했는데 회신이 없는 건을 거래처 구분 없이 모아 본다.
+ * 오래 밀린 것부터 위로 올려, 전화 돌릴 순서를 그대로 보여준다.
+ */
+function OverdueView({
+  rows, days, pending, busy, onRun,
+}: {
+  rows: OverdueRow[];
+  days: number;
+  pending: number;
+  busy: boolean;
+  onRun: (job: () => Promise<void>, done?: string) => Promise<void>;
+}) {
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const today = new Date().toISOString().slice(0, 10);
+
+  const toggle = (id: string) =>
+    setSel((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+
+  async function bulk(status: CollectStatus) {
+    const ids = [...sel];
+    if (!ids.length) return;
+    let reason = '';
+    if (status === '반송') {
+      const r = prompt(`선택한 ${ids.length}건을 반송 처리합니다.\n반송 사유를 입력하세요.`, '');
+      if (r === null) return;
+      if (!r.trim()) { alert('반송 사유를 입력해야 합니다.'); return; }
+      reason = r;
+    }
+    await onRun(async () => {
+      const { ok, fails } = await bulkApply(ids, (id) => setCollect(id, status, { date: today, reason }));
+      setSel(new Set());
+      if (fails.length) throw new Error(`${ok}건 처리, ${fails.length}건 실패 — ${fails[0]}`);
+    }, status === '반송' ? `↪ ${ids.length}건 반송 처리` : `✅ ${ids.length}건 회수완료`);
+  }
+
+  /** 오래될수록 붉게 — 30일 넘으면 강조 */
+  const dayStyle = (d: number): React.CSSProperties =>
+    d >= 30
+      ? { color: '#B91C1C', fontWeight: 800 }
+      : d >= 21
+        ? { color: '#92400E', fontWeight: 700 }
+        : { color: '#555' };
+
+  return (
+    <>
+      <div className="alert-i" style={{ fontSize: 11, marginBottom: 8 }}>
+        ⏰ 발송한 지 <b>{days}일</b> 넘도록 회신이 없는 건입니다({rows.length}건 / 미회수 전체 {pending}건).
+        오래 밀린 순으로 보여드리니 위에서부터 확인하세요. 반송된 건은 이미 조치 대상이라 여기 나오지 않습니다.
+      </div>
+
+      {rows.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+          <button className="btn-sm" style={{ fontSize: 11 }} disabled={busy} onClick={() => setSel(new Set(rows.map((r) => r.item.id)))}>
+            전체선택 ({rows.length})
+          </button>
+          <button className="btn-sm" style={{ fontSize: 11 }} disabled={busy || sel.size === 0} onClick={() => setSel(new Set())}>해제</button>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: '#1A2B52' }}>{sel.size}건 선택</span>
+          <button className="btn-p" style={{ fontSize: 11 }} disabled={busy || sel.size === 0} onClick={() => void bulk('회수완료')}>
+            ✅ 회수완료
+          </button>
+          <button
+            className="btn-sm"
+            style={{ fontSize: 11, background: '#FEE2E2', color: '#B91C1C', fontWeight: 700 }}
+            disabled={busy || sel.size === 0}
+            onClick={() => void bulk('반송')}
+          >
+            ↪ 반송 (사유 입력)
+          </button>
+        </div>
+      )}
+
+      <div className="tbl-scroll">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th style={{ width: 32, textAlign: 'center' }}>☑</th>
+              <th style={{ width: 66, textAlign: 'center' }}>경과</th>
+              <th>거래처명</th>
+              <th style={{ width: 88 }}>담당회계사</th>
+              <th style={{ width: 84 }}>구분</th>
+              <th style={{ width: 170 }}>금융기관명</th>
+              <th style={{ width: 84, textAlign: 'center' }}>조회방식</th>
+              <th style={{ width: 168 }}>등기번호</th>
+              <th style={{ width: 92, textAlign: 'center' }}>발송일</th>
+              <th style={{ width: 128 }}>연락처</th>
+              <th style={{ width: 140, textAlign: 'center' }}>처리</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={11} style={{ textAlign: 'center', color: '#7A9B7A', padding: 24, fontSize: 12.5 }}>
+                🎉 {days}일 넘게 밀린 건이 없습니다.
+              </td></tr>
+            )}
+            {rows.map(({ conf, item, days: d }) => (
+              <tr key={item.id}>
+                <td style={{ textAlign: 'center' }}>
+                  <input type="checkbox" checked={sel.has(item.id)} onChange={() => toggle(item.id)} />
+                </td>
+                <td style={{ textAlign: 'center', fontSize: 12, ...dayStyle(d) }}>{d}일</td>
+                <td style={{ fontSize: 12.5 }}><b style={{ color: '#1A2B52' }}>{conf.companyName}</b></td>
+                <td style={{ fontSize: 11.5 }}>{conf.accountantName || <span style={{ color: '#CCC' }}>—</span>}</td>
+                <td style={{ fontSize: 11.5 }}>{item.kind}</td>
+                <td style={{ fontSize: 12 }}><b>{item.institution}</b></td>
+                <td style={{ textAlign: 'center' }}>
+                  <span
+                    className="bdg"
+                    style={{
+                      fontSize: 10,
+                      ...(item.isElectronic ? { background: '#DBEAFE', color: '#1E40AF' } : { background: '#FEF3C7', color: '#92400E' }),
+                    }}
+                  >
+                    {item.isElectronic ? '전자조회' : '실물발송'}
+                  </span>
+                </td>
+                <td>{item.isElectronic ? <span style={{ color: '#CCC', fontSize: 11 }}>—</span> : <TrackingLink no={item.trackingNo} />}</td>
+                <td style={{ textAlign: 'center', fontSize: 11 }}>{item.sentDate?.replace(/-/g, '.') ?? '—'}</td>
+                <td style={{ fontSize: 11 }}>{item.phone || <span style={{ color: '#CCC' }}>—</span>}</td>
+                <td style={{ textAlign: 'center' }}>
+                  <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
+                    <button
+                      className="btn-sm btn-p"
+                      style={{ fontSize: 10.5 }}
+                      disabled={busy}
+                      onClick={() => void onRun(() => setCollect(item.id, '회수완료', { date: today }), '✅ 회수완료')}
+                    >
+                      회수
+                    </button>
+                    <button
+                      className="btn-sm"
+                      style={{ fontSize: 10.5, background: '#FEE2E2', color: '#B91C1C' }}
+                      disabled={busy}
+                      onClick={() => {
+                        const r = prompt(`‘${item.institution}’ 반송 사유를 입력하세요.`, '');
+                        if (r === null) return;
+                        if (!r.trim()) { alert('반송 사유를 입력해야 합니다.'); return; }
+                        void onRun(() => setCollect(item.id, '반송', { date: today, reason: r }), '↪ 반송 처리');
+                      }}
+                    >
+                      반송
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
