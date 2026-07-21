@@ -126,7 +126,7 @@ export default function ConfirmStatusTab() {
           className="btn-sm btn-sm-blue"
           style={{ fontSize: 11, padding: '2px 8px' }}
           disabled={rows.length === 0}
-          onClick={() => exportYearSummary(year, perClient)}
+          onClick={() => void exportYearSummary(year, perClient)}
           title="연도 총괄을 엑셀로 저장합니다"
         >
           ⬇ 총괄 엑셀
@@ -180,7 +180,7 @@ export default function ConfirmStatusTab() {
                     className="btn-sm"
                     style={{ fontSize: 10.5, padding: '1px 6px' }}
                     title="이 거래처의 진행현황 조서를 엑셀로 내려받습니다"
-                    onClick={() => exportConfirmationSheet(c, items[c.id] ?? [])}
+                    onClick={() => void exportConfirmationSheet(c, items[c.id] ?? [])}
                   >
                     ⬇
                   </button>

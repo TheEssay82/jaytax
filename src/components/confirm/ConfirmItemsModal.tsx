@@ -164,7 +164,7 @@ export default function ConfirmItemsModal({
               className="btn-sm"
               style={{ fontSize: 11 }}
               disabled={busy || items.length === 0}
-              onClick={() => downloadItems(confirmation.companyName, confirmation.fiscalYear, items.map(toInput))}
+              onClick={() => void downloadItems(confirmation.companyName, confirmation.fiscalYear, items.map(toInput))}
               title="현재 명세를 엑셀로 내려받아 수정 후 다시 올릴 수 있습니다"
             >
               ⬇ 현재 명세 다운로드
@@ -173,7 +173,7 @@ export default function ConfirmItemsModal({
               className="btn-sm"
               style={{ fontSize: 11 }}
               disabled={busy}
-              onClick={() => downloadBlankTemplate(confirmation.companyName)}
+              onClick={() => void downloadBlankTemplate(confirmation.companyName)}
               title="거래처에 보내 조회처 목록을 받아오는 빈 양식"
             >
               ⬇ 빈 양식 다운로드
