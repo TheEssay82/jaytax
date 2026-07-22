@@ -13,8 +13,16 @@ export const SEND_STATUS = ['미접수', '진행중', '발송완료'] as const;
 /** 발송완료 이후 후속 상태 — 사유·메모(status_note) 함께 기록
  *  흐름: 발송완료 → [처리자]반송 → [원 요청자]재발송요청 → [처리자]재발송완료 */
 export const POST_SEND_STATUS = ['반송', '재발송요청', '재발송완료'] as const;
+/**
+ * 취소 — 요청했다가 필요 없어지거나 잘못 요청한 건.
+ * 기록은 남기되 처리 대기열·현황 집계에서 빠진다(삭제와 다르다).
+ * 사유는 status_note 에 남는다.
+ */
+export const CANCELED = '취소';
 /** 처리 대기열(미완결) 상태 — 재발송요청은 처리자가 다시 처리해야 하는 건 */
 export const isClosedStatus = (s: string) => s === '발송완료' || s === '재발송완료';
+/** 더 이상 처리·집계 대상이 아닌 건(취소) */
+export const isCanceled = (s: string) => s === CANCELED;
 /** 의뢰인 후보(변수정리) — 대리 지정용 */
 export const DOC_REQUESTERS = ['조현규', '김준성', '정우철', '송현주', '정남지', '김민섭', '김동주', '안지연'] as const;
 
@@ -242,6 +250,22 @@ export async function requestResend(id: string, memo: string, bounceNote?: strin
   const { data, error } = await supabase
     .from('doc_send_requests')
     .update({ status: '재발송요청', status_note: note || null })
+    .eq('id', id)
+    .select('id');
+  if (error) throw new Error(error.message);
+  assertChanged(data);
+}
+
+/**
+ * 발송요청 취소 — 처리 시작 후에도 무를 수 있다. 사유는 필수.
+ * 발송일·등기번호는 남겨 둔다(실물이 이미 나갔을 수 있어 그 사실은 지우지 않는다).
+ */
+export async function cancelRequest(id: string, reason: string): Promise<void> {
+  const r = reason.trim();
+  if (!r) throw new Error('취소 사유를 입력하세요.');
+  const { data, error } = await supabase
+    .from('doc_send_requests')
+    .update({ status: CANCELED, status_note: r })
     .eq('id', id)
     .select('id');
   if (error) throw new Error(error.message);

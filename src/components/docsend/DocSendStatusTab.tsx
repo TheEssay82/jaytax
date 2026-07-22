@@ -18,6 +18,7 @@ const statusStyle = (s: string): React.CSSProperties => {
   if (s === '재발송완료') return { background: '#CFFAFE', color: '#155E75' };
   if (s === '반송') return { background: '#FEE2E2', color: '#B91C1C' };
   if (s === '재발송요청') return { background: '#FEF3C7', color: '#92400E' };
+  if (s === '취소') return { background: '#E5E7EB', color: '#6B7280' };
   if (s === '진행중') return { background: '#DBEAFE', color: '#1E40AF' };
   return { background: '#F3F4F6', color: '#6B7280' };
 };
@@ -34,7 +35,8 @@ const STATUS_FILTERS = [
   { v: '재발송요청', label: '재발송요청' },
   { v: '발송완료', label: '발송완료' },
   { v: '재발송완료', label: '재발송완료' },
-  { v: 'all', label: '전체' },
+  { v: '취소', label: '취소' },
+  { v: 'all', label: '전체 (취소 포함)' },
 ] as const;
 
 export default function DocSendStatusTab() {
@@ -118,18 +120,22 @@ export default function DocSendStatusTab() {
     });
   }, [reqs, dateBasis, from, to]);
 
+  // 취소 건은 업무 집계에서 빼고 본다(필터에서 '취소'/'전체'를 고를 때만 보인다).
+  const active = useMemo(() => ranged.filter((r) => r.status !== '취소'), [ranged]);
+
   const counts = useMemo(() => ({
-    미접수: ranged.filter((r) => r.status === '미접수').length,
-    진행중: ranged.filter((r) => r.status === '진행중').length,
-    반송: ranged.filter((r) => r.status === '반송').length,
-    재발송요청: ranged.filter((r) => r.status === '재발송요청').length,
-    발송완료: ranged.filter((r) => r.status === '발송완료').length,
-    재발송완료: ranged.filter((r) => r.status === '재발송완료').length,
-    전체: ranged.length,
-  }), [ranged]);
+    미접수: active.filter((r) => r.status === '미접수').length,
+    진행중: active.filter((r) => r.status === '진행중').length,
+    반송: active.filter((r) => r.status === '반송').length,
+    재발송요청: active.filter((r) => r.status === '재발송요청').length,
+    발송완료: active.filter((r) => r.status === '발송완료').length,
+    재발송완료: active.filter((r) => r.status === '재발송완료').length,
+    전체: active.length,
+    취소: ranged.length - active.length,
+  }), [ranged, active]);
 
   const view = useMemo(() => {
-    let list = ranged;
+    let list = statusF === 'all' || statusF === '취소' ? ranged : active;
     if (statusF === 'active') list = list.filter((r) => !isClosed(r.status));
     else if (statusF !== 'all') list = list.filter((r) => r.status === statusF);
     if (workF) list = list.filter((r) => r.workType === workF);
@@ -142,7 +148,7 @@ export default function DocSendStatusTab() {
     }
     const key = (r: SendRequest) => (sortBySent ? (r.sentDate || '') : r.requestDate) || '';
     return [...list].sort((a, b) => key(a).localeCompare(key(b)) * sortDir);
-  }, [ranged, statusF, workF, reqF, q, sortBySent, sortDir]);
+  }, [ranged, active, statusF, workF, reqF, q, sortBySent, sortDir]);
 
   const attCount = (r: SendRequest) => (r.batchId ? (attByBatch[r.batchId]?.length ?? 0) : 0);
 
@@ -167,6 +173,7 @@ export default function DocSendStatusTab() {
     { key: '반송', label: '반송(조치 필요)', n: counts.반송, filter: '반송', color: '#B91C1C' },
     { key: '재발송요청', label: '재발송요청', n: counts.재발송요청, filter: '재발송요청', color: '#92400E' },
     { key: '발송완료', label: `발송완료${counts.재발송완료 ? ` (+재발송 ${counts.재발송완료})` : ''}`, n: counts.발송완료, filter: '발송완료', color: '#065F46' },
+    ...(counts.취소 > 0 ? [{ key: '취소', label: '취소', n: counts.취소, filter: '취소', color: '#6B7280' }] : []),
     { key: '전체', label: '전체', n: counts.전체, filter: 'all', color: '#1A2B52' },
   ];
 

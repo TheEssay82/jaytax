@@ -39,6 +39,7 @@ const statusStyle = (s: string): React.CSSProperties => {
   if (s === '재발송완료') return { background: '#CFFAFE', color: '#155E75' };
   if (s === '반송') return { background: '#FEE2E2', color: '#B91C1C' };
   if (s === '재발송요청') return { background: '#FEF3C7', color: '#92400E' };
+  if (s === '취소') return { background: '#E5E7EB', color: '#6B7280' };
   if (s === '진행중') return { background: '#DBEAFE', color: '#1E40AF' };
   return { background: '#F3F4F6', color: '#6B7280' }; // 미접수
 };
@@ -56,7 +57,8 @@ const emptyCommon = (requester: string): SendCommon => ({
 });
 
 export default function DocSendRequestTab() {
-  const { readonly, profileName, user } = useAuth();
+  const { readonly, profileName, user, role } = useAuth();
+  const isSuper = role === 'superuser';   // 테스트·오등록 정리용 삭제 권한
   const canWrite = !readonly;
   const defaultRequester = (DOC_REQUESTERS as readonly string[]).includes(profileName) ? profileName : DOC_REQUESTERS[0];
 
@@ -148,7 +150,19 @@ export default function DocSendRequestTab() {
     }
   }
   async function handleDelete(r: SendRequest) {
-    if (!confirm(`발송요청(${r.companyName} · ${r.sendKind})을 삭제하시겠습니까?`)) return;
+    // 처리가 시작된 건은 실물 발송과 대응할 수 있어 더 분명히 경고한다(최고관리자만 도달).
+    const warn =
+      r.status === '미접수'
+        ? `발송요청(${r.companyName} · ${r.sendKind})을 삭제하시겠습니까?`
+        : `⚠️ 처리가 진행된 건입니다 (상태: ${r.status}${r.trackingNo ? `, 등기 ${r.trackingNo}` : ''}).
+` +
+          `${r.companyName} · ${r.sendKind}
+
+` +
+          `실제 발송과 대응하는 기록일 수 있습니다. 그래도 삭제할까요?
+` +
+          `(필요 없어진 요청이라면 '발송요청 처리'에서 취소로 남기는 편이 낫습니다. 삭제해도 변경 로그에는 원본이 남습니다.)`;
+    if (!confirm(warn)) return;
     try {
       await deleteSendRequest(r.id);
       await load();
@@ -312,6 +326,14 @@ export default function DocSendRequestTab() {
                           onClick={() => setResendFor(r)}
                         >
                           🔄 재발송요청
+                        </button>
+                      ) : isSuper ? (
+                        <button
+                          className="btn-sm btn-sm-del"
+                          title="최고관리자 삭제 — 처리 이력이 있는 건입니다(이력에는 원본이 남습니다)"
+                          onClick={() => handleDelete(r)}
+                        >
+                          🗑
                         </button>
                       ) : (
                         <span style={{ fontSize: 10, color: '#AAA' }}>

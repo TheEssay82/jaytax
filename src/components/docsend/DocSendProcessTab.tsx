@@ -8,6 +8,8 @@ import {
   listSendRequests,
   listAttachments,
   setProcessing,
+  cancelRequest,
+  isCanceled,
   type SendRequest,
   type SendAttachment,
 } from '../../lib/docSendApi';
@@ -19,6 +21,7 @@ const statusStyle = (s: string): React.CSSProperties => {
   if (s === '재발송완료') return { background: '#CFFAFE', color: '#155E75' };
   if (s === '반송') return { background: '#FEE2E2', color: '#B91C1C' };
   if (s === '재발송요청') return { background: '#FEF3C7', color: '#92400E' };
+  if (s === '취소') return { background: '#E5E7EB', color: '#6B7280' };
   if (s === '진행중') return { background: '#DBEAFE', color: '#1E40AF' };
   return { background: '#F3F4F6', color: '#6B7280' };
 };
@@ -79,7 +82,8 @@ export default function DocSendProcessTab() {
   }), [reqs]);
 
   const view = useMemo(() => {
-    let list = reqs.filter((r) => (showDone ? true : !isClosed(r.status))); // 반송은 항상 표시(후속조치 필요)
+    let list = reqs.filter((r) => !isCanceled(r.status));            // 취소 건은 처리 대상이 아니다
+    list = list.filter((r) => (showDone ? true : !isClosed(r.status))); // 반송은 항상 표시(후속조치 필요)
     if (q.trim()) {
       const s = q.trim().toLowerCase();
       list = list.filter((r) =>
@@ -189,6 +193,22 @@ export default function DocSendProcessTab() {
       alert('되돌리기 실패: ' + (e instanceof Error ? e.message : e));
     }
   }
+  /** 요청 취소 — 처리 시작 후에도 무를 수 있다(사유 필수). 기록은 남고 대기열에서만 빠진다. */
+  async function cancel(r: SendRequest) {
+    const reason = prompt(`‘${r.companyName}’ 발송요청을 취소합니다.
+취소 사유를 입력하세요.`, '');
+    if (reason === null) return;
+    if (!reason.trim()) { alert('취소 사유를 입력해야 합니다.'); return; }
+    try {
+      await cancelRequest(r.id, reason);
+      await load();
+      setOpenId(null);
+      flash('🚫 취소 처리');
+    } catch (e) {
+      alert('취소 실패: ' + (e instanceof Error ? e.message : e));
+    }
+  }
+
   // 발송완료 이후 후속 상태(반송/재발송완료) + 사유
   async function changeStatus(r: SendRequest, to: string, note: string) {
     if (to === '반송' && !note.trim()) {
@@ -354,6 +374,7 @@ export default function DocSendProcessTab() {
                 onComplete={(d, t) => complete(r, d, t)}
                 onRevert={(to) => revert(r, to)}
                 onChangeStatus={(to, note) => changeStatus(r, to, note)}
+                onCancel={() => cancel(r)}
               />
             ))}
           </tbody>
@@ -387,6 +408,7 @@ function ProcessRow({
   onComplete,
   onRevert,
   onChangeStatus,
+  onCancel,
   checked,
   onCheck,
   onCheckBatch,
@@ -405,6 +427,7 @@ function ProcessRow({
   onComplete: (sentDate: string, trackingNo: string) => void;
   onRevert: (to: string) => void;
   onChangeStatus: (to: string, note: string) => void;
+  onCancel: () => void;
 }) {
   const [sentDate, setSentDate] = useState(r.sentDate || todayYmd());
   const [trackingNo, setTrackingNo] = useState(r.trackingNo || '');
@@ -470,6 +493,16 @@ function ProcessRow({
               )}
               {isPost && (
                 <button className="btn-sm btn-sm-blue" style={{ fontSize: 11 }} onClick={onToggle} title="반송·재발송완료 등 후속 처리">{open ? '접기' : '✏️ 상태'}</button>
+              )}
+              {r.status !== '취소' && (
+                <button
+                  className="btn-sm"
+                  style={{ fontSize: 10.5, color: '#6B7280' }}
+                  onClick={onCancel}
+                  title="필요 없어진 요청을 취소합니다(기록은 남고 대기열에서 빠집니다)"
+                >
+                  🚫 취소
+                </button>
               )}
             </>
           )}
