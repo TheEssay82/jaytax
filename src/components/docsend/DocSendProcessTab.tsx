@@ -257,7 +257,7 @@ export default function DocSendProcessTab() {
       {error && <div className="alert-w">{error}</div>}
       {canProcess ? (
         <div className="alert-i" style={{ fontSize: 11 }}>
-          🖨️ 요청된 발송 건이 여기 모입니다. <b>‘처리 시작’</b>을 누르면 상태가 <b>진행중</b>으로 바뀝니다. 발송일(등기면 등기번호)을 입력하고 <b>‘완료’</b>를 누르면 <b>발송완료</b>됩니다. 발송완료 후에는 <b>반송·재발송완료</b>(사유 기재)로 후속 처리할 수 있습니다. 반송 건은 <b>요청자가 ‘재발송요청’</b>을 올리면 다시 대기열 상단에 나타나며, 발송일·등기번호를 입력해 <b>재발송완료</b>로 마감합니다. 등기번호를 클릭하면 우체국 배달조회가 새 창으로 열립니다.
+          🖨️ 요청된 발송 건이 여기 모입니다. <b>‘처리 시작’</b>을 누르면 상태가 <b>진행중</b>으로 바뀝니다. 발송일(등기면 등기번호)을 입력하고 <b>‘완료’</b>를 누르면 <b>발송완료</b>됩니다. 발송완료 후에는 <b>반송·재발송완료</b>(사유 기재)로 후속 처리할 수 있습니다. 반송 건은 <b>요청자가 ‘재발송요청’</b>을 올리면 다시 대기열 상단에 나타나며, 발송일·등기번호를 입력해 <b>재발송완료</b>로 마감합니다. 등기번호를 클릭하면 우체국 배달조회가 새 창으로 열립니다. <b style={{ color: '#8a5a00' }}>잘못 처리한 건을 되돌리려면 아래 ‘발송완료 포함’을 켜면 나타납니다</b>(되돌리기·취소 가능).
         </div>
       ) : (
         <div className="alert-i" style={{ fontSize: 11 }}>
@@ -269,7 +269,7 @@ export default function DocSendProcessTab() {
         <input placeholder="🔍 거래처·수신자·문서명·등기번호" value={q} onChange={(e) => setQ(e.target.value)} />
         <label style={{ fontSize: 12, color: '#555', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} />
-          발송완료 포함
+          발송완료 포함 (되돌리기·취소하려면 켜세요)
         </label>
         <span style={{ fontSize: 11, color: '#888' }}>{view.length}건</span>
         <button className="btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => void refresh()} disabled={busy} title="최신 내역을 다시 불러옵니다">

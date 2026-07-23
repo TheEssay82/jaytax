@@ -19,6 +19,7 @@ import {
   POST_SEND_STATUS,
   DOC_REQUESTERS,
   requestResend,
+  cancelRequest,
   type SendRequest,
   type SendCommon,
   type SendRecipient,
@@ -149,6 +150,31 @@ export default function DocSendRequestTab() {
       alert('수정 실패: ' + (e instanceof Error ? e.message : e));
     }
   }
+  /**
+   * 요청 취소 — 처리가 시작된 뒤 잘못 처리했음을 알게 된 경우 여기서 바로 되돌린다.
+   * (처리 화면은 완결건을 기본으로 숨겨서, 요청자가 취소하러 갈 곳이 없었다)
+   */
+  async function handleCancel(r: SendRequest) {
+    const reason = prompt(
+      `‘${r.companyName} · ${r.sendKind}’ 발송요청을 취소합니다.
+` +
+        `현재 상태: ${r.status}${r.trackingNo ? ` (등기 ${r.trackingNo})` : ''}
+
+` +
+        `취소 사유를 입력하세요.`,
+      '',
+    );
+    if (reason === null) return;
+    if (!reason.trim()) { alert('취소 사유를 입력해야 합니다.'); return; }
+    try {
+      await cancelRequest(r.id, reason);
+      await load();
+      flash('🚫 취소했습니다. 처리 대기열과 현황 집계에서 빠집니다.');
+    } catch (e) {
+      alert('취소 실패: ' + (e instanceof Error ? e.message : e));
+    }
+  }
+
   async function handleDelete(r: SendRequest) {
     // 처리가 시작된 건은 실물 발송과 대응할 수 있어 더 분명히 경고한다(최고관리자만 도달).
     const warn =
@@ -327,18 +353,40 @@ export default function DocSendRequestTab() {
                         >
                           🔄 재발송요청
                         </button>
-                      ) : isSuper ? (
-                        <button
-                          className="btn-sm btn-sm-del"
-                          title="최고관리자 삭제 — 처리 이력이 있는 건입니다(이력에는 원본이 남습니다)"
-                          onClick={() => handleDelete(r)}
-                        >
-                          🗑
-                        </button>
+                      ) : r.status !== '취소' ? (
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button
+                            className="btn-sm"
+                            style={{ fontSize: 10.5, color: '#6B7280' }}
+                            title="필요 없어졌거나 잘못 처리된 요청을 취소합니다(기록은 남습니다)"
+                            onClick={() => void handleCancel(r)}
+                          >
+                            🚫
+                          </button>
+                          {isSuper && (
+                            <button
+                              className="btn-sm btn-sm-del"
+                              title="최고관리자 삭제 — 처리 이력이 있는 건입니다(이력에는 원본이 남습니다)"
+                              onClick={() => handleDelete(r)}
+                            >
+                              🗑
+                            </button>
+                          )}
+                        </div>
                       ) : (
-                        <span style={{ fontSize: 10, color: '#AAA' }}>
-                          {r.status === '재발송요청' ? '재발송 대기' : '처리중/완료'}
-                        </span>
+                        // 취소된 건 — 최고관리자만 완전 삭제 가능
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <span style={{ fontSize: 10, color: '#AAA' }}>취소됨</span>
+                          {isSuper && (
+                            <button
+                              className="btn-sm btn-sm-del"
+                              title="최고관리자 삭제 (이력에는 원본이 남습니다)"
+                              onClick={() => handleDelete(r)}
+                            >
+                              🗑
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                   )}
