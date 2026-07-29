@@ -353,9 +353,10 @@ export default function DocSendStatusTab() {
                 </td>
                 <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.requestDate?.replace(/-/g, '.')}</td>
                 <td style={{ fontSize: 12 }}>{r.requester}</td>
-                <td style={{ fontSize: 12 }}>
+                <td style={{ fontSize: 12 }} title={r.address ? `${r.address}${r.phone ? ` · ☎ ${r.phone}` : ''}` : undefined}>
                   <b style={{ color: '#1A2B52' }}>{r.companyName}</b>
                   {r.recipientName && <span style={{ color: '#555' }}> · {r.recipientName} {r.recipientTitle}</span>}
+                  {r.address && <div style={{ fontSize: 10.5, color: '#888', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240 }}>📮 {r.address}</div>}
                 </td>
                 <td style={{ fontSize: 12 }}>{r.workType}</td>
                 <td style={{ fontSize: 12 }}>{r.sendKind}</td>

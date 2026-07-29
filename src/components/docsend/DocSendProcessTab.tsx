@@ -460,9 +460,21 @@ function ProcessRow({
         </td>
         <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.requestDate?.replace(/-/g, '.')}</td>
         <td style={{ fontSize: 12 }}>{r.requester}</td>
-        <td style={{ fontSize: 12 }}>
+        {/* 발송담당자가 봉투를 쓸 수 있도록 주소·우편번호·연락처를 함께 보여준다.
+            전자 발송이 아니라 실제 우편이므로 수취인 주소가 이 화면의 핵심 정보다. */}
+        <td style={{ fontSize: 12, minWidth: 200 }}>
           <b style={{ color: '#1A2B52' }}>{r.companyName}</b>
           {r.recipientName && <span style={{ color: '#555' }}> · {r.recipientName} {r.recipientTitle}</span>}
+          {r.address ? (
+            <div style={{ fontSize: 11, color: '#333', marginTop: 2, whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>
+              📮 {r.address}
+              {r.phone && <span style={{ color: '#888' }}>　☎ {r.phone}</span>}
+            </div>
+          ) : (
+            r.workType === '퀵서비스' && (
+              <div style={{ fontSize: 10.5, color: '#b45309', marginTop: 2 }}>⚠️ 주소 미입력</div>
+            )
+          )}
         </td>
         <td style={{ fontSize: 12 }}>{r.workType}</td>
         <td style={{ fontSize: 12 }}>{r.sendKind}</td>
