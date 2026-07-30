@@ -3,16 +3,18 @@ import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { normalizeRole, type Role } from '../lib/roles';
 
-// 세션 유휴 타임아웃 — 마지막 활동 후 이 시간이 지나면 자동 로그아웃.
-// (Supabase는 리프레시 토큰으로 무기한 유지되므로, 이 계층에서 유휴 만료를 강제한다.)
-const IDLE_KEY = 'jaytax:lastActive';
-const IDLE_LIMIT_MS = 30 * 60 * 1000; // 30분 (마지막 사용자 활동 기준)
+// 세션 하드 캡 — 로그인 시각 기준으로 이 시간이 지나면 활동 여부와 무관하게 강제 로그아웃.
+// (Supabase는 리프레시 토큰으로 무기한 유지되므로, 이 계층에서 만료를 강제한다.)
+// 근무시간(점심 포함 약 8시간, 9:30~17:30)에 맞춰 출근 로그인 후 하루는 유지되게 8시간.
+const LOGIN_KEY = 'jaytax:loginAt';
+const SESSION_LIMIT_MS = 8 * 60 * 60 * 1000; // 8시간 (로그인 시각 기준 하드 캡)
 
-const touchActivity = () => { try { localStorage.setItem(IDLE_KEY, String(Date.now())); } catch { /* ignore */ } };
-const idleExceeded = (): boolean => {
+const markLogin = () => { try { localStorage.setItem(LOGIN_KEY, String(Date.now())); } catch { /* ignore */ } };
+const sessionExpired = (): boolean => {
   try {
-    const v = localStorage.getItem(IDLE_KEY);
-    return v ? Date.now() - Number(v) > IDLE_LIMIT_MS : false;
+    const v = localStorage.getItem(LOGIN_KEY);
+    if (!v) return false; // 기록이 없으면 만료로 보지 않는다(복원 시 지금 시각으로 채움)
+    return Date.now() - Number(v) > SESSION_LIMIT_MS;
   } catch {
     return false;
   }
@@ -61,23 +63,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     supabase.auth.getSession().then(async ({ data }) => {
       if (!active) return;
-      // 복원된 세션이 유휴 만료됐으면(예: 밤새 켜둔 채 방치) 자동 로그아웃.
-      if (data.session && idleExceeded()) {
+      // 복원된 세션이 로그인 후 8시간을 넘겼으면(예: 어제 로그인한 채 방치) 강제 로그아웃.
+      if (data.session && sessionExpired()) {
         await supabase.auth.signOut();
         setSession(null);
         setLoading(false);
         return;
       }
-      if (data.session) { signedInRef.current = true; touchActivity(); }
+      // 로그인 시각 기록이 없는 기존 세션은 지금을 기준으로 삼는다(이후 8시간 캡 적용).
+      if (data.session) { signedInRef.current = true; if (!localStorage.getItem(LOGIN_KEY)) markLogin(); }
       setSession(data.session);
       if (data.session?.user) await loadProfile(data.session.user.id);
       setLoading(false);
     });
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, s) => {
       signedInRef.current = !!s;
-      // 활동 시각은 '실제 로그인' 때만 초기화한다. 토큰 자동갱신(TOKEN_REFRESHED)·초기세션 이벤트로
-      // 리셋하면 유휴 타이머가 영영 도달하지 못해 자동 로그아웃이 동작하지 않는다.
-      if (event === 'SIGNED_IN') touchActivity();
+      // 로그인 시각은 '실제 로그인' 때만 기록한다. 토큰 자동갱신(TOKEN_REFRESHED)·초기세션 이벤트로
+      // 리셋하면 하드 캡이 계속 밀려 강제 로그아웃이 동작하지 않는다(새로고침으로도 연장 불가하게).
+      if (event === 'SIGNED_IN') markLogin();
       setSession(s);
       if (s?.user) await loadProfile(s.user.id);
       else {
@@ -92,23 +95,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // 유휴 타임아웃: 활동 시각 갱신 + 주기 점검(만료 시 로그아웃)
+  // 하드 캡: 60초마다 로그인 후 8시간 경과 점검 + 탭 복귀 시 즉시 점검(만료 시 강제 로그아웃)
   useEffect(() => {
-    const onActivity = () => { if (signedInRef.current) touchActivity(); };
-    const winEvents: (keyof WindowEventMap)[] = ['mousedown', 'keydown', 'touchstart'];
-    for (const e of winEvents) window.addEventListener(e, onActivity, { passive: true });
-    // 탭 복귀 시 즉시 유휴 만료 점검
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
-      if (signedInRef.current && idleExceeded()) supabase.auth.signOut();
-      else onActivity();
-    };
+    const check = () => { if (signedInRef.current && sessionExpired()) supabase.auth.signOut(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
     document.addEventListener('visibilitychange', onVisible);
-    const timer = window.setInterval(() => {
-      if (signedInRef.current && idleExceeded()) supabase.auth.signOut();
-    }, 60_000);
+    const timer = window.setInterval(check, 60_000);
     return () => {
-      for (const e of winEvents) window.removeEventListener(e, onActivity);
       document.removeEventListener('visibilitychange', onVisible);
       window.clearInterval(timer);
     };
