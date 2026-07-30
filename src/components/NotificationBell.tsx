@@ -18,8 +18,14 @@ const dt = (s: string) => {
   return `${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-const icon = (kind: string) =>
-  kind === 'dispatch_new' ? '📥' : kind === 'dispatch_returned' ? '↩️' : kind === 'dispatch_resend' ? '🔄' : '🔔';
+const ICONS: Record<string, string> = {
+  dispatch_new: '📥',       // 새 발송요청(처리자에게)
+  dispatch_progress: '▶️',  // 처리 시작(요청자에게)
+  dispatch_done: '✅',      // 발송·재발송 완료(요청자에게)
+  dispatch_returned: '↩️',  // 반송(요청자에게)
+  dispatch_resend: '🔄',    // 재발송요청(처리자에게)
+};
+const icon = (kind: string) => ICONS[kind] ?? '🔔';
 
 export default function NotificationBell({ onNavigate }: { onNavigate: (tab: string) => void }) {
   const [items, setItems] = useState<Notification[]>([]);

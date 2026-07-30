@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.18.0',
+    date: '2026-07-22',
+    title: '발송요청자에게 진행 상황 알림',
+    highlights: [
+      '발송을 요청한 사람에게 진행 상황이 알림으로 갑니다 — ▶️ 처리 시작, ✅ 발송 완료(등기번호 포함), 🔄 재발송 완료. 기존 ↩️ 반송 알림에 더해졌습니다.',
+      '요청만 넣고 결과를 몰라 답답하던 것이, 이제 벨로 진행 상황을 바로 확인할 수 있습니다.',
+    ],
+  },
+  {
     version: '1.17.0',
     date: '2026-07-22',
     title: '알림 벨 — 문서발송 업무 통지',
