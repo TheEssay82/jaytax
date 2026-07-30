@@ -12,6 +12,7 @@ import {
   type Capability,
 } from '../lib/roles';
 import PasswordModal from './PasswordModal';
+import NotificationBell from './NotificationBell';
 import ClientsTab from './clients/ClientsTab';
 import WizardTab from './wizard/WizardTab';
 import HistoryTab from './history/HistoryTab';
@@ -332,6 +333,7 @@ function Shell() {
               {it.icon}
             </button>
           ))}
+          {role !== 'external' && <NotificationBell onNavigate={goTab} />}
           <span className="h-title">
             <span className="h-email">{user?.email}</span>
             <span className="bdg b-on" style={{ marginLeft: 6, fontSize: 10 }}>
