@@ -1,6 +1,7 @@
 // 헤더 알림 벨 — 안 읽은 개수 배지 + 드롭다운 목록.
 // · 앱이 열려 있으면 주기적으로(45초) 새 알림을 가져온다.
-// · 새 알림이 오고 사용자가 '알림 허용'을 했고 탭이 백그라운드면 윈도우 토스트(브라우저 알림)를 띄운다.
+// · 새 알림이 오고 사용자가 '알림 허용'을 했으면 윈도우 토스트(브라우저 알림)를 띄운다.
+//   앱을 보고 있든(포그라운드) 다른 창을 보고 있든 푸쉬알람처럼 뜬다.
 //   허용을 안 했거나 거부하면 벨 안에서만 보인다(그래도 동작).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listNotifications, markRead, markAllRead, type Notification } from '../lib/notificationsApi';
@@ -49,9 +50,9 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (tab: str
       list.forEach((n) => seenIds.current.add(n.id));
       first.current = false;
     } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      // 새로 도착한 안 읽은 알림만 토스트. 탭이 보이는 중이면 벨로 충분하니 생략.
+      // 새로 도착한 안 읽은 알림만 토스트. 앱을 보고 있어도(포그라운드) 푸쉬알람처럼 띄운다.
       const fresh = list.filter((n) => !n.readAt && !seenIds.current.has(n.id));
-      if (document.hidden && fresh.length) {
+      if (fresh.length) {
         const top = fresh[0];
         const n = new Notification('JAYTAX' + (fresh.length > 1 ? ` · 새 알림 ${fresh.length}건` : ''), {
           body: fresh.length > 1 ? `${top.title} 외 ${fresh.length - 1}건` : `${top.title} — ${top.body}`,
