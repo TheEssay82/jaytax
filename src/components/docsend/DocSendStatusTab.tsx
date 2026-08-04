@@ -360,7 +360,7 @@ export default function DocSendStatusTab() {
                 </td>
                 <td style={{ fontSize: 12 }}>{r.workType}</td>
                 <td style={{ fontSize: 12 }}>{r.sendKind}</td>
-                <td style={{ fontSize: 12 }}>
+                <td className="doc-name" style={{ fontSize: 12 }} title={r.docName || undefined}>
                   {r.docName || <span style={{ color: '#CCC' }}>—</span>}
                   {r.etcRequest && (
                     <div style={{ fontSize: 10.5, color: '#8a5a00', marginTop: 2, whiteSpace: 'pre-wrap' }} title="기타요청사항">📝 {r.etcRequest}</div>

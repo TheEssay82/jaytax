@@ -308,7 +308,7 @@ export default function DocSendRequestTab() {
                   </td>
                   <td style={{ fontSize: 12 }}>{r.workType}</td>
                   <td style={{ fontSize: 12 }}>{r.sendKind}</td>
-                  <td style={{ fontSize: 12 }}>{r.docName || <span style={{ color: '#CCC' }}>—</span>}</td>
+                  <td className="doc-name" style={{ fontSize: 12 }} title={r.docName || undefined}>{r.docName || <span style={{ color: '#CCC' }}>—</span>}</td>
                   <td style={{ textAlign: 'center', fontSize: 12 }}>{r.copies}</td>
                   <td style={{ textAlign: 'center', fontSize: 11 }}>{r.sealRequired ? '🔖 날인요' : '—'}</td>
                   <td style={{ textAlign: 'center', fontSize: 11 }}>{r.deadline === '긴급' ? <b style={{ color: '#dc2626' }}>긴급</b> : r.deadline}</td>

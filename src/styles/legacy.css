@@ -114,6 +114,8 @@ input:focus,select:focus{border-color:#1A2B52}
 .tbl th{background:#F5F1EB;padding:6px 8px;text-align:left;font-size:11px;color:#666;font-weight:700;border-bottom:2px solid #E0DCD4;white-space:nowrap;cursor:pointer}.tbl th:hover{background:#EDE9E2}
 .tbl th.r,.tbl td.r{text-align:right}
 .tbl td{padding:5px 8px;border-bottom:1px solid #EDE9E2;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+/* 문서명 등 긴 텍스트 셀: 상한을 넓혀 덜 잘리게(마우스 오버 시 title 툴팁으로 전체 표시) */
+.tbl td.doc-name{max-width:340px}
 .tbl tr:hover td{background:#FDFCFA}
 .tbl .tot td{background:#F5F1EB;font-weight:700}
 .cl-row{display:grid;grid-template-columns:auto 1fr auto auto auto;align-items:center;gap:10px;padding:9px 12px;border:1px solid #E0DCD4;border-radius:8px;cursor:pointer;background:#fff;margin-bottom:5px}
