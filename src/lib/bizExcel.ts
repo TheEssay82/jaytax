@@ -75,7 +75,10 @@ export async function parseBizExcelFile(file: File): Promise<ExcelRow[]> {
     const row = r as unknown[];
     const name = get(row, map.name);
     const code = get(row, map.code);
-    if ((!name && !code) || name.startsWith('※')) continue; // 빈 행·주석 스킵
+    // 빈 행·주석(※)·코드형식 아닌 행 스킵. 신규 등록 행은 code 가 빈칸이어야 한다.
+    if (!name && !code) continue;
+    if (name.startsWith('※') || code.startsWith('※')) continue;
+    if (code && !/^[A-Za-z]\d+-\d+$/.test(code)) continue; // 유효 코드(L0001-01) 아니면 스킵
     out.push({
       code, kind: get(row, map.kind), name, corpForm: get(row, map.corpForm), corpFormPos: get(row, map.corpFormPos),
       corpRegNo: get(row, map.corpRegNo), residentNo: get(row, map.residentNo), establishedDate: get(row, map.establishedDate),
@@ -112,7 +115,13 @@ export async function applyBizExcel(rows: ExcelRow[], entities: BizEntityFull[],
     for (const nm of cell.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean)) {
       if (already.has(nm)) continue;
       const sid = staffByName.get(nm);
-      if (sid) await assignStaff(placeId, sid, nm);
+      if (!sid) continue;
+      try {
+        await assignStaff(placeId, sid, nm);
+      } catch (e) {
+        // 이미 배정(활성 유니크 충돌)이면 무시, 그 외만 전파
+        if (!/duplicate|unique|23505|이미/i.test(e instanceof Error ? e.message : String(e))) throw e;
+      }
     }
   }
 

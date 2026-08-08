@@ -138,9 +138,14 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
               </label>
             </div>
             {excelResult && (
-              <div style={{ fontSize: 12, background: '#eef7ee', border: '1px solid #cbe3cb', borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
-                ✓ 완료 — 보강 {excelResult.updated} · 신규 {excelResult.created}
-                {excelResult.failed.length > 0 && <span style={{ color: '#c33' }}> · 실패 {excelResult.failed.length} ({excelResult.failed.slice(0, 5).map((f) => f.ref).join(', ')}{excelResult.failed.length > 5 ? '…' : ''})</span>}
+              <div style={{ fontSize: 12, background: excelResult.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${excelResult.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
+                <div>✓ 완료 — 보강 {excelResult.updated} · 신규 {excelResult.created} {excelResult.failed.length > 0 && <span style={{ color: '#c33' }}>· 실패 {excelResult.failed.length}</span>}</div>
+                {excelResult.failed.length > 0 && (
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#a33' }}>
+                    {excelResult.failed.slice(0, 10).map((f, i) => <li key={i}><b>{f.ref}</b>: {f.error}</li>)}
+                    {excelResult.failed.length > 10 && <li>… 외 {excelResult.failed.length - 10}건</li>}
+                  </ul>
+                )}
               </div>
             )}
           </div>
