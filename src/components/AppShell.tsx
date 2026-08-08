@@ -15,6 +15,7 @@ import PasswordModal from './PasswordModal';
 import NotificationBell from './NotificationBell';
 import ClientsTab from './clients/ClientsTab';
 import BizRegistryTab from './clients/BizRegistryTab';
+import SalesContractTab from './clients/SalesContractTab';
 import WizardTab from './wizard/WizardTab';
 import HistoryTab from './history/HistoryTab';
 import RequestsTab from './requests/RequestsTab';
@@ -425,7 +426,7 @@ function TabContent({
     case 'biz-register':
       return <BizRegistryTab />;
     case 'biz-contract':
-      return <PlaceholderTab title="📄 매출계약등록" desc="거래처의 매출계약(세무조정·감사·기장)을 등록·집계합니다. (step 2 — 개발 예정)" />;
+      return <SalesContractTab />;
     case 'biz-contacts':
       return <PlaceholderTab title="👤 거래처담당자등록" desc="거래처(외부) 담당자 연락처를 등록합니다. 기존 문서발송관리에서 이관 예정. (step 3 — 개발 예정)" />;
     case 'biz-status':
