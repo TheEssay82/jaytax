@@ -72,11 +72,54 @@ export interface BizPartner {
   sharePct: number | null;
 }
 
+export type CorpForm = '주식회사' | '유한회사' | '유한책임회사' | '합자회사' | '합명회사';
+export const CORP_FORMS: CorpForm[] = ['주식회사', '유한회사', '유한책임회사', '합자회사', '합명회사'];
+export const CORP_FORM_SYMBOL: Record<CorpForm, string> = {
+  주식회사: '㈜', 유한회사: '(유)', 유한책임회사: '(유책)', 합자회사: '(합자)', 합명회사: '(합명)',
+};
+export const RELATION_TYPES = ['부', '모', '자녀', '배우자', '형제자매', '동업', '기타'] as const;
+export type RelationType = (typeof RELATION_TYPES)[number];
+
+/** 법인격 통일 표기로 회사명 재조립. */
+export function corpDisplayName(name: string, form?: CorpForm | null, position?: '앞' | '뒤' | null): string {
+  if (!form || !position) return name;
+  const s = CORP_FORM_SYMBOL[form];
+  return position === '앞' ? `${s}${name}` : `${name}${s}`;
+}
+/** 원문 회사명에서 법인격을 분리(앞/뒤). PEF·사모투자합자회사는 합자회사로 통일. */
+export function parseCorpForm(raw: string): { name: string; form: CorpForm | null; position: '앞' | '뒤' | null } {
+  const s = (raw || '').trim();
+  // 구체적·긴 토큰 먼저(유한책임>유한, 사모투자합자>합자).
+  const TOKENS: [string, CorpForm][] = [
+    ['주식회사', '주식회사'], ['㈜', '주식회사'], ['(주)', '주식회사'],
+    ['유한책임회사', '유한책임회사'], ['(유책)', '유한책임회사'],
+    ['유한회사', '유한회사'], ['㈲', '유한회사'], ['(유)', '유한회사'],
+    ['사모투자합자회사', '합자회사'], ['합자회사', '합자회사'], ['(합자)', '합자회사'], ['(합)', '합자회사'],
+    ['합명회사', '합명회사'], ['(합명)', '합명회사'],
+    ['PEF', '합자회사'], ['pef', '합자회사'],
+  ];
+  for (const [tok, form] of TOKENS) {
+    if (s.startsWith(tok) && s.length > tok.length) return { name: s.slice(tok.length).trim(), form, position: '앞' };
+    if (s.endsWith(tok) && s.length > tok.length) return { name: s.slice(0, s.length - tok.length).trim(), form, position: '뒤' };
+  }
+  return { name: s, form: null, position: null };
+}
+
+export interface BizRelation {
+  id: string;
+  fromEntityId: string;
+  toEntityId: string;
+  relationType: string;
+  note: string;
+}
+
 export interface BizEntity {
   id: string;
   code: string;
   kind: BizKind;
   name: string;
+  corpForm: CorpForm | null;
+  corpFormPosition: '앞' | '뒤' | null;
   corpRegNo: string;
   /** 개인 주민번호 존재 여부(값은 RPC 로만 열람). */
   hasResidentNo: boolean;
@@ -86,11 +129,12 @@ export interface BizEntity {
   updatedAt?: string;
 }
 
-/** 화면용 조립 타입: 귀속주체 + 사업장(담당자 포함) + 대표이사 + 공동사업자. */
+/** 화면용 조립 타입: 귀속주체 + 사업장(담당자 포함) + 대표이사 + 공동사업자 + 개인관계. */
 export interface BizEntityFull extends BizEntity {
   places: BizPlace[];
   representatives: BizRepresentative[];
   partners: BizPartner[];
+  relations: BizRelation[];
 }
 
 // ── row → 도메인 매핑 ──────────────────────────────────────
@@ -100,6 +144,8 @@ const toEntity = (r: any): BizEntity => ({
   code: r.code || '',
   kind: r.kind,
   name: r.name || '',
+  corpForm: r.corp_form ?? null,
+  corpFormPosition: r.corp_form_position ?? null,
   corpRegNo: r.corp_reg_no || '',
   hasResidentNo: r.resident_no_enc != null,
   establishedDate: r.established_date,
@@ -156,19 +202,31 @@ const toPartner = (r: any): BizPartner => ({
   partnerEntityId: r.partner_entity_id,
   sharePct: r.share_pct != null ? Number(r.share_pct) : null,
 });
+const toRelation = (r: any): BizRelation => ({
+  id: r.id,
+  fromEntityId: r.from_entity_id,
+  toEntityId: r.to_entity_id,
+  relationType: r.relation_type,
+  note: r.note || '',
+});
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 // ── 조회: 전체를 조립해서 반환 ─────────────────────────────
 export async function listBizEntities(): Promise<BizEntityFull[]> {
-  const [ent, plc, stf, rep, prt] = await Promise.all([
+  const [ent, plc, stf, rep, prt, rel] = await Promise.all([
     supabase.from('biz_entity').select('*').order('code', { ascending: true }),
     supabase.from('biz_place').select('*').order('place_no', { ascending: true }),
     supabase.from('biz_place_staff').select('*').eq('active', true),
     supabase.from('biz_representative').select('*'),
     supabase.from('biz_place_partner').select('*'),
+    supabase.from('biz_entity_relation').select('*'),
   ]);
-  for (const r of [ent, plc, stf, rep, prt]) {
+  for (const r of [ent, plc, stf, rep, prt, rel]) {
     if (r.error) throw new Error(r.error.message);
+  }
+  const relByEntity = new Map<string, BizRelation[]>();
+  for (const rl of (rel.data as any[]).map(toRelation)) {
+    (relByEntity.get(rl.fromEntityId) ?? relByEntity.set(rl.fromEntityId, []).get(rl.fromEntityId)!).push(rl);
   }
   const staffByPlace = new Map<string, BizStaff[]>();
   for (const s of (stf.data as any[]).map(toStaff)) {
@@ -190,7 +248,7 @@ export async function listBizEntities(): Promise<BizEntityFull[]> {
   return (ent.data as any[]).map(toEntity).map((e) => {
     const places = placesByEntity.get(e.id) ?? [];
     const partners = places.flatMap((pl) => partnersByPlace.get(pl.id) ?? []);
-    return { ...e, places, representatives: repsByEntity.get(e.id) ?? [], partners };
+    return { ...e, places, representatives: repsByEntity.get(e.id) ?? [], partners, relations: relByEntity.get(e.id) ?? [] };
   });
 }
 
@@ -198,6 +256,8 @@ export async function listBizEntities(): Promise<BizEntityFull[]> {
 export interface EntityInput {
   kind: BizKind;
   name: string;
+  corpForm?: CorpForm | null;
+  corpFormPosition?: '앞' | '뒤' | null;
   corpRegNo?: string;
   establishedDate?: string | null;
   note?: string;
@@ -211,6 +271,8 @@ export async function createBizEntity(input: EntityInput): Promise<string> {
     .insert({
       kind: input.kind,
       name: input.name,
+      corp_form: input.kind === '법인' ? (input.corpForm ?? null) : null,
+      corp_form_position: input.kind === '법인' ? (input.corpFormPosition ?? null) : null,
       corp_reg_no: input.corpRegNo ?? null,
       established_date: input.establishedDate || null,
       note: input.note ?? null,
@@ -225,16 +287,31 @@ export async function createBizEntity(input: EntityInput): Promise<string> {
 }
 export async function updateBizEntity(
   id: string,
-  patch: Partial<Pick<EntityInput, 'name' | 'corpRegNo' | 'establishedDate' | 'note'>>,
+  patch: Partial<Pick<EntityInput, 'name' | 'corpForm' | 'corpFormPosition' | 'corpRegNo' | 'establishedDate' | 'note'>>,
 ): Promise<void> {
   const row: Record<string, unknown> = {};
   if (patch.name !== undefined) row.name = patch.name;
+  if (patch.corpForm !== undefined) row.corp_form = patch.corpForm || null;
+  if (patch.corpFormPosition !== undefined) row.corp_form_position = patch.corpFormPosition || null;
   if (patch.corpRegNo !== undefined) row.corp_reg_no = patch.corpRegNo || null;
   if (patch.establishedDate !== undefined) row.established_date = patch.establishedDate || null;
   if (patch.note !== undefined) row.note = patch.note || null;
   const { data, error } = await supabase.from('biz_entity').update(row).eq('id', id).select('id');
   if (error) throw new Error(error.message);
   assertWrote(data, '저장');
+}
+
+// ── 개인 관계(biz_entity_relation) ─────────────────────────
+export async function createBizRelation(fromEntityId: string, toEntityId: string, relationType: string, note?: string): Promise<void> {
+  const { error } = await supabase.from('biz_entity_relation').insert({
+    from_entity_id: fromEntityId, to_entity_id: toEntityId, relation_type: relationType, note: note ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
+export async function deleteBizRelation(id: string): Promise<void> {
+  const { data, error } = await supabase.from('biz_entity_relation').delete().eq('id', id).select('id');
+  if (error) throw new Error(error.message);
+  assertWrote(data, '삭제');
 }
 export async function deleteBizEntity(id: string): Promise<void> {
   const { data, error } = await supabase.from('biz_entity').delete().eq('id', id).select('id');

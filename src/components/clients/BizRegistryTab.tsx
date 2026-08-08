@@ -24,7 +24,12 @@ import {
   revealEntityResident,
   revealRepResident,
   revealPlaceHometaxPw,
+  createBizRelation,
+  deleteBizRelation,
+  corpDisplayName,
   SALES_TEAMS,
+  CORP_FORMS,
+  RELATION_TYPES,
   type BizEntityFull,
   type BizKind,
   type BizNature,
@@ -33,6 +38,7 @@ import {
   type TaxType,
   type Withholding,
   type RepType,
+  type CorpForm,
   type StaffProfile,
 } from '../../lib/bizRegistryApi';
 
@@ -140,12 +146,14 @@ export default function BizRegistryTab() {
 
   // ── 액션 ───────────────────────────────────────────────
   async function handleRegister(
-    ent: { kind: BizKind; name: string; corpRegNo: string; establishedDate: string; note: string; residentNo: string },
+    ent: { kind: BizKind; name: string; corpForm: CorpForm | ''; corpFormPosition: '앞' | '뒤'; corpRegNo: string; establishedDate: string; note: string; residentNo: string },
     hq: PlaceDraft,
   ) {
     try {
       const entityId = await createBizEntity({
         kind: ent.kind, name: ent.name.trim(),
+        corpForm: ent.kind === '법인' ? (ent.corpForm || null) : null,
+        corpFormPosition: ent.kind === '법인' && ent.corpForm ? ent.corpFormPosition : null,
         corpRegNo: ent.kind === '법인' ? ent.corpRegNo.trim() : undefined,
         establishedDate: ent.kind === '법인' ? ent.establishedDate || null : null,
         note: ent.note.trim(), residentNo: ent.kind === '개인' ? ent.residentNo.trim() : undefined,
@@ -170,10 +178,12 @@ export default function BizRegistryTab() {
       alert('추가 실패: ' + (e instanceof Error ? e.message : e));
     }
   }
-  async function handleEditEntity(e: BizEntityFull, p: { name: string; corpRegNo: string; establishedDate: string; note: string; residentNo: string }) {
+  async function handleEditEntity(e: BizEntityFull, p: { name: string; corpForm: CorpForm | ''; corpFormPosition: '앞' | '뒤'; corpRegNo: string; establishedDate: string; note: string; residentNo: string }) {
     try {
       await updateBizEntity(e.id, {
         name: p.name.trim(),
+        corpForm: e.kind === '법인' ? (p.corpForm || null) : null,
+        corpFormPosition: e.kind === '법인' && p.corpForm ? p.corpFormPosition : null,
         corpRegNo: e.kind === '법인' ? p.corpRegNo.trim() : undefined,
         establishedDate: e.kind === '법인' ? (p.establishedDate || null) : null,
         note: p.note.trim(),
@@ -268,7 +278,7 @@ export default function BizRegistryTab() {
                 {expanded.has(e.id) ? '▾' : '▸'}
               </button>
               <span style={codeBadge(e.kind)}>{e.code}</span>
-              <b style={{ fontSize: 13 }}>{e.name}</b>
+              <b style={{ fontSize: 13 }}>{corpDisplayName(e.name, e.corpForm, e.corpFormPosition)}</b>
               <span style={{ fontSize: 11, color: '#888' }}>
                 {e.kind === '법인' ? (e.corpRegNo ? `법인번호 ${e.corpRegNo}` : '법인번호 미입력') : (e.hasResidentNo ? '주민번호 등록됨' : '주민번호 미입력')}
               </span>
@@ -335,10 +345,15 @@ export default function BizRegistryTab() {
                   <div style={{ fontSize: 11, color: '#c80' }}>⚠️ 사업장이 없습니다 — 법인/개인 본체만 등록된 상태입니다.</div>
                 )}
 
-                {/* 대표이사(법인) / 공동사업자(개인) */}
-                {e.kind === '법인'
-                  ? <RepSection entity={e} allEntities={entities} canWrite={canWrite} onChanged={load} onReveal={reveal} />
-                  : <PartnerSection entity={e} allEntities={entities} canWrite={canWrite} onChanged={load} />}
+                {/* 대표이사(법인) / 공동사업자·개인관계(개인) */}
+                {e.kind === '법인' ? (
+                  <RepSection entity={e} allEntities={entities} canWrite={canWrite} onChanged={load} onReveal={reveal} />
+                ) : (
+                  <>
+                    <PartnerSection entity={e} allEntities={entities} canWrite={canWrite} onChanged={load} />
+                    <RelationSection entity={e} allEntities={entities} canWrite={canWrite} onChanged={load} />
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -392,11 +407,13 @@ function RegisterForm({
   staff, onSubmit, onCancel,
 }: {
   staff: StaffProfile[];
-  onSubmit: (ent: { kind: BizKind; name: string; corpRegNo: string; establishedDate: string; note: string; residentNo: string }, hq: PlaceDraft) => void;
+  onSubmit: (ent: { kind: BizKind; name: string; corpForm: CorpForm | ''; corpFormPosition: '앞' | '뒤'; corpRegNo: string; establishedDate: string; note: string; residentNo: string }, hq: PlaceDraft) => void;
   onCancel: () => void;
 }) {
   const [kind, setKind] = useState<BizKind>('법인');
   const [name, setName] = useState('');
+  const [corpForm, setCorpForm] = useState<CorpForm | ''>('주식회사');
+  const [corpFormPosition, setCorpFormPosition] = useState<'앞' | '뒤'>('앞');
   const [corpRegNo, setCorpRegNo] = useState('');
   const [establishedDate, setEstablishedDate] = useState('');
   const [residentNo, setResidentNo] = useState('');
@@ -404,9 +421,9 @@ function RegisterForm({
   const [hq, setHq] = useState<PlaceDraft>(emptyPlace());
 
   function submit() {
-    if (!name.trim()) return alert(kind === '법인' ? '법인명은 필수입니다.' : '성명은 필수입니다.');
+    if (!name.trim()) return alert(kind === '법인' ? '법인명(상호)은 필수입니다.' : '성명은 필수입니다.');
     if (!hq.placeName.trim()) return alert('본사 사업장명은 필수입니다. (법인·개인 모두 최소 1개 사업장 등록)');
-    onSubmit({ kind, name, corpRegNo, establishedDate, note, residentNo }, hq);
+    onSubmit({ kind, name, corpForm, corpFormPosition, corpRegNo, establishedDate, note, residentNo }, hq);
   }
 
   return (
@@ -421,11 +438,21 @@ function RegisterForm({
       {/* 귀속주체 필드 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
         <div className="frow">
-          <span className="fl">{kind === '법인' ? '법인명' : '성명'}<span className="req">*</span></span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === '법인' ? '예: ㈜오톰' : '예: 홍길동'} />
+          <span className="fl">{kind === '법인' ? '상호(법인격 제외)' : '성명'}<span className="req">*</span></span>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === '법인' ? '예: 오톰 (㈜는 아래 법인격에서)' : '예: 홍길동'} />
         </div>
         {kind === '법인' ? (
           <>
+            <div className="frow"><span className="fl">법인격</span>
+              <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <select value={corpForm} onChange={(e) => setCorpForm(e.target.value as CorpForm | '')} style={selStyle}>
+                  <option value="">없음</option>{CORP_FORMS.map((f) => <option key={f} value={f}>{f}</option>)}
+                </select>
+                <select value={corpFormPosition} onChange={(e) => setCorpFormPosition(e.target.value as '앞' | '뒤')} style={selStyle} disabled={!corpForm}>
+                  <option value="앞">앞</option><option value="뒤">뒤</option>
+                </select>
+                {corpForm && name && <span style={{ fontSize: 11, color: '#2a6' }}>→ {corpDisplayName(name, corpForm, corpFormPosition)}</span>}
+              </span></div>
             <div className="frow"><span className="fl">법인등록번호</span>
               <input value={corpRegNo} onChange={(e) => setCorpRegNo(e.target.value)} placeholder="000000-0000000" /></div>
             <div className="frow"><span className="fl">설립일</span>
@@ -559,8 +586,10 @@ function PlaceFields({ staff, siblings = [], initial, submitLabel, onSubmit, onC
 }
 
 // 귀속주체 수정 폼
-function EntityEditForm({ entity, onSave, onCancel }: { entity: BizEntityFull; onSave: (p: { name: string; corpRegNo: string; establishedDate: string; note: string; residentNo: string }) => void; onCancel: () => void }) {
+function EntityEditForm({ entity, onSave, onCancel }: { entity: BizEntityFull; onSave: (p: { name: string; corpForm: CorpForm | ''; corpFormPosition: '앞' | '뒤'; corpRegNo: string; establishedDate: string; note: string; residentNo: string }) => void; onCancel: () => void }) {
   const [name, setName] = useState(entity.name);
+  const [corpForm, setCorpForm] = useState<CorpForm | ''>(entity.corpForm ?? '');
+  const [corpFormPosition, setCorpFormPosition] = useState<'앞' | '뒤'>(entity.corpFormPosition ?? '앞');
   const [corpRegNo, setCorpRegNo] = useState(entity.corpRegNo);
   const [establishedDate, setEstablishedDate] = useState(entity.establishedDate ?? '');
   const [note, setNote] = useState(entity.note);
@@ -568,10 +597,20 @@ function EntityEditForm({ entity, onSave, onCancel }: { entity: BizEntityFull; o
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
-        <div className="frow"><span className="fl">{entity.kind === '법인' ? '법인명' : '성명'}<span className="req">*</span></span>
+        <div className="frow"><span className="fl">{entity.kind === '법인' ? '상호(법인격 제외)' : '성명'}<span className="req">*</span></span>
           <input value={name} onChange={(e) => setName(e.target.value)} /></div>
         {entity.kind === '법인' ? (
           <>
+            <div className="frow"><span className="fl">법인격</span>
+              <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <select value={corpForm} onChange={(e) => setCorpForm(e.target.value as CorpForm | '')} style={selStyle}>
+                  <option value="">없음</option>{CORP_FORMS.map((f) => <option key={f} value={f}>{f}</option>)}
+                </select>
+                <select value={corpFormPosition} onChange={(e) => setCorpFormPosition(e.target.value as '앞' | '뒤')} style={selStyle} disabled={!corpForm}>
+                  <option value="앞">앞</option><option value="뒤">뒤</option>
+                </select>
+                {corpForm && name && <span style={{ fontSize: 11, color: '#2a6' }}>→ {corpDisplayName(name, corpForm, corpFormPosition)}</span>}
+              </span></div>
             <div className="frow"><span className="fl">법인등록번호</span>
               <input value={corpRegNo} onChange={(e) => setCorpRegNo(e.target.value)} placeholder="000000-0000000" /></div>
             <div className="frow"><span className="fl">설립일</span>
@@ -585,7 +624,7 @@ function EntityEditForm({ entity, onSave, onCancel }: { entity: BizEntityFull; o
           <input value={note} onChange={(e) => setNote(e.target.value)} /></div>
       </div>
       <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-        <button className="btn-p" onClick={() => { if (!name.trim()) return alert('필수 항목입니다.'); onSave({ name, corpRegNo, establishedDate, note, residentNo }); }}>저장</button>
+        <button className="btn-p" onClick={() => { if (!name.trim()) return alert('필수 항목입니다.'); onSave({ name, corpForm, corpFormPosition, corpRegNo, establishedDate, note, residentNo }); }}>저장</button>
         <button className="btn-sm" onClick={onCancel}>취소</button>
       </div>
     </div>
@@ -686,6 +725,55 @@ function PartnerSection({ entity, allEntities, canWrite, onChanged }: {
           </select>
           <input placeholder="지분%" value={share} onChange={(e) => setShare(e.target.value)} style={{ width: 60 }} />
           <button className="btn-p" onClick={add}>추가</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 개인 관계 섹션 (개인 ↔ 개인: 가족·동업) ─────────────────
+function RelationSection({ entity, allEntities, canWrite, onChanged }: {
+  entity: BizEntityFull; allEntities: BizEntityFull[]; canWrite: boolean; onChanged: () => Promise<void> | void;
+}) {
+  const [toId, setToId] = useState('');
+  const [type, setType] = useState<string>(RELATION_TYPES[0]);
+  const [note, setNote] = useState('');
+  const persons = allEntities.filter((e) => e.kind === '개인' && e.id !== entity.id);
+
+  async function add() {
+    if (!toId) return alert('관계 대상(개인)을 선택하세요.');
+    try {
+      await createBizRelation(entity.id, toId, type, note.trim() || undefined);
+      setToId(''); setNote('');
+      await onChanged();
+    } catch (e) { alert('추가 실패: ' + (e instanceof Error ? e.message : e)); }
+  }
+  async function del(id: string) { if (confirm('관계를 삭제할까요?')) { try { await deleteBizRelation(id); await onChanged(); } catch (e) { alert(e instanceof Error ? e.message : String(e)); } } }
+
+  return (
+    <div style={{ borderTop: '1px dashed #ddd', paddingTop: 6 }}>
+      <div style={{ fontSize: 10.5, color: '#999', marginBottom: 3 }}>개인 관계 (가족·동업 — 예: 이도현 → 이소미 의 부)</div>
+      {entity.relations.map((r) => {
+        const to = allEntities.find((e) => e.id === r.toEntityId);
+        return (
+          <div key={r.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginBottom: 2 }}>
+            <span><b>{entity.name}</b> → <b>{to ? `${to.code} ${to.name}` : '(삭제된 개인)'}</b> 의 <span style={{ color: '#a55' }}>{r.relationType}</span></span>
+            {r.note && <span style={{ fontSize: 10.5, color: '#888' }}>({r.note})</span>}
+            {canWrite && <button className="btn-sm btn-sm-del" onClick={() => del(r.id)}>삭제</button>}
+          </div>
+        );
+      })}
+      {canWrite && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
+          <span style={{ fontSize: 11, color: '#777' }}>이 사람은</span>
+          <select value={toId} onChange={(e) => setToId(e.target.value)} style={selStyle}>
+            <option value="">대상 개인 선택</option>
+            {persons.map((p) => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
+          </select>
+          <span style={{ fontSize: 11, color: '#777' }}>의</span>
+          <select value={type} onChange={(e) => setType(e.target.value)} style={selStyle}>{RELATION_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
+          <input placeholder="비고(선택)" value={note} onChange={(e) => setNote(e.target.value)} style={{ width: 120 }} />
+          <button className="btn-p" onClick={add}>관계 추가</button>
         </div>
       )}
     </div>

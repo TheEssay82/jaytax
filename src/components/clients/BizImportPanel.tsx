@@ -2,6 +2,7 @@
 // clients + doc_clients → biz_* 자동이관. 부족 필드는 이후 Excel 라운드트립으로 보강.
 import { useState } from 'react';
 import { previewLegacyImport, runLegacyImport, type ImportRow, type ImportResult } from '../../lib/bizImportApi';
+import { corpDisplayName } from '../../lib/bizRegistryApi';
 
 export default function BizImportPanel({ onImported }: { onImported: () => void }) {
   const [open, setOpen] = useState(false);
@@ -75,7 +76,7 @@ export default function BizImportPanel({ onImported }: { onImported: () => void 
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
                 <thead>
                   <tr style={{ background: '#f4efe4', position: 'sticky', top: 0 }}>
-                    <th style={thc}></th><th style={thc}>회사명</th><th style={thc}>구분</th><th style={thc}>성격</th>
+                    <th style={thc}></th><th style={thc}>회사명(통일표기)</th><th style={thc}>법인격</th><th style={thc}>구분</th><th style={thc}>성격</th>
                     <th style={thc}>사업자번호</th><th style={thc}>CPA</th><th style={thc}>대표이사</th><th style={thc}>담당직원</th>
                     <th style={thc}>소스</th><th style={thc}>상태</th>
                   </tr>
@@ -84,7 +85,8 @@ export default function BizImportPanel({ onImported }: { onImported: () => void 
                   {rows.map((r) => (
                     <tr key={r.key} style={{ borderTop: '1px solid #eee', opacity: r.exists ? 0.5 : 1 }}>
                       <td style={tdc}><input type="checkbox" disabled={r.exists} checked={!r.exists && sel.has(r.key)} onChange={() => toggle(r.key)} /></td>
-                      <td style={{ ...tdc, fontWeight: 600 }}>{r.name}</td>
+                      <td style={{ ...tdc, fontWeight: 600 }}>{corpDisplayName(r.name, r.corpForm, r.corpFormPosition)}</td>
+                      <td style={tdc}>{r.corpForm || <span style={{ color: '#bbb' }}>–</span>}</td>
                       <td style={tdc}>{r.kind}</td>
                       <td style={tdc}>{r.nature}</td>
                       <td style={tdc}>{r.taxId || <span style={{ color: '#c93' }}>–</span>}</td>

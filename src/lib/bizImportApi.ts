@@ -4,20 +4,23 @@
 import { supabase } from './supabase';
 import {
   createBizEntity, createBizPlace, createBizRepresentative, assignStaff, listInternalStaff,
-  type BizKind, type BizNature,
+  parseCorpForm,
+  type BizKind, type BizNature, type CorpForm,
 } from './bizRegistryApi';
 
 /** 회사명 정규화 — 공백·법인격 표기 제거해 dedup 매칭에 사용. */
 function norm(s: string): string {
   return (s || '')
     .replace(/\s+/g, '')
-    .replace(/㈜|\(주\)|주식회사|\(유\)|유한회사|\(유한\)/g, '')
+    .replace(/㈜|㈲|\(주\)|주식회사|\(유\)|유한회사|\(유책\)|유한책임회사|\(합자\)|\(합\)|합자회사|사모투자합자회사|\(합명\)|합명회사|pef/gi, '')
     .toLowerCase();
 }
 
 export interface ImportRow {
   key: string;            // 정규화 회사명(내부 식별)
-  name: string;           // 표시 회사명
+  name: string;           // 법인격 뗀 순수 상호
+  corpForm: CorpForm | null;
+  corpFormPosition: '앞' | '뒤' | null;
   kind: BizKind;
   nature: BizNature;      // 매출(청구 소스) / 일반(발송 전용)
   taxId: string;          // 사업자번호(clients.tax_id)
@@ -49,11 +52,13 @@ export async function previewLegacyImport(): Promise<ImportRow[]> {
   const map = new Map<string, ImportRow>();
   // 1) 청구 clients (매출)
   for (const c of cRes.data as any[]) {
-    const key = norm(c.company_name);
+    const kind: BizKind = (c.biz_type as BizKind) || '법인';
+    const parsed = kind === '법인' ? parseCorpForm(c.company_name) : { name: (c.company_name || '').trim(), form: null, position: null };
+    const key = norm(parsed.name);
     if (!key) continue;
     const staffId = c.manager && staffByName.has((c.manager || '').trim()) ? staffByName.get((c.manager || '').trim())! : null;
     map.set(key, {
-      key, name: c.company_name, kind: (c.biz_type as BizKind) || '법인', nature: '매출',
+      key, name: parsed.name, corpForm: parsed.form, corpFormPosition: parsed.position, kind, nature: '매출',
       taxId: c.tax_id || '', cpa: '', repName: c.rep_name || '',
       staffId, staffName: staffId ? (c.manager || '').trim() : '',
       source: 'clients', exists: false,
@@ -61,7 +66,8 @@ export async function previewLegacyImport(): Promise<ImportRow[]> {
   }
   // 2) 발송 doc_clients — 이름 일치하면 CPA 보강(both), 아니면 신규(일반)
   for (const d of dRes.data as any[]) {
-    const key = norm(d.company_name);
+    const parsed = parseCorpForm(d.company_name);
+    const key = norm(parsed.name);
     if (!key) continue;
     const ex = map.get(key);
     if (ex) {
@@ -69,7 +75,7 @@ export async function previewLegacyImport(): Promise<ImportRow[]> {
       if (!ex.cpa && d.accountant) ex.cpa = d.accountant;
     } else {
       map.set(key, {
-        key, name: d.company_name, kind: '법인', nature: '일반',
+        key, name: parsed.name, corpForm: parsed.form, corpFormPosition: parsed.position, kind: '법인', nature: '일반',
         taxId: '', cpa: d.accountant || '', repName: '', staffId: null, staffName: '',
         source: 'doc', exists: false,
       });
@@ -93,7 +99,7 @@ export async function runLegacyImport(rows: ImportRow[]): Promise<ImportResult> 
   for (const r of rows) {
     if (r.exists) { res.skipped++; continue; }
     try {
-      const entityId = await createBizEntity({ kind: r.kind, name: r.name.trim() });
+      const entityId = await createBizEntity({ kind: r.kind, name: r.name.trim(), corpForm: r.corpForm, corpFormPosition: r.corpFormPosition });
       const placeId = await createBizPlace({
         entityId, placeName: '본점', isHeadquarters: true, branchType: '본점',
         bizRegNo: r.taxId || undefined, nature: r.nature, cpa: r.cpa || undefined,
