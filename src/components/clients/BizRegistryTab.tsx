@@ -86,6 +86,7 @@ export default function BizRegistryTab() {
   const [q, setQ] = useState('');
 
   const [showAdd, setShowAdd] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [addPlaceFor, setAddPlaceFor] = useState<BizEntityFull | null>(null);
   const [editEntity, setEditEntity] = useState<BizEntityFull | null>(null);
   const [editPlace, setEditPlace] = useState<{ place: BizPlace; entity: BizEntityFull } | null>(null);
@@ -228,6 +229,7 @@ export default function BizRegistryTab() {
         <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
           법인 {stats.corp} · 개인 {stats.person} · 사업장 {stats.places}(매출 {stats.sales})
         </span>
+        <button className="btn-sm btn-sm-blue" onClick={() => setShowHelp(true)} style={{ marginLeft: 8 }}>❓ 도움말</button>
         {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
       </div>
 
@@ -340,6 +342,11 @@ export default function BizRegistryTab() {
         ))}
       </div>
 
+      {showHelp && (
+        <Modal title="❓ 거래처등록 도움말" onClose={() => setShowHelp(false)}>
+          <BizHelpContent />
+        </Modal>
+      )}
       {addPlaceFor && (
         <Modal title={`＋ 사업장 추가 — [${addPlaceFor.code}] ${addPlaceFor.name}`} onClose={() => setAddPlaceFor(null)}>
           <PlaceFields staff={staff} siblings={addPlaceFor.places} submitLabel="사업장 추가"
@@ -691,6 +698,60 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button></div>
         {children}
       </div>
+    </div>
+  );
+}
+
+// ── 도움말 내용 ────────────────────────────────────────────
+function BizHelpContent() {
+  const h: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: '#2a4d69', margin: '12px 0 5px' };
+  const li: React.CSSProperties = { fontSize: 12, lineHeight: 1.7, color: '#444' };
+  const b: React.CSSProperties = { color: '#c8541e' };
+  return (
+    <div style={{ maxHeight: '68vh', overflow: 'auto', padding: '2px 4px' }}>
+      <div style={{ fontSize: 12, color: '#666', background: '#f5f1eb', padding: '8px 10px', borderRadius: 6 }}>
+        거래처는 <b style={b}>귀속주체(법인/개인)</b> 아래 <b style={b}>사업장</b>이 매달리는 2계층 구조입니다.
+        법인·개인 모두 <b style={b}>최소 1개 사업장(본사)</b>을 함께 등록해야 하며, 매출·담당자·향후 매출계약은 사업장 단위로 연결됩니다.
+      </div>
+
+      <div style={h}>1. 신규 거래처 등록 (법인)</div>
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        <li style={li}><b>＋ 신규 거래처</b> → <b>법인</b> 선택</li>
+        <li style={li}>법인명(필수)·법인등록번호·설립일 입력</li>
+        <li style={li}><b>본사 사업장(필수)</b>: 사업장명·<b>본점/지점</b>·사업자번호. 폐업/무사업자면 <b>사업자없음</b> 체크</li>
+        <li style={li}><b>사업자단위과세</b>면 체크하고, 지점이면 신고기준(본점) 사업장을 선택</li>
+        <li style={li}><b>성격</b> 매출/일반 선택 → 매출이면 매출팀(감사/tax) 체크. <b style={b}>taxteam 체크 시에만</b> 과세유형·원천세 입력칸이 나타납니다</li>
+        <li style={li}>개업일·담당CPA(입력하면 자동완성)·홈텍스ID/PW(🔒 암호화 저장)·담당직원 칩 선택 → <b>거래처 등록</b></li>
+        <li style={li}>등록되면 코드가 자동 부여됩니다 (법인 <b>L0001</b> / 개인 <b>I0001</b>, 사업장은 <b>L0001-01</b>)</li>
+      </ul>
+
+      <div style={h}>2. 신규 거래처 등록 (개인)</div>
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        <li style={li}>개인 선택 → 성명·주민등록번호(🔒 암호화) 입력</li>
+        <li style={li}>무사업자면 사업장에서 <b>사업자없음</b> 체크 — 주민번호가 식별값이 됩니다</li>
+        <li style={li}>공동사업자는 등록 후 행을 펼쳐 추가(지분율 입력 가능)</li>
+      </ul>
+
+      <div style={h}>3. 등록 후 관리 (행 왼쪽 ▸ 펼치기)</div>
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        <li style={li}><b>담당직원</b> 칩을 눌러 배정/해제 (정남지·김민섭·김동주·송현주)</li>
+        <li style={li}><b>＋사업장</b>으로 지점 추가, <b>대표이사</b>(법인)/<b>공동사업자</b>(개인) 추가</li>
+        <li style={li}><b>수정</b> 버튼으로 거래처·사업장 정보 변경</li>
+        <li style={li}>🔒 <b>PW보기 / 주민번호</b>는 회계사·팀장·최고관리자만 열람됩니다</li>
+      </ul>
+
+      <div style={h}>4. 성격 구분</div>
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        <li style={li}><b>매출거래처</b>: 매출이 발생하는 곳 (감사team / taxteam)</li>
+        <li style={li}><b>일반(비매출)</b>: 문서발송 등 정보관리만 하는 곳도 등록 가능</li>
+      </ul>
+
+      <div style={h}>주의</div>
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        <li style={li}>같은 거래처 안에서 <b>사업장명 중복 불가</b>, <b>본사는 1개</b>, 사업자번호는 전역 중복 불가</li>
+        <li style={li}>거래처 삭제 시 사업장·담당자·대표이사·공동사업자가 <b>함께 삭제</b>됩니다</li>
+        <li style={li}>과세유형·원천세는 <b>taxteam 계약</b>에만 필요합니다</li>
+      </ul>
     </div>
   );
 }
