@@ -52,6 +52,8 @@ export default function SalesContractTab() {
   const [q, setQ] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'box' | 'table'>('box');
+  const [colF, setColF] = useState<Record<string, string>>({});
 
   async function load() {
     try {
@@ -67,6 +69,28 @@ export default function SalesContractTab() {
   const entMap = useMemo(() => new Map(entities.map((e) => [e.id, e])), [entities]);
   const entName = (id: string) => { const e = entMap.get(id); return e ? `${e.code} ${corpDisplayName(e.name, e.corpForm, e.corpFormPosition)}` : '(삭제됨)'; };
   const placeName = (eid: string, pid: string | null) => { if (!pid) return ''; const e = entMap.get(eid); return e?.places.find((p) => p.id === pid)?.placeName ?? ''; };
+
+  // 표(list)형 컬럼 정의 — 각 컬럼 val 로 필터·표시
+  const COLUMNS: { key: string; label: string; val: (c: SalesContract) => string; w?: number; num?: boolean }[] = [
+    { key: 'code', label: '코드', val: (c) => entMap.get(c.entityId)?.code ?? '', w: 56 },
+    { key: 'name', label: '거래처', val: (c) => { const e = entMap.get(c.entityId); return e ? corpDisplayName(e.name, e.corpForm, e.corpFormPosition) : ''; }, w: 150 },
+    { key: 'team', label: '팀', val: (c) => c.team, w: 66 },
+    { key: 'type', label: '매출유형', val: (c) => pathLabel(c.categoryCode) + (c.categoryEtcName ? ` (${c.categoryEtcName})` : ''), w: 200 },
+    { key: 'occ', label: '발생단위', val: (c) => c.occurrenceUnit + (c.placeId ? `/${placeName(c.entityId, c.placeId)}` : ''), w: 100 },
+    { key: 'cycle', label: '주기', val: (c) => c.billingCycle + (c.isInstallment ? '·분할' : ''), w: 66 },
+    { key: 'bunit', label: '청구단위', val: (c) => c.billingUnit ?? '', w: 70 },
+    { key: 'amount', label: '계약금액', val: (c) => won(c.amount), w: 90, num: true },
+    { key: 'year', label: '귀속', val: (c) => (c.fiscalYear ? String(c.fiscalYear) : ''), w: 56 },
+    { key: 'cpa', label: 'CPA', val: (c) => c.cpa, w: 66 },
+    { key: 'staff', label: '담당직원', val: (c) => c.staff.map((s) => s.staffName).join(','), w: 100 },
+    { key: 'period', label: '개시~종료', val: (c) => `${dateToMonth(c.startDate) || ''}~${dateToMonth(c.endDate) || '계속'}`, w: 130 },
+    { key: 'cdate', label: '계약일', val: (c) => c.contractDate ?? '', w: 90 },
+    { key: 'note', label: '비고', val: (c) => c.note, w: 120 },
+  ];
+  const tableRows = useMemo(() => contracts.filter((c) => COLUMNS.every((col) => {
+    const fv = (colF[col.key] || '').trim().toLowerCase();
+    return !fv || col.val(c).toLowerCase().includes(fv);
+  })), [contracts, colF]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const view = useMemo(() => {
     let list = contracts;
@@ -135,10 +159,20 @@ export default function SalesContractTab() {
       {error && <div style={{ color: '#c33', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-        <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value as '' | Team)} style={selStyle}>
-          <option value="">팀 전체</option><option value="감사team">감사team</option><option value="taxteam">taxteam</option>
-        </select>
-        <input placeholder="🔍 거래처·매출유형·CPA" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+        <span style={{ display: 'flex', gap: 2 }}>
+          <button className={viewMode === 'box' ? 'btn-p' : 'btn-sm'} onClick={() => setViewMode('box')}>▤ 박스</button>
+          <button className={viewMode === 'table' ? 'btn-p' : 'btn-sm'} onClick={() => setViewMode('table')}>▦ 표</button>
+        </span>
+        {viewMode === 'box' && (
+          <>
+            <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value as '' | Team)} style={selStyle}>
+              <option value="">팀 전체</option><option value="감사team">감사team</option><option value="taxteam">taxteam</option>
+            </select>
+            <input placeholder="🔍 거래처·매출유형·CPA" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+          </>
+        )}
+        {viewMode === 'table' && <span style={{ fontSize: 11, color: '#888', flex: 1 }}>각 컬럼 아래 칸에 입력해 필터 ({tableRows.length}건)</span>}
+        {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
         {canWrite && <button className="btn-p" onClick={() => { setShowAdd((s) => !s); setEditId(null); }}>{showAdd ? '닫기' : '＋ 신규 매출계약'}</button>}
       </div>
 
@@ -146,6 +180,7 @@ export default function SalesContractTab() {
         <ContractForm entities={entities} staff={staff} contracts={contracts} onSubmit={(f) => persist(f)} onCancel={() => setShowAdd(false)} />
       )}
 
+      {viewMode === 'box' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {view.length === 0 && <div style={{ color: '#999', fontSize: 12, padding: 12 }}>매출계약이 없습니다.</div>}
         {view.map((c) => {
@@ -164,11 +199,16 @@ export default function SalesContractTab() {
                 <span style={{ fontSize: 10.5, color: '#888' }}>/{c.billingCycle}{c.isInstallment ? '·분할' : ''}</span>
               </div>
               <div style={{ fontSize: 11, color: '#777', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <span>발생 {c.occurrenceUnit}</span>
+                {c.billingUnit && <span>청구단위 {c.billingUnit}</span>}
                 {c.fiscalYear && <span>귀속 {c.fiscalYear}</span>}
                 {c.cpa && <span>CPA {c.cpa}</span>}
                 {c.staff.length > 0 && <span>담당 {c.staff.map((s) => s.staffName).join('·')}</span>}
                 <span>{dateToMonth(c.startDate) || '개시?'} ~ {dateToMonth(c.endDate) || '계속'}</span>
+                {c.contractDate && <span>계약일 {c.contractDate}</span>}
+                {c.installments.length > 0 && <span style={{ color: '#a60' }}>분할 {c.installments.length}회</span>}
                 {c.discounts.length > 0 && <span style={{ color: '#c80' }}>무료/할인 {c.discounts.length}건</span>}
+                {c.note && <span style={{ color: '#999' }}>· {c.note}</span>}
                 {canWrite && (
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                     <button className="btn-sm btn-sm-blue" onClick={() => { setEditId(c.id); setShowAdd(false); }}>수정</button>
@@ -185,9 +225,50 @@ export default function SalesContractTab() {
           );
         })}
       </div>
+      )}
+
+      {viewMode === 'table' && (
+        <div style={{ overflowX: 'auto', border: '1px solid #eee', borderRadius: 6 }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 11.5, minWidth: 1100 }}>
+            <thead>
+              <tr style={{ background: '#f4efe4' }}>
+                {COLUMNS.map((col) => <th key={col.key} style={{ ...thc, minWidth: col.w }}>{col.label}</th>)}
+                {canWrite && <th style={thc}></th>}
+              </tr>
+              <tr style={{ background: '#faf7f0' }}>
+                {COLUMNS.map((col) => (
+                  <th key={col.key} style={{ padding: 2 }}>
+                    <input value={colF[col.key] || ''} onChange={(e) => setColF((p) => ({ ...p, [col.key]: e.target.value }))} placeholder="필터" style={{ width: '100%', fontSize: 10.5, padding: '2px 4px', boxSizing: 'border-box' }} />
+                  </th>
+                ))}
+                {canWrite && <th style={{ padding: 2 }}></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.length === 0 && <tr><td colSpan={COLUMNS.length + 1} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 매출계약이 없습니다.</td></tr>}
+              {tableRows.map((c) => (
+                <tr key={c.id} style={{ borderTop: '1px solid #eee' }}>
+                  {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400 }}>{col.val(c)}</td>)}
+                  {canWrite && (
+                    <td style={tdc}>
+                      <span style={{ display: 'flex', gap: 3 }}>
+                        <button className="btn-sm btn-sm-blue" onClick={() => { setViewMode('box'); setEditId(c.id); setShowAdd(false); }}>수정</button>
+                        <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
+                      </span>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
+
+const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: '#555', whiteSpace: 'nowrap' };
+const tdc: React.CSSProperties = { padding: '4px 6px', whiteSpace: 'nowrap' };
 
 // ── 등록/수정 폼 ────────────────────────────────────────────
 function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel }: {
