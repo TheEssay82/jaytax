@@ -5,29 +5,70 @@
 import {
   updateBizEntity, updateBizPlace, createBizEntity, createBizPlace, assignStaff,
   setEntityResident, setPlaceHometaxPw,
-  CORP_FORMS,
+  CORP_FORMS, CPA_OPTIONS,
   type BizEntityFull, type BizKind, type BizNature, type CorpForm, type SalesTeam,
   type TaxType, type Withholding, type StaffProfile,
 } from './bizRegistryApi';
+import { FONT, FILL_HEADER, frame, setWidths, saveWorkbook } from './confirmExcelStyle';
 
-const HEADERS = [
-  '거래처코드(수정금지)', '구분(법인/개인)', '상호/성명', '법인격', '법인격위치(앞/뒤)',
-  '법인등록번호', '주민등록번호', '설립일(YYYY-MM-DD)', '사업장명', '본점/지점',
-  '사업자번호', '사업자없음(O)', '사업장주소', '성격(매출/일반)', '매출팀(감사team,taxteam)',
-  '과세유형(과세/겸영/면세)', '원천세(월별/반기별/N/A)', '개업일(YYYY-MM-DD)', '사업자단위과세(O)',
-  '담당CPA', '홈텍스ID', '홈텍스PW', '담당직원(콤마)', '비고',
+/** ExcelJS 동적 로드 (CJS interop) */
+async function loadExcelJS() {
+  const mod = await import('exceljs');
+  const ns = (mod as unknown as { default?: unknown }).default ?? mod;
+  return ns as typeof import('exceljs');
+}
+
+// 컬럼 정의(HEADERS 와 1:1). list=드롭다운 선택지, strict=목록 외 입력 차단, readonly=회색(수정금지).
+interface ColMeta { h: string; w: number; list?: readonly string[]; strict?: boolean; readonly?: boolean }
+const COLS: ColMeta[] = [
+  { h: '거래처코드(수정금지)', w: 13, readonly: true },
+  { h: '구분(법인/개인)', w: 12, list: ['법인', '개인'], strict: true },
+  { h: '상호/성명', w: 22 },
+  { h: '법인격', w: 12, list: CORP_FORMS, strict: true },
+  { h: '법인격위치(앞/뒤)', w: 13, list: ['앞', '뒤'], strict: true },
+  { h: '법인등록번호', w: 16 },
+  { h: '주민등록번호🔒', w: 16 },
+  { h: '설립일(YYYY-MM-DD)', w: 15 },
+  { h: '사업장명', w: 16 },
+  { h: '본점/지점', w: 10, list: ['본점', '지점'], strict: true },
+  { h: '사업자번호', w: 14 },
+  { h: '사업자없음(O/X)', w: 12, list: ['O', 'X'], strict: true },
+  { h: '사업장주소', w: 28 },
+  { h: '성격(매출/일반)', w: 12, list: ['매출', '일반'], strict: true },
+  { h: '매출팀(감사team,taxteam)', w: 20 },
+  { h: '과세유형', w: 12, list: ['과세', '겸영', '면세'], strict: true },
+  { h: '원천세', w: 12, list: ['월별', '반기별', 'N/A'], strict: true },
+  { h: '개업일(YYYY-MM-DD)', w: 15 },
+  { h: '사업자단위과세(O/X)', w: 14, list: ['O', 'X'], strict: true },
+  { h: '담당CPA', w: 12, list: CPA_OPTIONS, strict: false },
+  { h: '홈텍스ID', w: 14 },
+  { h: '홈텍스PW🔒', w: 14 },
+  { h: '담당직원(콤마)', w: 18 },
+  { h: '비고', w: 24 },
 ];
+const HEADERS = COLS.map((c) => c.h);
 const placeCode = (e: BizEntityFull, placeNo: number) => `${e.code}-${String(placeNo).padStart(2, '0')}`;
 
-/** 보강 양식 내보내기 — 사업장 1행. 민감정보(주민번호·PW)는 빈 칸(보안). */
+// 입력 셀 채움색: 보통(연노랑)·민감(연빨강)·읽기전용(회색)
+const FILL_EDIT = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFF7D6' } };
+const FILL_PII = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFCE4E4' } };
+const FILL_RO = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFECECEC' } };
+const PII_COLS = new Set([6, 21]); // 주민등록번호·홈텍스PW(0-index)
+
+/** 보강 양식 내보내기 — 사업장 1행. 입력셀 색상 + 선택 드롭다운. 민감정보(주민번호·PW)는 빈 칸(보안). */
 export async function exportBizRegistry(entities: BizEntityFull[]): Promise<void> {
-  const XLSX = await import('xlsx');
-  const rows: (string | number)[][] = [HEADERS];
-  const note = ['※ 코드 있는 행=보강(빈 칸은 미변경), 코드 없는 행=신규 등록', '', '', '', '', '', '(입력값만 암호화 저장)', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '(입력값만 저장)', '', ''];
-  rows.push(note);
+  const ExcelJS = await loadExcelJS();
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('거래처보강', { views: [{ state: 'frozen', xSplit: 1, ySplit: 2 }] });
+  const N = COLS.length;
+
+  ws.addRow(HEADERS);
+  ws.addRow(['※ 코드 있는 행 = 보강(빈 칸은 미변경) · 코드 없는 행 = 신규 등록 · 노란칸=입력, 분홍칸=민감(입력값만 암호화 저장)']);
+  ws.getCell(2, 1).font = { ...FONT, size: 9, color: { argb: 'FF888888' } };
+
   for (const e of entities) {
     for (const p of e.places) {
-      rows.push([
+      ws.addRow([
         placeCode(e, p.placeNo), e.kind, e.name, e.corpForm ?? '', e.corpFormPosition ?? '',
         e.corpRegNo, '', e.establishedDate ?? '', p.placeName, p.branchType ?? '',
         p.bizRegNo, p.noBiz ? 'O' : '', p.address, p.nature, p.salesTeams.join(','),
@@ -36,11 +77,33 @@ export async function exportBizRegistry(entities: BizEntityFull[]): Promise<void
       ]);
     }
   }
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = HEADERS.map(() => ({ wch: 18 }));
-  XLSX.utils.book_append_sheet(wb, ws, '거래처보강');
-  XLSX.writeFile(wb, '거래처_보강양식.xlsx');
+  const dataStart = 3;
+  const dataEnd = ws.rowCount;
+
+  // 헤더 스타일
+  frame(ws, 1, 1, 1, N, { fill: FILL_HEADER, bold: true, align: 'center', wrap: true });
+  ws.getRow(1).height = 30;
+
+  // 본문: 테두리 + 폰트 + 채움 + 드롭다운
+  if (dataEnd >= dataStart) {
+    frame(ws, dataStart, 1, dataEnd, N);
+    for (let ci = 0; ci < N; ci++) {
+      const meta = COLS[ci];
+      const fill = meta.readonly ? FILL_RO : PII_COLS.has(ci) ? FILL_PII : FILL_EDIT;
+      for (let r = dataStart; r <= dataEnd; r++) {
+        ws.getCell(r, ci + 1).fill = fill;
+        if (meta.list) {
+          ws.getCell(r, ci + 1).dataValidation = {
+            type: 'list', allowBlank: true, formulae: [`"${meta.list.join(',')}"`],
+            showErrorMessage: !!meta.strict,
+            errorTitle: meta.h, error: `${meta.list.join(' / ')} 중에서 선택하세요.`,
+          };
+        }
+      }
+    }
+  }
+  setWidths(ws, COLS.map((c) => c.w));
+  await saveWorkbook(wb, '거래처_보강양식.xlsx');
 }
 
 export interface ExcelRow {
