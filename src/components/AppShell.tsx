@@ -17,6 +17,7 @@ import ClientsTab from './clients/ClientsTab';
 import BizRegistryTab from './clients/BizRegistryTab';
 import SalesContractTab from './clients/SalesContractTab';
 import BizContactsTab from './clients/BizContactsTab';
+import BizStatusTab from './clients/BizStatusTab';
 import WizardTab from './wizard/WizardTab';
 import HistoryTab from './history/HistoryTab';
 import RequestsTab from './requests/RequestsTab';
@@ -431,7 +432,7 @@ function TabContent({
     case 'biz-contacts':
       return <BizContactsTab />;
     case 'biz-status':
-      return <PlaceholderTab title="📊 거래처현황조회" desc="거래처 현황 list-up 및 통계. (step 4 — 개발 예정)" />;
+      return <BizStatusTab />;
     case 'billing-req-home':
       return <PlaceholderTab title="🧾 기장 및 개별업무 청구관리" desc="기장·개별 업무 건별 청구를 관리하는 대분류입니다. (설계 예정)" />;
     // 일반업무관리 › 문서발송관리
