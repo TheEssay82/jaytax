@@ -16,7 +16,10 @@ import {
 
 const won = (n: number) => n.toLocaleString('ko-KR');
 const UNITS: OccurrenceUnit[] = ['사업장', '법인', '개인'];
-const BILL_UNITS: BillingUnit[] = ['사업장', '법인', '개인', '건'];
+const BILL_UNITS: BillingUnit[] = ['사업장', '법인', '개인']; // '건'은 청구주기에만(청구단위 아님)
+// 날짜: 개시일·종료일은 '월' 최소단위(YYYY-MM). DB(date)엔 -01 로 저장.
+const monthToDate = (m: string): string | null => (m ? `${m}-01` : null);
+const dateToMonth = (d: string | null): string => (d ? d.slice(0, 7) : '');
 
 interface FormState {
   entityId: string; placeId: string;
@@ -99,7 +102,7 @@ export default function SalesContractTab() {
       fiscalYear: form.fiscalYear ? Number(form.fiscalYear) : null,
       billingCycle: form.billingCycle, isInstallment: form.isInstallment,
       amount: form.amount ? Number(form.amount.replace(/,/g, '')) : 0, cpa: form.cpa.trim(),
-      contractDate: form.contractDate || null, startDate: form.startDate || null, endDate: form.endDate || null,
+      contractDate: form.contractDate || null, startDate: monthToDate(form.startDate), endDate: monthToDate(form.endDate),
       note: form.note.trim(),
     };
     try {
@@ -161,7 +164,7 @@ export default function SalesContractTab() {
                 {c.fiscalYear && <span>귀속 {c.fiscalYear}</span>}
                 {c.cpa && <span>CPA {c.cpa}</span>}
                 {c.staff.length > 0 && <span>담당 {c.staff.map((s) => s.staffName).join('·')}</span>}
-                <span>{c.startDate || '개시일?'} ~ {c.endDate || '계속'}</span>
+                <span>{dateToMonth(c.startDate) || '개시?'} ~ {dateToMonth(c.endDate) || '계속'}</span>
                 {c.discounts.length > 0 && <span style={{ color: '#c80' }}>무료/할인 {c.discounts.length}</span>}
                 {canWrite && (
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
@@ -193,24 +196,48 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
   const entity = entities.find((e) => e.id === f.entityId);
   const leaf = leafOf(f.categoryCode);
   const staffCands = staff.filter((s) => (staffCandidatesForTeam(f.team) as readonly string[]).includes(s.name));
+  const entLabel = (e: BizEntityFull) => `${e.code} ${corpDisplayName(e.name, e.corpForm, e.corpFormPosition)}`;
+  const [entityText, setEntityText] = useState(() => (entity ? entLabel(entity) : ''));
+  const [showDetail, setShowDetail] = useState(false);
+  const canInstallment = f.billingCycle === '연' || f.billingCycle === '건'; // 분할은 연·건 계약에서만
 
-  // 유형 선택 시 발생단위 기본 제시 + CPA/담당직원 기본 상속
+  // 거래처 입력(타입/선택) → id·CPA 상속
+  function onEntityText(v: string) {
+    setEntityText(v);
+    const t = v.trim();
+    const code = t.split(/\s+/)[0];
+    const match = entities.find((e) => entLabel(e) === t || e.code === code);
+    const hq = match?.places.find((p) => p.isHeadquarters) ?? match?.places[0];
+    setF((p) => ({ ...p, entityId: match?.id ?? '', placeId: '', cpa: p.cpa || hq?.cpa || '' }));
+  }
   function pickCategory(code: string) {
     const lf = leafOf(code);
+    setF((p) => ({ ...p, categoryCode: code, ...(lf?.defaultUnit ? { occurrenceUnit: lf.defaultUnit } : {}) }));
+  }
+  function pickPlace(pid: string) {
+    const pl = entity?.places.find((x) => x.id === pid);
+    setF((p) => ({ ...p, placeId: pid, cpa: p.cpa || pl?.cpa || '' }));
+  }
+  // 계약일(일단위) → 개시월 자동(비었을 때)
+  function pickContractDate(v: string) {
+    setF((p) => ({ ...p, contractDate: v, startDate: p.startDate || v.slice(0, 7) }));
+  }
+  // 청구주기 '연' + 귀속연도 → 개시월~종료월 자동(1~12월). 연/건 아니면 분할 해제.
+  function pickCycle(v: BillingCycle) {
     setF((p) => {
-      const next = { ...p, categoryCode: code };
-      if (lf?.defaultUnit) next.occurrenceUnit = lf.defaultUnit;
+      const next = { ...p, billingCycle: v };
+      if (v !== '연' && v !== '건') next.isInstallment = false;
+      if (v === '연' && /^\d{4}$/.test(p.fiscalYear)) { next.startDate = `${p.fiscalYear}-01`; next.endDate = `${p.fiscalYear}-12`; }
       return next;
     });
   }
-  // 거래처/사업장 선택 시 CPA·담당직원 상속
-  function pickPlace(pid: string) {
-    const pl = entity?.places.find((x) => x.id === pid);
-    setF((p) => ({ ...p, placeId: pid, cpa: p.cpa || pl?.cpa || '', }));
-  }
-  // 계약일 → 개시일 자동 동일(개시일 비었을 때)
-  function pickContractDate(v: string) {
-    setF((p) => ({ ...p, contractDate: v, startDate: p.startDate || v }));
+  function pickYear(v: string) {
+    const y = v.replace(/\D/g, '').slice(0, 4);
+    setF((p) => {
+      const next = { ...p, fiscalYear: y };
+      if (p.billingCycle === '연' && /^\d{4}$/.test(y)) { next.startDate = `${y}-01`; next.endDate = `${y}-12`; }
+      return next;
+    });
   }
 
   const instSum = f.installments.reduce((s, x) => s + (x.amount || 0), 0);
@@ -220,13 +247,13 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
     <div className="card" style={{ background: '#F5F1EB', marginBottom: 10 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>{initial ? '✏️ 매출계약 수정' : '＋ 새 매출계약'}</div>
 
-      {/* 거래처 · 사업장 */}
+      {/* 거래처 · 발생단위 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
         <div className="frow"><span className="fl">거래처<span className="req">*</span></span>
-          <select value={f.entityId} onChange={(e) => setF((p) => ({ ...p, entityId: e.target.value, placeId: '' }))} style={selStyle}>
-            <option value="">선택</option>
-            {entities.map((e) => <option key={e.id} value={e.id}>{e.code} {corpDisplayName(e.name, e.corpForm, e.corpFormPosition)}</option>)}
-          </select></div>
+          <>
+            <input list="sc-entity" value={entityText} onChange={(e) => onEntityText(e.target.value)} placeholder="코드·거래처명 입력·선택" />
+            <datalist id="sc-entity">{entities.map((e) => <option key={e.id} value={entLabel(e)} />)}</datalist>
+          </></div>
         <div className="frow"><span className="fl">발생단위</span>
           <span style={{ display: 'flex', gap: 6 }}>
             <select value={f.occurrenceUnit} onChange={(e) => set('occurrenceUnit', e.target.value as OccurrenceUnit)} style={selStyle}>
@@ -274,31 +301,32 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
           </span></div>
       )}
       {leaf?.filingAgentEligible && (
-        <div style={{ fontSize: 10.5, color: '#a80', marginTop: 4 }}>※ 기장 없이 이 신고만 하면 '신고대리'입니다. (기장 계약이 별도로 없으면 신고대리로 봅니다)</div>
+        <div style={{ fontSize: 10.5, color: '#a80', marginTop: 4 }}>※ 기장 없이 이 신고만 하면 '신고대리'입니다.</div>
       )}
       {leaf?.linksConfirmation && (
         <div style={{ fontSize: 10.5, color: '#47a', marginTop: 4 }}>※ 회계감사 계약은 조회서발송관리에서 발송대상으로 참조됩니다.</div>
       )}
 
-      {/* 청구단위 · 귀속연도 · 청구주기 · 계약금액 */}
+      {/* 청구주기 · 계약금액 · 귀속연도 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px', marginTop: 8 }}>
-        <div className="frow"><span className="fl">청구단위</span>
-          <select value={f.billingUnit} onChange={(e) => set('billingUnit', e.target.value as BillingUnit | '')} style={selStyle}>
-            <option value="">(선택)</option>{BILL_UNITS.map((u) => <option key={u}>{u}</option>)}
-          </select></div>
-        <div className="frow"><span className="fl">귀속연도</span>
-          <input value={f.fiscalYear} onChange={(e) => set('fiscalYear', e.target.value.replace(/\D/g, ''))} placeholder="신고류만 (예: 2025)" maxLength={4} /></div>
         <div className="frow"><span className="fl">청구주기</span>
-          <select value={f.billingCycle} onChange={(e) => set('billingCycle', e.target.value as BillingCycle)} style={selStyle}>
+          <select value={f.billingCycle} onChange={(e) => pickCycle(e.target.value as BillingCycle)} style={selStyle}>
             {BILLING_CYCLES.map((c) => <option key={c}>{c}</option>)}
           </select></div>
-        <div className="frow"><span className="fl">{f.isInstallment ? '계약금액(총액)' : '계약금액(1회)'}</span>
-          <input value={f.amount} onChange={(e) => set('amount', e.target.value)} placeholder="숫자만 (예: 150000)" /></div>
-        <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">분할청구</span>
-          <label style={{ fontSize: 11.5, display: 'flex', gap: 4, alignItems: 'center' }}>
-            <input type="checkbox" checked={f.isInstallment} onChange={(e) => set('isInstallment', e.target.checked)} /> 계약금/중도금/잔금으로 분할
-          </label></div>
+        <div className="frow"><span className="fl">{f.isInstallment ? '계약금액(총액)' : '계약금액'} <span style={{ fontSize: 10, color: '#a55' }}>VAT별도</span></span>
+          <input value={f.amount} onChange={(e) => set('amount', e.target.value)} placeholder={f.billingCycle === '월' ? '월 금액 (예: 150000)' : f.billingCycle === '건' ? '건당 금액' : '1회 금액'} /></div>
+        <div className="frow"><span className="fl">귀속연도</span>
+          <>
+            <input value={f.fiscalYear} onChange={(e) => pickYear(e.target.value)} placeholder="연단위 신고만 (예: 2025)" maxLength={4} />
+          </></div>
+        {canInstallment && (
+          <div className="frow"><span className="fl">분할청구</span>
+            <label style={{ fontSize: 11.5, display: 'flex', gap: 4, alignItems: 'center' }}>
+              <input type="checkbox" checked={f.isInstallment} onChange={(e) => set('isInstallment', e.target.checked)} /> 계약금/중도금/잔금 분할
+            </label></div>
+        )}
       </div>
+      <div style={{ fontSize: 10.5, color: '#999', marginTop: 2 }}>※ 귀속연도는 <b>연단위 신고</b>(법인세·소득세 등)만 기재 — 월 기장 등은 비워둡니다. 청구주기가 '연'이면 개시·종료월이 귀속연도 1~12월로 자동 설정됩니다.</div>
 
       {f.isInstallment && <InstallmentsEditor rows={f.installments} onChange={(r) => set('installments', r)} sum={instSum} target={amountNum} />}
 
@@ -319,31 +347,38 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
           </span></div>
       </div>
 
-      {/* 날짜 */}
+      {/* 날짜: 계약일(일) + 개시·종료(월) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0 14px', marginTop: 8 }}>
         <div className="frow"><span className="fl">매출계약일</span>
           <input type="date" value={f.contractDate} onChange={(e) => pickContractDate(e.target.value)} /></div>
-        <div className="frow"><span className="fl">매출개시일</span>
-          <input type="date" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></div>
-        <div className="frow"><span className="fl">종료일(비움=계속)</span>
-          <input type="date" value={f.endDate} onChange={(e) => set('endDate', e.target.value)} /></div>
+        <div className="frow"><span className="fl">매출개시월</span>
+          <input type="month" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></div>
+        <div className="frow"><span className="fl">종료월(비움=계속)</span>
+          <input type="month" value={f.endDate} onChange={(e) => set('endDate', e.target.value)} /></div>
       </div>
 
-      {/* 무료/할인 */}
-      <DiscountsEditor rows={f.discounts} onChange={(r) => set('discounts', r)} />
-
-      {/* 메인/종속 · 비고 */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px', marginTop: 8 }}>
-        <div className="frow"><span className="fl">메인계약(종속 시)</span>
-          <select value={f.parentContractId} onChange={(e) => set('parentContractId', e.target.value)} style={selStyle}>
-            <option value="">없음(단독/메인)</option>
-            {contracts.filter((c) => c.id !== initial?.id && c.entityId === f.entityId && !c.parentContractId).map((c) => (
-              <option key={c.id} value={c.id}>{pathLabel(c.categoryCode)} ({won(c.amount)})</option>
-            ))}
-          </select></div>
-        <div className="frow"><span className="fl">비고</span>
-          <input value={f.note} onChange={(e) => set('note', e.target.value)} placeholder="(선택)" /></div>
-      </div>
+      {/* 상세(접기) — 청구단위·무료할인·메인종속·비고 */}
+      <button type="button" className="btn-sm" style={{ marginTop: 10 }} onClick={() => setShowDetail((s) => !s)}>{showDetail ? '▾ 상세 접기' : '▸ 상세 (청구단위·무료/할인·메인종속·비고)'}</button>
+      {showDetail && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
+            <div className="frow"><span className="fl">청구단위</span>
+              <select value={f.billingUnit} onChange={(e) => set('billingUnit', e.target.value as BillingUnit | '')} style={selStyle}>
+                <option value="">(선택)</option>{BILL_UNITS.map((u) => <option key={u}>{u}</option>)}
+              </select></div>
+            <div className="frow"><span className="fl">메인계약(종속 시)</span>
+              <select value={f.parentContractId} onChange={(e) => set('parentContractId', e.target.value)} style={selStyle}>
+                <option value="">없음(단독/메인)</option>
+                {contracts.filter((c) => c.id !== initial?.id && c.entityId === f.entityId && !c.parentContractId).map((c) => (
+                  <option key={c.id} value={c.id}>{pathLabel(c.categoryCode)} ({won(c.amount)})</option>
+                ))}
+              </select></div>
+          </div>
+          <DiscountsEditor rows={f.discounts} onChange={(r) => set('discounts', r)} />
+          <div className="frow" style={{ marginTop: 8 }}><span className="fl">비고</span>
+            <input value={f.note} onChange={(e) => set('note', e.target.value)} placeholder="(선택)" /></div>
+        </div>
+      )}
 
       <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
         <button className="btn-p" onClick={() => onSubmit(f)}>{initial ? '저장' : '매출계약 등록'}</button>
@@ -421,7 +456,7 @@ function fromContract(c: SalesContract): FormState {
     includesVat: c.includesVat, includesWht: c.includesWht, advisoryType: c.advisoryType ?? '', occurrenceUnit: c.occurrenceUnit,
     billingUnit: c.billingUnit ?? '', fiscalYear: c.fiscalYear ? String(c.fiscalYear) : '', billingCycle: c.billingCycle,
     isInstallment: c.isInstallment, amount: c.amount ? String(c.amount) : '', cpa: c.cpa, staffIds: c.staff.map((s) => s.staffId),
-    contractDate: c.contractDate ?? '', startDate: c.startDate ?? '', endDate: c.endDate ?? '', parentContractId: c.parentContractId ?? '',
+    contractDate: c.contractDate ?? '', startDate: dateToMonth(c.startDate), endDate: dateToMonth(c.endDate), parentContractId: c.parentContractId ?? '',
     note: c.note, installments: c.installments.length ? c.installments : [], discounts: c.discounts,
   };
 }
