@@ -5,6 +5,11 @@
 -- 실행: Supabase 대시보드 SQL 편집기 또는 MCP execute_sql 로 아래를 실행.
 -- CREATE-only 마이그레이션이라 이 drop 으로 0050/0051 이전 상태로 완전히 복귀한다(기존 clients/doc_clients 무관).
 
+drop table if exists public.biz_contact           cascade;  -- 0055
+drop table if exists public.biz_contract_discount cascade;  -- 0054
+drop table if exists public.biz_contract_installment cascade;
+drop table if exists public.biz_contract_staff    cascade;
+drop table if exists public.biz_sales_contract    cascade;
 drop table if exists public.biz_entity_relation cascade;  -- 0053
 drop table if exists public.biz_audit_log      cascade;
 drop table if exists public.biz_place_staff    cascade;
