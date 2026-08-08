@@ -61,6 +61,30 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
   {
+    id: 'billing',
+    label: '세무조정수수료관리',
+    items: [
+      { id: 'wizard', label: '📝 청구서 작성' },
+      { id: 'clients', label: '🏢 거래처 관리', cap: 'viewClients' },
+      { id: 'targets', label: '✅ 청구대상', cap: 'manageTargets' },
+      { id: 'history', label: '📋 청구기록' },
+      { id: 'stats', label: '📊 통계' },
+      { id: 'settings', label: '⚙️ 설정', cap: 'changeSettings' },
+    ],
+  },
+  {
+    id: 'advisory',
+    label: '회계및세무상담관리',
+    items: [
+      { id: 'std-kifrs', label: '📚 회계기준 검색' },
+      { id: 'std-tax', label: '⚖️ 세법 검색' },
+      { id: 'consult', label: '🧑‍💼 상담진행' },
+      { id: 'consult-log', label: '🗂️ 상담기록' },
+      { id: 'library', label: '📁 자료실' },
+      { id: 'ai-usage', label: '📊 AI 사용량', cap: 'viewAiUsage' },
+    ],
+  },
+  {
     id: 'general',
     label: '일반업무관리',
     items: [
@@ -87,30 +111,6 @@ export const MENU_GROUPS: MenuGroup[] = [
       },
       { id: 'vacation', label: '🌴 휴가관리' },
       { id: 'estimate', label: '🧮 견적산출 시스템' },
-    ],
-  },
-  {
-    id: 'billing',
-    label: '세무조정수수료관리',
-    items: [
-      { id: 'wizard', label: '📝 청구서 작성' },
-      { id: 'clients', label: '🏢 거래처 관리', cap: 'viewClients' },
-      { id: 'targets', label: '✅ 청구대상', cap: 'manageTargets' },
-      { id: 'history', label: '📋 청구기록' },
-      { id: 'stats', label: '📊 통계' },
-      { id: 'settings', label: '⚙️ 설정', cap: 'changeSettings' },
-    ],
-  },
-  {
-    id: 'advisory',
-    label: '회계및세무상담관리',
-    items: [
-      { id: 'std-kifrs', label: '📚 회계기준 검색' },
-      { id: 'std-tax', label: '⚖️ 세법 검색' },
-      { id: 'consult', label: '🧑‍💼 상담진행' },
-      { id: 'consult-log', label: '🗂️ 상담기록' },
-      { id: 'library', label: '📁 자료실' },
-      { id: 'ai-usage', label: '📊 AI 사용량', cap: 'viewAiUsage' },
     ],
   },
 ];
