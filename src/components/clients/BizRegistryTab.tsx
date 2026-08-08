@@ -6,9 +6,14 @@ import {
   listBizEntities,
   listInternalStaff,
   createBizEntity,
+  updateBizEntity,
   deleteBizEntity,
   createBizPlace,
+  updateBizPlace,
   deleteBizPlace,
+  setPlaceHometaxPw,
+  setEntityResident,
+  CPA_OPTIONS,
   createBizRepresentative,
   deleteBizRepresentative,
   createBizPartner,
@@ -37,6 +42,9 @@ const REP_TYPES: RepType[] = ['단독', '공동대표', '각자대표'];
 // ── 사업장 입력 draft ──────────────────────────────────────
 interface PlaceDraft {
   placeName: string;
+  branchType: '본점' | '지점';
+  unitTaxation: boolean;
+  filingPlaceId: string;
   bizRegNo: string;
   noBiz: boolean;
   address: string;
@@ -51,9 +59,16 @@ interface PlaceDraft {
   note: string;
   staffIds: string[];
 }
-const emptyPlace = (): PlaceDraft => ({
-  placeName: '', bizRegNo: '', noBiz: false, address: '', nature: '매출', salesTeams: [],
-  taxType: '', withholding: '', openedDate: '', cpa: '', hometaxId: '', hometaxPw: '', note: '', staffIds: [],
+const emptyPlace = (branchType: '본점' | '지점' = '본점'): PlaceDraft => ({
+  placeName: '', branchType, unitTaxation: false, filingPlaceId: '', bizRegNo: '', noBiz: false, address: '',
+  nature: '매출', salesTeams: [], taxType: '', withholding: '', openedDate: '', cpa: '', hometaxId: '',
+  hometaxPw: '', note: '', staffIds: [],
+});
+const placeToDraft = (p: BizPlace): PlaceDraft => ({
+  placeName: p.placeName, branchType: p.branchType ?? '본점', unitTaxation: p.unitTaxation,
+  filingPlaceId: p.filingPlaceId ?? '', bizRegNo: p.bizRegNo, noBiz: p.noBiz, address: p.address,
+  nature: p.nature, salesTeams: p.salesTeams, taxType: p.taxType ?? '', withholding: p.withholding ?? '',
+  openedDate: p.openedDate ?? '', cpa: p.cpa, hometaxId: p.hometaxId, hometaxPw: '', note: p.note, staffIds: [],
 });
 
 export default function BizRegistryTab() {
@@ -72,6 +87,8 @@ export default function BizRegistryTab() {
 
   const [showAdd, setShowAdd] = useState(false);
   const [addPlaceFor, setAddPlaceFor] = useState<BizEntityFull | null>(null);
+  const [editEntity, setEditEntity] = useState<BizEntityFull | null>(null);
+  const [editPlace, setEditPlace] = useState<{ place: BizPlace; entity: BizEntityFull } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   async function load() {
@@ -151,6 +168,30 @@ export default function BizRegistryTab() {
       alert('추가 실패: ' + (e instanceof Error ? e.message : e));
     }
   }
+  async function handleEditEntity(e: BizEntityFull, p: { name: string; corpRegNo: string; establishedDate: string; note: string; residentNo: string }) {
+    try {
+      await updateBizEntity(e.id, {
+        name: p.name.trim(),
+        corpRegNo: e.kind === '법인' ? p.corpRegNo.trim() : undefined,
+        establishedDate: e.kind === '법인' ? (p.establishedDate || null) : null,
+        note: p.note.trim(),
+      });
+      if (e.kind === '개인' && p.residentNo.trim()) await setEntityResident(e.id, p.residentNo.trim());
+      setEditEntity(null);
+      await load();
+      flash('✓ 거래처 수정됨');
+    } catch (er) { alert('수정 실패: ' + (er instanceof Error ? er.message : er)); }
+  }
+  async function handleEditPlace(place: BizPlace, d: PlaceDraft) {
+    try {
+      await updateBizPlace(place.id, placeInput(place.entityId, d, place.isHeadquarters));
+      if (d.hometaxPw.trim()) await setPlaceHometaxPw(place.id, d.hometaxPw.trim());
+      for (const sid of d.staffIds) if (!place.staff.some((s) => s.staffId === sid)) await assignStaff(place.id, sid, staffName(sid));
+      setEditPlace(null);
+      await load();
+      flash('✓ 사업장 수정됨');
+    } catch (er) { alert('수정 실패: ' + (er instanceof Error ? er.message : er)); }
+  }
   async function handleDeleteEntity(e: BizEntityFull) {
     if (!confirm(`[${e.code}] ${e.name} — 귀속주체와 사업장·담당자·대표이사·공동사업자가 모두 삭제됩니다. 진행할까요?`)) return;
     try { await deleteBizEntity(e.id); await load(); flash('삭제됨'); }
@@ -229,6 +270,7 @@ export default function BizRegistryTab() {
               <span style={{ fontSize: 11, color: '#aaa' }}>· 사업장 {e.places.length}</span>
               {canWrite && (
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                  <button className="btn-sm btn-sm-blue" onClick={() => setEditEntity(e)}>수정</button>
                   <button className="btn-sm" onClick={() => setAddPlaceFor(e)}>＋사업장</button>
                   <button className="btn-sm btn-sm-del" onClick={() => handleDeleteEntity(e)}>삭제</button>
                 </span>
@@ -241,8 +283,11 @@ export default function BizRegistryTab() {
                 {e.places.map((p) => (
                   <div key={p.id} style={{ background: '#faf8f4', borderRadius: 5, padding: '6px 8px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={placeCodeBadge}>{e.code}-{String(p.placeNo).padStart(2, '0')}</span>
                       {p.isHeadquarters && <span style={hqBadge}>본사</span>}
+                      {p.branchType && <span style={branchBadge(p.branchType)}>{p.branchType}</span>}
                       <b style={{ fontSize: 12 }}>{p.placeName}</b>
+                      {p.unitTaxation && <span style={unitBadge} title={p.filingPlaceId ? '사업자단위과세(지점)' : '사업자단위과세'}>단위과세</span>}
                       <span style={natureBadge(p.nature)}>{p.nature}</span>
                       {p.nature === '매출' && p.salesTeams.map((t) => <span key={t} style={teamBadge}>{t}</span>)}
                       <span style={{ fontSize: 11, color: '#888' }}>
@@ -257,6 +302,7 @@ export default function BizRegistryTab() {
                       {canWrite && (
                         <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                           {p.hasHometaxPw && <button className="btn-sm btn-sm-blue" onClick={() => reveal('hometax', p.id, '홈텍스PW')}>PW보기</button>}
+                          <button className="btn-sm btn-sm-blue" onClick={() => setEditPlace({ place: p, entity: e })}>수정</button>
                           <button className="btn-sm btn-sm-del" onClick={() => handleDeletePlace(p)}>삭제</button>
                         </span>
                       )}
@@ -296,8 +342,20 @@ export default function BizRegistryTab() {
 
       {addPlaceFor && (
         <Modal title={`＋ 사업장 추가 — [${addPlaceFor.code}] ${addPlaceFor.name}`} onClose={() => setAddPlaceFor(null)}>
-          <PlaceFields staff={staff} isHq={false}
+          <PlaceFields staff={staff} siblings={addPlaceFor.places} submitLabel="사업장 추가"
             onSubmit={(d) => handleAddPlace(addPlaceFor.id, d)} onCancel={() => setAddPlaceFor(null)} />
+        </Modal>
+      )}
+      {editEntity && (
+        <Modal title={`✏️ 거래처 수정 — [${editEntity.code}] ${editEntity.name}`} onClose={() => setEditEntity(null)}>
+          <EntityEditForm entity={editEntity} onSave={(p) => handleEditEntity(editEntity, p)} onCancel={() => setEditEntity(null)} />
+        </Modal>
+      )}
+      {editPlace && (
+        <Modal title={`✏️ 사업장 수정 — ${editPlace.place.placeName}`} onClose={() => setEditPlace(null)}>
+          <PlaceFields staff={staff} siblings={editPlace.entity.places.filter((x) => x.id !== editPlace.place.id)}
+            initial={placeToDraft(editPlace.place)} submitLabel="저장"
+            onSubmit={(d) => handleEditPlace(editPlace.place, d)} onCancel={() => setEditPlace(null)} />
         </Modal>
       )}
     </div>
@@ -308,7 +366,9 @@ export default function BizRegistryTab() {
 function placeInput(entityId: string, d: PlaceDraft, isHq: boolean) {
   const isTax = d.nature === '매출' && d.salesTeams.includes('taxteam');
   return {
-    entityId, placeName: d.placeName.trim(), bizRegNo: d.noBiz ? '' : d.bizRegNo.trim(), noBiz: d.noBiz,
+    entityId, placeName: d.placeName.trim(), branchType: d.branchType,
+    unitTaxation: d.unitTaxation, filingPlaceId: d.branchType === '지점' && d.unitTaxation ? (d.filingPlaceId || null) : null,
+    bizRegNo: d.noBiz ? '' : d.bizRegNo.trim(), noBiz: d.noBiz,
     address: d.address.trim(), isHeadquarters: isHq, nature: d.nature,
     salesTeams: d.nature === '매출' ? d.salesTeams : [],
     taxType: isTax ? (d.taxType || null) : null, withholding: isTax ? (d.withholding || null) : null,
@@ -383,7 +443,7 @@ function RegisterForm({
 }
 
 // ── 사업장 필드 (인라인, 등록폼용) ──────────────────────────
-function PlaceFieldsInline({ d, setD, staff }: { d: PlaceDraft; setD: (f: (p: PlaceDraft) => PlaceDraft) => void; staff: StaffProfile[] }) {
+function PlaceFieldsInline({ d, setD, staff, siblings = [] }: { d: PlaceDraft; setD: (f: (p: PlaceDraft) => PlaceDraft) => void; staff: StaffProfile[]; siblings?: BizPlace[] }) {
   const isTax = d.nature === '매출' && d.salesTeams.includes('taxteam');
   const toggleTeam = (t: SalesTeam) =>
     setD((p) => ({ ...p, salesTeams: p.salesTeams.includes(t) ? p.salesTeams.filter((x) => x !== t) : [...p.salesTeams, t] }));
@@ -393,8 +453,26 @@ function PlaceFieldsInline({ d, setD, staff }: { d: PlaceDraft; setD: (f: (p: Pl
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
       <div className="frow"><span className="fl">사업장명<span className="req">*</span></span>
         <input value={d.placeName} onChange={(e) => setD((p) => ({ ...p, placeName: e.target.value }))} placeholder="예: 본점 / ○○지점" /></div>
+      <div className="frow"><span className="fl">본점/지점</span>
+        <select value={d.branchType} onChange={(e) => setD((p) => ({ ...p, branchType: e.target.value as '본점' | '지점' }))} style={selStyle}>
+          <option value="본점">본점</option><option value="지점">지점</option>
+        </select></div>
       <div className="frow"><span className="fl">사업자번호</span>
         <input value={d.bizRegNo} disabled={d.noBiz} onChange={(e) => setD((p) => ({ ...p, bizRegNo: e.target.value }))} placeholder={d.noBiz ? '사업자없음' : '000-00-00000'} /></div>
+      <div className="frow"><span className="fl">사업자단위과세</span>
+        <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 11.5, display: 'flex', gap: 4, alignItems: 'center' }}>
+            <input type="checkbox" checked={d.unitTaxation} onChange={(e) => setD((p) => ({ ...p, unitTaxation: e.target.checked }))} /> 적용
+          </label>
+          {d.unitTaxation && d.branchType === '지점' && (
+            siblings.length ? (
+              <select value={d.filingPlaceId} onChange={(e) => setD((p) => ({ ...p, filingPlaceId: e.target.value }))} style={selStyle}>
+                <option value="">신고기준(본점) 선택</option>
+                {siblings.map((s) => <option key={s.id} value={s.id}>{s.placeName}</option>)}
+              </select>
+            ) : <span style={{ fontSize: 10.5, color: '#a80' }}>신고기준(본점)은 사업장 추가/수정에서 선택</span>
+          )}
+        </span></div>
       <div className="frow" style={{ gridColumn: '1 / -1' }}>
         <span className="fl"> </span>
         <label style={{ fontSize: 11.5, display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -431,7 +509,11 @@ function PlaceFieldsInline({ d, setD, staff }: { d: PlaceDraft; setD: (f: (p: Pl
       <div className="frow"><span className="fl">개업일</span>
         <input type="date" value={d.openedDate} onChange={(e) => setD((p) => ({ ...p, openedDate: e.target.value }))} /></div>
       <div className="frow"><span className="fl">담당 CPA</span>
-        <input value={d.cpa} onChange={(e) => setD((p) => ({ ...p, cpa: e.target.value }))} placeholder="예: 정우철" /></div>
+        <>
+          <input list="biz-cpa-options" value={d.cpa} onChange={(e) => setD((p) => ({ ...p, cpa: e.target.value }))} placeholder="입력·선택 (정우철/조현규/김준성)" />
+          <datalist id="biz-cpa-options">{CPA_OPTIONS.map((c) => <option key={c} value={c} />)}</datalist>
+        </>
+      </div>
       <div className="frow"><span className="fl">홈텍스 ID</span>
         <input value={d.hometaxId} onChange={(e) => setD((p) => ({ ...p, hometaxId: e.target.value }))} placeholder="(선택)" /></div>
       <div className="frow"><span className="fl">홈텍스 PW 🔒</span>
@@ -449,16 +531,51 @@ function PlaceFieldsInline({ d, setD, staff }: { d: PlaceDraft; setD: (f: (p: Pl
   );
 }
 
-// PlaceFields as standalone modal form (사업장 추가)
-function PlaceFields({ staff, isHq, onSubmit, onCancel }: { staff: StaffProfile[]; isHq: boolean; onSubmit: (d: PlaceDraft) => void; onCancel: () => void }) {
-  const [d, setD] = useState<PlaceDraft>(emptyPlace());
+// PlaceFields as standalone modal form (사업장 추가/수정)
+function PlaceFields({ staff, siblings = [], initial, submitLabel, onSubmit, onCancel }: {
+  staff: StaffProfile[]; siblings?: BizPlace[]; initial?: PlaceDraft; submitLabel: string;
+  onSubmit: (d: PlaceDraft) => void; onCancel: () => void;
+}) {
+  const [d, setD] = useState<PlaceDraft>(initial ?? emptyPlace('지점'));
   return (
     <div>
-      <PlaceFieldsInline d={d} setD={setD} staff={staff} />
+      <PlaceFieldsInline d={d} setD={setD} staff={staff} siblings={siblings} />
       <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-        <button className="btn-p" onClick={() => { if (!d.placeName.trim()) return alert('사업장명은 필수입니다.'); onSubmit(d); }}>
-          {isHq ? '본사 등록' : '사업장 추가'}
-        </button>
+        <button className="btn-p" onClick={() => { if (!d.placeName.trim()) return alert('사업장명은 필수입니다.'); onSubmit(d); }}>{submitLabel}</button>
+        <button className="btn-sm" onClick={onCancel}>취소</button>
+      </div>
+    </div>
+  );
+}
+
+// 귀속주체 수정 폼
+function EntityEditForm({ entity, onSave, onCancel }: { entity: BizEntityFull; onSave: (p: { name: string; corpRegNo: string; establishedDate: string; note: string; residentNo: string }) => void; onCancel: () => void }) {
+  const [name, setName] = useState(entity.name);
+  const [corpRegNo, setCorpRegNo] = useState(entity.corpRegNo);
+  const [establishedDate, setEstablishedDate] = useState(entity.establishedDate ?? '');
+  const [note, setNote] = useState(entity.note);
+  const [residentNo, setResidentNo] = useState('');
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
+        <div className="frow"><span className="fl">{entity.kind === '법인' ? '법인명' : '성명'}<span className="req">*</span></span>
+          <input value={name} onChange={(e) => setName(e.target.value)} /></div>
+        {entity.kind === '법인' ? (
+          <>
+            <div className="frow"><span className="fl">법인등록번호</span>
+              <input value={corpRegNo} onChange={(e) => setCorpRegNo(e.target.value)} placeholder="000000-0000000" /></div>
+            <div className="frow"><span className="fl">설립일</span>
+              <input type="date" value={establishedDate} onChange={(e) => setEstablishedDate(e.target.value)} /></div>
+          </>
+        ) : (
+          <div className="frow"><span className="fl">주민등록번호 🔒</span>
+            <input value={residentNo} onChange={(e) => setResidentNo(e.target.value)} placeholder={entity.hasResidentNo ? '변경 시에만 입력(등록됨)' : '암호화 저장 (선택)'} /></div>
+        )}
+        <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">비고</span>
+          <input value={note} onChange={(e) => setNote(e.target.value)} /></div>
+      </div>
+      <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
+        <button className="btn-p" onClick={() => { if (!name.trim()) return alert('필수 항목입니다.'); onSave({ name, corpRegNo, establishedDate, note, residentNo }); }}>저장</button>
         <button className="btn-sm" onClick={onCancel}>취소</button>
       </div>
     </div>
@@ -585,6 +702,9 @@ const codeBadge = (k: BizKind): React.CSSProperties => ({
   background: k === '법인' ? '#4a6fa5' : '#7a9a4a',
 });
 const hqBadge: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: '#c8541e', color: '#fff' };
+const placeCodeBadge: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: '#eef', color: '#446', border: '1px solid #ccd' };
+const branchBadge = (b: '본점' | '지점'): React.CSSProperties => ({ fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: b === '본점' ? '#3a5' : '#68a', color: '#fff' });
+const unitBadge: React.CSSProperties = { fontSize: 9.5, padding: '1px 5px', borderRadius: 3, background: '#f3e6c8', color: '#85630f' };
 const teamBadge: React.CSSProperties = { fontSize: 9.5, padding: '1px 5px', borderRadius: 3, background: '#eee4d4', color: '#845' };
 const natureBadge = (n: BizNature): React.CSSProperties => ({
   fontSize: 9.5, padding: '1px 5px', borderRadius: 3, color: '#fff', background: n === '매출' ? '#2a8' : '#999',

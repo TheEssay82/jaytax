@@ -32,6 +32,12 @@ export interface BizPlace {
   noBiz: boolean;
   address: string;
   isHeadquarters: boolean;
+  /** 본점/지점 구분(사업자 분류). */
+  branchType: '본점' | '지점' | null;
+  /** 사업자단위과세 여부. */
+  unitTaxation: boolean;
+  /** 사업자단위과세 시 신고기준(본점) 사업장 id. */
+  filingPlaceId: string | null;
   nature: BizNature;
   salesTeams: SalesTeam[];
   taxType: TaxType | null;
@@ -119,6 +125,9 @@ const toPlace = (r: any): BizPlace => ({
   noBiz: !!r.no_biz,
   address: r.address || '',
   isHeadquarters: !!r.is_headquarters,
+  branchType: r.branch_type ?? null,
+  unitTaxation: !!r.unit_taxation,
+  filingPlaceId: r.filing_place_id ?? null,
   nature: r.nature,
   salesTeams: (r.sales_teams || []) as SalesTeam[],
   taxType: r.tax_type,
@@ -241,6 +250,9 @@ export interface PlaceInput {
   noBiz?: boolean;
   address?: string;
   isHeadquarters?: boolean;
+  branchType?: '본점' | '지점' | null;
+  unitTaxation?: boolean;
+  filingPlaceId?: string | null;
   nature?: BizNature;
   salesTeams?: SalesTeam[];
   taxType?: TaxType | null;
@@ -261,6 +273,9 @@ function placeToRow(p: Partial<PlaceInput>): Record<string, unknown> {
   if (p.noBiz !== undefined) row.no_biz = p.noBiz;
   if (p.address !== undefined) row.address = p.address || null;
   if (p.isHeadquarters !== undefined) row.is_headquarters = p.isHeadquarters;
+  if (p.branchType !== undefined) row.branch_type = p.branchType || null;
+  if (p.unitTaxation !== undefined) row.unit_taxation = p.unitTaxation;
+  if (p.filingPlaceId !== undefined) row.filing_place_id = p.filingPlaceId || null;
   if (p.nature !== undefined) row.nature = p.nature;
   if (p.salesTeams !== undefined) row.sales_teams = p.salesTeams;
   if (p.taxType !== undefined) row.tax_type = p.taxType || null;
@@ -398,13 +413,19 @@ export interface StaffProfile {
   name: string;
   role: string;
 }
-const INTERNAL_ROLES = new Set(['superuser', 'accountant', 'team_lead', 'team_member']);
+/** 담당 CPA 후보(영업·감사 회계사). 입사·변경 시 여기만 고치면 된다. */
+export const CPA_OPTIONS = ['정우철', '조현규', '김준성'] as const;
+/** 담당직원(기장 실무) 후보 화이트리스트. 입사·변경 시 여기만 고치면 된다. */
+export const STAFF_WHITELIST = ['정남지', '김민섭', '김동주', '송현주'] as const;
 export async function listInternalStaff(): Promise<StaffProfile[]> {
   const { data, error } = await supabase.from('profiles').select('id, name, email, role').order('name');
   if (error) throw new Error(error.message);
   /* eslint-disable @typescript-eslint/no-explicit-any */
+  const wl = new Set<string>(STAFF_WHITELIST);
   return (data as any[])
-    .filter((r) => INTERNAL_ROLES.has(r.role))
-    .map((r) => ({ id: r.id, name: r.name || r.email || '(이름없음)', role: r.role }));
+    .map((r) => ({ id: r.id, name: (r.name || '').trim(), role: r.role }))
+    .filter((r) => wl.has(r.name))
+    // 화이트리스트 순서대로 정렬
+    .sort((a, b) => STAFF_WHITELIST.indexOf(a.name as never) - STAFF_WHITELIST.indexOf(b.name as never));
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
