@@ -2,9 +2,27 @@
 // clients + doc_clients → biz_* 자동이관. 부족 필드는 이후 Excel 라운드트립으로 보강.
 import { useState } from 'react';
 import { previewLegacyImport, runLegacyImport, type ImportRow, type ImportResult } from '../../lib/bizImportApi';
-import { corpDisplayName } from '../../lib/bizRegistryApi';
+import { corpDisplayName, type BizEntityFull, type StaffProfile } from '../../lib/bizRegistryApi';
+import { exportBizRegistry, parseBizExcelFile, applyBizExcel, type ExcelApplyResult } from '../../lib/bizExcel';
 
-export default function BizImportPanel({ onImported }: { onImported: () => void }) {
+export default function BizImportPanel({ entities, staff, onImported }: { entities: BizEntityFull[]; staff: StaffProfile[]; onImported: () => void }) {
+  const [excelBusy, setExcelBusy] = useState(false);
+  const [excelResult, setExcelResult] = useState<ExcelApplyResult | null>(null);
+  async function doExport() { try { await exportBizRegistry(entities); } catch (e) { alert('내보내기 실패: ' + (e instanceof Error ? e.message : e)); } }
+  async function onFile(ev: React.ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    ev.target.value = '';
+    if (!file) return;
+    if (!confirm('업로드한 Excel로 거래처를 보강/등록합니다.\n(코드 있는 행=보강, 코드 없는 행=신규 등록) 진행할까요?')) return;
+    setExcelBusy(true); setExcelResult(null);
+    try {
+      const rows = await parseBizExcelFile(file);
+      const r = await applyBizExcel(rows, entities, staff);
+      setExcelResult(r);
+      onImported();
+    } catch (e) { alert('업로드 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setExcelBusy(false); }
+  }
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<ImportRow[] | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -102,6 +120,30 @@ export default function BizImportPanel({ onImported }: { onImported: () => void 
             </div>
           )}
           {rows && rows.length === 0 && <div style={{ fontSize: 12, color: '#999' }}>이관할 기존 거래처가 없습니다.</div>}
+
+          {/* Phase B — Excel 보강 / 대량등록 */}
+          <div style={{ borderTop: '1px solid #eadfbf', marginTop: 12, paddingTop: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#8a6d1f', marginBottom: 4 }}>📊 Excel 보강 / 대량등록</div>
+            <div style={{ fontSize: 11.5, color: '#777', marginBottom: 6 }}>
+              내보내기 → 부족 정보(법인등록번호·과세유형·원천세·홈텍스·개업일 등) 채우기 → 다시 올리기.
+              <b> 코드 있는 행 = 보강</b>(빈 칸은 미변경), <b>코드 없는 행 = 신규 등록</b>. 주민번호·홈텍스PW는 입력값만 암호화 저장됩니다.
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button className="btn-sm btn-sm-blue" onClick={doExport} disabled={excelBusy || entities.length === 0}>
+                📤 보강양식 내보내기 ({entities.length} 거래처)
+              </button>
+              <label className="btn-p" style={{ cursor: excelBusy ? 'default' : 'pointer', opacity: excelBusy ? 0.6 : 1 }}>
+                {excelBusy ? '처리 중…' : '📥 Excel 업로드'}
+                <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} disabled={excelBusy} onChange={onFile} />
+              </label>
+            </div>
+            {excelResult && (
+              <div style={{ fontSize: 12, background: '#eef7ee', border: '1px solid #cbe3cb', borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
+                ✓ 완료 — 보강 {excelResult.updated} · 신규 {excelResult.created}
+                {excelResult.failed.length > 0 && <span style={{ color: '#c33' }}> · 실패 {excelResult.failed.length} ({excelResult.failed.slice(0, 5).map((f) => f.ref).join(', ')}{excelResult.failed.length > 5 ? '…' : ''})</span>}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

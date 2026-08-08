@@ -266,7 +266,7 @@ export default function BizRegistryTab() {
 
       {showAdd && canWrite && <RegisterForm staff={staff} onSubmit={handleRegister} onCancel={() => setShowAdd(false)} />}
 
-      {role === 'superuser' && <BizImportPanel onImported={load} />}
+      {role === 'superuser' && <BizImportPanel entities={entities} staff={staff} onImported={load} />}
 
       {/* 목록 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
