@@ -133,6 +133,17 @@ export async function parseBizExcelFile(file: File): Promise<ExcelRow[]> {
     hometaxPw: idx('홈텍스PW'), staff: idx('담당직원'), note: idx('비고'),
   };
   const get = (row: unknown[], i: number) => (i >= 0 ? String(row[i] ?? '').trim() : '');
+  // 날짜 셀: Excel이 날짜 서식이면 일련번호(예: 45673)로 저장됨 → YYYY-MM-DD 로 변환
+  const getDate = (row: unknown[], i: number): string => {
+    if (i < 0) return '';
+    const v = row[i];
+    if (v == null || v === '') return '';
+    if (typeof v === 'number' && v > 0) {
+      const ms = Math.round((v - 25569) * 86400000); // 25569 = 1970-01-01 의 Excel 일련번호
+      return new Date(ms).toISOString().slice(0, 10);
+    }
+    return String(v).trim();
+  };
   const out: ExcelRow[] = [];
   for (const r of raw.slice(1)) {
     const row = r as unknown[];
@@ -144,10 +155,10 @@ export async function parseBizExcelFile(file: File): Promise<ExcelRow[]> {
     if (code && !/^[A-Za-z]\d+-\d+$/.test(code)) continue; // 유효 코드(L0001-01) 아니면 스킵
     out.push({
       code, kind: get(row, map.kind), name, corpForm: get(row, map.corpForm), corpFormPos: get(row, map.corpFormPos),
-      corpRegNo: get(row, map.corpRegNo), residentNo: get(row, map.residentNo), establishedDate: get(row, map.establishedDate),
+      corpRegNo: get(row, map.corpRegNo), residentNo: get(row, map.residentNo), establishedDate: getDate(row, map.establishedDate),
       placeName: get(row, map.placeName), branchType: get(row, map.branchType), bizRegNo: get(row, map.bizRegNo),
       noBiz: get(row, map.noBiz), address: get(row, map.address), nature: get(row, map.nature), salesTeams: get(row, map.salesTeams),
-      taxType: get(row, map.taxType), withholding: get(row, map.withholding), openedDate: get(row, map.openedDate),
+      taxType: get(row, map.taxType), withholding: get(row, map.withholding), openedDate: getDate(row, map.openedDate),
       unitTaxation: get(row, map.unitTaxation), cpa: get(row, map.cpa), hometaxId: get(row, map.hometaxId),
       hometaxPw: get(row, map.hometaxPw), staff: get(row, map.staff), note: get(row, map.note),
     });
