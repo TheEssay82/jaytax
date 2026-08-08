@@ -14,6 +14,7 @@ import {
 import PasswordModal from './PasswordModal';
 import NotificationBell from './NotificationBell';
 import ClientsTab from './clients/ClientsTab';
+import BizRegistryTab from './clients/BizRegistryTab';
 import WizardTab from './wizard/WizardTab';
 import HistoryTab from './history/HistoryTab';
 import RequestsTab from './requests/RequestsTab';
@@ -50,7 +51,10 @@ export const MENU_GROUPS: MenuGroup[] = [
     id: 'clients-hub',
     label: '거래처관리',
     items: [
-      { id: 'clients-hub-home', label: '🏢 거래처관리 (준비 중)' },
+      { id: 'biz-register', label: '🏢 거래처등록' },
+      { id: 'biz-contract', label: '📄 매출계약등록' },
+      { id: 'biz-contacts', label: '👤 거래처담당자등록' },
+      { id: 'biz-status', label: '📊 거래처현황조회' },
     ],
   },
   {
@@ -416,9 +420,16 @@ function TabContent({
     case 'ai-usage':
       return <AiUsageTab />;
 
-    // ── 신규 대분류 (골격 — 기능 개발 예정) ──────────────────────
-    case 'clients-hub-home':
-      return <PlaceholderTab title="🏢 거래처관리" desc="거래처 정보를 통합 관리하는 대분류입니다. (개발 예정 — 향후 세무조정수수료관리의 거래처 관리가 이곳으로 이관될 예정)" />;
+    // ── 거래처관리 대분류 (2.0.0) ──────────────────────
+    case 'clients-hub-home': // 구 진입점 — 거래처등록으로 대체
+    case 'biz-register':
+      return <BizRegistryTab />;
+    case 'biz-contract':
+      return <PlaceholderTab title="📄 매출계약등록" desc="거래처의 매출계약(세무조정·감사·기장)을 등록·집계합니다. (step 2 — 개발 예정)" />;
+    case 'biz-contacts':
+      return <PlaceholderTab title="👤 거래처담당자등록" desc="거래처(외부) 담당자 연락처를 등록합니다. 기존 문서발송관리에서 이관 예정. (step 3 — 개발 예정)" />;
+    case 'biz-status':
+      return <PlaceholderTab title="📊 거래처현황조회" desc="거래처 현황 list-up 및 통계. (step 4 — 개발 예정)" />;
     case 'billing-req-home':
       return <PlaceholderTab title="🧾 기장 및 개별업무 청구관리" desc="기장·개별 업무 건별 청구를 관리하는 대분류입니다. (설계 예정)" />;
     // 일반업무관리 › 문서발송관리
