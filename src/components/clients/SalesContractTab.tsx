@@ -107,8 +107,11 @@ export default function SalesContractTab() {
     };
     try {
       const id = existingId ? (await updateSalesContract(existingId, input), existingId) : await createSalesContract(input);
-      await saveInstallments(id, form.isInstallment ? form.installments : []);
-      await saveDiscounts(id, form.discounts);
+      // 빈 줄은 저장하지 않는다(내용 없는 분할·무료/할인 제외)
+      const insts = form.isInstallment ? form.installments.filter((x) => x.label.trim() || x.amount) : [];
+      const discs = form.discounts.filter((d) => d.startDate || d.endDate || d.rate != null || d.amount != null || (d.note && d.note.trim()));
+      await saveInstallments(id, insts);
+      await saveDiscounts(id, discs);
       await saveContractStaff(id, form.staffIds.map((sid) => ({ staffId: sid, staffName: staff.find((s) => s.id === sid)?.name ?? '' })));
       setShowAdd(false); setEditId(null); await load();
       flash(existingId ? '✓ 매출계약 수정됨' : '✓ 매출계약 등록됨');
