@@ -2,6 +2,7 @@
 // 귀속주체(법인/개인) → 사업장(본사 강제) 등록 + 담당직원 배정 + 대표이사/공동사업자 + 민감정보 열람.
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import BizImportPanel from './BizImportPanel';
 import {
   listBizEntities,
   listInternalStaff,
@@ -72,7 +73,7 @@ const placeToDraft = (p: BizPlace): PlaceDraft => ({
 });
 
 export default function BizRegistryTab() {
-  const { readonly } = useAuth();
+  const { readonly, role } = useAuth();
   const canWrite = !readonly;
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [staff, setStaff] = useState<StaffProfile[]>([]);
@@ -254,6 +255,8 @@ export default function BizRegistryTab() {
       </div>
 
       {showAdd && canWrite && <RegisterForm staff={staff} onSubmit={handleRegister} onCancel={() => setShowAdd(false)} />}
+
+      {role === 'superuser' && <BizImportPanel onImported={load} />}
 
       {/* 목록 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

@@ -1,0 +1,110 @@
+// 거래처등록 › 기존자료 일괄이관 패널 (최고관리자 전용, 1회성)
+// clients + doc_clients → biz_* 자동이관. 부족 필드는 이후 Excel 라운드트립으로 보강.
+import { useState } from 'react';
+import { previewLegacyImport, runLegacyImport, type ImportRow, type ImportResult } from '../../lib/bizImportApi';
+
+export default function BizImportPanel({ onImported }: { onImported: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<ImportRow[] | null>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<ImportResult | null>(null);
+
+  async function preview() {
+    setLoading(true); setResult(null);
+    try {
+      const r = await previewLegacyImport();
+      setRows(r);
+      setSel(new Set(r.filter((x) => !x.exists).map((x) => x.key)));
+    } catch (e) { alert('미리보기 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setLoading(false); }
+  }
+  async function run() {
+    if (!rows) return;
+    const chosen = rows.filter((r) => sel.has(r.key) && !r.exists);
+    if (!chosen.length) return alert('이관할 신규 대상이 없습니다.');
+    if (!confirm(`${chosen.length}건을 거래처관리로 이관합니다. 진행할까요?\n(부족한 정보는 이관 후 Excel로 보강합니다)`)) return;
+    setLoading(true);
+    try {
+      const res = await runLegacyImport(chosen);
+      setResult(res);
+      onImported();
+      await preview();
+    } catch (e) { alert('이관 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setLoading(false); }
+  }
+  const toggle = (k: string) => setSel((p) => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
+
+  const newCount = rows?.filter((r) => !r.exists).length ?? 0;
+  const existCount = rows?.filter((r) => r.exists).length ?? 0;
+  const selCount = rows?.filter((r) => sel.has(r.key) && !r.exists).length ?? 0;
+
+  return (
+    <div style={{ border: '1px dashed #c9a54a', borderRadius: 6, background: '#fdfaf1', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6d1f' }}>📥 기존자료 일괄등록</span>
+        <span style={{ fontSize: 11, color: '#a88' }}>최고관리자 · 1회성 (세무조정 clients + 문서발송 doc_clients → 거래처관리)</span>
+        <span style={{ marginLeft: 'auto', fontSize: 12 }}>{open ? '▾' : '▸'}</span>
+      </div>
+
+      {open && (
+        <div style={{ padding: '0 10px 10px' }}>
+          <div style={{ fontSize: 11.5, color: '#777', marginBottom: 8 }}>
+            회사명·사업자번호로 자동 병합하여 <b>귀속주체 + 본사 사업장</b>을 만듭니다. 청구 거래처는 <b>매출</b>, 발송 전용은 <b>일반</b>으로 이관됩니다.
+            법인등록번호·과세유형·원천세·홈텍스·개업일 등 <b>부족 정보는 비워두고</b> 이후 Excel로 채웁니다.
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+            <button className="btn-sm btn-sm-blue" disabled={loading} onClick={preview}>{loading ? '처리 중…' : '🔍 미리보기 불러오기'}</button>
+            {rows && (
+              <>
+                <span style={{ fontSize: 12, color: '#555' }}>신규 <b>{newCount}</b> · 이미이관 {existCount} · 선택 <b>{selCount}</b></span>
+                <button className="btn-p" disabled={loading || selCount === 0} onClick={run} style={{ marginLeft: 'auto' }}>선택 {selCount}건 이관 실행</button>
+              </>
+            )}
+          </div>
+
+          {result && (
+            <div style={{ fontSize: 12, background: '#eef7ee', border: '1px solid #cbe3cb', borderRadius: 5, padding: '6px 8px', marginBottom: 8, color: '#256b25' }}>
+              ✓ 이관 완료 — 생성 {result.created} · 건너뜀(이미있음) {result.skipped}
+              {result.failed.length > 0 && <span style={{ color: '#c33' }}> · 실패 {result.failed.length} ({result.failed.map((f) => f.name).join(', ')})</span>}
+            </div>
+          )}
+
+          {rows && rows.length > 0 && (
+            <div style={{ maxHeight: 340, overflow: 'auto', border: '1px solid #eee', borderRadius: 5 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+                <thead>
+                  <tr style={{ background: '#f4efe4', position: 'sticky', top: 0 }}>
+                    <th style={thc}></th><th style={thc}>회사명</th><th style={thc}>구분</th><th style={thc}>성격</th>
+                    <th style={thc}>사업자번호</th><th style={thc}>CPA</th><th style={thc}>대표이사</th><th style={thc}>담당직원</th>
+                    <th style={thc}>소스</th><th style={thc}>상태</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.key} style={{ borderTop: '1px solid #eee', opacity: r.exists ? 0.5 : 1 }}>
+                      <td style={tdc}><input type="checkbox" disabled={r.exists} checked={!r.exists && sel.has(r.key)} onChange={() => toggle(r.key)} /></td>
+                      <td style={{ ...tdc, fontWeight: 600 }}>{r.name}</td>
+                      <td style={tdc}>{r.kind}</td>
+                      <td style={tdc}>{r.nature}</td>
+                      <td style={tdc}>{r.taxId || <span style={{ color: '#c93' }}>–</span>}</td>
+                      <td style={tdc}>{r.cpa || <span style={{ color: '#bbb' }}>–</span>}</td>
+                      <td style={tdc}>{r.repName || <span style={{ color: '#bbb' }}>–</span>}</td>
+                      <td style={tdc}>{r.staffName || <span style={{ color: '#bbb' }}>–</span>}</td>
+                      <td style={tdc}>{r.source === 'both' ? '청구+발송' : r.source === 'clients' ? '청구' : '발송'}</td>
+                      <td style={tdc}>{r.exists ? <span style={{ color: '#999' }}>이미이관</span> : <span style={{ color: '#2a8', fontWeight: 700 }}>신규</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {rows && rows.length === 0 && <div style={{ fontSize: 12, color: '#999' }}>이관할 기존 거래처가 없습니다.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: '#555', whiteSpace: 'nowrap' };
+const tdc: React.CSSProperties = { padding: '4px 6px', whiteSpace: 'nowrap' };
