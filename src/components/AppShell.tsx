@@ -16,6 +16,7 @@ import NotificationBell from './NotificationBell';
 import ClientsTab from './clients/ClientsTab';
 import BizRegistryTab from './clients/BizRegistryTab';
 import SalesContractTab from './clients/SalesContractTab';
+import BizContactsTab from './clients/BizContactsTab';
 import WizardTab from './wizard/WizardTab';
 import HistoryTab from './history/HistoryTab';
 import RequestsTab from './requests/RequestsTab';
@@ -428,7 +429,7 @@ function TabContent({
     case 'biz-contract':
       return <SalesContractTab />;
     case 'biz-contacts':
-      return <PlaceholderTab title="👤 거래처담당자등록" desc="거래처(외부) 담당자 연락처를 등록합니다. 기존 문서발송관리에서 이관 예정. (step 3 — 개발 예정)" />;
+      return <BizContactsTab />;
     case 'biz-status':
       return <PlaceholderTab title="📊 거래처현황조회" desc="거래처 현황 list-up 및 통계. (step 4 — 개발 예정)" />;
     case 'billing-req-home':
