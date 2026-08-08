@@ -54,6 +54,7 @@ export default function SalesContractTab() {
   const [editId, setEditId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'box' | 'table'>('box');
   const [colF, setColF] = useState<Record<string, string>>({});
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
 
   async function load() {
     try {
@@ -91,6 +92,22 @@ export default function SalesContractTab() {
     const fv = (colF[col.key] || '').trim().toLowerCase();
     return !fv || col.val(c).toLowerCase().includes(fv);
   })), [contracts, colF]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sortedRows = useMemo(() => {
+    if (!sort) return tableRows;
+    const col = COLUMNS.find((c) => c.key === sort.key);
+    if (!col) return tableRows;
+    const arr = [...tableRows];
+    arr.sort((a, b) => {
+      const va = col.val(a), vb = col.val(b);
+      const cmp = col.num
+        ? (parseFloat(va.replace(/[^\d.-]/g, '')) || 0) - (parseFloat(vb.replace(/[^\d.-]/g, '')) || 0)
+        : va.localeCompare(vb, 'ko');
+      return sort.dir === 'asc' ? cmp : -cmp;
+    });
+    return arr;
+  }, [tableRows, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 헤더 클릭: 오름 → 내림 → 해제
+  const toggleSort = (key: string) => setSort((s) => (s?.key === key ? (s.dir === 'asc' ? { key, dir: 'desc' } : null) : { key, dir: 'asc' }));
 
   const view = useMemo(() => {
     let list = contracts;
@@ -232,7 +249,11 @@ export default function SalesContractTab() {
           <table style={{ borderCollapse: 'collapse', fontSize: 11.5, minWidth: 1100 }}>
             <thead>
               <tr style={{ background: '#f4efe4' }}>
-                {COLUMNS.map((col) => <th key={col.key} style={{ ...thc, minWidth: col.w }}>{col.label}</th>)}
+                {COLUMNS.map((col) => (
+                  <th key={col.key} style={{ ...thc, minWidth: col.w, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort(col.key)} title="클릭: 오름/내림/해제">
+                    {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
+                  </th>
+                ))}
                 {canWrite && <th style={thc}></th>}
               </tr>
               <tr style={{ background: '#faf7f0' }}>
@@ -245,8 +266,8 @@ export default function SalesContractTab() {
               </tr>
             </thead>
             <tbody>
-              {tableRows.length === 0 && <tr><td colSpan={COLUMNS.length + 1} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 매출계약이 없습니다.</td></tr>}
-              {tableRows.map((c) => (
+              {sortedRows.length === 0 && <tr><td colSpan={COLUMNS.length + 1} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 매출계약이 없습니다.</td></tr>}
+              {sortedRows.map((c) => (
                 <tr key={c.id} style={{ borderTop: '1px solid #eee' }}>
                   {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400 }}>{col.val(c)}</td>)}
                   {canWrite && (
