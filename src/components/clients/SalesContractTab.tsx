@@ -165,7 +165,7 @@ export default function SalesContractTab() {
                 {c.cpa && <span>CPA {c.cpa}</span>}
                 {c.staff.length > 0 && <span>담당 {c.staff.map((s) => s.staffName).join('·')}</span>}
                 <span>{dateToMonth(c.startDate) || '개시?'} ~ {dateToMonth(c.endDate) || '계속'}</span>
-                {c.discounts.length > 0 && <span style={{ color: '#c80' }}>무료/할인 {c.discounts.length}</span>}
+                {c.discounts.length > 0 && <span style={{ color: '#c80' }}>무료/할인 {c.discounts.length}건</span>}
                 {canWrite && (
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                     <button className="btn-sm btn-sm-blue" onClick={() => { setEditId(c.id); setShowAdd(false); }}>수정</button>
@@ -313,6 +313,10 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
           <select value={f.billingCycle} onChange={(e) => pickCycle(e.target.value as BillingCycle)} style={selStyle}>
             {BILLING_CYCLES.map((c) => <option key={c}>{c}</option>)}
           </select></div>
+        <div className="frow"><span className="fl">청구단위</span>
+          <select value={f.billingUnit} onChange={(e) => set('billingUnit', e.target.value as BillingUnit | '')} style={selStyle}>
+            <option value="">(선택)</option>{BILL_UNITS.map((u) => <option key={u}>{u}</option>)}
+          </select></div>
         <div className="frow"><span className="fl">{f.isInstallment ? '계약금액(총액)' : '계약금액'} <span style={{ fontSize: 10, color: '#a55' }}>VAT별도</span></span>
           <input value={f.amount} onChange={(e) => set('amount', e.target.value)} placeholder={f.billingCycle === '월' ? '월 금액 (예: 150000)' : f.billingCycle === '건' ? '건당 금액' : '1회 금액'} /></div>
         <div className="frow"><span className="fl">귀속연도</span>
@@ -358,22 +362,16 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
       </div>
 
       {/* 상세(접기) — 청구단위·무료할인·메인종속·비고 */}
-      <button type="button" className="btn-sm" style={{ marginTop: 10 }} onClick={() => setShowDetail((s) => !s)}>{showDetail ? '▾ 상세 접기' : '▸ 상세 (청구단위·무료/할인·메인종속·비고)'}</button>
+      <button type="button" className="btn-sm" style={{ marginTop: 10 }} onClick={() => setShowDetail((s) => !s)}>{showDetail ? '▾ 상세 접기' : '▸ 상세 (무료/할인·메인종속·비고)'}</button>
       {showDetail && (
         <div style={{ marginTop: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
-            <div className="frow"><span className="fl">청구단위</span>
-              <select value={f.billingUnit} onChange={(e) => set('billingUnit', e.target.value as BillingUnit | '')} style={selStyle}>
-                <option value="">(선택)</option>{BILL_UNITS.map((u) => <option key={u}>{u}</option>)}
-              </select></div>
-            <div className="frow"><span className="fl">메인계약(종속 시)</span>
-              <select value={f.parentContractId} onChange={(e) => set('parentContractId', e.target.value)} style={selStyle}>
-                <option value="">없음(단독/메인)</option>
-                {contracts.filter((c) => c.id !== initial?.id && c.entityId === f.entityId && !c.parentContractId).map((c) => (
-                  <option key={c.id} value={c.id}>{pathLabel(c.categoryCode)} ({won(c.amount)})</option>
-                ))}
-              </select></div>
-          </div>
+          <div className="frow"><span className="fl">메인계약(종속 시)</span>
+            <select value={f.parentContractId} onChange={(e) => set('parentContractId', e.target.value)} style={selStyle}>
+              <option value="">없음(단독/메인)</option>
+              {contracts.filter((c) => c.id !== initial?.id && c.entityId === f.entityId && !c.parentContractId).map((c) => (
+                <option key={c.id} value={c.id}>{pathLabel(c.categoryCode)} ({won(c.amount)})</option>
+              ))}
+            </select></div>
           <DiscountsEditor rows={f.discounts} onChange={(r) => set('discounts', r)} />
           <div className="frow" style={{ marginTop: 8 }}><span className="fl">비고</span>
             <input value={f.note} onChange={(e) => set('note', e.target.value)} placeholder="(선택)" /></div>
