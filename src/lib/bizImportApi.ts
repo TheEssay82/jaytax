@@ -59,7 +59,7 @@ export async function previewLegacyImport(): Promise<ImportRow[]> {
     const staffId = c.manager && staffByName.has((c.manager || '').trim()) ? staffByName.get((c.manager || '').trim())! : null;
     map.set(key, {
       key, name: parsed.name, corpForm: parsed.form, corpFormPosition: parsed.position, kind, nature: '매출',
-      taxId: c.tax_id || '', cpa: '', repName: c.rep_name || '',
+      taxId: c.tax_id || '', cpa: '', repName: kind === '법인' ? (c.rep_name || '') : '',  // 개인은 대표이사 없음
       staffId, staffName: staffId ? (c.manager || '').trim() : '',
       source: 'clients', exists: false,
     });
@@ -104,7 +104,7 @@ export async function runLegacyImport(rows: ImportRow[]): Promise<ImportResult> 
         entityId, placeName: '본점', isHeadquarters: true, branchType: '본점',
         bizRegNo: r.taxId || undefined, nature: r.nature, cpa: r.cpa || undefined,
       });
-      if (r.repName.trim()) await createBizRepresentative({ entityId, repName: r.repName.trim() });
+      if (r.kind === '법인' && r.repName.trim()) await createBizRepresentative({ entityId, repName: r.repName.trim() });
       if (r.staffId) await assignStaff(placeId, r.staffId, r.staffName);
       res.created++;
     } catch (e) {
