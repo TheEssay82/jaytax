@@ -218,7 +218,7 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
             )}
             {uniResult && (
               <div style={{ fontSize: 12, background: uniResult.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${uniResult.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
-                <div>✓ 완료 — 사업장 보강 {uniResult.places.updated}·신규 {uniResult.places.created} · 거래처 신규 {uniResult.entities.created} · 기장계약 {uniResult.contracts.created}(스킵 {uniResult.contracts.skipped}) · 담당자 {uniResult.contacts.created}(스킵 {uniResult.contacts.skipped}·미매칭 {uniResult.contacts.unmatched})
+                <div>✓ 완료 — 사업장 보강 {uniResult.places.updated}·신규 {uniResult.places.created} · 거래처 신규 {uniResult.entities.created} · 기장계약 {uniResult.contracts.created}(스킵 {uniResult.contracts.skipped}·미매칭 {uniResult.contracts.unmatched}) · 담당자 {uniResult.contacts.created}(스킵 {uniResult.contacts.skipped}·미매칭 {uniResult.contacts.unmatched})
                   {uniResult.failed.length > 0 && <span style={{ color: '#c33' }}> · 실패 {uniResult.failed.length}</span>}
                 </div>
                 {uniResult.failed.length > 0 && (

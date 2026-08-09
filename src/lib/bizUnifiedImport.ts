@@ -24,6 +24,8 @@ import {
 import { createBizContact, listBizContacts } from './bizContactApi';
 
 const norm = (s: string) => (s || '').replace(/\D/g, '');
+/** 사업자번호 정제 — 숫자 10자리 이상일 때만 유효값, 아니면(''·'-' 등) 빈값(=null 저장, 중복충돌 방지). */
+const cleanBiz = (s: string) => (norm(s).length >= 10 ? String(s || '').trim() : '');
 const normName = (s: string) =>
   (s || '').replace(/\s+/g, '').replace(/㈜|㈲|\(주\)|주식회사|\(유\)|유한회사|\(유책\)|유한책임회사|\(합자\)|\(합\)|합자회사|사모투자합자회사|\(합명\)|합명회사|pef/gi, '').toLowerCase();
 const asCorp = (s: string): CorpForm | null => (CORP_FORMS as string[]).includes(s) ? (s as CorpForm) : null;
@@ -86,7 +88,7 @@ function col(row: Record<string, string>, ...keywords: string[]): string {
 export interface UnifiedResult {
   places: { updated: number; created: number };
   entities: { created: number };
-  contracts: { created: number; skipped: number };
+  contracts: { created: number; skipped: number; unmatched: number };
   contacts: { created: number; skipped: number; unmatched: number };
   failed: { sheet: string; ref: string; error: string }[];
 }
@@ -133,6 +135,8 @@ export interface UnifiedPreview {
   contacts: { create: number; skip: number; unmatched: number };
   warnings: string[];
 }
+
+export interface UnifiedResultContracts { created: number; skipped: number; unmatched: number }
 
 export async function previewUnifiedImport(file: File): Promise<UnifiedPreview> {
   const pv: UnifiedPreview = {
@@ -214,7 +218,7 @@ export async function previewUnifiedImport(file: File): Promise<UnifiedPreview> 
 export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
   const res: UnifiedResult = {
     places: { updated: 0, created: 0 }, entities: { created: 0 },
-    contracts: { created: 0, skipped: 0 }, contacts: { created: 0, skipped: 0, unmatched: 0 }, failed: [],
+    contracts: { created: 0, skipped: 0, unmatched: 0 }, contacts: { created: 0, skipped: 0, unmatched: 0 }, failed: [],
   };
   const sheets = await readSheets(file);
   const s1 = pickSheet(sheets, '거래처·사업장', '거래처', '사업장');
@@ -299,7 +303,7 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
         // ── 보강 ── (기존 거래처: 비어있는 필드만 채움 · 이미 값이 있는 필드·회사명·사업장명은 덮어쓰지 않음)
         const cur = hit.place;
         const pp: Record<string, unknown> = {};
-        const rawBiz = col(row, '사업자번호');
+        const rawBiz = cleanBiz(col(row, '사업자번호'));
         if (rawBiz && !cur.bizRegNo) pp.bizRegNo = rawBiz;          // 이름만 등록된 거래처에 사업자번호 채움
         const addr = col(row, '사업장주소'); if (addr && !cur.address) pp.address = addr;
         if (tax && !cur.taxType) pp.taxType = tax;
@@ -366,7 +370,7 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
         const isHq = bt2 !== '지점' && !entitiesWithHq.has(entityId);
         const placeId = await createBizPlace({
           entityId, placeName, isHeadquarters: isHq, branchType: isHq ? '본점' : '지점',
-          bizRegNo: col(row, '사업자번호') || undefined, noBiz: isO(col(row, '사업자없음')), address: col(row, '사업장주소') || undefined,
+          bizRegNo: cleanBiz(col(row, '사업자번호')) || undefined, noBiz: isO(col(row, '사업자없음')), address: col(row, '사업장주소') || undefined,
           nature: asNature(col(row, '성격')), salesTeams: parseTeams(col(row, '매출팀') || 'taxteam'),
           taxType: tax, withholding: wht, openedDate: col(row, '개업일') || null, unitTaxation: isO(col(row, '사업자단위과세')),
           status: status === '폐업' ? '폐업' : '정상', cpa: cpa || undefined, hometaxId: htId || undefined, hometaxPw: htPw || undefined, note: note || undefined,
@@ -413,7 +417,7 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
           if (p) loc = { entityId: eid, placeId: p.id };
         }
       }
-      if (!loc) { res.failed.push({ sheet: '매출계약', ref, error: '사업자번호·회사명으로 거래처를 찾을 수 없음' }); continue; }
+      if (!loc) { res.contracts.unmatched++; continue; } // 삭제된 사업장 등 — 실패 아님(미매칭)
       const cat = 'TAX.BOOK'; // 이번 라운드=기장
       if (haveContract.has(contractKey(loc.entityId, loc.placeId, cat))) { res.contracts.skipped++; continue; }
       const amountRaw = col(row, '계약금액');
