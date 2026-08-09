@@ -192,8 +192,11 @@ export async function previewUnifiedImport(file: File): Promise<UnifiedPreview> 
 
   for (const row of s2) {
     const bizno = norm(col(row, '사업자번호'));
-    if (!bizno || !willExistBizno.has(bizno)) { pv.contracts.unmatched.push(col(row, '거래처명') || bizno || '(빈칸)'); continue; }
-    const loc = byBizno.get(bizno);
+    const company = col(row, '거래처명');
+    const byBiz = bizno && willExistBizno.has(bizno);
+    const byNm = !byBiz && company && willExistName.has(normName(parseCorpForm(company).name));
+    if (!byBiz && !byNm) { pv.contracts.unmatched.push(company || bizno || '(빈칸)'); continue; }
+    const loc = bizno ? byBizno.get(bizno) : undefined;
     if (loc && contractSet.has(`${loc.placeId}|TAX.BOOK`)) pv.contracts.skip++;
     else pv.contracts.create++;
   }
@@ -362,8 +365,10 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
   const fresh = await listBizEntities();
   const placeByBizno = new Map<string, { entityId: string; placeId: string }>();
   const entityByName = new Map<string, string>();
+  const placesByEntity = new Map<string, { id: string; placeName: string }[]>();
   for (const e of fresh) {
     entityByName.set(normName(e.name), e.id);
+    placesByEntity.set(e.id, e.places.map((p) => ({ id: p.id, placeName: p.placeName })));
     for (const p of e.places) { const b = norm(p.bizRegNo); if (b) placeByBizno.set(b, { entityId: e.id, placeId: p.id }); }
   }
   const contractStaffProfiles = await listContractStaffProfiles();
@@ -375,10 +380,20 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
   const haveContract = new Set(existingContracts.map((c) => contractKey(c.entityId, c.placeId, c.categoryCode)));
   for (const row of s2) {
     const bizno = norm(col(row, '사업자번호'));
-    const ref = col(row, '거래처명') || bizno;
+    const company = col(row, '거래처명');
+    const ref = company || bizno;
     try {
-      const loc = bizno ? placeByBizno.get(bizno) : undefined;
-      if (!loc) { res.failed.push({ sheet: '매출계약', ref, error: '사업자번호로 거래처를 찾을 수 없음' }); continue; }
+      // 사업자번호 우선, 없으면(무사업자번호 개인 등) 회사명으로 거래처 찾아 해당 사업장에 연결
+      let loc = bizno ? placeByBizno.get(bizno) : undefined;
+      if (!loc && company) {
+        const eid = entityByName.get(normName(parseCorpForm(company).name));
+        if (eid) {
+          const pls = placesByEntity.get(eid) ?? [];
+          const p = pls.find((x) => x.placeName === company) ?? pls[0];
+          if (p) loc = { entityId: eid, placeId: p.id };
+        }
+      }
+      if (!loc) { res.failed.push({ sheet: '매출계약', ref, error: '사업자번호·회사명으로 거래처를 찾을 수 없음' }); continue; }
       const cat = 'TAX.BOOK'; // 이번 라운드=기장
       if (haveContract.has(contractKey(loc.entityId, loc.placeId, cat))) { res.contracts.skipped++; continue; }
       const amountRaw = col(row, '계약금액');
