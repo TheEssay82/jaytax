@@ -92,6 +92,7 @@ export interface UnifiedResult {
 }
 
 const VALID_CODE = /^[A-Za-z]\d+-\d+$/;   // 사업장 코드 L0001-01
+const entityCodeOf = (gk: string) => gk.replace(/-\d+$/, ''); // 그룹키에 place코드(L0098-01) 넣어도 거래처코드(L0098)로 관용처리
 
 // ── 드라이런(미리보기): 쓰기 없이 처리 계획만 계산 ──
 export interface UnifiedPreview {
@@ -139,12 +140,13 @@ export async function previewUnifiedImport(file: File): Promise<UnifiedPreview> 
     const code = col(row, '거래처코드').trim();
     const bizno = norm(col(row, '사업자번호'));
     const gk = col(row, '그룹키').trim();
+    const gkE = entityCodeOf(gk);
     const matched = (code && VALID_CODE.test(code) && byPlaceCode.has(code)) || (!code && bizno && byBizno.has(bizno));
     if (matched) { pv.places.amend++; continue; }
-    if (gk && byEntityCode.has(gk)) {
+    if (gk && byEntityCode.has(gkE)) {
       pv.places.createGrouped++;
-      const g = attachGroups.get(gk) ?? { name: byEntityCode.get(gk)!.name, existing: true, members: 0 };
-      g.members++; attachGroups.set(gk, g);
+      const g = attachGroups.get(gkE) ?? { name: byEntityCode.get(gkE)!.name, existing: true, members: 0 };
+      g.members++; attachGroups.set(gkE, g);
     } else if (gk) {
       pv.places.createGrouped++;
       const g = newGroups.get(gk) ?? { name: col(row, '상호', '성명') || '(미상)', existing: false, members: 0 };
@@ -218,7 +220,7 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
   const groupIdentity = new Map<string, { kind: BizKind; name: string; corpForm: CorpForm | null; corpPos: '앞' | '뒤' | null; resident: string; repName: string }>();
   for (const row of s1) {
     const gk = col(row, '그룹키').trim();
-    if (!gk || byEntityCode.has(gk)) continue; // 기존 거래처 그룹은 신규생성 아님
+    if (!gk || byEntityCode.has(entityCodeOf(gk))) continue; // 기존 거래처 그룹은 신규생성 아님
     const name = col(row, '상호', '성명');
     if (!name) continue;
     if (groupIdentity.has(gk)) continue;
@@ -277,11 +279,12 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
       } else {
         // ── 신규 사업장 (거래처는 그룹/단독) ──
         const gk = col(row, '그룹키').trim();
+        const gkE = entityCodeOf(gk);
         let entityId: string;
         let entKind: BizKind;
-        if (gk && byEntityCode.has(gk)) {
+        if (gk && byEntityCode.has(gkE)) {
           // 기존 거래처에 사업장 추가
-          const ec = byEntityCode.get(gk)!;
+          const ec = byEntityCode.get(gkE)!;
           entityId = ec.entityId; entKind = ec.kind;
         } else if (gk && groupEntity.has(gk)) {
           entityId = groupEntity.get(gk)!;
