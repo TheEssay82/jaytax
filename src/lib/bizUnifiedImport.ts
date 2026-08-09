@@ -238,6 +238,15 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
       if (b) byBizno.set(b, hit);
     }
   }
+  // 본점(HQ) 보유 거래처(중복 HQ 방지) + 이름→거래처 색인(중복 생성·재실행 방지) + 사업장(거래처|사업장명) 키(재실행 스킵)
+  const entitiesWithHq = new Set<string>();
+  const entityIdByName = new Map<string, string>();
+  const existingPlaceKeys = new Set<string>();
+  for (const e of entities) {
+    entityIdByName.set(normName(e.name), e.id);
+    if (e.places.some((p) => p.isHeadquarters)) entitiesWithHq.add(e.id);
+    for (const p of e.places) existingPlaceKeys.add(`${e.id}|${p.placeName.trim()}`);
+  }
   // 그룹키 → 새로 만든 entityId 캐시
   const groupEntity = new Map<string, string>();
 
@@ -324,7 +333,7 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
           entityId = groupEntity.get(gk)!;
           entKind = groupIdentity.get(gk)?.kind ?? '법인';
         } else {
-          // 신규 거래처 생성
+          // 신규 거래처 생성 — 같은 이름 거래처가 이미 있으면(이전 실행분 포함) 재사용(중복·재실행 방지)
           const id = groupIdentity.get(gk);
           const kind: BizKind = id?.kind ?? (col(row, '구분') === '개인' ? '개인' : '법인');
           const rawName = id?.name ?? col(row, '상호', '성명');
@@ -332,27 +341,38 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
           if (kind === '법인' && !corpForm && rawName) { const p = parseCorpForm(rawName); name = p.name; corpForm = p.form; corpPos = p.position; }
           if (kind === '법인' && corpForm && !corpPos) corpPos = '앞'; // 위치 미지정 시 앞(㈜) 기본
           if (!name) { res.failed.push({ sheet: '거래처·사업장', ref, error: '신규 거래처: 상호/성명 없음' }); continue; }
-          entityId = await createBizEntity({
-            kind, name, corpForm: kind === '법인' ? corpForm : null, corpFormPosition: kind === '법인' ? corpPos : null,
-            residentNo: kind === '개인' ? (id?.resident || resident || undefined) : undefined, note: note || undefined,
-          });
-          entKind = kind;
-          if (kind === '법인' && (id?.repName || repName)) {
-            await createRepsFrom(entityId, (id?.repName || repName), (id?.resident || resident));
+          const dup = entityIdByName.get(normName(name));
+          if (dup) {
+            entityId = dup; entKind = kind;
+          } else {
+            entityId = await createBizEntity({
+              kind, name, corpForm: kind === '법인' ? corpForm : null, corpFormPosition: kind === '법인' ? corpPos : null,
+              residentNo: kind === '개인' ? (id?.resident || resident || undefined) : undefined, note: note || undefined,
+            });
+            entKind = kind;
+            if (kind === '법인' && (id?.repName || repName)) {
+              await createRepsFrom(entityId, (id?.repName || repName), (id?.resident || resident));
+            }
+            res.entities.created++;
+            entityIdByName.set(normName(name), entityId);
           }
-          res.entities.created++;
           if (gk) groupEntity.set(gk, entityId);
         }
-        // 사업장 생성
+        // 사업장 생성 — 본점은 거래처당 1개(추가 사업장은 지점) · 이미 있는 사업장명은 스킵(재실행)
         const placeName = col(row, '사업장명') || (entKind === '개인' ? col(row, '상호', '성명') : '본점');
+        const pkey = `${entityId}|${placeName.trim()}`;
+        if (existingPlaceKeys.has(pkey)) { res.places.updated++; continue; }
         const bt2 = col(row, '본점', '지점');
+        const isHq = bt2 !== '지점' && !entitiesWithHq.has(entityId);
         const placeId = await createBizPlace({
-          entityId, placeName, isHeadquarters: bt2 !== '지점', branchType: bt2 === '지점' ? '지점' : '본점',
+          entityId, placeName, isHeadquarters: isHq, branchType: isHq ? '본점' : '지점',
           bizRegNo: col(row, '사업자번호') || undefined, noBiz: isO(col(row, '사업자없음')), address: col(row, '사업장주소') || undefined,
           nature: asNature(col(row, '성격')), salesTeams: parseTeams(col(row, '매출팀') || 'taxteam'),
           taxType: tax, withholding: wht, openedDate: col(row, '개업일') || null, unitTaxation: isO(col(row, '사업자단위과세')),
           status: status === '폐업' ? '폐업' : '정상', cpa: cpa || undefined, hometaxId: htId || undefined, hometaxPw: htPw || undefined, note: note || undefined,
         });
+        existingPlaceKeys.add(pkey);
+        if (isHq) entitiesWithHq.add(entityId);
         if (staffCell) await assignStaffName(placeId, staffCell, new Set());
         res.places.created++;
       }
