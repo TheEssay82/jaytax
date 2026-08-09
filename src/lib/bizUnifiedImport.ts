@@ -15,7 +15,7 @@ import {
   createBizEntity, createBizPlace, createBizRepresentative, assignStaff,
   updateBizPlace, setEntityResident, setPlaceHometaxPw,
   listBizEntities, parseCorpForm, listInternalStaff,
-  CORP_FORMS, type CorpForm, type BizKind, type BizNature, type TaxType, type Withholding, type SalesTeam,
+  CORP_FORMS, type CorpForm, type BizKind, type BizNature, type TaxType, type Withholding, type SalesTeam, type BizPlace,
 } from './bizRegistryApi';
 import {
   createSalesContract, saveContractStaff, listSalesContracts, listContractStaffProfiles,
@@ -208,17 +208,18 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
   const [entities, staffProfiles] = await Promise.all([listBizEntities(), listInternalStaff()]);
   const staffByName = new Map(staffProfiles.map((s) => [s.name, s.id]));
   // 색인
-  const byPlaceCode = new Map<string, { entityId: string; placeId: string; staffNames: Set<string> }>();
+  type Hit = { entityId: string; placeId: string; staffNames: Set<string>; place: BizPlace; entHasResident: boolean };
+  const byPlaceCode = new Map<string, Hit>();
   const byEntityCode = new Map<string, { entityId: string; kind: BizKind; hasRepNames: Set<string> }>();
-  const byBizno = new Map<string, { entityId: string; placeId: string; staffNames: Set<string> }>();
+  const byBizno = new Map<string, Hit>();
   for (const e of entities) {
     byEntityCode.set(e.code, { entityId: e.id, kind: e.kind, hasRepNames: new Set(e.representatives.map((r) => r.repName)) });
     for (const p of e.places) {
       const pc = `${e.code}-${String(p.placeNo).padStart(2, '0')}`;
-      const staffNames = new Set(p.staff.map((s) => s.staffName));
-      byPlaceCode.set(pc, { entityId: e.id, placeId: p.id, staffNames });
+      const hit: Hit = { entityId: e.id, placeId: p.id, staffNames: new Set(p.staff.map((s) => s.staffName)), place: p, entHasResident: e.hasResidentNo };
+      byPlaceCode.set(pc, hit);
       const b = norm(p.bizRegNo);
-      if (b) byBizno.set(b, { entityId: e.id, placeId: p.id, staffNames });
+      if (b) byBizno.set(b, hit);
     }
   }
   // 그룹키 → 새로 만든 entityId 캐시
@@ -270,23 +271,26 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
       const staffCell = col(row, '담당직원');
 
       if (hit) {
-        // ── 보강 ── (기존 거래처: 빈칸 채우기만 · 회사명/사업장명/사업자번호 등 식별정보는 절대 덮어쓰지 않음)
+        // ── 보강 ── (기존 거래처: 비어있는 필드만 채움 · 이미 값이 있는 필드·회사명·사업장명은 덮어쓰지 않음)
+        const cur = hit.place;
         const pp: Record<string, unknown> = {};
-        const addr = col(row, '사업장주소'); if (addr) pp.address = addr;
-        if (tax) pp.taxType = tax;
-        if (wht) pp.withholding = wht;
-        const od = col(row, '개업일'); if (od) pp.openedDate = od;
-        if (col(row, '사업자단위과세')) pp.unitTaxation = isO(col(row, '사업자단위과세'));
-        if (cpa) pp.cpa = cpa;
-        if (htId) pp.hometaxId = htId;
-        if (status === '폐업') pp.status = '폐업';
-        if (note) pp.note = note;
+        const rawBiz = col(row, '사업자번호');
+        if (rawBiz && !cur.bizRegNo) pp.bizRegNo = rawBiz;          // 이름만 등록된 거래처에 사업자번호 채움
+        const addr = col(row, '사업장주소'); if (addr && !cur.address) pp.address = addr;
+        if (tax && !cur.taxType) pp.taxType = tax;
+        if (wht && !cur.withholding) pp.withholding = wht;
+        const od = col(row, '개업일'); if (od && !cur.openedDate) pp.openedDate = od;
+        if (isO(col(row, '사업자단위과세')) && !cur.unitTaxation) pp.unitTaxation = true;
+        if (cpa && !cur.cpa) pp.cpa = cpa;
+        if (htId && !cur.hometaxId) pp.hometaxId = htId;
+        if (status === '폐업' && cur.status !== '폐업') pp.status = '폐업';
+        if (note && !cur.note) pp.note = note;
         if (Object.keys(pp).length) await updateBizPlace(hit.placeId, pp);
-        if (htPw) await setPlaceHometaxPw(hit.placeId, htPw);
-        // 대표자/주민
-        const eInfo = [...byEntityCode.values()].find((v) => v.entityId === hit!.entityId);
+        if (htPw && !cur.hasHometaxPw) await setPlaceHometaxPw(hit.placeId, htPw);
+        // 대표자/주민 (기존에 없을 때만)
+        const eInfo = byEntityCode.get(entityCodeOf(code)) ?? [...byEntityCode.values()].find((v) => v.entityId === hit!.entityId);
         const entKind = eInfo?.kind;
-        if (entKind === '개인' && resident) await setEntityResident(hit.entityId, resident);
+        if (entKind === '개인' && resident && !hit.entHasResident) await setEntityResident(hit.entityId, resident);
         if (entKind === '법인' && repName) await createRepsFrom(hit.entityId, repName, resident, eInfo?.hasRepNames);
         if (staffCell) await assignStaffName(hit.placeId, staffCell, hit.staffNames);
         res.places.updated++;
