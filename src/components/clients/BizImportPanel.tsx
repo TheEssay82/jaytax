@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { previewLegacyImport, runLegacyImport, type ImportRow, type ImportResult } from '../../lib/bizImportApi';
 import { corpDisplayName, type BizEntityFull, type StaffProfile } from '../../lib/bizRegistryApi';
 import { exportBizRegistry, parseBizExcelFile, applyBizExcel, type ExcelApplyResult } from '../../lib/bizExcel';
+import { applyUnifiedImport, previewUnifiedImport, type UnifiedResult, type UnifiedPreview } from '../../lib/bizUnifiedImport';
 
 export default function BizImportPanel({ entities, staff, onImported }: { entities: BizEntityFull[]; staff: StaffProfile[]; onImported: () => void }) {
   const [excelBusy, setExcelBusy] = useState(false);
@@ -23,6 +24,34 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
     } catch (e) { alert('업로드 실패: ' + (e instanceof Error ? e.message : e)); }
     finally { setExcelBusy(false); }
   }
+  // 통합엑셀(3시트) 대량등록 — 드라이런 미리보기 → 실행 2단계
+  const [uniBusy, setUniBusy] = useState(false);
+  const [uniResult, setUniResult] = useState<UnifiedResult | null>(null);
+  const [uniPreview, setUniPreview] = useState<UnifiedPreview | null>(null);
+  const [uniFile, setUniFile] = useState<File | null>(null);
+  async function onUnifiedFile(ev: React.ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    ev.target.value = '';
+    if (!file) return;
+    setUniBusy(true); setUniResult(null); setUniPreview(null); setUniFile(file);
+    try {
+      const pv = await previewUnifiedImport(file);
+      setUniPreview(pv);
+    } catch (e) { alert('미리보기 실패: ' + (e instanceof Error ? e.message : e)); setUniFile(null); }
+    finally { setUniBusy(false); }
+  }
+  async function runUnified() {
+    if (!uniFile) return;
+    if (!confirm('미리보기 계획대로 프로덕션에 등록합니다. 되돌리기 번거로우니 계획을 확인하셨나요?\n진행할까요?')) return;
+    setUniBusy(true); setUniResult(null);
+    try {
+      const r = await applyUnifiedImport(uniFile);
+      setUniResult(r); setUniPreview(null); setUniFile(null);
+      onImported();
+    } catch (e) { alert('통합 업로드 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setUniBusy(false); }
+  }
+
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<ImportRow[] | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -144,6 +173,58 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#a33' }}>
                     {excelResult.failed.slice(0, 10).map((f, i) => <li key={i}><b>{f.ref}</b>: {f.error}</li>)}
                     {excelResult.failed.length > 10 && <li>… 외 {excelResult.failed.length - 10}건</li>}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 통합엑셀(3시트) 대량등록 */}
+          <div style={{ borderTop: '1px solid #eadfbf', marginTop: 12, paddingTop: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#8a6d1f', marginBottom: 4 }}>🗂️ 통합엑셀 대량등록 (3시트)</div>
+            <div style={{ fontSize: 11.5, color: '#777', marginBottom: 6 }}>
+              <b>거래처·사업장 / 매출계약 / 거래처담당자</b> 3시트를 한 번에 적재합니다.
+              <b> 거래처코드·사업자번호 일치 = 보강</b>, <b>그룹키</b>가 같으면 1거래처 N사업장, 나머지는 신규.
+              폐업(상태)·기장 매출계약·담당자까지 함께 반영됩니다.
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label className="btn-sm btn-sm-blue" style={{ cursor: uniBusy ? 'default' : 'pointer', opacity: uniBusy ? 0.6 : 1 }}>
+                {uniBusy ? '처리 중…' : '🔍 파일 선택 → 미리보기(드라이런)'}
+                <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} disabled={uniBusy} onChange={onUnifiedFile} />
+              </label>
+              {uniPreview && (
+                <button className="btn-p" disabled={uniBusy} onClick={runUnified}>
+                  ✅ 이 계획대로 실행 (되돌리기 어려움)
+                </button>
+              )}
+            </div>
+            {uniPreview && (
+              <div style={{ fontSize: 12, background: uniPreview.warnings.length ? '#fbf7ee' : '#eef4fb', border: `1px solid ${uniPreview.warnings.length ? '#e6d8b8' : '#cbd9e3'}`, borderRadius: 5, padding: '7px 9px', marginTop: 8, color: '#334' }}>
+                <div style={{ fontWeight: 700, marginBottom: 3 }}>🔍 미리보기 (쓰기 전 — 아직 저장 안 됨)</div>
+                <div>사업장: 보강 <b>{uniPreview.places.amend}</b> · 신규(단독) <b>{uniPreview.places.createStandalone}</b> · 신규(그룹) <b>{uniPreview.places.createGrouped}</b></div>
+                <div>새 거래처 생성: <b>{uniPreview.entitiesNew}</b> · 그룹 <b>{uniPreview.groups.length}</b>개</div>
+                <div>기장계약: 생성 <b>{uniPreview.contracts.create}</b> · 스킵 {uniPreview.contracts.skip}{uniPreview.contracts.unmatched.length > 0 && <span style={{ color: '#c60' }}> · 미매칭 {uniPreview.contracts.unmatched.length}</span>}</div>
+                <div>담당자: 생성 <b>{uniPreview.contacts.create}</b> · 스킵 {uniPreview.contacts.skip} · 미매칭 {uniPreview.contacts.unmatched}</div>
+                {uniPreview.warnings.length > 0 && (
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#a60' }}>
+                    {uniPreview.warnings.slice(0, 8).map((w, i) => <li key={i}>{w}</li>)}
+                    {uniPreview.warnings.length > 8 && <li>… 외 {uniPreview.warnings.length - 8}건</li>}
+                  </ul>
+                )}
+                {uniPreview.contracts.unmatched.length > 0 && (
+                  <div style={{ marginTop: 3, color: '#a60' }}>계약 미매칭(사업자번호 없음): {uniPreview.contracts.unmatched.slice(0, 6).join(', ')}{uniPreview.contracts.unmatched.length > 6 ? ' …' : ''}</div>
+                )}
+              </div>
+            )}
+            {uniResult && (
+              <div style={{ fontSize: 12, background: uniResult.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${uniResult.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
+                <div>✓ 완료 — 사업장 보강 {uniResult.places.updated}·신규 {uniResult.places.created} · 거래처 신규 {uniResult.entities.created} · 기장계약 {uniResult.contracts.created}(스킵 {uniResult.contracts.skipped}) · 담당자 {uniResult.contacts.created}(스킵 {uniResult.contacts.skipped}·미매칭 {uniResult.contacts.unmatched})
+                  {uniResult.failed.length > 0 && <span style={{ color: '#c33' }}> · 실패 {uniResult.failed.length}</span>}
+                </div>
+                {uniResult.failed.length > 0 && (
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#a33' }}>
+                    {uniResult.failed.slice(0, 12).map((f, i) => <li key={i}><b>[{f.sheet}] {f.ref}</b>: {f.error}</li>)}
+                    {uniResult.failed.length > 12 && <li>… 외 {uniResult.failed.length - 12}건</li>}
                   </ul>
                 )}
               </div>
