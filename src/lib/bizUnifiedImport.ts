@@ -93,6 +93,23 @@ export interface UnifiedResult {
 
 const VALID_CODE = /^[A-Za-z]\d+-\d+$/;   // 사업장 코드 L0001-01
 const entityCodeOf = (gk: string) => gk.replace(/-\d+$/, ''); // 그룹키에 place코드(L0098-01) 넣어도 거래처코드(L0098)로 관용처리
+const REP_SEP = /\s*[,/、·;]\s*|\n+/; // 공동대표 구분자(쉼표·슬래시·가운뎃점 등)
+
+/** 대표자명·주민번호 셀을 구분자로 나눠 대표(2명 이상이면 공동대표) 생성. existing 있으면 이미 있는 이름 스킵. */
+async function createRepsFrom(entityId: string, repCell: string, residentCell: string, existing?: Set<string>) {
+  const names = (repCell || '').split(REP_SEP).map((s) => s.trim()).filter(Boolean);
+  if (!names.length) return;
+  const residents = (residentCell || '').split(REP_SEP).map((s) => s.trim()).filter(Boolean);
+  const multi = names.length > 1;
+  for (let i = 0; i < names.length; i++) {
+    if (existing?.has(names[i])) continue;
+    await createBizRepresentative({
+      entityId, repName: names[i], repType: multi ? '공동대표' : '단독',
+      residentNo: residents[i] ?? (residents.length === 1 ? residents[0] : undefined),
+    });
+    existing?.add(names[i]);
+  }
+}
 
 // ── 드라이런(미리보기): 쓰기 없이 처리 계획만 계산 ──
 export interface UnifiedPreview {
@@ -270,10 +287,7 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
         const eInfo = [...byEntityCode.values()].find((v) => v.entityId === hit!.entityId);
         const entKind = eInfo?.kind;
         if (entKind === '개인' && resident) await setEntityResident(hit.entityId, resident);
-        if (entKind === '법인' && repName && !(eInfo?.hasRepNames.has(repName))) {
-          await createBizRepresentative({ entityId: hit.entityId, repName, residentNo: resident || undefined });
-          eInfo?.hasRepNames.add(repName);
-        }
+        if (entKind === '법인' && repName) await createRepsFrom(hit.entityId, repName, resident, eInfo?.hasRepNames);
         if (staffCell) await assignStaffName(hit.placeId, staffCell, hit.staffNames);
         res.places.updated++;
       } else {
@@ -304,7 +318,7 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
           });
           entKind = kind;
           if (kind === '법인' && (id?.repName || repName)) {
-            await createBizRepresentative({ entityId, repName: (id?.repName || repName), residentNo: (id?.resident || resident) || undefined });
+            await createRepsFrom(entityId, (id?.repName || repName), (id?.resident || resident));
           }
           res.entities.created++;
           if (gk) groupEntity.set(gk, entityId);
