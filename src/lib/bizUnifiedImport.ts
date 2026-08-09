@@ -94,6 +94,19 @@ export interface UnifiedResult {
 const VALID_CODE = /^[A-Za-z]\d+-\d+$/;   // 사업장 코드 L0001-01
 const entityCodeOf = (gk: string) => gk.replace(/-\d+$/, ''); // 그룹키에 place코드(L0098-01) 넣어도 거래처코드(L0098)로 관용처리
 const REP_SEP = /\s*[,/、·;]\s*|\n+/; // 공동대표 구분자(쉼표·슬래시·가운뎃점 등)
+const MULTI_SEP = /[\n,/]+/;          // 한 셀에 여러 사업자번호·회사명이 들어온 경우 분리
+
+/** 담당자 행에서 소속 거래처 해석 — 여러 사업자번호 중 첫 매칭, 없으면 여러 회사명 중 첫 매칭. */
+function resolveContactEntity(biznoCell: string, companyCell: string,
+    placeByBizno: Map<string, { entityId: string }>, entityByName: Map<string, string>): string | undefined {
+  for (const raw of (biznoCell || '').split(MULTI_SEP)) {
+    const b = norm(raw); if (b.length >= 10 && placeByBizno.has(b)) return placeByBizno.get(b)!.entityId;
+  }
+  for (const c of (companyCell || '').split(MULTI_SEP)) {
+    const id = entityByName.get(normName(parseCorpForm(c.trim()).name)); if (id) return id;
+  }
+  return undefined;
+}
 
 /** 대표자명·주민번호 셀을 구분자로 나눠 대표(2명 이상이면 공동대표) 생성. existing 있으면 이미 있는 이름 스킵. */
 async function createRepsFrom(entityId: string, repCell: string, residentCell: string, existing?: Set<string>) {
@@ -185,11 +198,11 @@ export async function previewUnifiedImport(file: File): Promise<UnifiedPreview> 
     else pv.contracts.create++;
   }
   for (const row of s3) {
-    const bizno = norm(col(row, '사업자번호'));
     const company = col(row, '거래처명');
     if (!col(row, '담당자명').trim()) continue;
-    const matched = (bizno && willExistBizno.has(bizno)) || (company && willExistName.has(normName(parseCorpForm(company).name)));
-    if (matched) pv.contacts.create++; else pv.contacts.unmatched++;
+    const biznoMatch = (col(row, '사업자번호') || '').split(MULTI_SEP).some((b) => { const n = norm(b); return n.length >= 10 && willExistBizno.has(n); });
+    const nameMatch = (company || '').split(MULTI_SEP).some((c) => willExistName.has(normName(parseCorpForm(c.trim()).name)));
+    if (biznoMatch || nameMatch) pv.contacts.create++; else pv.contacts.unmatched++;
   }
   return pv;
 }
@@ -392,14 +405,12 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
   const contactKey = (entityId: string, name: string, phone: string) => `${entityId}|${name.trim()}|${norm(phone)}`;
   const haveContact = new Set(existingContacts.map((c) => contactKey(c.entityId, c.contactName, c.phone)));
   for (const row of s3) {
-    const bizno = norm(col(row, '사업자번호'));
     const company = col(row, '거래처명');
     const name = col(row, '담당자명').trim();
     const ref = `${company} / ${name}`;
     if (!name) continue;
     try {
-      let entityId = bizno ? placeByBizno.get(bizno)?.entityId : undefined;
-      if (!entityId && company) entityId = entityByName.get(normName(parseCorpForm(company).name));
+      const entityId = resolveContactEntity(col(row, '사업자번호'), company, placeByBizno, entityByName);
       if (!entityId) { res.contacts.unmatched++; continue; }
       const phone = col(row, '전화', '휴대폰');
       if (haveContact.has(contactKey(entityId, name, phone))) { res.contacts.skipped++; continue; }
