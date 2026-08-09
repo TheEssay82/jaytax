@@ -15,6 +15,25 @@ import {
 } from '../../lib/salesContractApi';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
+// 연환산 계수(청구주기→연 횟수). 월환산 = 연환산/12.
+const CYCLE_ANN: Record<string, number> = { '월': 12, '분기': 4, '반기': 2, '연': 1, '발생시': 1, '건': 1 };
+const annualize = (c: SalesContract) => c.amount * (CYCLE_ANN[c.billingCycle] ?? 1);
+// 집계(피봇) 기준
+const GROUP_OPTS: { key: string; label: string }[] = [
+  { key: 'team', label: '팀' }, { key: 'type', label: '매출유형' }, { key: 'cpa', label: '담당CPA' },
+  { key: 'staff', label: '담당직원' }, { key: 'cycle', label: '청구주기' }, { key: 'year', label: '귀속연도' },
+];
+function groupKeyOf(g: string, c: SalesContract): string {
+  switch (g) {
+    case 'team': return c.team;
+    case 'type': return pathLabel(c.categoryCode);
+    case 'cpa': return c.cpa || '(미지정)';
+    case 'staff': return c.staff.map((s) => s.staffName).join(',') || '(미지정)';
+    case 'cycle': return c.billingCycle;
+    case 'year': return c.fiscalYear ? String(c.fiscalYear) : '(없음)';
+    default: return '';
+  }
+}
 const UNITS: OccurrenceUnit[] = ['사업장', '법인', '개인'];
 const BILL_UNITS: BillingUnit[] = ['사업장', '법인', '개인']; // '건'은 청구주기에만(청구단위 아님)
 // 날짜: 개시일·종료일은 '월' 최소단위(YYYY-MM). DB(date)엔 -01 로 저장.
@@ -55,6 +74,7 @@ export default function SalesContractTab() {
   const [viewMode, setViewMode] = useState<'box' | 'table'>('box');
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
+  const [groupBy, setGroupBy] = useState<string>('');
 
   async function load() {
     try {
@@ -108,6 +128,24 @@ export default function SalesContractTab() {
   }, [tableRows, sort]); // eslint-disable-line react-hooks/exhaustive-deps
   // 헤더 클릭: 오름 → 내림 → 해제
   const toggleSort = (key: string) => setSort((s) => (s?.key === key ? (s.dir === 'asc' ? { key, dir: 'desc' } : null) : { key, dir: 'asc' }));
+
+  // 필터 반영 합계(부분합) — 표에 보이는 행 기준
+  const summary = useMemo(() => {
+    let cnt = 0, amt = 0, ann = 0;
+    for (const c of sortedRows) { cnt++; amt += c.amount; ann += annualize(c); }
+    return { cnt, amt, ann, mon: Math.round(ann / 12) };
+  }, [sortedRows]);
+  // 집계(피봇) — groupBy 기준 부분합
+  const pivot = useMemo(() => {
+    if (!groupBy) return [];
+    const m = new Map<string, { key: string; cnt: number; amt: number; ann: number }>();
+    for (const c of sortedRows) {
+      const k = groupKeyOf(groupBy, c);
+      const g = m.get(k) ?? { key: k, cnt: 0, amt: 0, ann: 0 };
+      g.cnt++; g.amt += c.amount; g.ann += annualize(c); m.set(k, g);
+    }
+    return [...m.values()].sort((a, b) => b.ann - a.ann);
+  }, [sortedRows, groupBy]);
 
   const view = useMemo(() => {
     let list = contracts;
@@ -188,7 +226,13 @@ export default function SalesContractTab() {
             <input placeholder="🔍 거래처·매출유형·CPA" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
           </>
         )}
-        {viewMode === 'table' && <span style={{ fontSize: 11, color: '#888', flex: 1 }}>각 컬럼 아래 칸에 입력해 필터 ({tableRows.length}건)</span>}
+        {viewMode === 'table' && <span style={{ fontSize: 11, color: '#888' }}>각 컬럼 아래 칸에 입력해 필터 ({tableRows.length}건)</span>}
+        {viewMode === 'table' && (
+          <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)} style={{ ...selStyle, marginLeft: 'auto' }} title="집계(피봇) 기준">
+            <option value="">📊 집계 안 함</option>
+            {GROUP_OPTS.map((g) => <option key={g.key} value={g.key}>📊 {g.label}별 집계</option>)}
+          </select>
+        )}
         {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
         {canWrite && <button className="btn-p" onClick={() => { setShowAdd((s) => !s); setEditId(null); }}>{showAdd ? '닫기' : '＋ 신규 매출계약'}</button>}
       </div>
@@ -245,6 +289,38 @@ export default function SalesContractTab() {
       )}
 
       {viewMode === 'table' && (
+        <>
+        {groupBy && (
+          <div style={{ overflowX: 'auto', border: '1px solid #d8cfa0', borderRadius: 6, marginBottom: 8, background: '#fbf8ef' }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: 520 }}>
+              <thead><tr style={{ background: '#f0e9d2' }}>
+                <th style={thc}>{GROUP_OPTS.find((g) => g.key === groupBy)?.label}별</th>
+                <th style={{ ...thc, textAlign: 'right' }}>건수</th>
+                <th style={{ ...thc, textAlign: 'right' }}>계약금액 합계</th>
+                <th style={{ ...thc, textAlign: 'right' }}>월환산 합계</th>
+                <th style={{ ...thc, textAlign: 'right' }}>연환산 합계</th>
+              </tr></thead>
+              <tbody>
+                {pivot.map((g) => (
+                  <tr key={g.key} style={{ borderTop: '1px solid #eadfbf' }}>
+                    <td style={{ ...tdc, fontWeight: 600 }}>{g.key}</td>
+                    <td style={{ ...tdc, textAlign: 'right' }}>{g.cnt}</td>
+                    <td style={{ ...tdc, textAlign: 'right' }}>{won(g.amt)}</td>
+                    <td style={{ ...tdc, textAlign: 'right' }}>{won(Math.round(g.ann / 12))}</td>
+                    <td style={{ ...tdc, textAlign: 'right' }}>{won(g.ann)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr style={{ borderTop: '2px solid #c9a54a', background: '#f5efdd', fontWeight: 700 }}>
+                <td style={tdc}>총계</td>
+                <td style={{ ...tdc, textAlign: 'right' }}>{summary.cnt}</td>
+                <td style={{ ...tdc, textAlign: 'right' }}>{won(summary.amt)}</td>
+                <td style={{ ...tdc, textAlign: 'right' }}>{won(summary.mon)}</td>
+                <td style={{ ...tdc, textAlign: 'right' }}>{won(summary.ann)}</td>
+              </tr></tfoot>
+            </table>
+          </div>
+        )}
         <div style={{ overflowX: 'auto', border: '1px solid #eee', borderRadius: 6 }}>
           <table style={{ borderCollapse: 'collapse', fontSize: 11.5, minWidth: 1100 }}>
             <thead>
@@ -281,8 +357,20 @@ export default function SalesContractTab() {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr style={{ borderTop: '2px solid #c9a54a', background: '#f5efdd', fontWeight: 700 }}>
+                {COLUMNS.map((col) => {
+                  if (col.key === 'code') return <td key={col.key} style={{ ...tdc, whiteSpace: 'nowrap' }}>합계 {summary.cnt}건</td>;
+                  if (col.key === 'name') return <td key={col.key} style={tdc}>월환산 {won(summary.mon)} · 연환산 {won(summary.ann)}</td>;
+                  if (col.key === 'amount') return <td key={col.key} style={{ ...tdc, textAlign: 'right' }}>{won(summary.amt)}</td>;
+                  return <td key={col.key} style={tdc}></td>;
+                })}
+                {canWrite && <td style={tdc}></td>}
+              </tr>
+            </tfoot>
           </table>
         </div>
+        </>
       )}
     </div>
   );
