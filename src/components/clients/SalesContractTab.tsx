@@ -74,7 +74,9 @@ export default function SalesContractTab() {
   const [viewMode, setViewMode] = useState<'box' | 'table'>('box');
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
-  const [groupBy, setGroupBy] = useState<string>('');
+  const [groupBy, setGroupBy] = useState<string>('');   // 피봇 행 기준
+  const [groupBy2, setGroupBy2] = useState<string>(''); // 피봇 열 기준(교차표)
+  const [measure, setMeasure] = useState<'mon' | 'amt' | 'ann' | 'cnt'>('mon'); // 값
 
   async function load() {
     try {
@@ -146,6 +148,26 @@ export default function SalesContractTab() {
     }
     return [...m.values()].sort((a, b) => b.ann - a.ann);
   }, [sortedRows, groupBy]);
+  // 교차표(피봇) — 행(groupBy) × 열(groupBy2), 모든 조합 표시
+  type Agg = { amt: number; ann: number; cnt: number };
+  const matrix = useMemo(() => {
+    if (!groupBy || !groupBy2) return null;
+    const add = (a: Agg, c: SalesContract) => { a.amt += c.amount; a.ann += annualize(c); a.cnt++; };
+    const cells = new Map<string, Agg>(), rowTot = new Map<string, Agg>(), colTot = new Map<string, Agg>();
+    const grand: Agg = { amt: 0, ann: 0, cnt: 0 };
+    const get = (m: Map<string, Agg>, k: string) => { let v = m.get(k); if (!v) { v = { amt: 0, ann: 0, cnt: 0 }; m.set(k, v); } return v; };
+    for (const c of sortedRows) {
+      const r = groupKeyOf(groupBy, c), col = groupKeyOf(groupBy2, c);
+      add(get(cells, `${r}\0${col}`), c); add(get(rowTot, r), c); add(get(colTot, col), c); add(grand, c);
+    }
+    const rowKeys = [...rowTot.keys()].sort((a, b) => rowTot.get(b)!.ann - rowTot.get(a)!.ann);
+    const colKeys = [...colTot.keys()].sort((a, b) => colTot.get(b)!.ann - colTot.get(a)!.ann);
+    return { rowKeys, colKeys, cells, rowTot, colTot, grand };
+  }, [sortedRows, groupBy, groupBy2]);
+  // 값(measure) 계산·표시
+  const mval = (a?: Agg) => !a ? 0 : measure === 'amt' ? a.amt : measure === 'ann' ? a.ann : measure === 'cnt' ? a.cnt : Math.round(a.ann / 12);
+  const mfmt = (n: number) => (measure === 'cnt' ? String(n) : won(n));
+  const measLabel = ({ mon: '월환산', amt: '계약금액', ann: '연환산', cnt: '건수' } as Record<string, string>)[measure];
 
   const view = useMemo(() => {
     let list = contracts;
@@ -228,10 +250,26 @@ export default function SalesContractTab() {
         )}
         {viewMode === 'table' && <span style={{ fontSize: 11, color: '#888' }}>각 컬럼 아래 칸에 입력해 필터 ({tableRows.length}건)</span>}
         {viewMode === 'table' && (
-          <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)} style={{ ...selStyle, marginLeft: 'auto' }} title="집계(피봇) 기준">
-            <option value="">📊 집계 안 함</option>
-            {GROUP_OPTS.map((g) => <option key={g.key} value={g.key}>📊 {g.label}별 집계</option>)}
-          </select>
+          <span style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 'auto' }}>
+            <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)} style={selStyle} title="피봇 행 기준">
+              <option value="">📊 집계 안 함</option>
+              {GROUP_OPTS.map((g) => <option key={g.key} value={g.key}>행: {g.label}</option>)}
+            </select>
+            {groupBy && (
+              <select value={groupBy2} onChange={(e) => setGroupBy2(e.target.value)} style={selStyle} title="피봇 열 기준(교차표)">
+                <option value="">열: 없음</option>
+                {GROUP_OPTS.filter((g) => g.key !== groupBy).map((g) => <option key={g.key} value={g.key}>열: {g.label}</option>)}
+              </select>
+            )}
+            {groupBy && (
+              <select value={measure} onChange={(e) => setMeasure(e.target.value as 'mon' | 'amt' | 'ann' | 'cnt')} style={selStyle} title="값">
+                <option value="mon">값: 월환산</option>
+                <option value="amt">값: 계약금액</option>
+                <option value="ann">값: 연환산</option>
+                <option value="cnt">값: 건수</option>
+              </select>
+            )}
+          </span>
         )}
         {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
         {canWrite && <button className="btn-p" onClick={() => { setShowAdd((s) => !s); setEditId(null); }}>{showAdd ? '닫기' : '＋ 신규 매출계약'}</button>}
@@ -290,7 +328,7 @@ export default function SalesContractTab() {
 
       {viewMode === 'table' && (
         <>
-        {groupBy && (
+        {groupBy && !groupBy2 && (
           <div style={{ overflowX: 'auto', border: '1px solid #d8cfa0', borderRadius: 6, marginBottom: 8, background: '#fbf8ef' }}>
             <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: 520 }}>
               <thead><tr style={{ background: '#f0e9d2' }}>
@@ -317,6 +355,34 @@ export default function SalesContractTab() {
                 <td style={{ ...tdc, textAlign: 'right' }}>{won(summary.amt)}</td>
                 <td style={{ ...tdc, textAlign: 'right' }}>{won(summary.mon)}</td>
                 <td style={{ ...tdc, textAlign: 'right' }}>{won(summary.ann)}</td>
+              </tr></tfoot>
+            </table>
+          </div>
+        )}
+        {matrix && (
+          <div style={{ overflowX: 'auto', border: '1px solid #d8cfa0', borderRadius: 6, marginBottom: 8, background: '#fbf8ef' }}>
+            <div style={{ fontSize: 11, color: '#846', padding: '5px 8px' }}>
+              📊 <b>{GROUP_OPTS.find((g) => g.key === groupBy)?.label}</b>(행) × <b>{GROUP_OPTS.find((g) => g.key === groupBy2)?.label}</b>(열) · 값: <b>{measLabel}</b> · 필터 반영
+            </div>
+            <table style={{ borderCollapse: 'collapse', fontSize: 11.5 }}>
+              <thead><tr style={{ background: '#f0e9d2' }}>
+                <th style={{ ...thc, position: 'sticky', left: 0, background: '#f0e9d2' }}>{GROUP_OPTS.find((g) => g.key === groupBy)?.label} \ {GROUP_OPTS.find((g) => g.key === groupBy2)?.label}</th>
+                {matrix.colKeys.map((ck) => <th key={ck} style={{ ...thc, textAlign: 'right' }}>{ck}</th>)}
+                <th style={{ ...thc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}>합계</th>
+              </tr></thead>
+              <tbody>
+                {matrix.rowKeys.map((rk) => (
+                  <tr key={rk} style={{ borderTop: '1px solid #eadfbf' }}>
+                    <td style={{ ...tdc, fontWeight: 600, position: 'sticky', left: 0, background: '#fbf8ef' }}>{rk}</td>
+                    {matrix.colKeys.map((ck) => { const v = mval(matrix.cells.get(`${rk}\0${ck}`)); return <td key={ck} style={{ ...tdc, textAlign: 'right', color: v ? '#245' : '#ccc' }}>{v ? mfmt(v) : '·'}</td>; })}
+                    <td style={{ ...tdc, textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #c9a54a' }}>{mfmt(mval(matrix.rowTot.get(rk)))}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr style={{ borderTop: '2px solid #c9a54a', background: '#f5efdd', fontWeight: 700 }}>
+                <td style={{ ...tdc, position: 'sticky', left: 0, background: '#f5efdd' }}>합계</td>
+                {matrix.colKeys.map((ck) => <td key={ck} style={{ ...tdc, textAlign: 'right' }}>{mfmt(mval(matrix.colTot.get(ck)))}</td>)}
+                <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}>{mfmt(mval(matrix.grand))}</td>
               </tr></tfoot>
             </table>
           </div>
