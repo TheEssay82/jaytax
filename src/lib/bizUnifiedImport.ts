@@ -251,15 +251,9 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
       const staffCell = col(row, '담당직원');
 
       if (hit) {
-        // ── 보강 ──
+        // ── 보강 ── (기존 거래처: 빈칸 채우기만 · 회사명/사업장명/사업자번호 등 식별정보는 절대 덮어쓰지 않음)
         const pp: Record<string, unknown> = {};
-        const pn = col(row, '사업장명'); if (pn) pp.placeName = pn;
-        const bt = col(row, '본점', '지점'); if (bt === '본점' || bt === '지점') pp.branchType = bt;
-        if (col(row, '사업자번호')) pp.bizRegNo = col(row, '사업자번호');
-        if (col(row, '사업자없음')) pp.noBiz = isO(col(row, '사업자없음'));
         const addr = col(row, '사업장주소'); if (addr) pp.address = addr;
-        const nat = col(row, '성격'); if (nat === '매출' || nat === '일반') pp.nature = nat;
-        const teams = col(row, '매출팀'); if (teams) pp.salesTeams = parseTeams(teams);
         if (tax) pp.taxType = tax;
         if (wht) pp.withholding = wht;
         const od = col(row, '개업일'); if (od) pp.openedDate = od;
@@ -299,6 +293,7 @@ export async function applyUnifiedImport(file: File): Promise<UnifiedResult> {
           const rawName = id?.name ?? col(row, '상호', '성명');
           let name = rawName, corpForm = id?.corpForm ?? asCorp(col(row, '법인격')), corpPos = id?.corpPos ?? null;
           if (kind === '법인' && !corpForm && rawName) { const p = parseCorpForm(rawName); name = p.name; corpForm = p.form; corpPos = p.position; }
+          if (kind === '법인' && corpForm && !corpPos) corpPos = '앞'; // 위치 미지정 시 앞(㈜) 기본
           if (!name) { res.failed.push({ sheet: '거래처·사업장', ref, error: '신규 거래처: 상호/성명 없음' }); continue; }
           entityId = await createBizEntity({
             kind, name, corpForm: kind === '법인' ? corpForm : null, corpFormPosition: kind === '법인' ? corpPos : null,
