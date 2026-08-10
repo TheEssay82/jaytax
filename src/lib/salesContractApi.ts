@@ -7,6 +7,21 @@ export type BillingUnit = '사업장' | '법인' | '개인' | '건';
 export type BillingCycle = '월' | '분기' | '반기' | '연' | '발생시' | '건';
 export type AdvisoryType = '일반' | '전문';
 export const BILLING_CYCLES: BillingCycle[] = ['월', '분기', '반기', '연', '발생시', '건'];
+
+// ── 정산연도(귀속연도) 규칙 ──────────────────────────────
+// 정산기간(회계연도) = 매년 7/1 ~ 익년 6/30. 어떤 날짜의 정산연도 = 월이 7~12면 그 해, 1~6이면 전년.
+// (예: 종료 2027-03 → 2026 귀속 / 종료 2026-11 → 2026 귀속). 날짜는 'YYYY-MM' 또는 'YYYY-MM-DD'.
+export function settlementYearOfDate(d: string | null | undefined): number | null {
+  if (!d || d.length < 7) return null;
+  const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
+  if (!y || !m) return null;
+  return m >= 7 ? y : y - 1;
+}
+// 계약의 귀속(정산)연도: 명시 fiscalYear 우선, 없으면 종료시점에서 도출(일회성 감사·컨설팅·신고).
+// 기장 등 계속거래(종료 없음)는 계약 단위 귀속이 없어 null(귀속은 월 청구/발생 단계에서 적용).
+export function contractFiscalYear(c: { fiscalYear: number | null; endDate: string | null }): number | null {
+  return c.fiscalYear ?? settlementYearOfDate(c.endDate);
+}
 // 팀별 담당직원 후보(#10) · 담당CPA 후보. 입사·변경 시 여기만 수정.
 export const AUDIT_STAFF = ['정우철', '김준성', '조현규', '송현주'] as const;   // 감사team 담당직원=CPA
 export const TAX_STAFF = ['정남지', '김민섭', '김동주', '송현주'] as const;      // taxteam 담당직원=기장팀

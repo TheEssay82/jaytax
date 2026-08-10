@@ -9,7 +9,7 @@ import {
 import {
   listSalesContracts, createSalesContract, updateSalesContract, deleteSalesContract,
   saveInstallments, saveDiscounts, saveContractStaff, listContractStaffProfiles,
-  staffCandidatesForTeam, BILLING_CYCLES, CPA_LIST,
+  staffCandidatesForTeam, BILLING_CYCLES, CPA_LIST, settlementYearOfDate, contractFiscalYear,
   type SalesContract, type ContractInput, type Installment, type Discount,
   type OccurrenceUnit, type BillingUnit, type BillingCycle, type AdvisoryType, type StaffProfileLite,
 } from '../../lib/salesContractApi';
@@ -30,7 +30,7 @@ function groupKeyOf(g: string, c: SalesContract): string {
     case 'cpa': return c.cpa || '(미지정)';
     case 'staff': return c.staff.map((s) => s.staffName).join(',') || '(미지정)';
     case 'cycle': return c.billingCycle;
-    case 'year': return c.fiscalYear ? String(c.fiscalYear) : '(없음)';
+    case 'year': { const fy = contractFiscalYear(c); return fy ? String(fy) : '(없음)'; }
     default: return '';
   }
 }
@@ -104,7 +104,7 @@ export default function SalesContractTab() {
     { key: 'cycle', label: '주기', val: (c) => c.billingCycle + (c.isInstallment ? '·분할' : ''), w: 66 },
     { key: 'bunit', label: '청구단위', val: (c) => c.billingUnit ?? '', w: 70 },
     { key: 'amount', label: '계약금액', val: (c) => won(c.amount), w: 90, num: true },
-    { key: 'year', label: '귀속', val: (c) => (c.fiscalYear ? String(c.fiscalYear) : ''), w: 56 },
+    { key: 'year', label: '귀속', val: (c) => { const fy = contractFiscalYear(c); return fy ? String(fy) : ''; }, w: 56 },
     { key: 'cpa', label: 'CPA', val: (c) => c.cpa, w: 66 },
     { key: 'staff', label: '담당직원', val: (c) => c.staff.map((s) => s.staffName).join(','), w: 100 },
     { key: 'period', label: '개시~종료', val: (c) => `${dateToMonth(c.startDate) || ''}~${dateToMonth(c.endDate) || '계속'}`, w: 130 },
@@ -482,6 +482,14 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
   function pickContractDate(v: string) {
     setF((p) => ({ ...p, contractDate: v, startDate: p.startDate || v.slice(0, 7) }));
   }
+  // 종료월 → 귀속연도 자동도출(정산기간 7/1~6/30 규칙, 귀속연도 비었을 때만). 기장 등 계속거래는 종료 비워 미적용.
+  function pickEndMonth(v: string) {
+    setF((p) => {
+      const next = { ...p, endDate: v };
+      if (v && !p.fiscalYear) { const y = settlementYearOfDate(v); if (y) next.fiscalYear = String(y); }
+      return next;
+    });
+  }
   // 청구주기 '연' + 귀속연도 → 개시월~종료월 자동(1~12월). 연/건 아니면 분할 해제.
   function pickCycle(v: BillingCycle) {
     setF((p) => {
@@ -590,7 +598,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
             </label></div>
         )}
       </div>
-      <div style={{ fontSize: 10.5, color: '#999', marginTop: 2 }}>※ 귀속연도는 <b>연단위 신고</b>(법인세·소득세 등)만 기재 — 월 기장 등은 비워둡니다. 청구주기가 '연'이면 개시·종료월이 귀속연도 1~12월로 자동 설정됩니다.</div>
+      <div style={{ fontSize: 10.5, color: '#999', marginTop: 2 }}>※ 귀속연도 = 정산기간(<b>7/1~익년 6/30</b>) 기준. <b>종료월을 넣으면 자동</b>(종료 7~12월→그 해, 1~6월→전년). 월 기장 등 계속거래는 비워둡니다.</div>
 
       {f.isInstallment && <InstallmentsEditor rows={f.installments} onChange={(r) => set('installments', r)} sum={instSum} target={amountNum} />}
 
@@ -618,7 +626,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
         <div className="frow"><span className="fl">매출개시월</span>
           <input type="month" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></div>
         <div className="frow"><span className="fl">종료월(비움=계속)</span>
-          <input type="month" value={f.endDate} onChange={(e) => set('endDate', e.target.value)} /></div>
+          <input type="month" value={f.endDate} onChange={(e) => pickEndMonth(e.target.value)} /></div>
       </div>
 
       {/* 상세(접기) — 청구단위·무료할인·메인종속·비고 */}
