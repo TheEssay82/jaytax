@@ -25,7 +25,7 @@ export function contractFiscalYear(c: { fiscalYear: number | null; endDate: stri
 // 팀별 담당직원 후보(#10) · 담당CPA 후보. 입사·변경 시 여기만 수정.
 export const AUDIT_STAFF = ['정우철', '김준성', '조현규', '송현주'] as const;   // 감사team 담당직원=CPA
 export const TAX_STAFF = ['정남지', '김민섭', '김동주', '송현주'] as const;      // taxteam 담당직원=기장팀
-export const CPA_LIST = ['정우철', '조현규', '김준성', '송현주'] as const;       // 담당CPA 후보
+export const CPA_LIST = ['정우철', '조현규', '김준성', '송현주', '법인(지정)'] as const; // 담당CPA 후보 · '법인(지정)'=지정감사(개인 담당 없이 법인 배정)
 export function staffCandidatesForTeam(team: Team): readonly string[] { return team === '감사team' ? AUDIT_STAFF : TAX_STAFF; }
 
 export interface StaffProfileLite { id: string; name: string }

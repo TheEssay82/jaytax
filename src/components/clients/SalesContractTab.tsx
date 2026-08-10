@@ -59,7 +59,7 @@ const emptyForm = (): FormState => ({
 });
 
 export default function SalesContractTab() {
-  const { readonly, role } = useAuth();
+  const { readonly, role, profileName } = useAuth();
   const canWrite = !readonly && role !== 'per_head_accountant'; // 인당회계사는 조회 전용
   const canPivot = role !== 'team_member'; // 집계(피봇)는 기장팀원(김민섭·김동주 등)에게 숨김
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
@@ -170,6 +170,20 @@ export default function SalesContractTab() {
   const mfmt = (n: number) => (measure === 'cnt' ? String(n) : won(n));
   const measLabel = ({ mon: '월환산', amt: '계약금액', ann: '연환산', cnt: '건수' } as Record<string, string>)[measure];
 
+  // 청구예정일 경과 알람 — 로그인한 담당CPA 본인 계약의 분할 회차 중 예정일이 지난 것
+  const myOverdue = useMemo(() => {
+    if (!profileName) return [];
+    const today = new Date().toISOString().slice(0, 10);
+    const out: { name: string; label: string; due: string; amount: number }[] = [];
+    for (const c of contracts) {
+      if (c.cpa !== profileName) continue;
+      for (const it of c.installments) {
+        if (it.dueDate && it.dueDate < today) out.push({ name: entName(c.entityId), label: it.label, due: it.dueDate, amount: it.amount });
+      }
+    }
+    return out.sort((a, b) => a.due.localeCompare(b.due));
+  }, [contracts, profileName]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const view = useMemo(() => {
     let list = contracts;
     if (teamFilter) list = list.filter((c) => c.team === teamFilter);
@@ -235,6 +249,18 @@ export default function SalesContractTab() {
         {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
       </div>
       {error && <div style={{ color: '#c33', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+
+      {myOverdue.length > 0 && (
+        <div style={{ fontSize: 12, background: '#fbecec', border: '1px solid #e6b8b8', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: '#a33' }}>
+          <b>⏰ 청구예정일 경과 {myOverdue.length}건</b> <span style={{ color: '#c66', fontSize: 11 }}>(내 담당 {profileName})</span>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+            {myOverdue.slice(0, 8).map((o, i) => (
+              <li key={i}><b>{o.name}</b> — {o.label} {won(o.amount)}원 · 예정일 <b>{o.due}</b></li>
+            ))}
+            {myOverdue.length > 8 && <li>… 외 {myOverdue.length - 8}건</li>}
+          </ul>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <span style={{ display: 'flex', gap: 2 }}>
