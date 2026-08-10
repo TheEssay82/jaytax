@@ -98,6 +98,9 @@ export default function BizRegistryTab() {
   const [editEntity, setEditEntity] = useState<BizEntityFull | null>(null);
   const [editPlace, setEditPlace] = useState<{ place: BizPlace; entity: BizEntityFull } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'box' | 'table'>('box');
+  const [colF, setColF] = useState<Record<string, string>>({});
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
 
   async function load() {
     try {
@@ -118,6 +121,38 @@ export default function BizRegistryTab() {
   }
 
   const staffName = (id: string) => staff.find((s) => s.id === id)?.name ?? '';
+
+  // 표(list)형 — 사업장 1행 플랫. 각 컬럼 val 로 필터·정렬.
+  const COLUMNS: { key: string; label: string; val: (e: BizEntityFull, p: BizPlace | null) => string; w?: number }[] = [
+    { key: 'code', label: '코드', val: (e, p) => (p ? `${e.code}-${String(p.placeNo).padStart(2, '0')}` : e.code), w: 68 },
+    { key: 'kind', label: '구분', val: (e) => e.kind, w: 46 },
+    { key: 'name', label: '상호/성명', val: (e) => corpDisplayName(e.name, e.corpForm, e.corpFormPosition), w: 150 },
+    { key: 'rep', label: '대표', val: (e) => e.representatives.map((r) => r.repName).join(','), w: 78 },
+    { key: 'place', label: '사업장', val: (_e, p) => p?.placeName ?? '', w: 110 },
+    { key: 'bizno', label: '사업자번호', val: (_e, p) => (p ? (p.bizRegNo || (p.noBiz ? '없음' : '')) : ''), w: 108 },
+    { key: 'branch', label: '본/지점', val: (_e, p) => p?.branchType ?? '', w: 54 },
+    { key: 'nature', label: '성격', val: (_e, p) => p?.nature ?? '', w: 50 },
+    { key: 'teams', label: '매출팀', val: (_e, p) => (p?.salesTeams ?? []).join(','), w: 88 },
+    { key: 'tax', label: '과세', val: (_e, p) => p?.taxType ?? '', w: 50 },
+    { key: 'wht', label: '원천', val: (_e, p) => p?.withholding ?? '', w: 56 },
+    { key: 'cpa', label: '담당CPA', val: (_e, p) => p?.cpa ?? '', w: 66 },
+    { key: 'staff', label: '담당직원', val: (_e, p) => (p?.staff ?? []).map((s) => s.staffName).join(','), w: 88 },
+    { key: 'htid', label: '홈텍스ID', val: (_e, p) => p?.hometaxId ?? '', w: 88 },
+    { key: 'status', label: '상태', val: (_e, p) => p?.status ?? '', w: 46 },
+    { key: 'note', label: '비고', val: (e, p) => p?.note || e.note, w: 120 },
+  ];
+  const flatRows = useMemo(() => view.flatMap((e) => (e.places.length ? e.places.map((p) => ({ e, p: p as BizPlace | null })) : [{ e, p: null as BizPlace | null }])), [view]);
+  const tableRows = useMemo(() => flatRows.filter(({ e, p }) => COLUMNS.every((c) => {
+    const fv = (colF[c.key] || '').trim().toLowerCase();
+    return !fv || c.val(e, p).toLowerCase().includes(fv);
+  })), [flatRows, colF]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sortedRows = useMemo(() => {
+    if (!sort) return tableRows;
+    const col = COLUMNS.find((c) => c.key === sort.key);
+    if (!col) return tableRows;
+    return [...tableRows].sort((a, b) => { const cmp = col.val(a.e, a.p).localeCompare(col.val(b.e, b.p), 'ko'); return sort.dir === 'asc' ? cmp : -cmp; });
+  }, [tableRows, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleSort = (k: string) => setSort((s) => (s?.key === k ? (s.dir === 'asc' ? { key: k, dir: 'desc' } : null) : { key: k, dir: 'asc' }));
 
   const view = useMemo(() => {
     let list = entities;
@@ -248,6 +283,10 @@ export default function BizRegistryTab() {
 
       {/* 필터 바 */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <span style={{ display: 'flex', gap: 2 }}>
+          <button className={viewMode === 'box' ? 'btn-p' : 'btn-sm'} onClick={() => setViewMode('box')}>▤ 박스</button>
+          <button className={viewMode === 'table' ? 'btn-p' : 'btn-sm'} onClick={() => setViewMode('table')}>▦ 표</button>
+        </span>
         <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value as '' | BizKind)} style={selStyle}>
           <option value="">구분 전체</option><option value="법인">법인</option><option value="개인">개인</option>
         </select>
@@ -259,6 +298,8 @@ export default function BizRegistryTab() {
         </label>
         <input placeholder="🔍 코드·법인명·성명·사업장·사업자번호" value={q} onChange={(e) => setQ(e.target.value)}
           style={{ flex: 1, minWidth: 200 }} />
+        {viewMode === 'table' && <span style={{ fontSize: 11, color: '#888' }}>컬럼 아래 칸 필터 ({tableRows.length}행)</span>}
+        {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
         {canWrite && (
           <button className="btn-p" onClick={() => setShowAdd((s) => !s)}>{showAdd ? '닫기' : '＋ 신규 거래처'}</button>
         )}
@@ -268,7 +309,8 @@ export default function BizRegistryTab() {
 
       {role === 'superuser' && <BizImportPanel entities={entities} staff={staff} onImported={load} />}
 
-      {/* 목록 */}
+      {/* 목록(박스) */}
+      {viewMode === 'box' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {view.length === 0 && <div style={{ color: '#999', fontSize: 12, padding: 12 }}>거래처가 없습니다.</div>}
         {view.map((e) => (
@@ -359,6 +401,49 @@ export default function BizRegistryTab() {
           </div>
         ))}
       </div>
+      )}
+
+      {/* 목록(표) */}
+      {viewMode === 'table' && (
+        <div style={{ overflowX: 'auto', border: '1px solid #eee', borderRadius: 6 }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 11.5, minWidth: 1150 }}>
+            <thead>
+              <tr style={{ background: '#f4efe4' }}>
+                {COLUMNS.map((col) => (
+                  <th key={col.key} style={{ ...thc, minWidth: col.w, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort(col.key)} title="클릭: 오름/내림/해제">
+                    {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
+                  </th>
+                ))}
+                {canWrite && <th style={thc}></th>}
+              </tr>
+              <tr style={{ background: '#faf7f0' }}>
+                {COLUMNS.map((col) => (
+                  <th key={col.key} style={{ padding: 2 }}>
+                    <input value={colF[col.key] || ''} onChange={(e) => setColF((p) => ({ ...p, [col.key]: e.target.value }))} placeholder="필터" style={{ width: '100%', fontSize: 10.5, padding: '2px 4px', boxSizing: 'border-box' }} />
+                  </th>
+                ))}
+                {canWrite && <th style={{ padding: 2 }}></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {sortedRows.length === 0 && <tr><td colSpan={COLUMNS.length + 1} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 거래처가 없습니다.</td></tr>}
+              {sortedRows.map(({ e, p }) => (
+                <tr key={p ? p.id : e.id} style={{ borderTop: '1px solid #eee' }}>
+                  {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, fontWeight: col.key === 'name' ? 600 : 400 }}>{col.val(e, p)}</td>)}
+                  {canWrite && (
+                    <td style={tdc}>
+                      <span style={{ display: 'flex', gap: 3 }}>
+                        <button className="btn-sm btn-sm-blue" onClick={() => setEditEntity(e)}>거래처</button>
+                        {p && <button className="btn-sm btn-sm-blue" onClick={() => setEditPlace({ place: p, entity: e })}>사업장</button>}
+                      </span>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {showHelp && (
         <Modal title="❓ 거래처등록 도움말" onClose={() => setShowHelp(false)}>
@@ -849,6 +934,8 @@ function BizHelpContent() {
 
 // ── 스타일 헬퍼 ────────────────────────────────────────────
 const selStyle: React.CSSProperties = { padding: '4px 7px', fontSize: 12 };
+const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: '#555', whiteSpace: 'nowrap' };
+const tdc: React.CSSProperties = { padding: '4px 6px', whiteSpace: 'nowrap' };
 const codeBadge = (k: BizKind): React.CSSProperties => ({
   fontSize: 10.5, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: '#fff',
   background: k === '법인' ? '#4a6fa5' : '#7a9a4a',
