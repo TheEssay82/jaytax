@@ -60,7 +60,7 @@ const emptyForm = (): FormState => ({
 
 export default function SalesContractTab() {
   const { readonly, role } = useAuth();
-  const canWrite = !readonly;
+  const canWrite = !readonly && role !== 'per_head_accountant'; // 인당회계사는 조회 전용
   const canPivot = role !== 'team_member'; // 집계(피봇)는 기장팀원(김민섭·김동주 등)에게 숨김
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [staff, setStaff] = useState<StaffProfileLite[]>([]);

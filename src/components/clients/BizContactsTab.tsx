@@ -11,7 +11,7 @@ import {
 
 export default function BizContactsTab() {
   const { readonly, role } = useAuth();
-  const canWrite = !readonly;
+  const canWrite = !readonly && role !== 'per_head_accountant'; // 인당회계사는 조회 전용
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [contacts, setContacts] = useState<BizContact[]>([]);
   const [loading, setLoading] = useState(true);

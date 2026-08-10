@@ -80,7 +80,7 @@ const placeToDraft = (p: BizPlace): PlaceDraft => ({
 
 export default function BizRegistryTab() {
   const { readonly, role } = useAuth();
-  const canWrite = !readonly;
+  const canWrite = !readonly && role !== 'per_head_accountant'; // 인당회계사는 거래처관리 조회 전용
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [staff, setStaff] = useState<StaffProfile[]>([]);
   const [loading, setLoading] = useState(true);
