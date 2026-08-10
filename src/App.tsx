@@ -2,8 +2,10 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './components/Login';
 import AppShell from './components/AppShell';
 import SharedConsult from './components/SharedConsult';
+import { useNumericPlusKey } from './lib/useNumericPlusKey';
 
 function Gate() {
+  useNumericPlusKey(); // 전역: 금액칸에서 '+' → '000'
   const { session, loading } = useAuth();
   if (loading) {
     return (

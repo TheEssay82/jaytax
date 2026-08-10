@@ -59,8 +59,9 @@ const emptyForm = (): FormState => ({
 });
 
 export default function SalesContractTab() {
-  const { readonly } = useAuth();
+  const { readonly, role } = useAuth();
   const canWrite = !readonly;
+  const canPivot = role !== 'team_member'; // 집계(피봇)는 기장팀원(김민섭·김동주 등)에게 숨김
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [staff, setStaff] = useState<StaffProfileLite[]>([]);
   const [contracts, setContracts] = useState<SalesContract[]>([]);
@@ -249,7 +250,7 @@ export default function SalesContractTab() {
           </>
         )}
         {viewMode === 'table' && <span style={{ fontSize: 11, color: '#888' }}>각 컬럼 아래 칸에 입력해 필터 ({tableRows.length}건)</span>}
-        {viewMode === 'table' && (
+        {viewMode === 'table' && canPivot && (
           <span style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 'auto' }}>
             <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)} style={selStyle} title="피봇 행 기준">
               <option value="">📊 집계 안 함</option>
@@ -328,7 +329,7 @@ export default function SalesContractTab() {
 
       {viewMode === 'table' && (
         <>
-        {groupBy && !groupBy2 && (
+        {canPivot && groupBy && !groupBy2 && (
           <div style={{ overflowX: 'auto', border: '1px solid #d8cfa0', borderRadius: 6, marginBottom: 8, background: '#fbf8ef' }}>
             <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: 520 }}>
               <thead><tr style={{ background: '#f0e9d2' }}>
@@ -359,7 +360,7 @@ export default function SalesContractTab() {
             </table>
           </div>
         )}
-        {matrix && (
+        {canPivot && matrix && (
           <div style={{ overflowX: 'auto', border: '1px solid #d8cfa0', borderRadius: 6, marginBottom: 8, background: '#fbf8ef' }}>
             <div style={{ fontSize: 11, color: '#846', padding: '5px 8px' }}>
               📊 <b>{GROUP_OPTS.find((g) => g.key === groupBy)?.label}</b>(행) × <b>{GROUP_OPTS.find((g) => g.key === groupBy2)?.label}</b>(열) · 값: <b>{measLabel}</b> · 필터 반영
