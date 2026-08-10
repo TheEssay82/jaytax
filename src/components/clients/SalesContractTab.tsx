@@ -472,7 +472,16 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
   }
   function pickCategory(code: string) {
     const lf = leafOf(code);
-    setF((p) => ({ ...p, categoryCode: code, ...(lf?.defaultUnit ? { occurrenceUnit: lf.defaultUnit } : {}) }));
+    setF((p) => {
+      const next: FormState = { ...p, categoryCode: code, ...(lf?.defaultUnit ? { occurrenceUnit: lf.defaultUnit } : {}) };
+      if (code === 'AUD.AUDIT') next.staffIds = []; // 회계감사는 담당직원 개념 없음(담당CPA가 수행자)
+      if (lf?.defaultCycle) {
+        next.billingCycle = lf.defaultCycle;
+        // 연단위(회계감사 등): 귀속연도가 있으면 개시=Y-01·종료=Y-12 자동(감사 대상 회계연도)
+        if (lf.defaultCycle === '연' && /^\d{4}$/.test(p.fiscalYear)) { next.startDate = `${p.fiscalYear}-01`; next.endDate = `${p.fiscalYear}-12`; }
+      }
+      return next;
+    });
   }
   function pickPlace(pid: string) {
     const pl = entity?.places.find((x) => x.id === pid);
@@ -609,6 +618,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
             <input list="sc-cpa" value={f.cpa} onChange={(e) => set('cpa', e.target.value)} placeholder="거래처 CPA 상속·수정" />
             <datalist id="sc-cpa">{CPA_LIST.map((c) => <option key={c} value={c} />)}</datalist>
           </></div>
+        {f.categoryCode !== 'AUD.AUDIT' && (
         <div className="frow"><span className="fl">담당직원 <span style={{ fontSize: 10, color: '#999' }}>({f.team})</span></span>
           <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {staffCands.map((s) => {
@@ -617,6 +627,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
             })}
             {staffCands.length === 0 && <span style={{ fontSize: 11, color: '#999' }}>후보 계정 없음</span>}
           </span></div>
+        )}
       </div>
 
       {/* 날짜: 계약일(일) + 개시·종료(월) */}

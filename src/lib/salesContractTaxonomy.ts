@@ -14,11 +14,13 @@ export interface TaxNode {
   linksConfirmation?: boolean;   // '회계감사' → 조회서 발송대상 참조(#11)
   /** 이 leaf 의 기본 발생단위(#3,6) — 폼에서 자동제시. */
   defaultUnit?: '사업장' | '법인' | '개인';
+  /** 이 leaf 의 기본 청구주기 — 폼에서 자동설정(예: 회계감사=연). */
+  defaultCycle?: '월' | '분기' | '반기' | '연' | '발생시' | '건';
 }
 
 export const TAXONOMY: Record<Team, TaxNode[]> = {
   '감사team': [
-    { code: 'AUD.AUDIT', label: '회계감사', linksConfirmation: true, defaultUnit: '법인' },
+    { code: 'AUD.AUDIT', label: '회계감사', linksConfirmation: true, defaultUnit: '법인', defaultCycle: '연' },
     {
       code: 'AUD.SVC', label: '용역', children: [
         {
