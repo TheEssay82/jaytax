@@ -40,7 +40,7 @@ export async function listContractStaffProfiles(): Promise<StaffProfileLite[]> {
 }
 
 export interface ContractStaff { id: string; contractId: string; staffId: string; staffName: string; active: boolean }
-export interface Installment { id?: string; seq: number; label: string; amount: number; dueDate: string | null; conditionNote: string }
+export interface Installment { id?: string; seq: number; label: string; amount: number; dueDate: string | null; conditionNote: string; billedAt?: string | null }
 export interface Discount { id?: string; discType: '무료' | '할인'; startDate: string | null; endDate: string | null; rate: number | null; amount: number | null; note: string }
 
 export interface SalesContract {
@@ -83,7 +83,7 @@ const toContract = (r: any): SalesContract => ({
   staff: [], installments: [], discounts: [], createdAt: r.created_at, updatedAt: r.updated_at,
 });
 const toStaff = (r: any): ContractStaff => ({ id: r.id, contractId: r.contract_id, staffId: r.staff_id, staffName: r.staff_name || '', active: !!r.active });
-const toInst = (r: any): Installment => ({ id: r.id, seq: r.seq ?? 1, label: r.label || '', amount: r.amount != null ? Number(r.amount) : 0, dueDate: r.due_date, conditionNote: r.condition_note || '' });
+const toInst = (r: any): Installment => ({ id: r.id, seq: r.seq ?? 1, label: r.label || '', amount: r.amount != null ? Number(r.amount) : 0, dueDate: r.due_date, conditionNote: r.condition_note || '', billedAt: r.billed_at ?? null });
 const toDisc = (r: any): Discount => ({ id: r.id, discType: r.disc_type, startDate: r.start_date, endDate: r.end_date, rate: r.rate != null ? Number(r.rate) : null, amount: r.amount != null ? Number(r.amount) : null, note: r.note || '' });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -154,9 +154,17 @@ export async function saveInstallments(contractId: string, rows: Installment[]):
   if (del.error) throw new Error(del.error.message);
   if (!rows.length) return;
   const ins = await supabase.from('biz_contract_installment').insert(
-    rows.map((x, i) => ({ contract_id: contractId, seq: x.seq || i + 1, label: x.label, amount: x.amount, due_date: x.dueDate || null, condition_note: x.conditionNote || null })),
+    rows.map((x, i) => ({ contract_id: contractId, seq: x.seq || i + 1, label: x.label, amount: x.amount, due_date: x.dueDate || null, condition_note: x.conditionNote || null, billed_at: x.billedAt || null })),
   );
   if (ins.error) throw new Error(ins.error.message);
+}
+
+/** 분할 회차 청구완료(확인) 토글 — 알람 CONFIRM. billed=true면 지금 시각 기록, false면 해제. */
+export async function setInstallmentBilled(id: string, billed: boolean): Promise<void> {
+  const { data, error } = await supabase.from('biz_contract_installment')
+    .update({ billed_at: billed ? new Date().toISOString() : null }).eq('id', id).select('id');
+  if (error) throw new Error(error.message);
+  assertWrote(data, '청구확인');
 }
 /** 무료/할인 구간 교체. */
 export async function saveDiscounts(contractId: string, rows: Discount[]): Promise<void> {

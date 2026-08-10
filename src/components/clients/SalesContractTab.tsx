@@ -8,7 +8,7 @@ import {
 } from '../../lib/salesContractTaxonomy';
 import {
   listSalesContracts, createSalesContract, updateSalesContract, deleteSalesContract,
-  saveInstallments, saveDiscounts, saveContractStaff, listContractStaffProfiles,
+  saveInstallments, saveDiscounts, saveContractStaff, listContractStaffProfiles, setInstallmentBilled,
   staffCandidatesForTeam, BILLING_CYCLES, CPA_LIST, settlementYearOfDate, contractFiscalYear,
   type SalesContract, type ContractInput, type Installment, type Discount,
   type OccurrenceUnit, type BillingUnit, type BillingCycle, type AdvisoryType, type StaffProfileLite,
@@ -174,15 +174,20 @@ export default function SalesContractTab() {
   const myOverdue = useMemo(() => {
     if (!profileName) return [];
     const today = new Date().toISOString().slice(0, 10);
-    const out: { name: string; label: string; due: string; amount: number }[] = [];
+    const out: { id: string; name: string; label: string; due: string; amount: number }[] = [];
     for (const c of contracts) {
       if (c.cpa !== profileName) continue;
       for (const it of c.installments) {
-        if (it.dueDate && it.dueDate < today) out.push({ name: entName(c.entityId), label: it.label, due: it.dueDate, amount: it.amount });
+        if (it.id && it.dueDate && it.dueDate < today && !it.billedAt) out.push({ id: it.id, name: entName(c.entityId), label: it.label, due: it.dueDate, amount: it.amount });
       }
     }
     return out.sort((a, b) => a.due.localeCompare(b.due));
   }, [contracts, profileName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function confirmBilled(id: string) {
+    try { await setInstallmentBilled(id, true); await load(); flash('청구완료 확인됨'); }
+    catch (e) { alert('확인 실패: ' + (e instanceof Error ? e.message : e)); }
+  }
 
   const view = useMemo(() => {
     let list = contracts;
@@ -254,10 +259,13 @@ export default function SalesContractTab() {
         <div style={{ fontSize: 12, background: '#fbecec', border: '1px solid #e6b8b8', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: '#a33' }}>
           <b>⏰ 청구예정일 경과 {myOverdue.length}건</b> <span style={{ color: '#c66', fontSize: 11 }}>(내 담당 {profileName})</span>
           <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-            {myOverdue.slice(0, 8).map((o, i) => (
-              <li key={i}><b>{o.name}</b> — {o.label} {won(o.amount)}원 · 예정일 <b>{o.due}</b></li>
+            {myOverdue.slice(0, 12).map((o) => (
+              <li key={o.id} style={{ marginBottom: 2 }}>
+                <b>{o.name}</b> — {o.label} {won(o.amount)}원 · 예정일 <b>{o.due}</b>
+                <button className="btn-sm" style={{ marginLeft: 6 }} onClick={() => confirmBilled(o.id)} title="청구완료로 표시하면 알람에서 제외됩니다">✓ 청구확인</button>
+              </li>
             ))}
-            {myOverdue.length > 8 && <li>… 외 {myOverdue.length - 8}건</li>}
+            {myOverdue.length > 12 && <li>… 외 {myOverdue.length - 12}건</li>}
           </ul>
         </div>
       )}
@@ -721,6 +729,9 @@ function InstallmentsEditor({ rows, onChange, sum, target }: { rows: Installment
           <input value={r.amount ? String(r.amount) : ''} onChange={(e) => upd(i, { amount: Number(e.target.value.replace(/\D/g, '')) })} placeholder="금액" style={{ width: 110 }} />
           <input type="date" value={r.dueDate ?? ''} onChange={(e) => upd(i, { dueDate: e.target.value || null })} />
           <input value={r.conditionNote} onChange={(e) => upd(i, { conditionNote: e.target.value })} placeholder="조건메모(착수 시 등)" style={{ width: 150 }} />
+          <label style={{ fontSize: 10.5, display: 'flex', gap: 3, alignItems: 'center', color: r.billedAt ? '#2a7' : '#999' }}>
+            <input type="checkbox" checked={!!r.billedAt} onChange={(e) => upd(i, { billedAt: e.target.checked ? new Date().toISOString() : null })} /> 청구완료
+          </label>
           <button type="button" className="btn-sm btn-sm-del" onClick={() => onChange(rows.filter((_, j) => j !== i))}>×</button>
         </div>
       ))}
