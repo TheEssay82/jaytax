@@ -61,11 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    supabase.auth.getSession().then(async ({ data }) => {
+    supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
       // 복원된 세션이 로그인 후 8시간을 넘겼으면(예: 어제 로그인한 채 방치) 강제 로그아웃.
       if (data.session && sessionExpired()) {
-        await supabase.auth.signOut();
+        void supabase.auth.signOut();
         setSession(null);
         setLoading(false);
         return;
@@ -73,17 +73,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // 로그인 시각 기록이 없는 기존 세션은 지금을 기준으로 삼는다(이후 8시간 캡 적용).
       if (data.session) { signedInRef.current = true; if (!localStorage.getItem(LOGIN_KEY)) markLogin(); }
       setSession(data.session);
-      if (data.session?.user) await loadProfile(data.session.user.id);
-      setLoading(false);
+      setLoading(false); // 세션 확인 즉시 화면 표시(프로필/역할은 뒤따라 로드) — 로딩 화면에서 멈추지 않게
+      if (data.session?.user) void loadProfile(data.session.user.id);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange(async (event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       signedInRef.current = !!s;
       // 로그인 시각은 '실제 로그인' 때만 기록한다. 토큰 자동갱신(TOKEN_REFRESHED)·초기세션 이벤트로
       // 리셋하면 하드 캡이 계속 밀려 강제 로그아웃이 동작하지 않는다(새로고침으로도 연장 불가하게).
       if (event === 'SIGNED_IN') markLogin();
       setSession(s);
-      if (s?.user) await loadProfile(s.user.id);
-      else {
+      // ⚠️ onAuthStateChange 콜백은 GoTrue 락을 쥔 채 실행된다. 이 안에서 supabase 호출을 await 하면
+      // 데드락(로그인/새로고침 직후 화면이 안 뜨는 원인). 프로필 로드는 콜백 밖(다음 틱)으로 미룬다.
+      if (s?.user) {
+        const uid = s.user.id;
+        setTimeout(() => { void loadProfile(uid); }, 0);
+      } else {
         setRole('team_member');
         setProfileName('');
         setReadonly(false);
