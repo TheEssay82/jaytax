@@ -123,7 +123,24 @@ export default function BizRegistryTab() {
 
   const staffName = (id: string) => staff.find((s) => s.id === id)?.name ?? '';
 
-  // 표(list)형 — 사업장 1행 플랫. 각 컬럼 val 로 필터·정렬.
+  const view = useMemo(() => {
+    let list = entities;
+    if (kindFilter) list = list.filter((e) => e.kind === kindFilter);
+    if (natureFilter) list = list.filter((e) => e.places.some((p) => p.nature === natureFilter));
+    if (noBizOnly) list = list.filter((e) => e.places.some((p) => p.noBiz) || e.places.length === 0);
+    if (q.trim()) {
+      const s = q.trim().toLowerCase();
+      list = list.filter((e) =>
+        e.name.toLowerCase().includes(s) ||
+        e.code.toLowerCase().includes(s) ||
+        e.corpRegNo.includes(s) ||
+        e.places.some((p) => p.placeName.toLowerCase().includes(s) || p.bizRegNo.includes(s)),
+      );
+    }
+    return list;
+  }, [entities, kindFilter, natureFilter, noBizOnly, q]);
+
+  // 표(list)형 — 사업장 1행 플랫. 각 컬럼 val 로 필터·정렬. (view 뒤에 선언 — 순서 중요)
   const COLUMNS: { key: string; label: string; val: (e: BizEntityFull, p: BizPlace | null) => string; w?: number }[] = [
     { key: 'code', label: '코드', val: (e, p) => (p ? `${e.code}-${String(p.placeNo).padStart(2, '0')}` : e.code), w: 68 },
     { key: 'kind', label: '구분', val: (e) => e.kind, w: 46 },
@@ -154,23 +171,6 @@ export default function BizRegistryTab() {
     return [...tableRows].sort((a, b) => { const cmp = col.val(a.e, a.p).localeCompare(col.val(b.e, b.p), 'ko'); return sort.dir === 'asc' ? cmp : -cmp; });
   }, [tableRows, sort]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleSort = (k: string) => setSort((s) => (s?.key === k ? (s.dir === 'asc' ? { key: k, dir: 'desc' } : null) : { key: k, dir: 'asc' }));
-
-  const view = useMemo(() => {
-    let list = entities;
-    if (kindFilter) list = list.filter((e) => e.kind === kindFilter);
-    if (natureFilter) list = list.filter((e) => e.places.some((p) => p.nature === natureFilter));
-    if (noBizOnly) list = list.filter((e) => e.places.some((p) => p.noBiz) || e.places.length === 0);
-    if (q.trim()) {
-      const s = q.trim().toLowerCase();
-      list = list.filter((e) =>
-        e.name.toLowerCase().includes(s) ||
-        e.code.toLowerCase().includes(s) ||
-        e.corpRegNo.includes(s) ||
-        e.places.some((p) => p.placeName.toLowerCase().includes(s) || p.bizRegNo.includes(s)),
-      );
-    }
-    return list;
-  }, [entities, kindFilter, natureFilter, noBizOnly, q]);
 
   const stats = useMemo(() => {
     const corp = entities.filter((e) => e.kind === '법인').length;
