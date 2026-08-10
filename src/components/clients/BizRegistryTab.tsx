@@ -101,6 +101,7 @@ export default function BizRegistryTab() {
   const [viewMode, setViewMode] = useState<'box' | 'table'>('box');
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set()); // 일괄삭제 선택(거래처 id)
 
   async function load() {
     try {
@@ -243,6 +244,19 @@ export default function BizRegistryTab() {
     if (!confirm(`[${e.code}] ${e.name} — 귀속주체와 사업장·담당자·대표이사·공동사업자가 모두 삭제됩니다. 진행할까요?`)) return;
     try { await deleteBizEntity(e.id); await load(); flash('삭제됨'); }
     catch (er) { alert('삭제 실패: ' + (er instanceof Error ? er.message : er)); }
+  }
+  const toggleSelect = (id: string) => setSelected((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  async function bulkDeleteSelected() {
+    const ids = [...selected];
+    if (!ids.length) return;
+    const names = entities.filter((e) => selected.has(e.id)).map((e) => `${e.code} ${e.name}`);
+    if (!confirm(`선택한 ${ids.length}개 거래처를 일괄 삭제합니다.\n각 거래처의 사업장·매출계약·담당자·대표이사가 모두 함께 삭제됩니다. 되돌릴 수 없습니다.\n\n${names.slice(0, 20).join('\n')}${names.length > 20 ? `\n… 외 ${names.length - 20}건` : ''}\n\n진행할까요?`)) return;
+    let ok = 0; const failed: string[] = [];
+    for (const id of ids) { try { await deleteBizEntity(id); ok++; } catch { failed.push(entities.find((e) => e.id === id)?.name ?? id); } }
+    setSelected(new Set());
+    await load();
+    flash(`${ok}개 삭제됨${failed.length ? ` · 실패 ${failed.length}` : ''}`);
+    if (failed.length) alert('삭제 실패: ' + failed.join(', '));
   }
   async function handleDeletePlace(p: BizPlace) {
     if (!confirm(`사업장 '${p.placeName}' 을 삭제할까요?`)) return;
@@ -405,10 +419,21 @@ export default function BizRegistryTab() {
 
       {/* 목록(표) */}
       {viewMode === 'table' && (
+        <>
+        {canWrite && selected.size > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fbecec', border: '1px solid #e6b8b8', borderRadius: 6, padding: '6px 10px', marginBottom: 8 }}>
+            <b style={{ fontSize: 12.5, color: '#a33' }}>✔ {selected.size}개 거래처 선택됨</b>
+            <button className="btn-sm btn-sm-del" onClick={bulkDeleteSelected}>🗑 선택 일괄삭제</button>
+            <button className="btn-sm" onClick={() => setSelected(new Set())}>선택 해제</button>
+          </div>
+        )}
         <div style={{ overflowX: 'auto', border: '1px solid #eee', borderRadius: 6 }}>
           <table style={{ borderCollapse: 'collapse', fontSize: 11.5, minWidth: 1150 }}>
             <thead>
               <tr style={{ background: '#f4efe4' }}>
+                {canWrite && (() => { const ids = [...new Set(sortedRows.map((r) => r.e.id))]; const all = ids.length > 0 && ids.every((id) => selected.has(id)); return (
+                  <th style={{ ...thc, width: 26 }}><input type="checkbox" checked={all} onChange={() => setSelected(all ? new Set() : new Set(ids))} title="현재 목록 전체 선택" /></th>
+                ); })()}
                 {COLUMNS.map((col) => (
                   <th key={col.key} style={{ ...thc, minWidth: col.w, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort(col.key)} title="클릭: 오름/내림/해제">
                     {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
@@ -417,6 +442,7 @@ export default function BizRegistryTab() {
                 {canWrite && <th style={thc}></th>}
               </tr>
               <tr style={{ background: '#faf7f0' }}>
+                {canWrite && <th style={{ padding: 2 }}></th>}
                 {COLUMNS.map((col) => (
                   <th key={col.key} style={{ padding: 2 }}>
                     <input value={colF[col.key] || ''} onChange={(e) => setColF((p) => ({ ...p, [col.key]: e.target.value }))} placeholder="필터" style={{ width: '100%', fontSize: 10.5, padding: '2px 4px', boxSizing: 'border-box' }} />
@@ -426,9 +452,10 @@ export default function BizRegistryTab() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length === 0 && <tr><td colSpan={COLUMNS.length + 1} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 거래처가 없습니다.</td></tr>}
+              {sortedRows.length === 0 && <tr><td colSpan={COLUMNS.length + (canWrite ? 2 : 1)} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 거래처가 없습니다.</td></tr>}
               {sortedRows.map(({ e, p }) => (
-                <tr key={p ? p.id : e.id} style={{ borderTop: '1px solid #eee' }}>
+                <tr key={p ? p.id : e.id} style={{ borderTop: '1px solid #eee', background: selected.has(e.id) ? '#fdf3f3' : undefined }}>
+                  {canWrite && <td style={{ ...tdc, textAlign: 'center' }}><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSelect(e.id)} /></td>}
                   {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, fontWeight: col.key === 'name' ? 600 : 400 }}>{col.val(e, p)}</td>)}
                   {canWrite && (
                     <td style={tdc}>
@@ -443,6 +470,7 @@ export default function BizRegistryTab() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {showHelp && (
