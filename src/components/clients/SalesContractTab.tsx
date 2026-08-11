@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
-  TAXONOMY, findNode, isLeaf, leafOf, pathLabel, typeMnemonicTable, type Team, type TaxNode,
+  TAXONOMY, findNode, isLeaf, leafOf, pathLabel, typeMnemonicTable, contractTypeOptions, type Team, type TaxNode,
 } from '../../lib/salesContractTaxonomy';
 import { ColFilter, scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 import { exportContractTemplate, parseContractExcelFile, applyContractExcel, type ContractExcelResult } from '../../lib/bizContractExcel';
@@ -50,14 +50,14 @@ interface FormState {
   fiscalYear: string; billingCycle: BillingCycle; isInstallment: boolean; amount: string;
   cpa: string; staffIds: string[];
   contractDate: string; startDate: string; endDate: string;
-  parentContractId: string; note: string;
+  parentContractId: string; note: string; includedCodes: string[];
   installments: Installment[]; discounts: Discount[];
 }
 const emptyForm = (): FormState => ({
   entityId: '', placeId: '', team: '감사team', categoryCode: '', categoryEtcName: '',
   includesVat: false, includesWht: false, advisoryType: '', occurrenceUnit: '사업장', billingUnit: '',
   fiscalYear: '', billingCycle: '월', isInstallment: false, amount: '', cpa: '', staffIds: [],
-  contractDate: '', startDate: '', endDate: '', parentContractId: '', note: '', installments: [], discounts: [],
+  contractDate: '', startDate: '', endDate: '', parentContractId: '', note: '', includedCodes: [], installments: [], discounts: [],
 });
 
 export default function SalesContractTab() {
@@ -234,7 +234,7 @@ export default function SalesContractTab() {
       billingCycle: form.billingCycle, isInstallment: form.isInstallment,
       amount: form.amount ? Number(form.amount.replace(/,/g, '')) : 0, cpa: form.cpa.trim(),
       contractDate: form.contractDate || null, startDate: monthToDate(form.startDate), endDate: monthToDate(form.endDate),
-      note: form.note.trim(),
+      note: form.note.trim(), includedCodes: form.includedCodes,
     };
     try {
       const id = existingId ? (await updateSalesContract(existingId, input), existingId) : await createSalesContract(input);
@@ -341,6 +341,7 @@ export default function SalesContractTab() {
                 <b style={{ fontSize: 12.5 }}>{entName(c.entityId)}</b>
                 {c.placeId && <span style={{ fontSize: 11, color: '#777' }}>· {placeName(c.entityId, c.placeId)}</span>}
                 <span style={{ fontSize: 11.5, color: '#456' }}>{pathLabel(c.categoryCode)}{c.categoryEtcName && ` (${c.categoryEtcName})`}</span>
+                {c.includedCodes.length > 0 && <span style={{ fontSize: 10, color: '#786', background: '#eef3ea', padding: '1px 5px', borderRadius: 3 }} title={c.includedCodes.map((cc) => pathLabel(cc)).join(', ')}>＋포함 {c.includedCodes.length}</span>}
                 {leaf?.jangbuOptions && (c.includesVat || c.includesWht) && <span style={{ fontSize: 10.5, color: '#a66' }}>{[c.includesVat && '부가', c.includesWht && '원천'].filter(Boolean).join('·')} 포함</span>}
                 {c.advisoryType && <span style={{ fontSize: 10.5, color: '#a66' }}>{c.advisoryType}</span>}
                 <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#245' }}>{won(c.amount)}원</span>
@@ -578,9 +579,10 @@ function ContractImportPanel({ entities, contracts, onImported }: { entities: Bi
       {open && (
         <div style={{ padding: '0 10px 10px' }}>
           <div style={{ fontSize: 11.5, color: '#777', marginBottom: 8 }}>
-            <b>양식 내보내기</b> → <b>회색 행/열</b>=거래처·사업장 정보 + <b>이미 등록된 계약</b>(수정불가·참고),
-            <b>노란 칸</b>=신규 계약 입력(매출유형·금액·주기·담당 등). 한 사업장에 계약 여러 개면 행 복사 → <b>업로드</b>.
-            <b>매출유형 빈 행은 제외</b>, 동일 사업장+매출유형(+귀속연도) 계약이 이미 있으면 <b>스킵</b>(재실행 안전).
+            <b>양식 내보내기</b> → <b>회색 열</b>=매출계약코드·거래처·사업장(키/참고, 수정금지),
+            <b>노란 칸</b>=입력·수정(매출유형·금액·주기·담당 등) → <b>업로드</b>.
+            <b>매출계약코드 있는 행</b>=그 계약 <b>수정</b>, <b>없는 행</b>=신규(행 복사). <b>매출유형 빈 행 제외</b>,
+            신규 중 동일 사업장+유형(+귀속연도) 있으면 <b>스킵</b>.
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="btn-sm btn-sm-blue" onClick={doExport} disabled={busy || entities.length === 0}>
@@ -593,7 +595,7 @@ function ContractImportPanel({ entities, contracts, onImported }: { entities: Bi
           </div>
           {result && (
             <div style={{ fontSize: 12, background: result.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${result.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
-              <div>✓ 완료 — 등록 {result.created} · 스킵(중복) {result.skipped} {result.failed.length > 0 && <span style={{ color: '#c33' }}>· 실패 {result.failed.length}</span>}</div>
+              <div>✓ 완료 — 신규 {result.created} · 수정 {result.updated} · 스킵(중복) {result.skipped} {result.failed.length > 0 && <span style={{ color: '#c33' }}>· 실패 {result.failed.length}</span>}</div>
               {result.failed.length > 0 && (
                 <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#a33' }}>
                   {result.failed.slice(0, 12).map((f, i) => <li key={i}><b>{f.ref}</b>: {f.error}</li>)}
@@ -814,6 +816,16 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
               ))}
             </select></div>
           <DiscountsEditor rows={f.discounts} onChange={(r) => set('discounts', r)} />
+          <div className="frow" style={{ marginTop: 8, alignItems: 'flex-start' }}><span className="fl">포함유형(복합)</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10.5, color: '#999', marginBottom: 3 }}>이 계약이 함께 커버하는 세부 유형(예: 기장검토→원천·부가). 대표유형·코드·금액과 무관</div>
+              <div style={{ maxHeight: 116, overflow: 'auto', border: '1px solid #e2ddd2', borderRadius: 5, padding: 4, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                {contractTypeOptions().filter((o) => o.code !== f.categoryCode).map((o) => {
+                  const on = f.includedCodes.includes(o.code);
+                  return <button key={o.code} type="button" onClick={() => set('includedCodes', on ? f.includedCodes.filter((x) => x !== o.code) : [...f.includedCodes, o.code])} style={chip(on)}>{o.label}</button>;
+                })}
+              </div>
+            </div></div>
           <div className="frow" style={{ marginTop: 8 }}><span className="fl">비고</span>
             <input value={f.note} onChange={(e) => set('note', e.target.value)} placeholder="(선택)" /></div>
         </div>
@@ -899,7 +911,7 @@ function fromContract(c: SalesContract): FormState {
     billingUnit: c.billingUnit ?? '', fiscalYear: c.fiscalYear ? String(c.fiscalYear) : '', billingCycle: c.billingCycle,
     isInstallment: c.isInstallment, amount: c.amount ? String(c.amount) : '', cpa: c.cpa, staffIds: c.staff.map((s) => s.staffId),
     contractDate: c.contractDate ?? '', startDate: dateToMonth(c.startDate), endDate: dateToMonth(c.endDate), parentContractId: c.parentContractId ?? '',
-    note: c.note, installments: c.installments.length ? c.installments : [], discounts: c.discounts,
+    note: c.note, includedCodes: c.includedCodes ?? [], installments: c.installments.length ? c.installments : [], discounts: c.discounts,
   };
 }
 
