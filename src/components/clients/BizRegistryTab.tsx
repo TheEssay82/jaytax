@@ -895,9 +895,11 @@ function PartnerSection({ entity, allEntities, canWrite, onChanged }: {
       <div style={{ fontSize: 10.5, color: '#999', marginBottom: 3 }}>공동사업자 (개인 귀속 → 소득세 매출단위 연결)</div>
       {entity.partners.map((pt) => {
         const person = allEntities.find((e) => e.id === pt.partnerEntityId);
+        const place = entity.places.find((pl) => pl.id === pt.placeId);
         return (
           <div key={pt.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginBottom: 2 }}>
             <b>{person ? `${person.code} ${person.name}` : '(삭제된 개인)'}</b>
+            <span style={{ fontSize: 10.5, color: '#47a' }}>🏢 {place ? place.placeName : '(사업장?)'}</span>
             {pt.sharePct != null && <span style={{ fontSize: 10.5, color: '#888' }}>지분 {pt.sharePct}%</span>}
             {canWrite && <button className="btn-sm btn-sm-del" onClick={() => del(pt.id)}>삭제</button>}
           </div>
