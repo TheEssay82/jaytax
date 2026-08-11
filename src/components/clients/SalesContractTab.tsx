@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
-  TAXONOMY, findNode, isLeaf, leafOf, pathLabel, type Team, type TaxNode,
+  TAXONOMY, findNode, isLeaf, leafOf, pathLabel, typeMnemonicTable, type Team, type TaxNode,
 } from '../../lib/salesContractTaxonomy';
 import { ColFilter, scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 import { exportContractTemplate, parseContractExcelFile, applyContractExcel, type ContractExcelResult } from '../../lib/bizContractExcel';
@@ -75,6 +75,7 @@ export default function SalesContractTab() {
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
+  const [showCodeHelp, setShowCodeHelp] = useState(false);
   const { widthOf, startResize } = useColWidths();
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
@@ -103,8 +104,9 @@ export default function SalesContractTab() {
 
   // 표(list)형 컬럼 정의 — 각 컬럼 val 로 필터·표시. opts 있으면 필터가 드롭다운.
   const COLUMNS: { key: string; label: string; val: (c: SalesContract) => string; w?: number; num?: boolean; opts?: readonly string[] }[] = [
-    { key: 'code', label: '코드', val: (c) => entMap.get(c.entityId)?.code ?? '', w: 56 },
-    { key: 'name', label: '거래처', val: (c) => { const e = entMap.get(c.entityId); return e ? corpDisplayName(e.name, e.corpForm, e.corpFormPosition) : ''; }, w: 150 },
+    { key: 'ccode', label: '매출계약코드', val: (c) => c.contractCode + (c.dateEstimated ? ' ·추정' : ''), w: 150 },
+    { key: 'code', label: '거래처', val: (c) => entMap.get(c.entityId)?.code ?? '', w: 56 },
+    { key: 'name', label: '거래처명', val: (c) => { const e = entMap.get(c.entityId); return e ? corpDisplayName(e.name, e.corpForm, e.corpFormPosition) : ''; }, w: 150 },
     { key: 'team', label: '팀', val: (c) => c.team, w: 66, opts: ['감사team', 'taxteam'] },
     { key: 'type', label: '매출유형', val: (c) => pathLabel(c.categoryCode) + (c.categoryEtcName ? ` (${c.categoryEtcName})` : ''), w: 200 },
     { key: 'occ', label: '발생단위', val: (c) => c.occurrenceUnit + (c.placeId ? `/${placeName(c.entityId, c.placeId)}` : ''), w: 100 },
@@ -259,6 +261,7 @@ export default function SalesContractTab() {
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         📄 매출계약등록
         <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>총 {stats.total} · 감사 {stats.aud} · tax {stats.tax}</span>
+        <button className="btn-sm" onClick={() => setShowCodeHelp(true)} title="매출계약코드 규칙 보기">📖 코드안내</button>
         {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
       </div>
       {error && <div style={{ color: '#c33', fontSize: 12, marginBottom: 8 }}>{error}</div>}
@@ -333,6 +336,7 @@ export default function SalesContractTab() {
             <div key={c.id} style={{ border: '1px solid #e6e0d8', borderRadius: 6, padding: '8px 10px', marginLeft: c.parentContractId ? 24 : 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {c.parentContractId && <span style={{ fontSize: 10, color: '#a80' }}>↳종속</span>}
+                {c.contractCode && <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#667', background: '#f2f0ea', padding: '1px 5px', borderRadius: 3 }}>{c.contractCode}{c.dateEstimated && ' ·추정'}</span>}
                 <span style={teamBadge(c.team)}>{c.team}</span>
                 <b style={{ fontSize: 12.5 }}>{entName(c.entityId)}</b>
                 {c.placeId && <span style={{ fontSize: 11, color: '#777' }}>· {placeName(c.entityId, c.placeId)}</span>}
@@ -489,6 +493,51 @@ export default function SalesContractTab() {
         </div>
         </>
       )}
+
+      {showCodeHelp && <CodeHelpModal onClose={() => setShowCodeHelp(false)} />}
+    </div>
+  );
+}
+
+// ── 매출계약코드 규칙 안내 ──────────────────────────────────
+function CodeHelpModal({ onClose }: { onClose: () => void }) {
+  const table = typeMnemonicTable();
+  const aud = table.filter((t) => t.team === '감사team');
+  const tax = table.filter((t) => t.team === 'taxteam');
+  const Row = ({ t }: { t: { label: string; mnemonic: string } }) => (
+    <tr style={{ borderTop: '1px solid #eee' }}><td style={{ padding: '2px 6px' }}>{t.label}</td><td style={{ padding: '2px 6px', fontWeight: 700, fontFamily: 'monospace' }}>{t.mnemonic}</td></tr>
+  );
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflow: 'auto', padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, padding: 18, maxWidth: 760, width: '100%', boxShadow: '0 8px 30px rgba(0,0,0,.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <b style={{ fontSize: 14 }}>📖 매출계약코드 규칙</b>
+          <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
+        </div>
+        <div style={{ fontSize: 12.5, lineHeight: 1.6, marginBottom: 10 }}>
+          <div style={{ fontFamily: 'monospace', fontSize: 13, background: '#f6f4ef', padding: '6px 8px', borderRadius: 5, marginBottom: 8 }}>
+            거래처코드 - 사업장코드 - 자동갱신 - 유형코드 - 팀코드 - 시작연도 - 순번
+          </div>
+          예) <b style={{ fontFamily: 'monospace' }}>I0002-01-R-BK-T-2026-01</b>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+            <li><b>사업장코드</b>: 발생단위=사업장이면 사업장순번(01), 법인·개인 전체는 <b>00</b></li>
+            <li><b>자동갱신</b>: 종료일 없음 = <b>R</b>(자동갱신) · 있음 = <b>F</b>(재계약)</li>
+            <li><b>팀코드</b>: 감사team = <b>A</b> · taxteam = <b>T</b></li>
+            <li><b>시작연도</b>: 개시연도 · <b>순번</b>: 동일 조합 내 일련번호</li>
+            <li>표에 <b>·추정</b> 표시 = 정보관리 시작(2026-07) 이전이라 개시/종료일이 추정값</li>
+          </ul>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 4 }}>🅰 감사team (팀코드 A)</div>
+            <table style={{ width: '100%', fontSize: 11.5, borderCollapse: 'collapse' }}><tbody>{aud.map((t) => <Row key={t.mnemonic + t.label} t={t} />)}</tbody></table>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 4 }}>🆃 taxteam (팀코드 T)</div>
+            <table style={{ width: '100%', fontSize: 11.5, borderCollapse: 'collapse' }}><tbody>{tax.map((t) => <Row key={t.mnemonic + t.label} t={t} />)}</tbody></table>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

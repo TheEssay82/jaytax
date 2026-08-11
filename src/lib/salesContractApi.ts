@@ -1,6 +1,6 @@
 // 매출계약(biz_sales_contract) + 위성(담당직원·분할·할인) 데이터 접근 레이어. 거래처관리 2.0.0 step2.
 import { supabase, assertWrote } from './supabase';
-import type { Team } from './salesContractTaxonomy';
+import { typeMnemonic, teamCode, type Team } from './salesContractTaxonomy';
 
 export type OccurrenceUnit = '사업장' | '법인' | '개인';
 export type BillingUnit = '사업장' | '법인' | '개인' | '건';
@@ -65,6 +65,12 @@ export interface SalesContract {
   startDate: string | null;
   endDate: string | null;
   note: string;
+  /** 매출계약코드(자동생성). 거래처-사업장-자동갱신(R/F)-유형-팀-시작연도-순번. */
+  contractCode: string;
+  /** 복합계약 포함유형(부수) leaf code 목록. 대표 유형(categoryCode)과 별개. */
+  includedCodes: string[];
+  /** 개시/종료 추정 여부(정보관리 2026-07 이전 등). */
+  dateEstimated: boolean;
   staff: ContractStaff[];
   installments: Installment[];
   discounts: Discount[];
@@ -80,6 +86,7 @@ const toContract = (r: any): SalesContract => ({
   parentContractId: r.parent_contract_id, fiscalYear: r.fiscal_year, billingCycle: r.billing_cycle,
   isInstallment: !!r.is_installment, amount: r.amount != null ? Number(r.amount) : 0, cpa: r.cpa || '',
   contractDate: r.contract_date, startDate: r.start_date, endDate: r.end_date, note: r.note || '',
+  contractCode: r.contract_code || '', includedCodes: r.included_codes || [], dateEstimated: !!r.date_estimated,
   staff: [], installments: [], discounts: [], createdAt: r.created_at, updatedAt: r.updated_at,
 });
 const toStaff = (r: any): ContractStaff => ({ id: r.id, contractId: r.contract_id, staffId: r.staff_id, staffName: r.staff_name || '', active: !!r.active });
@@ -153,6 +160,7 @@ export interface ContractInput {
   advisoryType?: AdvisoryType | null; parentContractId?: string | null; fiscalYear?: number | null;
   billingCycle: BillingCycle; isInstallment?: boolean; amount: number; cpa?: string;
   contractDate?: string | null; startDate?: string | null; endDate?: string | null; note?: string;
+  includedCodes?: string[]; dateEstimated?: boolean;
 }
 function toRow(c: Partial<ContractInput>): Record<string, unknown> {
   const r: Record<string, unknown> = {};
@@ -164,12 +172,44 @@ function toRow(c: Partial<ContractInput>): Record<string, unknown> {
   set('fiscal_year', c.fiscalYear ?? undefined); set('billing_cycle', c.billingCycle); set('is_installment', c.isInstallment);
   set('amount', c.amount); set('cpa', c.cpa); set('contract_date', c.contractDate ?? undefined);
   set('start_date', c.startDate ?? undefined); set('end_date', c.endDate ?? undefined); set('note', c.note);
+  set('included_codes', c.includedCodes); set('date_estimated', c.dateEstimated);
   return r;
+}
+
+/** 매출계약코드 베이스(순번 제외) 생성 — 거래처-사업장-자동갱신-유형-팀-시작연도. */
+export function contractCodeBase(o: {
+  entityCode: string; placeNo: number | null; occurrenceUnit: OccurrenceUnit;
+  endDate: string | null; categoryCode: string; team: Team; year: number | string;
+}): string {
+  const pcode = o.occurrenceUnit === '사업장' ? String(o.placeNo ?? 0).padStart(2, '0') : '00';
+  const renew = o.endDate ? 'F' : 'R';
+  return `${o.entityCode}-${pcode}-${renew}-${typeMnemonic(o.categoryCode)}-${teamCode(o.team)}-${o.year}`;
+}
+
+/** 신규 계약 매출계약코드 자동생성(순번 채번). 거래처/사업장 조회 후 base+seq. */
+async function genContractCode(input: ContractInput): Promise<string | undefined> {
+  const { data: e } = await supabase.from('biz_entity').select('code').eq('id', input.entityId).single();
+  const entityCode = (e as { code?: string } | null)?.code;
+  if (!entityCode) return undefined;
+  let placeNo: number | null = null;
+  if (input.placeId) {
+    const { data: p } = await supabase.from('biz_place').select('place_no').eq('id', input.placeId).single();
+    placeNo = (p as { place_no?: number } | null)?.place_no ?? null;
+  }
+  const year = input.startDate?.slice(0, 4) || (input.fiscalYear ? String(input.fiscalYear) : String(new Date().getFullYear()));
+  const base = contractCodeBase({ entityCode, placeNo, occurrenceUnit: input.occurrenceUnit, endDate: input.endDate ?? null, categoryCode: input.categoryCode, team: input.team, year });
+  const { data: ex } = await supabase.from('biz_sales_contract').select('contract_code').like('contract_code', base + '-%');
+  let maxSeq = 0;
+  for (const r of (ex as { contract_code?: string }[] | null) ?? []) { const m = /-(\d+)$/.exec(r.contract_code || ''); if (m) maxSeq = Math.max(maxSeq, Number(m[1])); }
+  return `${base}-${String(maxSeq + 1).padStart(2, '0')}`;
 }
 
 export async function createSalesContract(input: ContractInput): Promise<string> {
   const { data: u } = await supabase.auth.getUser();
-  const { data, error } = await supabase.from('biz_sales_contract').insert({ ...toRow(input), created_by: u.user?.id ?? null }).select('id').single();
+  const row = toRow(input);
+  if (row.contract_code === undefined) row.contract_code = await genContractCode(input);
+  if (row.date_estimated === undefined && input.startDate) row.date_estimated = input.startDate < '2026-07';
+  const { data, error } = await supabase.from('biz_sales_contract').insert({ ...row, created_by: u.user?.id ?? null }).select('id').single();
   if (error) throw new Error(error.message);
   return (data as { id: string }).id;
 }
