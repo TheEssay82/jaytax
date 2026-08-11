@@ -7,6 +7,7 @@ import {
   TAXONOMY, findNode, isLeaf, leafOf, pathLabel, type Team, type TaxNode,
 } from '../../lib/salesContractTaxonomy';
 import { ColFilter, scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
+import { exportContractTemplate, parseContractExcelFile, applyContractExcel, type ContractExcelResult } from '../../lib/bizContractExcel';
 import {
   listSalesContracts, createSalesContract, updateSalesContract, deleteSalesContract,
   saveInstallments, saveDiscounts, saveContractStaff, listContractStaffProfiles, setInstallmentBilled,
@@ -321,6 +322,8 @@ export default function SalesContractTab() {
         <ContractForm entities={entities} staff={staff} contracts={contracts} onSubmit={(f) => persist(f)} onCancel={() => setShowAdd(false)} />
       )}
 
+      {role === 'superuser' && <ContractImportPanel entities={entities} onImported={load} />}
+
       {viewMode === 'box' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {view.length === 0 && <div style={{ color: '#999', fontSize: 12, padding: 12 }}>매출계약이 없습니다.</div>}
@@ -492,6 +495,69 @@ export default function SalesContractTab() {
 
 const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: '#555', whiteSpace: 'nowrap' };
 const tdc: React.CSSProperties = { padding: '4px 6px', whiteSpace: 'nowrap' };
+
+// ── 매출계약 일괄등록 패널(최고관리자) ──────────────────────
+function ContractImportPanel({ entities, onImported }: { entities: BizEntityFull[]; onImported: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ContractExcelResult | null>(null);
+  async function doExport() {
+    try { await exportContractTemplate(entities); }
+    catch (e) { alert('내보내기 실패: ' + (e instanceof Error ? e.message : e)); }
+  }
+  async function onFile(ev: React.ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    ev.target.value = '';
+    if (!file) return;
+    if (!confirm('업로드한 Excel로 매출계약을 일괄 등록합니다.\n(매출유형이 채워진 행만 · 동일 사업장+유형 중복은 스킵)\n진행할까요?')) return;
+    setBusy(true); setResult(null);
+    try {
+      const rows = await parseContractExcelFile(file);
+      const r = await applyContractExcel(rows, entities);
+      setResult(r);
+      onImported();
+    } catch (e) { alert('업로드 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div style={{ border: '1px dashed #c9a54a', borderRadius: 6, background: '#fdfaf1', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6d1f' }}>📥 매출계약 일괄등록 (Excel)</span>
+        <span style={{ fontSize: 11, color: '#a88' }}>최고관리자 · 거래처코드+사업장명으로 매칭</span>
+        <span style={{ marginLeft: 'auto', fontSize: 12 }}>{open ? '▾' : '▸'}</span>
+      </div>
+      {open && (
+        <div style={{ padding: '0 10px 10px' }}>
+          <div style={{ fontSize: 11.5, color: '#777', marginBottom: 8 }}>
+            <b>양식 내보내기</b>(사업장 1행씩 프리필) → 매출유형·금액·주기·담당 등 채우기 → <b>업로드</b>.
+            한 사업장에 계약이 여러 개면 그 행을 복사해 여러 줄로. <b>매출유형이 빈 행은 제외</b>되고,
+            동일 사업장+매출유형(+귀속연도) 계약이 이미 있으면 <b>스킵</b>(재실행 안전)됩니다.
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn-sm btn-sm-blue" onClick={doExport} disabled={busy || entities.length === 0}>
+              📤 양식 내보내기 ({entities.reduce((s, e) => s + e.places.length, 0)} 사업장)
+            </button>
+            <label className="btn-p" style={{ cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+              {busy ? '처리 중…' : '📥 Excel 업로드'}
+              <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} disabled={busy} onChange={onFile} />
+            </label>
+          </div>
+          {result && (
+            <div style={{ fontSize: 12, background: result.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${result.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
+              <div>✓ 완료 — 등록 {result.created} · 스킵(중복) {result.skipped} {result.failed.length > 0 && <span style={{ color: '#c33' }}>· 실패 {result.failed.length}</span>}</div>
+              {result.failed.length > 0 && (
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#a33' }}>
+                  {result.failed.slice(0, 12).map((f, i) => <li key={i}><b>{f.ref}</b>: {f.error}</li>)}
+                  {result.failed.length > 12 && <li>… 외 {result.failed.length - 12}건</li>}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── 등록/수정 폼 ────────────────────────────────────────────
 function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel }: {

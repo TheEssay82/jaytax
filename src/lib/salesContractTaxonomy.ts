@@ -112,3 +112,13 @@ export function leafOf(code: string): TaxNode | null {
   const e = INDEX.get(code);
   return e && isLeaf(e.node) ? e.node : null;
 }
+
+const TEAM_SHORT: Record<Team, string> = { '감사team': '감사', 'taxteam': '기장' };
+/** 매출유형 leaf 선택지 — 엑셀 드롭다운/파싱용. label 은 팀+경로로 유일(중복 라벨 구분). */
+export function contractTypeOptions(): { code: string; label: string }[] {
+  const out: { code: string; label: string }[] = [];
+  for (const [code, e] of INDEX) {
+    if (isLeaf(e.node)) out.push({ code, label: `${TEAM_SHORT[e.team]}·${e.path.map((n) => n.label).join(' › ')}` });
+  }
+  return out;
+}
