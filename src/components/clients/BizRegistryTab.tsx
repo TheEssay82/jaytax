@@ -30,10 +30,12 @@ import {
   SALES_TEAMS,
   CORP_FORMS,
   RELATION_TYPES,
+  PLACE_STATUSES,
   type BizEntityFull,
   type BizKind,
   type BizNature,
   type BizPlace,
+  type PlaceStatus,
   type SalesTeam,
   type TaxType,
   type Withholding,
@@ -60,6 +62,11 @@ interface PlaceDraft {
   taxType: TaxType | '';
   withholding: Withholding | '';
   openedDate: string;
+  status: PlaceStatus;
+  statusMonth: string;
+  transferTo: string;
+  transferContact: string;
+  transferManager: string;
   cpa: string;
   hometaxId: string;
   hometaxPw: string;
@@ -68,14 +75,17 @@ interface PlaceDraft {
 }
 const emptyPlace = (branchType: '본점' | '지점' = '본점'): PlaceDraft => ({
   placeName: '', branchType, unitTaxation: false, filingPlaceId: '', bizRegNo: '', noBiz: false, address: '',
-  nature: '매출', salesTeams: [], taxType: '', withholding: '', openedDate: '', cpa: '', hometaxId: '',
-  hometaxPw: '', note: '', staffIds: [],
+  nature: '매출', salesTeams: [], taxType: '', withholding: '', openedDate: '',
+  status: '정상', statusMonth: '', transferTo: '', transferContact: '', transferManager: '',
+  cpa: '', hometaxId: '', hometaxPw: '', note: '', staffIds: [],
 });
 const placeToDraft = (p: BizPlace): PlaceDraft => ({
   placeName: p.placeName, branchType: p.branchType ?? '본점', unitTaxation: p.unitTaxation,
   filingPlaceId: p.filingPlaceId ?? '', bizRegNo: p.bizRegNo, noBiz: p.noBiz, address: p.address,
   nature: p.nature, salesTeams: p.salesTeams, taxType: p.taxType ?? '', withholding: p.withholding ?? '',
-  openedDate: p.openedDate ?? '', cpa: p.cpa, hometaxId: p.hometaxId, hometaxPw: '', note: p.note, staffIds: [],
+  openedDate: p.openedDate ?? '', status: p.status, statusMonth: p.statusMonth,
+  transferTo: p.transferTo, transferContact: p.transferContact, transferManager: p.transferManager,
+  cpa: p.cpa, hometaxId: p.hometaxId, hometaxPw: '', note: p.note, staffIds: [],
 });
 
 export default function BizRegistryTab() {
@@ -143,6 +153,7 @@ export default function BizRegistryTab() {
   // 표(list)형 — 사업장 1행 플랫. 각 컬럼 val 로 필터·정렬. (view 뒤에 선언 — 순서 중요)
   const COLUMNS: { key: string; label: string; val: (e: BizEntityFull, p: BizPlace | null) => string; w?: number }[] = [
     { key: 'code', label: '코드', val: (e, p) => (p ? `${e.code}-${String(p.placeNo).padStart(2, '0')}` : e.code), w: 68 },
+    { key: 'status', label: '상태', val: (_e, p) => (p ? (p.status === '정상' ? '정상' : `${p.status}${p.statusMonth ? ` ${p.statusMonth}` : ''}`) : ''), w: 76 },
     { key: 'kind', label: '구분', val: (e) => e.kind, w: 46 },
     { key: 'name', label: '상호/성명', val: (e) => corpDisplayName(e.name, e.corpForm, e.corpFormPosition), w: 150 },
     { key: 'rep', label: '대표', val: (e) => e.representatives.map((r) => r.repName).join(','), w: 78 },
@@ -156,7 +167,6 @@ export default function BizRegistryTab() {
     { key: 'cpa', label: '담당CPA', val: (_e, p) => p?.cpa ?? '', w: 66 },
     { key: 'staff', label: '담당직원', val: (_e, p) => (p?.staff ?? []).map((s) => s.staffName).join(','), w: 88 },
     { key: 'htid', label: '홈텍스ID', val: (_e, p) => p?.hometaxId ?? '', w: 88 },
-    { key: 'status', label: '상태', val: (_e, p) => p?.status ?? '', w: 46 },
     { key: 'note', label: '비고', val: (e, p) => p?.note || e.note, w: 120 },
   ];
   const flatRows = useMemo(() => view.flatMap((e) => (e.places.length ? e.places.map((p) => ({ e, p: p as BizPlace | null })) : [{ e, p: null as BizPlace | null }])), [view]);
@@ -363,8 +373,13 @@ export default function BizRegistryTab() {
                       {p.nature === '매출' && p.salesTeams.map((t) => <span key={t} style={teamBadge}>{t}</span>)}
                       <span style={{ fontSize: 11, color: '#888' }}>
                         {p.noBiz ? '🚫 사업자없음' : p.bizRegNo || '사업자번호 미입력'}
-                        {p.status === '폐업' && ' · 폐업'}
                       </span>
+                      {p.status !== '정상' && (
+                        <span style={statusBadge(p.status)}>
+                          {p.status}{p.statusMonth ? ` ${p.statusMonth}` : ''}
+                          {p.status === '이관' && p.transferTo ? ` → ${p.transferTo}` : ''}
+                        </span>
+                      )}
                       {p.salesTeams.includes('taxteam') && (p.taxType || p.withholding) && (
                         <span style={{ fontSize: 11, color: '#a66' }}>
                           {p.taxType}{p.taxType && p.withholding ? ' · ' : ''}{p.withholding && `원천 ${p.withholding}`}
@@ -500,6 +515,13 @@ export default function BizRegistryTab() {
   );
 }
 
+// 사업장 draft 검증 — 통과하면 null, 아니면 오류 메시지.
+function validatePlace(d: PlaceDraft): string | null {
+  if (!d.placeName.trim()) return '사업장명은 필수입니다.';
+  if ((d.status === '폐업' || d.status === '이관') && !d.statusMonth) return `${d.status} 귀속월을 입력하세요.`;
+  return null;
+}
+
 // placeDraft → PlaceInput
 function placeInput(entityId: string, d: PlaceDraft, isHq: boolean) {
   const isTax = d.nature === '매출' && d.salesTeams.includes('taxteam');
@@ -510,7 +532,13 @@ function placeInput(entityId: string, d: PlaceDraft, isHq: boolean) {
     address: d.address.trim(), isHeadquarters: isHq, nature: d.nature,
     salesTeams: d.nature === '매출' ? d.salesTeams : [],
     taxType: isTax ? (d.taxType || null) : null, withholding: isTax ? (d.withholding || null) : null,
-    openedDate: d.openedDate || null, cpa: d.cpa.trim(), hometaxId: d.hometaxId.trim(),
+    openedDate: d.openedDate || null,
+    status: d.status,
+    statusMonth: d.status === '정상' ? null : (d.statusMonth || null),
+    transferTo: d.status === '이관' ? (d.transferTo.trim() || null) : null,
+    transferContact: d.status === '이관' ? (d.transferContact.trim() || null) : null,
+    transferManager: d.status === '이관' ? (d.transferManager.trim() || null) : null,
+    cpa: d.cpa.trim(), hometaxId: d.hometaxId.trim(),
     hometaxPw: d.hometaxPw.trim(), note: d.note.trim(),
   };
 }
@@ -536,6 +564,8 @@ function RegisterForm({
   function submit() {
     if (!name.trim()) return alert(kind === '법인' ? '법인명(상호)은 필수입니다.' : '성명은 필수입니다.');
     if (!hq.placeName.trim()) return alert('본사 사업장명은 필수입니다. (법인·개인 모두 최소 1개 사업장 등록)');
+    const err = validatePlace(hq);
+    if (err) return alert(err);
     onSubmit({ kind, name, corpForm, corpFormPosition, corpRegNo, establishedDate, note, residentNo }, hq);
   }
 
@@ -658,6 +688,24 @@ function PlaceFieldsInline({ d, setD, staff, siblings = [] }: { d: PlaceDraft; s
       )}
       <div className="frow"><span className="fl">개업일</span>
         <input type="date" value={d.openedDate} onChange={(e) => setD((p) => ({ ...p, openedDate: e.target.value }))} /></div>
+      <div className="frow"><span className="fl">상태<span className="req">*</span></span>
+        <select value={d.status} onChange={(e) => setD((p) => ({ ...p, status: e.target.value as PlaceStatus }))} style={selStyle}>
+          {PLACE_STATUSES.map((s) => <option key={s} value={s}>{s === '정상' ? '정상(현재 거래처)' : s}</option>)}
+        </select></div>
+      {(d.status === '폐업' || d.status === '이관') && (
+        <div className="frow"><span className="fl">{d.status}귀속월<span className="req">*</span></span>
+          <input type="month" value={d.statusMonth} onChange={(e) => setD((p) => ({ ...p, statusMonth: e.target.value }))} /></div>
+      )}
+      {d.status === '이관' && (
+        <>
+          <div className="frow"><span className="fl">이관업체</span>
+            <input value={d.transferTo} onChange={(e) => setD((p) => ({ ...p, transferTo: e.target.value }))} placeholder="예: ○○회계법인 / ○○세무회계" /></div>
+          <div className="frow"><span className="fl">이관업체 연락처</span>
+            <input value={d.transferContact} onChange={(e) => setD((p) => ({ ...p, transferContact: e.target.value }))} placeholder="전화·이메일 등" /></div>
+          <div className="frow"><span className="fl">이관업체 담당자</span>
+            <input value={d.transferManager} onChange={(e) => setD((p) => ({ ...p, transferManager: e.target.value }))} placeholder="담당자명" /></div>
+        </>
+      )}
       <div className="frow"><span className="fl">담당 CPA</span>
         <>
           <input list="biz-cpa-options" value={d.cpa} onChange={(e) => setD((p) => ({ ...p, cpa: e.target.value }))} placeholder="입력·선택 (정우철/조현규/김준성)" />
@@ -691,7 +739,7 @@ function PlaceFields({ staff, siblings = [], initial, submitLabel, onSubmit, onC
     <div>
       <PlaceFieldsInline d={d} setD={setD} staff={staff} siblings={siblings} />
       <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-        <button className="btn-p" onClick={() => { if (!d.placeName.trim()) return alert('사업장명은 필수입니다.'); onSubmit(d); }}>{submitLabel}</button>
+        <button className="btn-p" onClick={() => { const err = validatePlace(d); if (err) return alert(err); onSubmit(d); }}>{submitLabel}</button>
         <button className="btn-sm" onClick={onCancel}>취소</button>
       </div>
     </div>
@@ -975,6 +1023,11 @@ const unitBadge: React.CSSProperties = { fontSize: 9.5, padding: '1px 5px', bord
 const teamBadge: React.CSSProperties = { fontSize: 9.5, padding: '1px 5px', borderRadius: 3, background: '#eee4d4', color: '#845' };
 const natureBadge = (n: BizNature): React.CSSProperties => ({
   fontSize: 9.5, padding: '1px 5px', borderRadius: 3, color: '#fff', background: n === '매출' ? '#2a8' : '#999',
+});
+// 상태 배지 — 폐업(회색)·이관(주황). '정상'은 배지를 표시하지 않는다.
+const statusBadge = (s: PlaceStatus): React.CSSProperties => ({
+  fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, color: '#fff',
+  background: s === '폐업' ? '#888' : s === '이관' ? '#d1791f' : '#2a8',
 });
 const staffChip = (on: boolean): React.CSSProperties => ({
   fontSize: 10.5, padding: '2px 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid',

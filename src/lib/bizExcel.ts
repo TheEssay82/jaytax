@@ -5,8 +5,8 @@
 import {
   updateBizEntity, updateBizPlace, createBizEntity, createBizPlace, assignStaff,
   setEntityResident, setPlaceHometaxPw,
-  CORP_FORMS, CPA_OPTIONS,
-  type BizEntityFull, type BizKind, type BizNature, type CorpForm, type SalesTeam,
+  CORP_FORMS, CPA_OPTIONS, PLACE_STATUSES,
+  type BizEntityFull, type BizKind, type BizNature, type CorpForm, type PlaceStatus, type SalesTeam,
   type TaxType, type Withholding, type StaffProfile,
 } from './bizRegistryApi';
 import { FONT, FILL_HEADER, frame, setWidths, saveWorkbook } from './confirmExcelStyle';
@@ -33,6 +33,8 @@ const COLS: ColMeta[] = [
   { h: '본점/지점', w: 10, list: ['본점', '지점'], strict: true },
   { h: '사업자번호', w: 14 },
   { h: '사업자없음(O/X)', w: 12, list: ['O', 'X'], strict: true },
+  { h: '상태(정상/폐업/이관)', w: 14, list: PLACE_STATUSES, strict: true },
+  { h: '귀속월(YYYY-MM)', w: 13 },
   { h: '사업장주소', w: 28 },
   { h: '성격(매출/일반)', w: 12, list: ['매출', '일반'], strict: true },
   { h: '매출팀(감사team,taxteam)', w: 20 },
@@ -45,6 +47,9 @@ const COLS: ColMeta[] = [
   { h: '홈텍스PW🔒', w: 14 },
   { h: '담당직원(콤마)', w: 18 },
   { h: '비고', w: 24 },
+  { h: '이관업체', w: 18 },
+  { h: '이관업체연락처', w: 16 },
+  { h: '이관업체담당자', w: 14 },
 ];
 const HEADERS = COLS.map((c) => c.h);
 const placeCode = (e: BizEntityFull, placeNo: number) => `${e.code}-${String(placeNo).padStart(2, '0')}`;
@@ -53,7 +58,8 @@ const placeCode = (e: BizEntityFull, placeNo: number) => `${e.code}-${String(pla
 const FILL_EDIT = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFF7D6' } };
 const FILL_PII = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFCE4E4' } };
 const FILL_RO = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFECECEC' } };
-const PII_COLS = new Set([6, 21]); // 주민등록번호·홈텍스PW(0-index)
+// 민감(암호화) 컬럼 = 헤더에 🔒 표시(주민등록번호·홈텍스PW). 컬럼 추가로 인덱스가 밀려도 안전하게 계산.
+const PII_COLS = new Set(COLS.map((c, i) => (c.h.includes('🔒') ? i : -1)).filter((i) => i >= 0));
 
 /** 보강 양식 내보내기 — 사업장 1행. 입력셀 색상 + 선택 드롭다운. 민감정보(주민번호·PW)는 빈 칸(보안). */
 export async function exportBizRegistry(entities: BizEntityFull[]): Promise<void> {
@@ -71,9 +77,10 @@ export async function exportBizRegistry(entities: BizEntityFull[]): Promise<void
       ws.addRow([
         placeCode(e, p.placeNo), e.kind, e.name, e.corpForm ?? '', e.corpFormPosition ?? '',
         e.corpRegNo, '', e.establishedDate ?? '', p.placeName, p.branchType ?? '',
-        p.bizRegNo, p.noBiz ? 'O' : '', p.address, p.nature, p.salesTeams.join(','),
+        p.bizRegNo, p.noBiz ? 'O' : '', p.status, p.statusMonth, p.address, p.nature, p.salesTeams.join(','),
         p.taxType ?? '', p.withholding ?? '', p.openedDate ?? '', p.unitTaxation ? 'O' : '',
         p.cpa, p.hometaxId, '', p.staff.map((s) => s.staffName).filter(Boolean).join(','), p.note,
+        p.transferTo, p.transferContact, p.transferManager,
       ]);
     }
   }
@@ -109,9 +116,10 @@ export async function exportBizRegistry(entities: BizEntityFull[]): Promise<void
 export interface ExcelRow {
   code: string; kind: string; name: string; corpForm: string; corpFormPos: string;
   corpRegNo: string; residentNo: string; establishedDate: string; placeName: string; branchType: string;
-  bizRegNo: string; noBiz: string; address: string; nature: string; salesTeams: string;
+  bizRegNo: string; noBiz: string; status: string; statusMonth: string; address: string; nature: string; salesTeams: string;
   taxType: string; withholding: string; openedDate: string; unitTaxation: string;
   cpa: string; hometaxId: string; hometaxPw: string; staff: string; note: string;
+  transferTo: string; transferContact: string; transferManager: string;
 }
 
 /** 업로드 파일 파싱 → ExcelRow[] */
@@ -127,10 +135,14 @@ export async function parseBizExcelFile(file: File): Promise<ExcelRow[]> {
   const map = {
     code: idx('거래처코드'), kind: idx('구분'), name: idx('상호'), corpForm: idx('법인격'), corpFormPos: idx('법인격위치'),
     corpRegNo: idx('법인등록번호'), residentNo: idx('주민등록번호'), establishedDate: idx('설립일'), placeName: idx('사업장명'),
-    branchType: idx('본점'), bizRegNo: idx('사업자번호'), noBiz: idx('사업자없음'), address: idx('사업장주소'),
+    branchType: idx('본점'), bizRegNo: idx('사업자번호'), noBiz: idx('사업자없음'),
+    status: idx('상태'), statusMonth: idx('귀속월'), address: idx('사업장주소'),
     nature: idx('성격'), salesTeams: idx('매출팀'), taxType: idx('과세유형'), withholding: idx('원천세'),
     openedDate: idx('개업일'), unitTaxation: idx('사업자단위과세'), cpa: idx('담당CPA'), hometaxId: idx('홈텍스ID'),
     hometaxPw: idx('홈텍스PW'), staff: idx('담당직원'), note: idx('비고'),
+    // '이관업체연락처'·'이관업체담당자'도 '이관업체'를 포함하므로, transferTo 는 연락처/담당자를 제외해 매칭.
+    transferTo: header.findIndex((h) => h.includes('이관업체') && !h.includes('연락처') && !h.includes('담당자')),
+    transferContact: idx('이관업체연락처'), transferManager: idx('이관업체담당자'),
   };
   const get = (row: unknown[], i: number) => (i >= 0 ? String(row[i] ?? '').trim() : '');
   // 날짜 셀: Excel이 날짜 서식이면 일련번호(예: 45673)로 저장됨 → YYYY-MM-DD 로 변환
@@ -143,6 +155,11 @@ export async function parseBizExcelFile(file: File): Promise<ExcelRow[]> {
       return new Date(ms).toISOString().slice(0, 10);
     }
     return String(v).trim();
+  };
+  // 귀속월 셀: 'YYYY-MM'. Excel 날짜서식이면 일련번호로 저장됨 → YYYY-MM 으로. 'YYYY-MM-DD' 도 앞 7자리만.
+  const getMonth = (row: unknown[], i: number): string => {
+    const d = getDate(row, i);
+    return d ? d.slice(0, 7) : '';
   };
   const out: ExcelRow[] = [];
   for (const r of raw.slice(1)) {
@@ -157,10 +174,12 @@ export async function parseBizExcelFile(file: File): Promise<ExcelRow[]> {
       code, kind: get(row, map.kind), name, corpForm: get(row, map.corpForm), corpFormPos: get(row, map.corpFormPos),
       corpRegNo: get(row, map.corpRegNo), residentNo: get(row, map.residentNo), establishedDate: getDate(row, map.establishedDate),
       placeName: get(row, map.placeName), branchType: get(row, map.branchType), bizRegNo: get(row, map.bizRegNo),
-      noBiz: get(row, map.noBiz), address: get(row, map.address), nature: get(row, map.nature), salesTeams: get(row, map.salesTeams),
+      noBiz: get(row, map.noBiz), status: get(row, map.status), statusMonth: getMonth(row, map.statusMonth),
+      address: get(row, map.address), nature: get(row, map.nature), salesTeams: get(row, map.salesTeams),
       taxType: get(row, map.taxType), withholding: get(row, map.withholding), openedDate: getDate(row, map.openedDate),
       unitTaxation: get(row, map.unitTaxation), cpa: get(row, map.cpa), hometaxId: get(row, map.hometaxId),
       hometaxPw: get(row, map.hometaxPw), staff: get(row, map.staff), note: get(row, map.note),
+      transferTo: get(row, map.transferTo), transferContact: get(row, map.transferContact), transferManager: get(row, map.transferManager),
     });
   }
   return out;
@@ -173,6 +192,7 @@ const asCorpForm = (s: string): CorpForm | undefined => (CORP_FORMS as string[])
 const asNature = (s: string): BizNature | undefined => (s === '매출' || s === '일반') ? s : undefined;
 const asTaxType = (s: string): TaxType | undefined => (['과세', '겸영', '면세'] as string[]).includes(s) ? (s as TaxType) : undefined;
 const asWithholding = (s: string): Withholding | undefined => (['월별', '반기별', 'N/A'] as string[]).includes(s) ? (s as Withholding) : undefined;
+const asStatus = (s: string): PlaceStatus | undefined => (PLACE_STATUSES as string[]).includes(s) ? (s as PlaceStatus) : undefined;
 const parseTeams = (s: string): SalesTeam[] => s.split(/[,\s]+/).map((x) => x.trim()).filter((x) => x === '감사team' || x === 'taxteam') as SalesTeam[];
 
 /** 파싱된 행 적용 — 코드 있으면 upsert(보강), 없으면 신규 등록. 빈 칸은 미변경. */
@@ -223,6 +243,14 @@ export async function applyBizExcel(rows: ExcelRow[], entities: BizEntityFull[],
         if (r.branchType === '본점' || r.branchType === '지점') pp.branchType = r.branchType;
         if (r.bizRegNo) pp.bizRegNo = r.bizRegNo;
         if (r.noBiz) pp.noBiz = isO(r.noBiz);
+        if (asStatus(r.status)) {
+          const st = asStatus(r.status)!;
+          pp.status = st;
+          pp.statusMonth = st === '정상' ? null : (r.statusMonth || null);
+          pp.transferTo = st === '이관' ? (r.transferTo || null) : null;
+          pp.transferContact = st === '이관' ? (r.transferContact || null) : null;
+          pp.transferManager = st === '이관' ? (r.transferManager || null) : null;
+        }
         if (r.address) pp.address = r.address;
         if (asNature(r.nature)) pp.nature = asNature(r.nature);
         if (r.salesTeams) pp.salesTeams = parseTeams(r.salesTeams);
@@ -253,6 +281,11 @@ export async function applyBizExcel(rows: ExcelRow[], entities: BizEntityFull[],
           entityId, placeName: r.placeName, isHeadquarters: true,
           branchType: r.branchType === '지점' ? '지점' : '본점',
           bizRegNo: r.bizRegNo || undefined, noBiz: isO(r.noBiz), address: r.address || undefined,
+          status: asStatus(r.status) ?? '정상',
+          statusMonth: asStatus(r.status) && asStatus(r.status) !== '정상' ? (r.statusMonth || null) : null,
+          transferTo: asStatus(r.status) === '이관' ? (r.transferTo || null) : null,
+          transferContact: asStatus(r.status) === '이관' ? (r.transferContact || null) : null,
+          transferManager: asStatus(r.status) === '이관' ? (r.transferManager || null) : null,
           nature: asNature(r.nature) ?? '매출', salesTeams: parseTeams(r.salesTeams),
           taxType: asTaxType(r.taxType) ?? null, withholding: asWithholding(r.withholding) ?? null,
           openedDate: r.openedDate || null, unitTaxation: isO(r.unitTaxation),

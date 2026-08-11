@@ -9,7 +9,8 @@ export type BizNature = '매출' | '일반';
 export type TaxType = '과세' | '겸영' | '면세';
 export type Withholding = '월별' | '반기별' | 'N/A';
 export type RepType = '단독' | '공동대표' | '각자대표';
-export type PlaceStatus = '정상' | '폐업';
+export type PlaceStatus = '정상' | '폐업' | '이관';
+export const PLACE_STATUSES: PlaceStatus[] = ['정상', '폐업', '이관'];
 export const SALES_TEAMS = ['감사team', 'taxteam'] as const;
 export type SalesTeam = (typeof SALES_TEAMS)[number];
 
@@ -44,6 +45,14 @@ export interface BizPlace {
   withholding: Withholding | null;
   openedDate: string | null;
   status: PlaceStatus;
+  /** 폐업/이관 귀속월 'YYYY-MM' (정상이면 빈값). */
+  statusMonth: string;
+  /** 이관업체명(이관일 때만). */
+  transferTo: string;
+  /** 이관업체 연락처. */
+  transferContact: string;
+  /** 이관업체 담당자명. */
+  transferManager: string;
   cpa: string;
   hometaxId: string;
   /** 홈텍스 PW 존재 여부(값은 RPC 로만 열람). */
@@ -180,6 +189,10 @@ const toPlace = (r: any): BizPlace => ({
   withholding: r.withholding,
   openedDate: r.opened_date,
   status: r.status,
+  statusMonth: r.status_month || '',
+  transferTo: r.transfer_to || '',
+  transferContact: r.transfer_contact || '',
+  transferManager: r.transfer_manager || '',
   cpa: r.cpa || '',
   hometaxId: r.hometax_id || '',
   hasHometaxPw: r.hometax_pw_enc != null,
@@ -336,6 +349,10 @@ export interface PlaceInput {
   withholding?: Withholding | null;
   openedDate?: string | null;
   status?: PlaceStatus;
+  statusMonth?: string | null;
+  transferTo?: string | null;
+  transferContact?: string | null;
+  transferManager?: string | null;
   cpa?: string;
   hometaxId?: string;
   note?: string;
@@ -359,6 +376,10 @@ function placeToRow(p: Partial<PlaceInput>): Record<string, unknown> {
   if (p.withholding !== undefined) row.withholding = p.withholding || null;
   if (p.openedDate !== undefined) row.opened_date = p.openedDate || null;
   if (p.status !== undefined) row.status = p.status;
+  if (p.statusMonth !== undefined) row.status_month = p.statusMonth || null;
+  if (p.transferTo !== undefined) row.transfer_to = p.transferTo || null;
+  if (p.transferContact !== undefined) row.transfer_contact = p.transferContact || null;
+  if (p.transferManager !== undefined) row.transfer_manager = p.transferManager || null;
   if (p.cpa !== undefined) row.cpa = p.cpa || null;
   if (p.hometaxId !== undefined) row.hometax_id = p.hometaxId || null;
   if (p.note !== undefined) row.note = p.note || null;
