@@ -8,7 +8,7 @@ import {
   previewContactImport, runContactImport,
   type BizContact, type ContactInput, type ContactImportRow, type ContactImportResult,
 } from '../../lib/bizContactApi';
-import { ColFilter, scrollBox, stickyTop } from './tableKit';
+import { ColFilter, scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 
 export default function BizContactsTab() {
   const { readonly, role } = useAuth();
@@ -22,6 +22,7 @@ export default function BizContactsTab() {
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
+  const { widthOf, startResize } = useColWidths();
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
 
@@ -69,6 +70,7 @@ export default function BizContactsTab() {
     { key: 'address', label: '수령지', val: (r) => r.c.address, w: 190 },
     { key: 'note', label: '비고', val: (r) => r.c.note, w: 120 },
   ];
+  const tableW = CONTACT_COLS.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 96 : 0);
   const flatContacts = useMemo<CRow[]>(() => contacts.map((c) => ({ c, e: entMap.get(c.entityId) })), [contacts, entMap]);
   const tableRows = useMemo(() => flatContacts.filter(({ c, e }) => {
     if (q.trim()) {
@@ -128,12 +130,17 @@ export default function BizContactsTab() {
 
       {viewMode === 'table' && (
         <div style={scrollBox()}>
-          <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5, minWidth: 1000, width: '100%' }}>
+          <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5 }}>
+            <colgroup>
+              {CONTACT_COLS.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}
+              {canWrite && <col style={{ width: 96 }} />}
+            </colgroup>
             <thead>
               <tr>
                 {CONTACT_COLS.map((col) => (
-                  <th key={col.key} style={{ ...thc, minWidth: col.w, height: 26, cursor: 'pointer', userSelect: 'none', ...stickyTop(0, '#f4efe4') }} onClick={() => toggleSort(col.key)} title="클릭: 오름/내림/해제">
+                  <th key={col.key} style={{ ...thc, ...clip, height: 26, cursor: 'pointer', userSelect: 'none', ...stickyTop(0, '#f4efe4') }} onClick={() => toggleSort(col.key)} title="클릭: 정렬 · 우측 끝 드래그: 너비 조절">
                     {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
+                    <ResizeHandle onMouseDown={startResize(col.key, widthOf(col.key, col.w))} />
                   </th>
                 ))}
                 {canWrite && <th style={{ ...thc, ...stickyTop(0, '#f4efe4') }}></th>}
@@ -151,7 +158,7 @@ export default function BizContactsTab() {
               {sortedRows.length === 0 && <tr><td colSpan={CONTACT_COLS.length + (canWrite ? 1 : 0)} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 담당자가 없습니다.</td></tr>}
               {sortedRows.map(({ c, e }) => (
                 <tr key={c.id}>
-                  {CONTACT_COLS.map((col) => <td key={col.key} style={{ ...tdc, fontWeight: col.key === 'name' || col.key === 'contact' ? 600 : 400, borderTop: '1px solid #eee' }}>{col.val({ c, e })}</td>)}
+                  {CONTACT_COLS.map((col) => <td key={col.key} style={{ ...tdc, ...clip, fontWeight: col.key === 'name' || col.key === 'contact' ? 600 : 400, borderTop: '1px solid #eee' }} title={col.val({ c, e })}>{col.val({ c, e })}</td>)}
                   {canWrite && (
                     <td style={{ ...tdc, borderTop: '1px solid #eee' }}>
                       <span style={{ display: 'flex', gap: 3 }}>

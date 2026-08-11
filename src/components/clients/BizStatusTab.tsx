@@ -5,7 +5,7 @@ import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/
 import { listSalesContracts, type SalesContract, type BillingCycle } from '../../lib/salesContractApi';
 import { listBizContacts, type BizContact } from '../../lib/bizContactApi';
 import { findNode } from '../../lib/salesContractTaxonomy';
-import { scrollBox, stickyTop } from './tableKit';
+import { scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 // 연환산 계수 — 주기별로 1년치로 환산해 비교 가능하게
@@ -24,6 +24,7 @@ export default function BizStatusTab() {
   const [kindF, setKindF] = useState<'' | '법인' | '개인'>('');
   const [natF, setNatF] = useState<'' | '매출' | '일반'>('');
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'annual', dir: 'desc' });
+  const { widthOf, startResize } = useColWidths();
 
   useEffect(() => {
     (async () => {
@@ -114,14 +115,15 @@ export default function BizStatusTab() {
         <span style={{ fontSize: 11, color: '#888' }}>{view.length}건</span>
       </div>
       <div style={scrollBox()}>
-        <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5, minWidth: 900, width: '100%' }}>
+        <table style={{ tableLayout: 'fixed', width: COLS.reduce((s, c) => s + widthOf(c.key, c.w), 0), borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5 }}>
+          <colgroup>{COLS.map((c) => <col key={c.key} style={{ width: widthOf(c.key, c.w) }} />)}</colgroup>
           <thead><tr>
-            {COLS.map((c) => <th key={c.key} style={{ ...thc, height: 26, cursor: 'pointer', textAlign: c.num ? 'right' : 'left', ...stickyTop(0, '#f4efe4') }} onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key && s.dir === 'desc' ? 'asc' : 'desc' }))}>{c.label}{sort.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}</th>)}
+            {COLS.map((c) => <th key={c.key} style={{ ...thc, ...clip, height: 26, cursor: 'pointer', textAlign: c.num ? 'right' : 'left', position: 'sticky', ...stickyTop(0, '#f4efe4') }} onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key && s.dir === 'desc' ? 'asc' : 'desc' }))} title="클릭: 정렬 · 우측 끝 드래그: 너비 조절">{c.label}{sort.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}<ResizeHandle onMouseDown={startResize(c.key, widthOf(c.key, c.w))} /></th>)}
           </tr></thead>
           <tbody>
             {view.length === 0 && <tr><td colSpan={COLS.length} style={{ ...tdc, color: '#999', padding: 12 }}>거래처가 없습니다.</td></tr>}
             {view.map((r) => {
-              const bt: React.CSSProperties = { borderTop: '1px solid #eee' };
+              const bt: React.CSSProperties = { borderTop: '1px solid #eee', ...clip };
               return (
               <tr key={r.e.id}>
                 <td style={{ ...tdc, ...bt }}>{r.code}</td>
@@ -175,11 +177,11 @@ function MiniTable({ title, rows }: { title: string; rows: { label: string; amou
   );
 }
 
-const COLS = [
-  { key: 'code', label: '코드' }, { key: 'kind', label: '구분' }, { key: 'name', label: '거래처' },
-  { key: 'places', label: '사업장', num: true }, { key: 'nature', label: '성격' },
-  { key: 'contracts', label: '매출계약', num: true }, { key: 'annual', label: '연환산매출', num: true },
-  { key: 'cpa', label: '담당CPA' }, { key: 'staff', label: '담당직원' }, { key: 'contacts', label: '담당자', num: true },
+const COLS: { key: string; label: string; num?: boolean; w: number }[] = [
+  { key: 'code', label: '코드', w: 60 }, { key: 'kind', label: '구분', w: 46 }, { key: 'name', label: '거래처', w: 160 },
+  { key: 'places', label: '사업장', num: true, w: 56 }, { key: 'nature', label: '성격', w: 50 },
+  { key: 'contracts', label: '매출계약', num: true, w: 66 }, { key: 'annual', label: '연환산매출', num: true, w: 104 },
+  { key: 'cpa', label: '담당CPA', w: 70 }, { key: 'staff', label: '담당직원', w: 96 }, { key: 'contacts', label: '담당자', num: true, w: 56 },
 ];
 const selStyle: React.CSSProperties = { padding: '4px 7px', fontSize: 12 };
 const thc: React.CSSProperties = { padding: '5px 6px', fontWeight: 700, color: '#555', whiteSpace: 'nowrap', userSelect: 'none' };

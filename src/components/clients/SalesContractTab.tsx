@@ -6,7 +6,7 @@ import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/
 import {
   TAXONOMY, findNode, isLeaf, leafOf, pathLabel, type Team, type TaxNode,
 } from '../../lib/salesContractTaxonomy';
-import { ColFilter, scrollBox, stickyTop } from './tableKit';
+import { ColFilter, scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 import {
   listSalesContracts, createSalesContract, updateSalesContract, deleteSalesContract,
   saveInstallments, saveDiscounts, saveContractStaff, listContractStaffProfiles, setInstallmentBilled,
@@ -74,6 +74,7 @@ export default function SalesContractTab() {
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
+  const { widthOf, startResize } = useColWidths();
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const [groupBy, setGroupBy] = useState<string>('');   // 피봇 행 기준
@@ -116,6 +117,7 @@ export default function SalesContractTab() {
     { key: 'cdate', label: '계약일', val: (c) => c.contractDate ?? '', w: 90 },
     { key: 'note', label: '비고', val: (c) => c.note, w: 120 },
   ];
+  const tableW = COLUMNS.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 96 : 0);
   const tableRows = useMemo(() => contracts.filter((c) => COLUMNS.every((col) => {
     const fv = (colF[col.key] || '').trim().toLowerCase();
     return !fv || col.val(c).toLowerCase().includes(fv);
@@ -428,12 +430,17 @@ export default function SalesContractTab() {
           </div>
         )}
         <div style={scrollBox()}>
-          <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5, minWidth: 1100 }}>
+          <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5 }}>
+            <colgroup>
+              {COLUMNS.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}
+              {canWrite && <col style={{ width: 96 }} />}
+            </colgroup>
             <thead>
               <tr>
                 {COLUMNS.map((col) => (
-                  <th key={col.key} style={{ ...thc, minWidth: col.w, height: 26, cursor: 'pointer', userSelect: 'none', ...stickyTop(0, '#f4efe4') }} onClick={() => toggleSort(col.key)} title="클릭: 오름/내림/해제">
+                  <th key={col.key} style={{ ...thc, ...clip, height: 26, cursor: 'pointer', userSelect: 'none', ...stickyTop(0, '#f4efe4') }} onClick={() => toggleSort(col.key)} title="클릭: 정렬 · 우측 끝 드래그: 너비 조절">
                     {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
+                    <ResizeHandle onMouseDown={startResize(col.key, widthOf(col.key, col.w))} />
                   </th>
                 ))}
                 {canWrite && <th style={{ ...thc, ...stickyTop(0, '#f4efe4') }}></th>}
@@ -451,7 +458,7 @@ export default function SalesContractTab() {
               {sortedRows.length === 0 && <tr><td colSpan={COLUMNS.length + 1} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 매출계약이 없습니다.</td></tr>}
               {sortedRows.map((c) => (
                 <tr key={c.id}>
-                  {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }}>{col.val(c)}</td>)}
+                  {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, ...clip, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }} title={col.val(c)}>{col.val(c)}</td>)}
                   {canWrite && (
                     <td style={{ ...tdc, borderTop: '1px solid #eee' }}>
                       <span style={{ display: 'flex', gap: 3 }}>

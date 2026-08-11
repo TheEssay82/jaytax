@@ -46,7 +46,7 @@ import {
   type StaffProfile,
 } from '../../lib/bizRegistryApi';
 import { listPlaceContractStaff } from '../../lib/salesContractApi';
-import { ColFilter } from './tableKit';
+import { ColFilter, useColWidths, ResizeHandle, clip } from './tableKit';
 
 const TAX_TYPES: TaxType[] = ['과세', '겸영', '면세'];
 const WITHHOLDINGS: Withholding[] = ['월별', '반기별', 'N/A'];
@@ -116,6 +116,7 @@ export default function BizRegistryTab() {
   const [editPlace, setEditPlace] = useState<{ place: BizPlace; entity: BizEntityFull } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
+  const { widthOf, startResize } = useColWidths();
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set()); // 일괄삭제 선택(거래처 id)
@@ -180,20 +181,21 @@ export default function BizRegistryTab() {
     { key: 'status', label: '상태', val: (_e, p) => (p ? (p.status === '정상' ? '정상' : `${p.status}${p.statusMonth ? ` ${p.statusMonth}` : ''}`) : ''), w: 76, opts: PLACE_STATUSES },
     { key: 'kind', label: '구분', val: (e) => e.kind, w: 46, opts: ['법인', '개인'] },
     { key: 'name', label: '상호/성명', val: (e) => corpDisplayName(e.name, e.corpForm, e.corpFormPosition), w: 150 },
-    { key: 'rep', label: '대표', val: (e) => e.representatives.map((r) => r.repName).join(','), w: 78 },
-    { key: 'place', label: '사업장', val: (_e, p) => p?.placeName ?? '', w: 110 },
-    { key: 'bizno', label: '사업자번호', val: (_e, p) => (p ? (p.bizRegNo || (p.noBiz ? '없음' : '')) : ''), w: 108 },
+    { key: 'rep', label: '대표', val: (e) => e.representatives.map((r) => r.repName).join(','), w: 54 },
+    { key: 'place', label: '사업장명', val: (_e, p) => p?.placeName ?? '', w: 84 },
+    { key: 'bizno', label: '사업자번호', val: (_e, p) => (p ? (p.bizRegNo || (p.noBiz ? '없음' : '')) : ''), w: 90 },
     { key: 'branch', label: '본/지점', val: (_e, p) => p?.branchType ?? '', w: 54, opts: ['본점', '지점'] },
+    { key: 'htid', label: '홈텍스ID', val: (_e, p) => p?.hometaxId ?? '', w: 88 },
+    { key: 'htpw', label: '홈텍스PW', val: (_e, p) => (p?.hasHometaxPw ? '있음' : ''), w: 62, opts: ['있음'] },
     { key: 'nature', label: '성격', val: (_e, p) => p?.nature ?? '', w: 50, opts: ['매출', '일반'] },
     { key: 'teams', label: '매출팀', val: (_e, p) => (p?.salesTeams ?? []).join(','), w: 88, opts: SALES_TEAMS },
     { key: 'tax', label: '과세', val: (_e, p) => p?.taxType ?? '', w: 50, opts: TAX_TYPES },
     { key: 'wht', label: '원천', val: (_e, p) => p?.withholding ?? '', w: 56, opts: WITHHOLDINGS },
     { key: 'cpa', label: '담당CPA', val: (_e, p) => p?.cpa ?? '', w: 66, opts: CPA_OPTIONS },
     { key: 'staff', label: '담당직원', val: (_e, p) => effStaff(p), w: 96, opts: staffOpts },
-    { key: 'htid', label: '홈텍스ID', val: (_e, p) => p?.hometaxId ?? '', w: 88 },
-    { key: 'htpw', label: '홈텍스PW', val: (_e, p) => (p?.hasHometaxPw ? '있음' : ''), w: 62, opts: ['있음'] },
     { key: 'note', label: '비고', val: (e, p) => p?.note || e.note, w: 120 },
   ];
+  const tableW = (canWrite ? 26 : 0) + COLUMNS.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 100 : 0);
   const flatRows = useMemo(() => view.flatMap((e) => (e.places.length ? e.places.map((p) => ({ e, p: p as BizPlace | null })) : [{ e, p: null as BizPlace | null }])), [view]);
   const tableRows = useMemo(() => flatRows.filter(({ e, p }) => COLUMNS.every((c) => {
     const fv = (colF[c.key] || '').trim().toLowerCase();
@@ -493,15 +495,21 @@ export default function BizRegistryTab() {
         )}
         {/* 세로·가로 스크롤 영역 — 헤더(제목·필터) 고정(sticky) 상태로 본문만 스크롤 */}
         <div style={{ overflow: 'auto', maxHeight: '68vh', border: '1px solid #eee', borderRadius: 6 }}>
-          <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5, minWidth: 1150 }}>
+          <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5 }}>
+            <colgroup>
+              {canWrite && <col style={{ width: 26 }} />}
+              {COLUMNS.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}
+              {canWrite && <col style={{ width: 100 }} />}
+            </colgroup>
             <thead>
               <tr>
                 {canWrite && (() => { const ids = [...new Set(sortedRows.map((r) => r.e.id))]; const all = ids.length > 0 && ids.every((id) => selected.has(id)); return (
-                  <th style={{ ...thc, width: 26, height: 26, position: 'sticky', top: 0, zIndex: 3, background: '#f4efe4' }}><input type="checkbox" checked={all} onChange={() => setSelected(all ? new Set() : new Set(ids))} title="현재 목록 전체 선택" /></th>
+                  <th style={{ ...thc, height: 26, position: 'sticky', top: 0, zIndex: 3, background: '#f4efe4' }}><input type="checkbox" checked={all} onChange={() => setSelected(all ? new Set() : new Set(ids))} title="현재 목록 전체 선택" /></th>
                 ); })()}
                 {COLUMNS.map((col) => (
-                  <th key={col.key} style={{ ...thc, minWidth: col.w, height: 26, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 0, zIndex: 2, background: '#f4efe4' }} onClick={() => toggleSort(col.key)} title="클릭: 오름/내림/해제">
+                  <th key={col.key} style={{ ...thc, ...clip, height: 26, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 0, zIndex: 2, background: '#f4efe4' }} onClick={() => toggleSort(col.key)} title="클릭: 정렬 · 우측 끝 드래그: 너비 조절">
                     {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
+                    <ResizeHandle onMouseDown={startResize(col.key, widthOf(col.key, col.w))} />
                   </th>
                 ))}
                 {canWrite && <th style={{ ...thc, position: 'sticky', top: 0, zIndex: 2, background: '#f4efe4' }}></th>}
@@ -522,7 +530,7 @@ export default function BizRegistryTab() {
                 <tr key={p ? p.id : e.id} style={{ background: selected.has(e.id) ? '#fdf3f3' : undefined }}>
                   {canWrite && <td style={{ ...tdc, textAlign: 'center', borderTop: '1px solid #eee' }}><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSelect(e.id)} /></td>}
                   {COLUMNS.map((col) => (
-                    <td key={col.key} style={{ ...tdc, fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }}>
+                    <td key={col.key} style={{ ...tdc, ...clip, fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }} title={col.key === 'htpw' ? undefined : col.val(e, p)}>
                       {col.key === 'htpw'
                         ? (p?.hasHometaxPw ? <button className="btn-sm btn-sm-blue" onClick={() => reveal('hometax', p.id, '홈텍스PW')}>🔒 보기</button> : '')
                         : col.val(e, p)}
