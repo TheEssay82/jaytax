@@ -46,6 +46,7 @@ import {
   type StaffProfile,
 } from '../../lib/bizRegistryApi';
 import { listPlaceContractStaff } from '../../lib/salesContractApi';
+import { ColFilter } from './tableKit';
 
 const TAX_TYPES: TaxType[] = ['과세', '겸영', '면세'];
 const WITHHOLDINGS: Withholding[] = ['월별', '반기별', 'N/A'];
@@ -166,22 +167,29 @@ export default function BizRegistryTab() {
     return p.staffStatus ?? '';
   };
 
-  // 표(list)형 — 사업장 1행 플랫. 각 컬럼 val 로 필터·정렬. (view 뒤에 선언 — 순서 중요)
-  const COLUMNS: { key: string; label: string; val: (e: BizEntityFull, p: BizPlace | null) => string; w?: number }[] = [
+  // 담당직원 필터 드롭다운 후보 — 현재 데이터에 존재하는 값들만.
+  const staffOpts = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of view) for (const p of e.places) effStaff(p).split(',').forEach((s) => { const t = s.trim(); if (t) set.add(t); });
+    return [...set].sort((a, b) => a.localeCompare(b, 'ko'));
+  }, [view, contractStaff]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 표(list)형 — 사업장 1행 플랫. 각 컬럼 val 로 필터·정렬. opts 있으면 필터가 드롭다운. (view 뒤에 선언 — 순서 중요)
+  const COLUMNS: { key: string; label: string; val: (e: BizEntityFull, p: BizPlace | null) => string; w?: number; opts?: readonly string[] }[] = [
     { key: 'code', label: '코드', val: (e, p) => (p ? `${e.code}-${String(p.placeNo).padStart(2, '0')}` : e.code), w: 68 },
-    { key: 'status', label: '상태', val: (_e, p) => (p ? (p.status === '정상' ? '정상' : `${p.status}${p.statusMonth ? ` ${p.statusMonth}` : ''}`) : ''), w: 76 },
-    { key: 'kind', label: '구분', val: (e) => e.kind, w: 46 },
+    { key: 'status', label: '상태', val: (_e, p) => (p ? (p.status === '정상' ? '정상' : `${p.status}${p.statusMonth ? ` ${p.statusMonth}` : ''}`) : ''), w: 76, opts: PLACE_STATUSES },
+    { key: 'kind', label: '구분', val: (e) => e.kind, w: 46, opts: ['법인', '개인'] },
     { key: 'name', label: '상호/성명', val: (e) => corpDisplayName(e.name, e.corpForm, e.corpFormPosition), w: 150 },
     { key: 'rep', label: '대표', val: (e) => e.representatives.map((r) => r.repName).join(','), w: 78 },
     { key: 'place', label: '사업장', val: (_e, p) => p?.placeName ?? '', w: 110 },
     { key: 'bizno', label: '사업자번호', val: (_e, p) => (p ? (p.bizRegNo || (p.noBiz ? '없음' : '')) : ''), w: 108 },
-    { key: 'branch', label: '본/지점', val: (_e, p) => p?.branchType ?? '', w: 54 },
-    { key: 'nature', label: '성격', val: (_e, p) => p?.nature ?? '', w: 50 },
-    { key: 'teams', label: '매출팀', val: (_e, p) => (p?.salesTeams ?? []).join(','), w: 88 },
-    { key: 'tax', label: '과세', val: (_e, p) => p?.taxType ?? '', w: 50 },
-    { key: 'wht', label: '원천', val: (_e, p) => p?.withholding ?? '', w: 56 },
-    { key: 'cpa', label: '담당CPA', val: (_e, p) => p?.cpa ?? '', w: 66 },
-    { key: 'staff', label: '담당직원', val: (_e, p) => effStaff(p), w: 96 },
+    { key: 'branch', label: '본/지점', val: (_e, p) => p?.branchType ?? '', w: 54, opts: ['본점', '지점'] },
+    { key: 'nature', label: '성격', val: (_e, p) => p?.nature ?? '', w: 50, opts: ['매출', '일반'] },
+    { key: 'teams', label: '매출팀', val: (_e, p) => (p?.salesTeams ?? []).join(','), w: 88, opts: SALES_TEAMS },
+    { key: 'tax', label: '과세', val: (_e, p) => p?.taxType ?? '', w: 50, opts: TAX_TYPES },
+    { key: 'wht', label: '원천', val: (_e, p) => p?.withholding ?? '', w: 56, opts: WITHHOLDINGS },
+    { key: 'cpa', label: '담당CPA', val: (_e, p) => p?.cpa ?? '', w: 66, opts: CPA_OPTIONS },
+    { key: 'staff', label: '담당직원', val: (_e, p) => effStaff(p), w: 96, opts: staffOpts },
     { key: 'htid', label: '홈텍스ID', val: (_e, p) => p?.hometaxId ?? '', w: 88 },
     { key: 'note', label: '비고', val: (e, p) => p?.note || e.note, w: 120 },
   ];
@@ -501,7 +509,7 @@ export default function BizRegistryTab() {
                 {canWrite && <th style={{ padding: 2, position: 'sticky', top: 26, zIndex: 3, background: '#faf7f0' }}></th>}
                 {COLUMNS.map((col) => (
                   <th key={col.key} style={{ padding: 2, position: 'sticky', top: 26, zIndex: 2, background: '#faf7f0' }}>
-                    <input value={colF[col.key] || ''} onChange={(e) => setColF((p) => ({ ...p, [col.key]: e.target.value }))} placeholder="필터" style={{ width: '100%', fontSize: 10.5, padding: '2px 4px', boxSizing: 'border-box' }} />
+                    <ColFilter opts={col.opts} value={colF[col.key] || ''} onChange={(v) => setColF((p) => ({ ...p, [col.key]: v }))} />
                   </th>
                 ))}
                 {canWrite && <th style={{ padding: 2, position: 'sticky', top: 26, zIndex: 2, background: '#faf7f0' }}></th>}

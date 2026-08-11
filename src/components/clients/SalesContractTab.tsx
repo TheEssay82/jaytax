@@ -6,6 +6,7 @@ import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/
 import {
   TAXONOMY, findNode, isLeaf, leafOf, pathLabel, type Team, type TaxNode,
 } from '../../lib/salesContractTaxonomy';
+import { ColFilter, scrollBox, stickyTop } from './tableKit';
 import {
   listSalesContracts, createSalesContract, updateSalesContract, deleteSalesContract,
   saveInstallments, saveDiscounts, saveContractStaff, listContractStaffProfiles, setInstallmentBilled,
@@ -94,19 +95,23 @@ export default function SalesContractTab() {
   const entName = (id: string) => { const e = entMap.get(id); return e ? `${e.code} ${corpDisplayName(e.name, e.corpForm, e.corpFormPosition)}` : '(삭제됨)'; };
   const placeName = (eid: string, pid: string | null) => { if (!pid) return ''; const e = entMap.get(eid); return e?.places.find((p) => p.id === pid)?.placeName ?? ''; };
 
-  // 표(list)형 컬럼 정의 — 각 컬럼 val 로 필터·표시
-  const COLUMNS: { key: string; label: string; val: (c: SalesContract) => string; w?: number; num?: boolean }[] = [
+  // 담당직원·귀속 필터 드롭다운 후보 — 현재 데이터 기준.
+  const staffOpts = useMemo(() => [...new Set(contracts.flatMap((c) => c.staff.map((s) => s.staffName)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')), [contracts]);
+  const yearOpts = useMemo(() => [...new Set(contracts.map((c) => contractFiscalYear(c)).filter((y): y is number => !!y))].sort((a, b) => b - a).map(String), [contracts]);
+
+  // 표(list)형 컬럼 정의 — 각 컬럼 val 로 필터·표시. opts 있으면 필터가 드롭다운.
+  const COLUMNS: { key: string; label: string; val: (c: SalesContract) => string; w?: number; num?: boolean; opts?: readonly string[] }[] = [
     { key: 'code', label: '코드', val: (c) => entMap.get(c.entityId)?.code ?? '', w: 56 },
     { key: 'name', label: '거래처', val: (c) => { const e = entMap.get(c.entityId); return e ? corpDisplayName(e.name, e.corpForm, e.corpFormPosition) : ''; }, w: 150 },
-    { key: 'team', label: '팀', val: (c) => c.team, w: 66 },
+    { key: 'team', label: '팀', val: (c) => c.team, w: 66, opts: ['감사team', 'taxteam'] },
     { key: 'type', label: '매출유형', val: (c) => pathLabel(c.categoryCode) + (c.categoryEtcName ? ` (${c.categoryEtcName})` : ''), w: 200 },
     { key: 'occ', label: '발생단위', val: (c) => c.occurrenceUnit + (c.placeId ? `/${placeName(c.entityId, c.placeId)}` : ''), w: 100 },
-    { key: 'cycle', label: '주기', val: (c) => c.billingCycle + (c.isInstallment ? '·분할' : ''), w: 66 },
+    { key: 'cycle', label: '주기', val: (c) => c.billingCycle + (c.isInstallment ? '·분할' : ''), w: 66, opts: BILLING_CYCLES },
     { key: 'bunit', label: '청구단위', val: (c) => c.billingUnit ?? '', w: 70 },
     { key: 'amount', label: '계약금액', val: (c) => won(c.amount), w: 90, num: true },
-    { key: 'year', label: '귀속', val: (c) => { const fy = contractFiscalYear(c); return fy ? String(fy) : ''; }, w: 56 },
-    { key: 'cpa', label: 'CPA', val: (c) => c.cpa, w: 66 },
-    { key: 'staff', label: '담당직원', val: (c) => c.staff.map((s) => s.staffName).join(','), w: 100 },
+    { key: 'year', label: '귀속', val: (c) => { const fy = contractFiscalYear(c); return fy ? String(fy) : ''; }, w: 56, opts: yearOpts },
+    { key: 'cpa', label: 'CPA', val: (c) => c.cpa, w: 66, opts: CPA_LIST },
+    { key: 'staff', label: '담당직원', val: (c) => c.staff.map((s) => s.staffName).join(','), w: 100, opts: staffOpts },
     { key: 'period', label: '개시~종료', val: (c) => `${dateToMonth(c.startDate) || ''}~${dateToMonth(c.endDate) || '계속'}`, w: 130 },
     { key: 'cdate', label: '계약일', val: (c) => c.contractDate ?? '', w: 90 },
     { key: 'note', label: '비고', val: (c) => c.note, w: 120 },
@@ -422,33 +427,33 @@ export default function SalesContractTab() {
             </table>
           </div>
         )}
-        <div style={{ overflowX: 'auto', border: '1px solid #eee', borderRadius: 6 }}>
-          <table style={{ borderCollapse: 'collapse', fontSize: 11.5, minWidth: 1100 }}>
+        <div style={scrollBox()}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5, minWidth: 1100 }}>
             <thead>
-              <tr style={{ background: '#f4efe4' }}>
+              <tr>
                 {COLUMNS.map((col) => (
-                  <th key={col.key} style={{ ...thc, minWidth: col.w, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort(col.key)} title="클릭: 오름/내림/해제">
+                  <th key={col.key} style={{ ...thc, minWidth: col.w, height: 26, cursor: 'pointer', userSelect: 'none', ...stickyTop(0, '#f4efe4') }} onClick={() => toggleSort(col.key)} title="클릭: 오름/내림/해제">
                     {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
                   </th>
                 ))}
-                {canWrite && <th style={thc}></th>}
+                {canWrite && <th style={{ ...thc, ...stickyTop(0, '#f4efe4') }}></th>}
               </tr>
-              <tr style={{ background: '#faf7f0' }}>
+              <tr>
                 {COLUMNS.map((col) => (
-                  <th key={col.key} style={{ padding: 2 }}>
-                    <input value={colF[col.key] || ''} onChange={(e) => setColF((p) => ({ ...p, [col.key]: e.target.value }))} placeholder="필터" style={{ width: '100%', fontSize: 10.5, padding: '2px 4px', boxSizing: 'border-box' }} />
+                  <th key={col.key} style={{ padding: 2, ...stickyTop(26, '#faf7f0') }}>
+                    <ColFilter opts={col.opts} value={colF[col.key] || ''} onChange={(v) => setColF((p) => ({ ...p, [col.key]: v }))} />
                   </th>
                 ))}
-                {canWrite && <th style={{ padding: 2 }}></th>}
+                {canWrite && <th style={{ padding: 2, ...stickyTop(26, '#faf7f0') }}></th>}
               </tr>
             </thead>
             <tbody>
               {sortedRows.length === 0 && <tr><td colSpan={COLUMNS.length + 1} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 매출계약이 없습니다.</td></tr>}
               {sortedRows.map((c) => (
-                <tr key={c.id} style={{ borderTop: '1px solid #eee' }}>
-                  {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400 }}>{col.val(c)}</td>)}
+                <tr key={c.id}>
+                  {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }}>{col.val(c)}</td>)}
                   {canWrite && (
-                    <td style={tdc}>
+                    <td style={{ ...tdc, borderTop: '1px solid #eee' }}>
                       <span style={{ display: 'flex', gap: 3 }}>
                         <button className="btn-sm btn-sm-blue" onClick={() => { setViewMode('box'); setEditId(c.id); setShowAdd(false); }}>수정</button>
                         <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
@@ -459,14 +464,15 @@ export default function SalesContractTab() {
               ))}
             </tbody>
             <tfoot>
-              <tr style={{ borderTop: '2px solid #c9a54a', background: '#f5efdd', fontWeight: 700 }}>
+              <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
                 {COLUMNS.map((col) => {
-                  if (col.key === 'code') return <td key={col.key} style={{ ...tdc, whiteSpace: 'nowrap' }}>합계 {summary.cnt}건</td>;
-                  if (col.key === 'name') return <td key={col.key} style={tdc}>월환산 {won(summary.mon)} · 연환산 {won(summary.ann)}</td>;
-                  if (col.key === 'amount') return <td key={col.key} style={{ ...tdc, textAlign: 'right' }}>{won(summary.amt)}</td>;
-                  return <td key={col.key} style={tdc}></td>;
+                  const st: React.CSSProperties = { ...tdc, borderTop: '2px solid #c9a54a' };
+                  if (col.key === 'code') return <td key={col.key} style={{ ...st, whiteSpace: 'nowrap' }}>합계 {summary.cnt}건</td>;
+                  if (col.key === 'name') return <td key={col.key} style={st}>월환산 {won(summary.mon)} · 연환산 {won(summary.ann)}</td>;
+                  if (col.key === 'amount') return <td key={col.key} style={{ ...st, textAlign: 'right' }}>{won(summary.amt)}</td>;
+                  return <td key={col.key} style={st}></td>;
                 })}
-                {canWrite && <td style={tdc}></td>}
+                {canWrite && <td style={{ ...tdc, borderTop: '2px solid #c9a54a' }}></td>}
               </tr>
             </tfoot>
           </table>

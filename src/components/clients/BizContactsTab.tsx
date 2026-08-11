@@ -8,6 +8,7 @@ import {
   previewContactImport, runContactImport,
   type BizContact, type ContactInput, type ContactImportRow, type ContactImportResult,
 } from '../../lib/bizContactApi';
+import { ColFilter, scrollBox, stickyTop } from './tableKit';
 
 export default function BizContactsTab() {
   const { readonly, role } = useAuth();
@@ -20,6 +21,9 @@ export default function BizContactsTab() {
   const [q, setQ] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'box' | 'table'>('box');
+  const [colF, setColF] = useState<Record<string, string>>({});
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
 
   async function load() {
     try {
@@ -51,6 +55,37 @@ export default function BizContactsTab() {
     return arr;
   }, [contacts, entMap, q]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 표(list)형 — 담당자 1행 플랫. 컬럼 val 로 필터·정렬.
+  type CRow = { c: BizContact; e: BizEntityFull | undefined };
+  const CONTACT_COLS: { key: string; label: string; val: (r: CRow) => string; w?: number; opts?: readonly string[] }[] = [
+    { key: 'code', label: '코드', val: (r) => r.e?.code ?? '', w: 60 },
+    { key: 'name', label: '거래처', val: (r) => (r.e ? corpDisplayName(r.e.name, r.e.corpForm, r.e.corpFormPosition) : ''), w: 150 },
+    { key: 'place', label: '사업장', val: (r) => placeName(r.e, r.c.placeId), w: 100 },
+    { key: 'contact', label: '담당자', val: (r) => `${r.c.contactName} ${r.c.honorific}`.trim(), w: 110 },
+    { key: 'position', label: '직책', val: (r) => r.c.position, w: 80 },
+    { key: 'primary', label: '대표', val: (r) => (r.c.isPrimary ? '대표' : ''), w: 46, opts: ['대표'] },
+    { key: 'phone', label: '연락처', val: (r) => r.c.phone, w: 120 },
+    { key: 'email', label: '이메일', val: (r) => r.c.email, w: 150 },
+    { key: 'address', label: '수령지', val: (r) => r.c.address, w: 190 },
+    { key: 'note', label: '비고', val: (r) => r.c.note, w: 120 },
+  ];
+  const flatContacts = useMemo<CRow[]>(() => contacts.map((c) => ({ c, e: entMap.get(c.entityId) })), [contacts, entMap]);
+  const tableRows = useMemo(() => flatContacts.filter(({ c, e }) => {
+    if (q.trim()) {
+      const s = q.trim().toLowerCase();
+      const hit = (e && entLabel(e).toLowerCase().includes(s)) || c.contactName.toLowerCase().includes(s) || c.phone.includes(s) || c.email.toLowerCase().includes(s) || c.address.toLowerCase().includes(s);
+      if (!hit) return false;
+    }
+    return CONTACT_COLS.every((col) => { const fv = (colF[col.key] || '').trim().toLowerCase(); return !fv || col.val({ c, e }).toLowerCase().includes(fv); });
+  }), [flatContacts, q, colF]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sortedRows = useMemo(() => {
+    if (!sort) return tableRows;
+    const col = CONTACT_COLS.find((c) => c.key === sort.key);
+    if (!col) return tableRows;
+    return [...tableRows].sort((a, b) => { const cmp = col.val(a).localeCompare(col.val(b), 'ko'); return sort.dir === 'asc' ? cmp : -cmp; });
+  }, [tableRows, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleSort = (key: string) => setSort((s) => (s?.key === key ? (s.dir === 'asc' ? { key, dir: 'desc' } : null) : { key, dir: 'asc' }));
+
   async function persist(input: ContactInput, existingId?: string) {
     if (!input.entityId) return alert('거래처를 선택하세요.');
     if (!input.contactName.trim()) return alert('담당자명을 입력하세요.');
@@ -78,7 +113,12 @@ export default function BizContactsTab() {
       {error && <div style={{ color: '#c33', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <span style={{ display: 'inline-flex', gap: 4 }}>
+          <button className={viewMode === 'box' ? 'btn-p' : 'btn-sm'} onClick={() => setViewMode('box')}>▤ 박스</button>
+          <button className={viewMode === 'table' ? 'btn-p' : 'btn-sm'} onClick={() => setViewMode('table')}>▦ 표</button>
+        </span>
         <input placeholder="🔍 거래처·담당자명·연락처·이메일·수령지" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
+        {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
         {canWrite && <button className="btn-p" onClick={() => { setShowAdd((s) => !s); setEditId(null); }}>{showAdd ? '닫기' : '＋ 신규 담당자'}</button>}
       </div>
 
@@ -86,6 +126,48 @@ export default function BizContactsTab() {
 
       {role === 'superuser' && <ImportPanel onImported={load} />}
 
+      {viewMode === 'table' && (
+        <div style={scrollBox()}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5, minWidth: 1000, width: '100%' }}>
+            <thead>
+              <tr>
+                {CONTACT_COLS.map((col) => (
+                  <th key={col.key} style={{ ...thc, minWidth: col.w, height: 26, cursor: 'pointer', userSelect: 'none', ...stickyTop(0, '#f4efe4') }} onClick={() => toggleSort(col.key)} title="클릭: 오름/내림/해제">
+                    {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
+                  </th>
+                ))}
+                {canWrite && <th style={{ ...thc, ...stickyTop(0, '#f4efe4') }}></th>}
+              </tr>
+              <tr>
+                {CONTACT_COLS.map((col) => (
+                  <th key={col.key} style={{ padding: 2, ...stickyTop(26, '#faf7f0') }}>
+                    <ColFilter opts={col.opts} value={colF[col.key] || ''} onChange={(v) => setColF((p) => ({ ...p, [col.key]: v }))} />
+                  </th>
+                ))}
+                {canWrite && <th style={{ padding: 2, ...stickyTop(26, '#faf7f0') }}></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {sortedRows.length === 0 && <tr><td colSpan={CONTACT_COLS.length + (canWrite ? 1 : 0)} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 담당자가 없습니다.</td></tr>}
+              {sortedRows.map(({ c, e }) => (
+                <tr key={c.id}>
+                  {CONTACT_COLS.map((col) => <td key={col.key} style={{ ...tdc, fontWeight: col.key === 'name' || col.key === 'contact' ? 600 : 400, borderTop: '1px solid #eee' }}>{col.val({ c, e })}</td>)}
+                  {canWrite && (
+                    <td style={{ ...tdc, borderTop: '1px solid #eee' }}>
+                      <span style={{ display: 'flex', gap: 3 }}>
+                        <button className="btn-sm btn-sm-blue" onClick={() => { setViewMode('box'); setEditId(c.id); setShowAdd(false); }}>수정</button>
+                        <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
+                      </span>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {viewMode === 'box' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {groups.length === 0 && <div style={{ color: '#999', fontSize: 12, padding: 12 }}>등록된 담당자가 없습니다.</div>}
         {groups.map(({ entity, contacts: cs }) => (
@@ -119,6 +201,7 @@ export default function BizContactsTab() {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }
