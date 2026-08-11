@@ -122,3 +122,38 @@ export function contractTypeOptions(): { code: string; label: string }[] {
   }
   return out;
 }
+
+// ── 매출계약코드용 유형 니모닉(사용자 확정 2026-08-11). 팀 안에서만 유일하면 됨(팀코드로 구분). ──
+export const TYPE_MNEMONIC: Record<string, string> = {
+  // 감사team
+  'AUD.AUDIT': 'AUD',
+  'AUD.SVC.FILING.CORP': 'CT', 'AUD.SVC.FILING.INCOME': 'IT', 'AUD.SVC.FILING.TRANSFER': 'TT',
+  'AUD.SVC.FILING.INHERIT': 'IH', 'AUD.SVC.FILING.SECURITIES': 'ST', 'AUD.SVC.FILING.RECTIFY': 'RC',
+  'AUD.SVC.FILING.ETC': 'FETC',
+  'AUD.SVC.VAL.ENTERPRISE': 'VENT', 'AUD.SVC.VAL.INTANGIBLE': 'VINT', 'AUD.SVC.VAL.INHERIT': 'VIH',
+  'AUD.SVC.VAL.DERIVATIVE': 'VDRV', 'AUD.SVC.VAL.ETC': 'VETC',
+  'AUD.SVC.CON.IFRS': 'CIFR', 'AUD.SVC.CON.ICFR_BUILD': 'CICB', 'AUD.SVC.CON.ICFR_PA': 'CICP',
+  'AUD.SVC.CON.ADVISORY': 'CADV', 'AUD.SVC.CON.ETC': 'CETC',
+  // taxteam
+  'TAX.BOOK': 'BK',
+  'TAX.FILING.VAT': 'VAT', 'TAX.FILING.WHT': 'WHT', 'TAX.FILING.CORP': 'CT', 'TAX.FILING.INCOME': 'IT',
+  'TAX.FILING.TRANSFER': 'TT', 'TAX.FILING.INHERIT': 'IH', 'TAX.FILING.SECURITIES': 'ST',
+  'TAX.FILING.RECTIFY': 'RC', 'TAX.FILING.ETC': 'FETC',
+  'TAX.CON.RECTIFY': 'CRC', 'TAX.CON.BOOK_REVIEW': 'CBKR', 'TAX.CON.WHT_REVIEW': 'CWHR',
+  'TAX.CON.VAT_REVIEW': 'CVTR', 'TAX.CON.ADVISORY': 'ADV',
+  'TAX.CON.ETC.RECEIPT': 'RCPT', 'TAX.CON.ETC.ETC': 'CETC',
+};
+/** 팀코드: 감사team=A, taxteam=T. */
+export function teamCode(team: Team): 'A' | 'T' { return team === '감사team' ? 'A' : 'T'; }
+/** 매출유형 leaf code → 니모닉(없으면 leaf 마지막 세그먼트 대문자). */
+export function typeMnemonic(code: string): string {
+  return TYPE_MNEMONIC[code] ?? code.split('.').pop()!.toUpperCase();
+}
+/** 매출계약코드용 유형 안내표 — 화면 도움말/엑셀에서 사용. */
+export function typeMnemonicTable(): { team: Team; label: string; mnemonic: string }[] {
+  const out: { team: Team; label: string; mnemonic: string }[] = [];
+  for (const [code, e] of INDEX) {
+    if (isLeaf(e.node)) out.push({ team: e.team, label: e.path.map((n) => n.label).join(' › '), mnemonic: typeMnemonic(code) });
+  }
+  return out;
+}
