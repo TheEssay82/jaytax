@@ -111,6 +111,42 @@ export async function listSalesContracts(): Promise<SalesContract[]> {
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
+/**
+ * 사업장별 '최근 매출계약의 담당직원' — place_id → 담당직원명[].
+ * 거래처등록 화면에서 담당직원을 '가장 최근 배정된 계약 담당직원'으로 표시하기 위한 경량 조회.
+ * biz_contract_staff.created_at(배정 시각) 최신 배치를 사업장별로 하나 취한다(로그 개념).
+ */
+export async function listPlaceContractStaff(): Promise<Map<string, string[]>> {
+  const [con, stf] = await Promise.all([
+    supabase.from('biz_sales_contract').select('id, place_id'),
+    supabase.from('biz_contract_staff').select('contract_id, staff_name, created_at').eq('active', true).order('created_at', { ascending: false }),
+  ]);
+  if (con.error) throw new Error(con.error.message);
+  if (stf.error) throw new Error(stf.error.message);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const placeByContract = new Map<string, string>();
+  for (const c of con.data as any[]) placeByContract.set(c.id, c.place_id);
+  const bestByPlace = new Map<string, string>();     // place_id → 최신 배정 계약 id
+  const namesByContract = new Map<string, string[]>();
+  for (const s of stf.data as any[]) {                // created_at desc → 사업장별 첫 계약이 최신
+    const placeId = placeByContract.get(s.contract_id);
+    if (!placeId) continue;
+    if (!bestByPlace.has(placeId)) bestByPlace.set(placeId, s.contract_id);
+    if (bestByPlace.get(placeId) === s.contract_id && s.staff_name) {
+      const arr = namesByContract.get(s.contract_id) ?? [];
+      arr.push(s.staff_name);
+      namesByContract.set(s.contract_id, arr);
+    }
+  }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  const result = new Map<string, string[]>();
+  for (const [placeId, contractId] of bestByPlace) {
+    const names = namesByContract.get(contractId) ?? [];
+    if (names.length) result.set(placeId, names);
+  }
+  return result;
+}
+
 export interface ContractInput {
   entityId: string; placeId?: string | null; occurrenceUnit: OccurrenceUnit; billingUnit?: BillingUnit | null;
   team: Team; categoryCode: string; categoryEtcName?: string; includesVat?: boolean; includesWht?: boolean;

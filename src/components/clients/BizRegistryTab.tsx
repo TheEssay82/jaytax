@@ -45,6 +45,7 @@ import {
   type CorpForm,
   type StaffProfile,
 } from '../../lib/bizRegistryApi';
+import { listPlaceContractStaff } from '../../lib/salesContractApi';
 
 const TAX_TYPES: TaxType[] = ['과세', '겸영', '면세'];
 const WITHHOLDINGS: Withholding[] = ['월별', '반기별', 'N/A'];
@@ -96,6 +97,8 @@ export default function BizRegistryTab() {
   const canWrite = !readonly && role !== 'per_head_accountant'; // 인당회계사는 거래처관리 조회 전용
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [staff, setStaff] = useState<StaffProfile[]>([]);
+  // 사업장별 '최근 매출계약 담당직원'(place_id → 이름[]). 계약이 있으면 담당직원 표시를 이걸로 대체.
+  const [contractStaff, setContractStaff] = useState<Map<string, string[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
@@ -119,9 +122,10 @@ export default function BizRegistryTab() {
   async function load() {
     try {
       setError(null);
-      const [ents, stf] = await Promise.all([listBizEntities(), listInternalStaff()]);
+      const [ents, stf, cstaff] = await Promise.all([listBizEntities(), listInternalStaff(), listPlaceContractStaff()]);
       setEntities(ents);
       setStaff(stf);
+      setContractStaff(cstaff);
     } catch (e) {
       setError(e instanceof Error ? e.message : '불러오지 못했습니다.');
     } finally {
@@ -153,6 +157,15 @@ export default function BizRegistryTab() {
     return list;
   }, [entities, kindFilter, natureFilter, noBizOnly, q]);
 
+  // 담당직원 표시값 — 매출계약이 있으면 '최근 계약 담당직원', 없으면 등록 담당직원, 그것도 없으면 상태(배정예정/N/A).
+  const effStaff = (p: BizPlace | null): string => {
+    if (!p) return '';
+    const cs = contractStaff.get(p.id);
+    if (cs?.length) return cs.join(',');
+    if (p.staff.length) return p.staff.map((s) => s.staffName).join(',');
+    return p.staffStatus ?? '';
+  };
+
   // 표(list)형 — 사업장 1행 플랫. 각 컬럼 val 로 필터·정렬. (view 뒤에 선언 — 순서 중요)
   const COLUMNS: { key: string; label: string; val: (e: BizEntityFull, p: BizPlace | null) => string; w?: number }[] = [
     { key: 'code', label: '코드', val: (e, p) => (p ? `${e.code}-${String(p.placeNo).padStart(2, '0')}` : e.code), w: 68 },
@@ -168,7 +181,7 @@ export default function BizRegistryTab() {
     { key: 'tax', label: '과세', val: (_e, p) => p?.taxType ?? '', w: 50 },
     { key: 'wht', label: '원천', val: (_e, p) => p?.withholding ?? '', w: 56 },
     { key: 'cpa', label: '담당CPA', val: (_e, p) => p?.cpa ?? '', w: 66 },
-    { key: 'staff', label: '담당직원', val: (_e, p) => (p?.staff?.length ? p.staff.map((s) => s.staffName).join(',') : (p?.staffStatus ?? '')), w: 88 },
+    { key: 'staff', label: '담당직원', val: (_e, p) => effStaff(p), w: 96 },
     { key: 'htid', label: '홈텍스ID', val: (_e, p) => p?.hometaxId ?? '', w: 88 },
     { key: 'note', label: '비고', val: (e, p) => p?.note || e.note, w: 120 },
   ];
@@ -414,9 +427,16 @@ export default function BizRegistryTab() {
                       {p.hometaxId && <span>홈텍스 {p.hometaxId} · </span>}
                       {p.openedDate && <span>개업 {p.openedDate}</span>}
                     </div>
-                    {/* 담당직원 배정 (배정예정/N/A 상태 + 실제 직원, 배타적) */}
+                    {/* 매출계약이 있으면 최근 계약의 담당직원이 실제 담당(등록 담당보다 우선 표시) */}
+                    {(contractStaff.get(p.id)?.length ?? 0) > 0 && (
+                      <div style={{ marginTop: 4, fontSize: 11, color: '#175' }}>
+                        📄 <b>계약 담당직원: {contractStaff.get(p.id)!.join(', ')}</b>
+                        <span style={{ fontSize: 10, color: '#999' }}> (최근 매출계약 기준)</span>
+                      </div>
+                    )}
+                    {/* 등록 담당직원 배정 (배정예정/N/A 상태 + 실제 직원, 배타적) */}
                     <div style={{ marginTop: 5, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ fontSize: 10.5, color: '#999' }}>담당직원:</span>
+                      <span style={{ fontSize: 10.5, color: '#999' }}>{(contractStaff.get(p.id)?.length ?? 0) > 0 ? '등록 담당:' : '담당직원:'}</span>
                       {STAFF_STATUSES.map((st) => (
                         <button key={st} disabled={!canWrite} onClick={() => setPlaceStaffStatus(p, st)}
                           style={statusChip(p.staffStatus === st)}>{st}</button>
@@ -462,38 +482,39 @@ export default function BizRegistryTab() {
             <button className="btn-sm" onClick={() => setSelected(new Set())}>선택 해제</button>
           </div>
         )}
-        <div style={{ overflowX: 'auto', border: '1px solid #eee', borderRadius: 6 }}>
-          <table style={{ borderCollapse: 'collapse', fontSize: 11.5, minWidth: 1150 }}>
+        {/* 세로·가로 스크롤 영역 — 헤더(제목·필터) 고정(sticky) 상태로 본문만 스크롤 */}
+        <div style={{ overflow: 'auto', maxHeight: '68vh', border: '1px solid #eee', borderRadius: 6 }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5, minWidth: 1150 }}>
             <thead>
-              <tr style={{ background: '#f4efe4' }}>
+              <tr>
                 {canWrite && (() => { const ids = [...new Set(sortedRows.map((r) => r.e.id))]; const all = ids.length > 0 && ids.every((id) => selected.has(id)); return (
-                  <th style={{ ...thc, width: 26 }}><input type="checkbox" checked={all} onChange={() => setSelected(all ? new Set() : new Set(ids))} title="현재 목록 전체 선택" /></th>
+                  <th style={{ ...thc, width: 26, height: 26, position: 'sticky', top: 0, zIndex: 3, background: '#f4efe4' }}><input type="checkbox" checked={all} onChange={() => setSelected(all ? new Set() : new Set(ids))} title="현재 목록 전체 선택" /></th>
                 ); })()}
                 {COLUMNS.map((col) => (
-                  <th key={col.key} style={{ ...thc, minWidth: col.w, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort(col.key)} title="클릭: 오름/내림/해제">
+                  <th key={col.key} style={{ ...thc, minWidth: col.w, height: 26, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 0, zIndex: 2, background: '#f4efe4' }} onClick={() => toggleSort(col.key)} title="클릭: 오름/내림/해제">
                     {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
                   </th>
                 ))}
-                {canWrite && <th style={thc}></th>}
+                {canWrite && <th style={{ ...thc, position: 'sticky', top: 0, zIndex: 2, background: '#f4efe4' }}></th>}
               </tr>
-              <tr style={{ background: '#faf7f0' }}>
-                {canWrite && <th style={{ padding: 2 }}></th>}
+              <tr>
+                {canWrite && <th style={{ padding: 2, position: 'sticky', top: 26, zIndex: 3, background: '#faf7f0' }}></th>}
                 {COLUMNS.map((col) => (
-                  <th key={col.key} style={{ padding: 2 }}>
+                  <th key={col.key} style={{ padding: 2, position: 'sticky', top: 26, zIndex: 2, background: '#faf7f0' }}>
                     <input value={colF[col.key] || ''} onChange={(e) => setColF((p) => ({ ...p, [col.key]: e.target.value }))} placeholder="필터" style={{ width: '100%', fontSize: 10.5, padding: '2px 4px', boxSizing: 'border-box' }} />
                   </th>
                 ))}
-                {canWrite && <th style={{ padding: 2 }}></th>}
+                {canWrite && <th style={{ padding: 2, position: 'sticky', top: 26, zIndex: 2, background: '#faf7f0' }}></th>}
               </tr>
             </thead>
             <tbody>
               {sortedRows.length === 0 && <tr><td colSpan={COLUMNS.length + (canWrite ? 2 : 1)} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 거래처가 없습니다.</td></tr>}
               {sortedRows.map(({ e, p }) => (
-                <tr key={p ? p.id : e.id} style={{ borderTop: '1px solid #eee', background: selected.has(e.id) ? '#fdf3f3' : undefined }}>
-                  {canWrite && <td style={{ ...tdc, textAlign: 'center' }}><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSelect(e.id)} /></td>}
-                  {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, fontWeight: col.key === 'name' ? 600 : 400 }}>{col.val(e, p)}</td>)}
+                <tr key={p ? p.id : e.id} style={{ background: selected.has(e.id) ? '#fdf3f3' : undefined }}>
+                  {canWrite && <td style={{ ...tdc, textAlign: 'center', borderTop: '1px solid #eee' }}><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSelect(e.id)} /></td>}
+                  {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }}>{col.val(e, p)}</td>)}
                   {canWrite && (
-                    <td style={tdc}>
+                    <td style={{ ...tdc, borderTop: '1px solid #eee' }}>
                       <span style={{ display: 'flex', gap: 3 }}>
                         <button className="btn-sm btn-sm-blue" onClick={() => setEditEntity(e)}>거래처</button>
                         {p && <button className="btn-sm btn-sm-blue" onClick={() => setEditPlace({ place: p, entity: e })}>사업장</button>}
