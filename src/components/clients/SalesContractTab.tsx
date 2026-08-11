@@ -73,7 +73,7 @@ export default function SalesContractTab() {
   const [q, setQ] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'box' | 'table'>('box');
+  const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const [groupBy, setGroupBy] = useState<string>('');   // 피봇 행 기준

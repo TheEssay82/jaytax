@@ -115,7 +115,7 @@ export default function BizRegistryTab() {
   const [editEntity, setEditEntity] = useState<BizEntityFull | null>(null);
   const [editPlace, setEditPlace] = useState<{ place: BizPlace; entity: BizEntityFull } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<'box' | 'table'>('box');
+  const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set()); // 일괄삭제 선택(거래처 id)
@@ -191,6 +191,7 @@ export default function BizRegistryTab() {
     { key: 'cpa', label: '담당CPA', val: (_e, p) => p?.cpa ?? '', w: 66, opts: CPA_OPTIONS },
     { key: 'staff', label: '담당직원', val: (_e, p) => effStaff(p), w: 96, opts: staffOpts },
     { key: 'htid', label: '홈텍스ID', val: (_e, p) => p?.hometaxId ?? '', w: 88 },
+    { key: 'htpw', label: '홈텍스PW', val: (_e, p) => (p?.hasHometaxPw ? '있음' : ''), w: 62, opts: ['있음'] },
     { key: 'note', label: '비고', val: (e, p) => p?.note || e.note, w: 120 },
   ];
   const flatRows = useMemo(() => view.flatMap((e) => (e.places.length ? e.places.map((p) => ({ e, p: p as BizPlace | null })) : [{ e, p: null as BizPlace | null }])), [view]);
@@ -520,7 +521,13 @@ export default function BizRegistryTab() {
               {sortedRows.map(({ e, p }) => (
                 <tr key={p ? p.id : e.id} style={{ background: selected.has(e.id) ? '#fdf3f3' : undefined }}>
                   {canWrite && <td style={{ ...tdc, textAlign: 'center', borderTop: '1px solid #eee' }}><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSelect(e.id)} /></td>}
-                  {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }}>{col.val(e, p)}</td>)}
+                  {COLUMNS.map((col) => (
+                    <td key={col.key} style={{ ...tdc, fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }}>
+                      {col.key === 'htpw'
+                        ? (p?.hasHometaxPw ? <button className="btn-sm btn-sm-blue" onClick={() => reveal('hometax', p.id, '홈텍스PW')}>🔒 보기</button> : '')
+                        : col.val(e, p)}
+                    </td>
+                  ))}
                   {canWrite && (
                     <td style={{ ...tdc, borderTop: '1px solid #eee' }}>
                       <span style={{ display: 'flex', gap: 3 }}>
