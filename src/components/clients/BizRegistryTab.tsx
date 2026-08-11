@@ -31,11 +31,13 @@ import {
   CORP_FORMS,
   RELATION_TYPES,
   PLACE_STATUSES,
+  STAFF_STATUSES,
   type BizEntityFull,
   type BizKind,
   type BizNature,
   type BizPlace,
   type PlaceStatus,
+  type StaffStatus,
   type SalesTeam,
   type TaxType,
   type Withholding,
@@ -72,12 +74,13 @@ interface PlaceDraft {
   hometaxPw: string;
   note: string;
   staffIds: string[];
+  staffStatus: '' | StaffStatus;
 }
 const emptyPlace = (branchType: '본점' | '지점' = '본점'): PlaceDraft => ({
   placeName: '', branchType, unitTaxation: false, filingPlaceId: '', bizRegNo: '', noBiz: false, address: '',
   nature: '매출', salesTeams: [], taxType: '', withholding: '', openedDate: '',
   status: '정상', statusMonth: '', transferTo: '', transferContact: '', transferManager: '',
-  cpa: '', hometaxId: '', hometaxPw: '', note: '', staffIds: [],
+  cpa: '', hometaxId: '', hometaxPw: '', note: '', staffIds: [], staffStatus: '',
 });
 const placeToDraft = (p: BizPlace): PlaceDraft => ({
   placeName: p.placeName, branchType: p.branchType ?? '본점', unitTaxation: p.unitTaxation,
@@ -85,7 +88,7 @@ const placeToDraft = (p: BizPlace): PlaceDraft => ({
   nature: p.nature, salesTeams: p.salesTeams, taxType: p.taxType ?? '', withholding: p.withholding ?? '',
   openedDate: p.openedDate ?? '', status: p.status, statusMonth: p.statusMonth,
   transferTo: p.transferTo, transferContact: p.transferContact, transferManager: p.transferManager,
-  cpa: p.cpa, hometaxId: p.hometaxId, hometaxPw: '', note: p.note, staffIds: [],
+  cpa: p.cpa, hometaxId: p.hometaxId, hometaxPw: '', note: p.note, staffIds: [], staffStatus: p.staffStatus ?? '',
 });
 
 export default function BizRegistryTab() {
@@ -165,7 +168,7 @@ export default function BizRegistryTab() {
     { key: 'tax', label: '과세', val: (_e, p) => p?.taxType ?? '', w: 50 },
     { key: 'wht', label: '원천', val: (_e, p) => p?.withholding ?? '', w: 56 },
     { key: 'cpa', label: '담당CPA', val: (_e, p) => p?.cpa ?? '', w: 66 },
-    { key: 'staff', label: '담당직원', val: (_e, p) => (p?.staff ?? []).map((s) => s.staffName).join(','), w: 88 },
+    { key: 'staff', label: '담당직원', val: (_e, p) => (p?.staff?.length ? p.staff.map((s) => s.staffName).join(',') : (p?.staffStatus ?? '')), w: 88 },
     { key: 'htid', label: '홈텍스ID', val: (_e, p) => p?.hometaxId ?? '', w: 88 },
     { key: 'note', label: '비고', val: (e, p) => p?.note || e.note, w: 120 },
   ];
@@ -277,9 +280,21 @@ export default function BizRegistryTab() {
     try {
       const existing = place.staff.find((s) => s.staffId === sid);
       if (existing) await unassignStaff(existing.id);
-      else await assignStaff(place.id, sid, staffName(sid));
+      else {
+        await assignStaff(place.id, sid, staffName(sid));
+        if (place.staffStatus) await updateBizPlace(place.id, { staffStatus: null }); // 실제 배정 시 상태 해제
+      }
       await load();
     } catch (e) { alert('담당직원 변경 실패: ' + (e instanceof Error ? e.message : e)); }
+  }
+  // 담당직원 상태(배정예정/N/A) 즉시 토글 — 실제 직원이 있으면 먼저 해제한다(배타적).
+  async function setPlaceStaffStatus(place: BizPlace, st: StaffStatus) {
+    try {
+      const next = place.staffStatus === st ? null : st;
+      if (next) for (const s of place.staff) await unassignStaff(s.id);
+      await updateBizPlace(place.id, { staffStatus: next });
+      await load();
+    } catch (e) { alert('담당직원 상태 변경 실패: ' + (e instanceof Error ? e.message : e)); }
   }
   async function reveal(kind: 'entity' | 'rep' | 'hometax', id: string, label: string) {
     try {
@@ -399,13 +414,18 @@ export default function BizRegistryTab() {
                       {p.hometaxId && <span>홈텍스 {p.hometaxId} · </span>}
                       {p.openedDate && <span>개업 {p.openedDate}</span>}
                     </div>
-                    {/* 담당직원 배정 */}
+                    {/* 담당직원 배정 (배정예정/N/A 상태 + 실제 직원, 배타적) */}
                     <div style={{ marginTop: 5, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                       <span style={{ fontSize: 10.5, color: '#999' }}>담당직원:</span>
+                      {STAFF_STATUSES.map((st) => (
+                        <button key={st} disabled={!canWrite} onClick={() => setPlaceStaffStatus(p, st)}
+                          style={statusChip(p.staffStatus === st)}>{st}</button>
+                      ))}
+                      <span style={{ width: 1, alignSelf: 'stretch', background: '#e2e2e2', margin: '0 2px' }} />
                       {staff.map((s) => {
                         const on = p.staff.some((x) => x.staffId === s.id);
                         return (
-                          <button key={s.id} disabled={!canWrite} onClick={() => toggleStaff(p, s.id)}
+                          <button key={s.id} disabled={!canWrite || !!p.staffStatus} onClick={() => toggleStaff(p, s.id)}
                             style={staffChip(on)}>{s.name}</button>
                         );
                       })}
@@ -540,6 +560,7 @@ function placeInput(entityId: string, d: PlaceDraft, isHq: boolean) {
     transferManager: d.status === '이관' ? (d.transferManager.trim() || null) : null,
     cpa: d.cpa.trim(), hometaxId: d.hometaxId.trim(),
     hometaxPw: d.hometaxPw.trim(), note: d.note.trim(),
+    staffStatus: d.staffStatus || null,
   };
 }
 
@@ -627,8 +648,11 @@ function PlaceFieldsInline({ d, setD, staff, siblings = [] }: { d: PlaceDraft; s
   const isTax = d.nature === '매출' && d.salesTeams.includes('taxteam');
   const toggleTeam = (t: SalesTeam) =>
     setD((p) => ({ ...p, salesTeams: p.salesTeams.includes(t) ? p.salesTeams.filter((x) => x !== t) : [...p.salesTeams, t] }));
+  // 실제 직원 배정과 담당직원 상태(배정예정/N/A)는 배타적 — 하나를 켜면 다른 쪽을 비운다.
   const toggleStaff = (id: string) =>
-    setD((p) => ({ ...p, staffIds: p.staffIds.includes(id) ? p.staffIds.filter((x) => x !== id) : [...p.staffIds, id] }));
+    setD((p) => ({ ...p, staffStatus: '', staffIds: p.staffIds.includes(id) ? p.staffIds.filter((x) => x !== id) : [...p.staffIds, id] }));
+  const toggleStatus = (st: StaffStatus) =>
+    setD((p) => (p.staffStatus === st ? { ...p, staffStatus: '' } : { ...p, staffStatus: st, staffIds: [] }));
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
       <div className="frow"><span className="fl">사업장명<span className="req">*</span></span>
@@ -719,9 +743,13 @@ function PlaceFieldsInline({ d, setD, staff, siblings = [] }: { d: PlaceDraft; s
       <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">비고</span>
         <input value={d.note} onChange={(e) => setD((p) => ({ ...p, note: e.target.value }))} placeholder="(선택)" /></div>
       <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">담당직원</span>
-        <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+          {STAFF_STATUSES.map((st) => (
+            <button key={st} type="button" onClick={() => toggleStatus(st)} style={statusChip(d.staffStatus === st)}>{st}</button>
+          ))}
+          <span style={{ width: 1, alignSelf: 'stretch', background: '#ddd', margin: '0 3px' }} />
           {staff.map((s) => (
-            <button key={s.id} type="button" onClick={() => toggleStaff(s.id)} style={staffChip(d.staffIds.includes(s.id))}>{s.name}</button>
+            <button key={s.id} type="button" disabled={!!d.staffStatus} onClick={() => toggleStaff(s.id)} style={staffChip(d.staffIds.includes(s.id))}>{s.name}</button>
           ))}
           {staff.length === 0 && <span style={{ fontSize: 11, color: '#999' }}>내부 직원 없음</span>}
         </span></div>
@@ -1032,4 +1060,9 @@ const statusBadge = (s: PlaceStatus): React.CSSProperties => ({
 const staffChip = (on: boolean): React.CSSProperties => ({
   fontSize: 10.5, padding: '2px 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid',
   borderColor: on ? '#2a7' : '#ccc', background: on ? '#e3f5ec' : '#fff', color: on ? '#175' : '#888',
+});
+// 담당직원 상태 칩(배정예정/N/A) — 선택 시 주황 계열, 실제 직원 칩과 구분.
+const statusChip = (on: boolean): React.CSSProperties => ({
+  fontSize: 10.5, padding: '2px 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid',
+  borderColor: on ? '#c88a2a' : '#ddd', background: on ? '#fbf0dc' : '#fff', color: on ? '#8a5d13' : '#999',
 });

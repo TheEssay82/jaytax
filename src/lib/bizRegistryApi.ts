@@ -11,6 +11,9 @@ export type Withholding = '월별' | '반기별' | 'N/A';
 export type RepType = '단독' | '공동대표' | '각자대표';
 export type PlaceStatus = '정상' | '폐업' | '이관';
 export const PLACE_STATUSES: PlaceStatus[] = ['정상', '폐업', '이관'];
+/** 담당직원 상태 — 실제 직원 배정과 별개(과거·임시거래처=N/A, 배정 전=배정예정). */
+export type StaffStatus = '배정예정' | 'N/A';
+export const STAFF_STATUSES: StaffStatus[] = ['배정예정', 'N/A'];
 export const SALES_TEAMS = ['감사team', 'taxteam'] as const;
 export type SalesTeam = (typeof SALES_TEAMS)[number];
 
@@ -58,6 +61,8 @@ export interface BizPlace {
   /** 홈텍스 PW 존재 여부(값은 RPC 로만 열람). */
   hasHometaxPw: boolean;
   note: string;
+  /** 담당직원 상태(실제 직원 없을 때 표시): 배정예정/N/A, 없으면 null. */
+  staffStatus: StaffStatus | null;
   staff: BizStaff[];
   createdAt?: string;
   updatedAt?: string;
@@ -197,6 +202,7 @@ const toPlace = (r: any): BizPlace => ({
   hometaxId: r.hometax_id || '',
   hasHometaxPw: r.hometax_pw_enc != null,
   note: r.note || '',
+  staffStatus: r.staff_status ?? null,
   staff: [],
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -356,6 +362,7 @@ export interface PlaceInput {
   cpa?: string;
   hometaxId?: string;
   note?: string;
+  staffStatus?: StaffStatus | null;
   /** 홈텍스 PW — 제공 시 생성 직후 암호화 RPC 로 저장. */
   hometaxPw?: string;
 }
@@ -383,6 +390,7 @@ function placeToRow(p: Partial<PlaceInput>): Record<string, unknown> {
   if (p.cpa !== undefined) row.cpa = p.cpa || null;
   if (p.hometaxId !== undefined) row.hometax_id = p.hometaxId || null;
   if (p.note !== undefined) row.note = p.note || null;
+  if (p.staffStatus !== undefined) row.staff_status = p.staffStatus || null;
   return row;
 }
 export async function createBizPlace(input: PlaceInput): Promise<string> {

@@ -5,9 +5,9 @@
 import {
   updateBizEntity, updateBizPlace, createBizEntity, createBizPlace, assignStaff,
   setEntityResident, setPlaceHometaxPw,
-  CORP_FORMS, CPA_OPTIONS, PLACE_STATUSES,
+  CORP_FORMS, CPA_OPTIONS, PLACE_STATUSES, STAFF_STATUSES,
   type BizEntityFull, type BizKind, type BizNature, type CorpForm, type PlaceStatus, type SalesTeam,
-  type TaxType, type Withholding, type StaffProfile,
+  type StaffStatus, type TaxType, type Withholding, type StaffProfile,
 } from './bizRegistryApi';
 import { FONT, FILL_HEADER, frame, setWidths, saveWorkbook } from './confirmExcelStyle';
 
@@ -45,7 +45,7 @@ const COLS: ColMeta[] = [
   { h: '담당CPA', w: 12, list: CPA_OPTIONS, strict: false },
   { h: '홈텍스ID', w: 14 },
   { h: '홈텍스PW🔒', w: 14 },
-  { h: '담당직원(콤마)', w: 18 },
+  { h: '담당직원(콤마·배정예정·N/A)', w: 22 },
   { h: '비고', w: 24 },
   { h: '이관업체', w: 18 },
   { h: '이관업체연락처', w: 16 },
@@ -79,7 +79,8 @@ export async function exportBizRegistry(entities: BizEntityFull[]): Promise<void
         e.corpRegNo, '', e.establishedDate ?? '', p.placeName, p.branchType ?? '',
         p.bizRegNo, p.noBiz ? 'O' : '', p.status, p.statusMonth, p.address, p.nature, p.salesTeams.join(','),
         p.taxType ?? '', p.withholding ?? '', p.openedDate ?? '', p.unitTaxation ? 'O' : '',
-        p.cpa, p.hometaxId, '', p.staff.map((s) => s.staffName).filter(Boolean).join(','), p.note,
+        p.cpa, p.hometaxId, '',
+        p.staff.length ? p.staff.map((s) => s.staffName).filter(Boolean).join(',') : (p.staffStatus ?? ''), p.note,
         p.transferTo, p.transferContact, p.transferManager,
       ]);
     }
@@ -193,6 +194,13 @@ const asNature = (s: string): BizNature | undefined => (s === '매출' || s === 
 const asTaxType = (s: string): TaxType | undefined => (['과세', '겸영', '면세'] as string[]).includes(s) ? (s as TaxType) : undefined;
 const asWithholding = (s: string): Withholding | undefined => (['월별', '반기별', 'N/A'] as string[]).includes(s) ? (s as Withholding) : undefined;
 const asStatus = (s: string): PlaceStatus | undefined => (PLACE_STATUSES as string[]).includes(s) ? (s as PlaceStatus) : undefined;
+/** 담당직원 칸 값이 상태 토큰(배정예정·N/A)이면 그 값, 아니면 undefined(=실제 이름들). */
+const asStaffStatus = (s: string): StaffStatus | undefined => {
+  const t = s.trim();
+  if (t === '배정예정') return '배정예정';
+  if (/^n\/?a$/i.test(t)) return 'N/A';
+  return (STAFF_STATUSES as string[]).includes(t) ? (t as StaffStatus) : undefined;
+};
 const parseTeams = (s: string): SalesTeam[] => s.split(/[,\s]+/).map((x) => x.trim()).filter((x) => x === '감사team' || x === 'taxteam') as SalesTeam[];
 
 /** 파싱된 행 적용 — 코드 있으면 upsert(보강), 없으면 신규 등록. 빈 칸은 미변경. */
@@ -260,9 +268,12 @@ export async function applyBizExcel(rows: ExcelRow[], entities: BizEntityFull[],
         if (r.unitTaxation) pp.unitTaxation = isO(r.unitTaxation);
         if (r.cpa) pp.cpa = r.cpa;
         if (r.hometaxId) pp.hometaxId = r.hometaxId;
+        // 담당직원 칸: '배정예정'/'N/A' 토큰이면 상태로, 실제 이름이면 배정(+상태 해제).
+        const st = r.staff ? asStaffStatus(r.staff) : undefined;
+        if (r.staff) pp.staffStatus = st ?? null;
         if (Object.keys(pp).length) await updateBizPlace(hit.placeId, pp);
         if (r.hometaxPw) await setPlaceHometaxPw(hit.placeId, r.hometaxPw);
-        if (r.staff) await assignStaffNames(hit.placeId, r.staff, hit.placeStaffNames);
+        if (r.staff && !st) await assignStaffNames(hit.placeId, r.staff, hit.placeStaffNames);
         res.updated++;
       } else {
         // ── 신규 등록 ──
@@ -291,8 +302,9 @@ export async function applyBizExcel(rows: ExcelRow[], entities: BizEntityFull[],
           openedDate: r.openedDate || null, unitTaxation: isO(r.unitTaxation),
           cpa: r.cpa || undefined, hometaxId: r.hometaxId || undefined, hometaxPw: r.hometaxPw || undefined,
           note: r.note || undefined,
+          staffStatus: r.staff ? (asStaffStatus(r.staff) ?? null) : null,
         });
-        if (r.staff) await assignStaffNames(placeId, r.staff, new Set());
+        if (r.staff && !asStaffStatus(r.staff)) await assignStaffNames(placeId, r.staff, new Set());
         res.created++;
       }
     } catch (e) {
