@@ -20,6 +20,16 @@ const won = (n: number) => n.toLocaleString('ko-KR');
 // 연환산 계수(청구주기→연 횟수). 월환산 = 연환산/12.
 const CYCLE_ANN: Record<string, number> = { '월': 12, '분기': 4, '반기': 2, '연': 1, '발생시': 1, '건': 1 };
 const annualize = (c: SalesContract) => c.amount * (CYCLE_ANN[c.billingCycle] ?? 1);
+// 운영 시작 = 2026-07(정산연도 2026). 계속계약(종료 없음·귀속 null)은 이 연도부터 매 귀속연도에 포함.
+const OPERATION_START_YEAR = 2026;
+const isOngoing = (c: SalesContract) => !c.endDate && c.fiscalYear == null;
+/** 계약이 특정 귀속(정산)연도에 포함되는가. 계속계약은 운영 시작연도 이후 계속 포함(연도 필터에서 제외 안 됨). */
+function contractInYear(c: SalesContract, year: number): boolean {
+  const fy = contractFiscalYear(c);
+  if (fy != null) return fy === year;
+  if (isOngoing(c)) return year >= Math.max(OPERATION_START_YEAR, settlementYearOfDate(c.startDate) ?? OPERATION_START_YEAR);
+  return false;
+}
 // 집계(피봇) 기준
 const GROUP_OPTS: { key: string; label: string }[] = [
   { key: 'team', label: '팀' }, { key: 'type', label: '매출유형' }, { key: 'cpa', label: '담당CPA' },
@@ -32,7 +42,7 @@ function groupKeyOf(g: string, c: SalesContract): string {
     case 'cpa': return c.cpa || '(미지정)';
     case 'staff': return c.staff.map((s) => s.staffName).join(',') || '(미지정)';
     case 'cycle': return c.billingCycle;
-    case 'year': { const fy = contractFiscalYear(c); return fy ? String(fy) : '(없음)'; }
+    case 'year': { const fy = contractFiscalYear(c); return fy != null ? String(fy) : (isOngoing(c) ? '계속' : '(없음)'); }
     default: return '';
   }
 }
@@ -100,7 +110,10 @@ export default function SalesContractTab() {
 
   // 담당직원·귀속 필터 드롭다운 후보 — 현재 데이터 기준.
   const staffOpts = useMemo(() => [...new Set(contracts.flatMap((c) => c.staff.map((s) => s.staffName)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')), [contracts]);
-  const yearOpts = useMemo(() => [...new Set(contracts.map((c) => contractFiscalYear(c)).filter((y): y is number => !!y))].sort((a, b) => b - a).map(String), [contracts]);
+  const yearOpts = useMemo(() => {
+    const years = [...new Set(contracts.map((c) => contractFiscalYear(c)).filter((y): y is number => !!y))].sort((a, b) => b - a).map(String);
+    return contracts.some(isOngoing) ? [...years, '계속'] : years;
+  }, [contracts]);
 
   // 표(list)형 컬럼 정의 — 각 컬럼 val 로 필터·표시. opts 있으면 필터가 드롭다운.
   const COLUMNS: { key: string; label: string; val: (c: SalesContract) => string; w?: number; num?: boolean; opts?: readonly string[] }[] = [
@@ -113,7 +126,7 @@ export default function SalesContractTab() {
     { key: 'cycle', label: '주기', val: (c) => c.billingCycle + (c.isInstallment ? '·분할' : ''), w: 66, opts: BILLING_CYCLES },
     { key: 'bunit', label: '청구단위', val: (c) => c.billingUnit ?? '', w: 70 },
     { key: 'amount', label: '계약금액', val: (c) => won(c.amount), w: 90, num: true },
-    { key: 'year', label: '귀속', val: (c) => { const fy = contractFiscalYear(c); return fy ? String(fy) : ''; }, w: 56, opts: yearOpts },
+    { key: 'year', label: '귀속', val: (c) => { const fy = contractFiscalYear(c); return fy != null ? String(fy) : (isOngoing(c) ? '계속' : ''); }, w: 56, opts: yearOpts },
     { key: 'cpa', label: 'CPA', val: (c) => c.cpa, w: 66, opts: CPA_LIST },
     { key: 'staff', label: '담당직원', val: (c) => c.staff.map((s) => s.staffName).join(','), w: 100, opts: staffOpts },
     { key: 'period', label: '개시~종료', val: (c) => `${dateToMonth(c.startDate) || ''}~${dateToMonth(c.endDate) || '계속'}`, w: 130 },
@@ -123,7 +136,10 @@ export default function SalesContractTab() {
   const tableW = COLUMNS.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 96 : 0);
   const tableRows = useMemo(() => contracts.filter((c) => COLUMNS.every((col) => {
     const fv = (colF[col.key] || '').trim().toLowerCase();
-    return !fv || col.val(c).toLowerCase().includes(fv);
+    if (!fv) return true;
+    // 귀속 필터가 연도 숫자면 정산연도 판정(계속계약은 운영연도 이후 포함) — 그 외엔 일반 부분일치
+    if (col.key === 'year' && /^\d{4}$/.test(fv)) return contractInYear(c, Number(fv));
+    return col.val(c).toLowerCase().includes(fv);
   })), [contracts, colF]); // eslint-disable-line react-hooks/exhaustive-deps
   const sortedRows = useMemo(() => {
     if (!sort) return tableRows;
