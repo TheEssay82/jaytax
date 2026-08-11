@@ -322,7 +322,7 @@ export default function SalesContractTab() {
         <ContractForm entities={entities} staff={staff} contracts={contracts} onSubmit={(f) => persist(f)} onCancel={() => setShowAdd(false)} />
       )}
 
-      {role === 'superuser' && <ContractImportPanel entities={entities} onImported={load} />}
+      {role === 'superuser' && <ContractImportPanel entities={entities} contracts={contracts} onImported={load} />}
 
       {viewMode === 'box' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -497,12 +497,12 @@ const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWe
 const tdc: React.CSSProperties = { padding: '4px 6px', whiteSpace: 'nowrap' };
 
 // ── 매출계약 일괄등록 패널(최고관리자) ──────────────────────
-function ContractImportPanel({ entities, onImported }: { entities: BizEntityFull[]; onImported: () => void }) {
+function ContractImportPanel({ entities, contracts, onImported }: { entities: BizEntityFull[]; contracts: SalesContract[]; onImported: () => void }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ContractExcelResult | null>(null);
   async function doExport() {
-    try { await exportContractTemplate(entities); }
+    try { await exportContractTemplate(entities, contracts); }
     catch (e) { alert('내보내기 실패: ' + (e instanceof Error ? e.message : e)); }
   }
   async function onFile(ev: React.ChangeEvent<HTMLInputElement>) {
@@ -529,9 +529,9 @@ function ContractImportPanel({ entities, onImported }: { entities: BizEntityFull
       {open && (
         <div style={{ padding: '0 10px 10px' }}>
           <div style={{ fontSize: 11.5, color: '#777', marginBottom: 8 }}>
-            <b>양식 내보내기</b>(사업장 1행씩 프리필) → 매출유형·금액·주기·담당 등 채우기 → <b>업로드</b>.
-            한 사업장에 계약이 여러 개면 그 행을 복사해 여러 줄로. <b>매출유형이 빈 행은 제외</b>되고,
-            동일 사업장+매출유형(+귀속연도) 계약이 이미 있으면 <b>스킵</b>(재실행 안전)됩니다.
+            <b>양식 내보내기</b> → <b>회색 행/열</b>=거래처·사업장 정보 + <b>이미 등록된 계약</b>(수정불가·참고),
+            <b>노란 칸</b>=신규 계약 입력(매출유형·금액·주기·담당 등). 한 사업장에 계약 여러 개면 행 복사 → <b>업로드</b>.
+            <b>매출유형 빈 행은 제외</b>, 동일 사업장+매출유형(+귀속연도) 계약이 이미 있으면 <b>스킵</b>(재실행 안전).
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="btn-sm btn-sm-blue" onClick={doExport} disabled={busy || entities.length === 0}>

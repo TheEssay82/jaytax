@@ -5,7 +5,7 @@ import { supabase } from './supabase';
 import {
   createSalesContract, saveContractStaff, listContractStaffProfiles,
   BILLING_CYCLES, CPA_LIST,
-  type ContractInput, type OccurrenceUnit, type BillingUnit, type BillingCycle,
+  type ContractInput, type OccurrenceUnit, type BillingUnit, type BillingCycle, type SalesContract,
 } from './salesContractApi';
 import { contractTypeOptions, findNode, leafOf } from './salesContractTaxonomy';
 import type { BizEntityFull } from './bizRegistryApi';
@@ -19,15 +19,21 @@ async function loadExcelJS() {
 
 const TYPE_OPTS = contractTypeOptions();
 const TYPE_BY_LABEL = new Map(TYPE_OPTS.map((o) => [o.label, o.code]));
+const LABEL_BY_CODE = new Map(TYPE_OPTS.map((o) => [o.code, o.label]));
 const OCC = ['사업장', '법인', '개인'] as const;
 const BUNIT = ['사업장', '법인', '개인', '건'] as const;
 const OX = ['O', 'X'] as const;
 
 interface ColMeta { h: string; w: number; list?: readonly string[]; typeRef?: boolean }
+// 참고 컬럼(회색·매칭이나 참고용, 계약 등록엔 미사용): 거래처코드·거래처명·구분·사업장명·본점지점·상태·매출팀.
 const COLS: ColMeta[] = [
   { h: '거래처코드(필수)', w: 12 },
   { h: '거래처명(참고)', w: 22 },
+  { h: '구분(법인/개인)', w: 10 },
   { h: '사업장명(비우면 본사)', w: 16 },
+  { h: '본점/지점', w: 9 },
+  { h: '상태(정상/폐업/이관)', w: 13 },
+  { h: '매출팀(감사team,taxteam)', w: 16 },
   { h: '매출유형(필수)', w: 30, typeRef: true },
   { h: '기타명칭', w: 14 },
   { h: '발생단위', w: 10, list: OCC },
@@ -50,52 +56,72 @@ const HEADERS = COLS.map((c) => c.h);
 
 const FILL_EDIT = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFFFF7D6' } };
 const FILL_REF = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFECECEC' } };
-const REF_COLS = new Set([0, 1]); // 거래처코드·거래처명(참고) = 회색(키/참고)
+const REF_COLS = new Set([0, 1, 2, 3, 4, 5, 6]); // 거래처코드~매출팀 = 회색(키/참고, 계약등록 미사용)
 
-/** 빈 양식 내보내기 — 사업장 1행씩 프리필(거래처코드·거래처명·사업장명). 계약 열은 빈칸+드롭다운. */
-export async function exportContractTemplate(entities: BizEntityFull[]): Promise<void> {
+/** 계약 한 건의 계약 열(매출유형~비고) 값. */
+function contractCells(c: SalesContract): (string | number)[] {
+  return [
+    LABEL_BY_CODE.get(c.categoryCode) ?? c.categoryCode,
+    c.categoryEtcName || '', c.occurrenceUnit, c.billingUnit ?? '', c.billingCycle,
+    c.isInstallment ? 'O' : '', c.amount, c.cpa || '', c.staff.map((s) => s.staffName).join(','),
+    c.fiscalYear ?? '', c.contractDate || '', c.startDate ? c.startDate.slice(0, 7) : '',
+    c.endDate ? c.endDate.slice(0, 7) : '', c.includesVat ? 'O' : '', c.includesWht ? 'O' : '',
+    c.advisoryType ?? '', c.note || '',
+  ];
+}
+const CONTRACT_COL_COUNT = 17; // 매출유형~비고
+
+/**
+ * 양식 내보내기 — 사업장 1행씩 프리필(거래처코드·거래처명·구분·사업장명·본점지점·상태·매출팀).
+ * 기존 계약이 있으면 그 계약을 프리필한 회색 행(이미 등록·재업로드 시 스킵), 없으면 빈 노란 행(추가 입력).
+ */
+export async function exportContractTemplate(entities: BizEntityFull[], contracts: SalesContract[]): Promise<void> {
   const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('매출계약', { views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }] });
   const N = COLS.length;
 
   ws.addRow(HEADERS);
-  ws.addRow(['※ 한 사업장에 계약이 여러 개면 그 행을 복사해 여러 줄로. 매출유형이 빈 행은 등록에서 제외됩니다.']);
+  ws.addRow(['※ 회색=참고/이미등록(수정불가). 노란칸에 신규 계약 입력. 한 사업장에 계약 여러 개면 행을 복사. 매출유형 빈 행은 제외.']);
   ws.getCell(2, 1).font = { ...FONT, size: 9, color: { argb: 'FF888888' } };
 
-  // 매출유형 선택지 참조 시트
   const opt = wb.addWorksheet('선택목록');
   opt.getCell(1, 1).value = '매출유형';
   TYPE_OPTS.forEach((o, i) => { opt.getCell(i + 2, 1).value = o.label; });
   opt.state = 'hidden';
   const typeRef = `'선택목록'!$A$2:$A$${TYPE_OPTS.length + 1}`;
 
+  const conByPlace = new Map<string, SalesContract[]>();
+  for (const c of contracts) if (c.placeId) (conByPlace.get(c.placeId) ?? conByPlace.set(c.placeId, []).get(c.placeId)!).push(c);
+
+  // 데이터 행 구성 — existing 플래그로 계약 열 색상(회색=기존/노랑=신규) 구분.
+  const rows: { values: (string | number)[]; existing: boolean }[] = [];
   for (const e of entities) {
     for (const p of e.places) {
-      const row = new Array(N).fill('');
-      row[0] = e.code; row[1] = e.name; row[2] = p.placeName;
-      ws.addRow(row);
+      const ref = [e.code, e.name, e.kind, p.placeName, p.branchType ?? '', p.status, p.salesTeams.join(',')];
+      const cs = conByPlace.get(p.id) ?? [];
+      if (cs.length) for (const c of cs) rows.push({ values: [...ref, ...contractCells(c)], existing: true });
+      else rows.push({ values: [...ref, ...new Array(CONTRACT_COL_COUNT).fill('')], existing: false });
     }
   }
+  for (const r of rows) ws.addRow(r.values);
+
   const dataStart = 3;
   const dataEnd = ws.rowCount;
-
   frame(ws, 1, 1, 1, N, { fill: FILL_HEADER, bold: true, align: 'center', wrap: true });
   ws.getRow(1).height = 30;
 
   if (dataEnd >= dataStart) {
     frame(ws, dataStart, 1, dataEnd, N);
-    for (let ci = 0; ci < N; ci++) {
-      const meta = COLS[ci];
-      const fill = REF_COLS.has(ci) ? FILL_REF : FILL_EDIT;
-      for (let r = dataStart; r <= dataEnd; r++) {
-        ws.getCell(r, ci + 1).fill = fill;
-        if (meta.typeRef) {
-          ws.getCell(r, ci + 1).dataValidation = { type: 'list', allowBlank: true, formulae: [typeRef] };
-        } else if (meta.list) {
-          ws.getCell(r, ci + 1).dataValidation = {
-            type: 'list', allowBlank: true, formulae: [`"${meta.list.join(',')}"`],
-          };
+    for (let r = dataStart; r <= dataEnd; r++) {
+      const existing = rows[r - dataStart]?.existing;
+      for (let ci = 0; ci < N; ci++) {
+        const meta = COLS[ci];
+        const isRef = REF_COLS.has(ci) || existing; // 참고열 또는 기존계약 행 = 회색
+        ws.getCell(r, ci + 1).fill = isRef ? FILL_REF : FILL_EDIT;
+        if (!isRef) { // 신규 입력 셀에만 드롭다운
+          if (meta.typeRef) ws.getCell(r, ci + 1).dataValidation = { type: 'list', allowBlank: true, formulae: [typeRef] };
+          else if (meta.list) ws.getCell(r, ci + 1).dataValidation = { type: 'list', allowBlank: true, formulae: [`"${meta.list.join(',')}"`] };
         }
       }
     }
