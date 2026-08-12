@@ -48,6 +48,27 @@ function applyDiscounts(c: SalesContract, gross: number, mi: number): number {
 }
 
 /**
+ * 매출(발생주의) 인식 구간 — 회계감사(AUD.AUDIT)는 회사 회계연도(fy-07~fy+1-06)에 걸쳐 월할 인식,
+ * 그 외 계약은 계약 개시~종료. 청구주의(현금)엔 적용 안 함(개시월/분할 그대로).
+ * 감사 계약의 startDate/endDate는 감사 대상연도(1~12월)라 회계연도(7~6월)와 달라 remap이 필요하다.
+ */
+export function recognitionSpan(c: SalesContract): { from: string | null; to: string | null } {
+  if (c.categoryCode === 'AUD.AUDIT') {
+    // 계약 귀속(정산)연도: 명시 fiscalYear 우선, 없으면 종료시점 정산연도(7월~ 그 해, ~6월 전년).
+    const fy = c.fiscalYear ?? settlementYearOf(c.endDate);
+    if (fy != null) return { from: `${fy}-07`, to: `${fy + 1}-06` };
+  }
+  return { from: c.startDate, to: c.endDate };
+}
+/** 날짜의 정산연도(회계연도 7/1~익6/30). salesContractApi.settlementYearOfDate와 동일 규칙(엔진 자립을 위해 로컬 정의). */
+function settlementYearOf(d: string | null | undefined): number | null {
+  if (!d || d.length < 7) return null;
+  const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
+  if (!y || !m) return null;
+  return m >= 7 ? y : y - 1;
+}
+
+/**
  * 계약의 월별 순매출을 [fromMonth, toMonth] 창구 안에서 전개.
  * fromMonth/toMonth = 'YYYY-MM'(포함). 종료 없는 계속계약은 창구 상한까지만 생성.
  */
@@ -83,11 +104,12 @@ export function monthlyRevenue(c: SalesContract, basis: Basis, fromMonth: string
     return out;
   }
 
-  // 발생주의: 주기계약은 연환산/12를 활성월마다 균등배분.
+  // 발생주의: 주기계약은 연환산/12를 활성월(인식구간)마다 균등배분. 감사는 회계연도로 remap.
   if (step) {
-    const start = monthIndex(c.startDate);
+    const span = recognitionSpan(c);
+    const start = monthIndex(span.from);
     if (start == null) return [];
-    const end = monthIndex(c.endDate);
+    const end = monthIndex(span.to);
     const last = end == null ? to : Math.min(end, to);
     const monthlyGross = (c.amount * (CYCLE_ANN[c.billingCycle] ?? 1)) / 12;
     for (let mi = Math.max(start, from); mi <= last; mi++) {

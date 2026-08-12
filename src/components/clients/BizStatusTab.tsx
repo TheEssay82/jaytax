@@ -6,6 +6,9 @@ import { listSalesContracts, type SalesContract, type BillingCycle } from '../..
 import { listBizContacts, type BizContact } from '../../lib/bizContactApi';
 import { findNode } from '../../lib/salesContractTaxonomy';
 import { scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
+import { monthlyTotals, monthIndex, indexToMonth, type Basis } from '../../lib/billingSchedule';
+
+const TEAMS = ['감사team', 'taxteam'] as const;
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 // 연환산 계수 — 주기별로 1년치로 환산해 비교 가능하게
@@ -25,6 +28,11 @@ export default function BizStatusTab() {
   const [natF, setNatF] = useState<'' | '매출' | '일반'>('');
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'annual', dir: 'desc' });
   const { widthOf, startResize } = useColWidths();
+  // 월별 매출추이 컨트롤
+  const todayMonth = useMemo(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }, []);
+  const curSettlementYear = useMemo(() => { const m = Number(todayMonth.slice(5, 7)), y = Number(todayMonth.slice(0, 4)); return m >= 7 ? y : y - 1; }, [todayMonth]);
+  const [trendYear, setTrendYear] = useState<number>(0);          // 0 = 미설정 → curSettlementYear 사용
+  const [trendBasis, setTrendBasis] = useState<Basis>('accrual'); // 매출(발생) 기본
 
   useEffect(() => {
     (async () => {
@@ -83,6 +91,30 @@ export default function BizStatusTab() {
     return { corp, person, places, salesPlaces, contracts: contracts.length, totalAnnual, contacts: contacts.length, byTeam, byCpa, byType };
   }, [entities, contracts, contacts]);
 
+  // 정산연도 후보(추이 드롭다운)
+  const trendYearOpts = useMemo(() => {
+    const ys = new Set<number>([curSettlementYear]);
+    for (const c of contracts) { const fy = c.fiscalYear; if (fy != null) ys.add(fy); }
+    return [...ys].sort((a, b) => b - a);
+  }, [contracts, curSettlementYear]);
+
+  // 월별 매출추이 — 정산연도(Y-07~Y+1-06) 12개월 × 팀, 엔진(발생/청구·감사 회계연도 인식) 기반 공급가액(순액)
+  const trend = useMemo(() => {
+    const year = trendYear || curSettlementYear;
+    const base = monthIndex(`${year}-07`)!;
+    const months = Array.from({ length: 12 }, (_, i) => indexToMonth(base + i));
+    const from = months[0], to = months[11];
+    const byTeam = new Map<string, Map<string, number>>();
+    for (const t of TEAMS) byTeam.set(t, monthlyTotals(contracts.filter((c) => c.team === t), trendBasis, from, to));
+    const teamTotal = (t: string) => months.reduce((s, m) => s + (byTeam.get(t)!.get(m) ?? 0), 0);
+    const monthTotal = (m: string) => TEAMS.reduce((s, t) => s + (byTeam.get(t)!.get(m) ?? 0), 0);
+    const totals = months.map(monthTotal);
+    const grand = totals.reduce((s, v) => s + v, 0);
+    const peak = Math.max(1, ...totals);
+    let cum = 0; const cumTotals = totals.map((v) => (cum += v));
+    return { year, months, byTeam, teamTotal, totals, cumTotals, grand, peak };
+  }, [contracts, trendYear, trendBasis, curSettlementYear]);
+
   if (loading) return <div className="card">불러오는 중…</div>;
 
   return (
@@ -106,6 +138,51 @@ export default function BizStatusTab() {
         <MiniTable title="유형별 매출(연환산)" rows={stat.byType} />
       </div>
       <div style={{ fontSize: 10.5, color: '#999', marginBottom: 10 }}>※ 연환산 = 월×12·분기×4·반기×2·연×1·건/발생시×1. 종속계약(청구금액 0)은 합계에 영향 없음. CPA집계는 계약의 담당CPA 기준.</div>
+
+      {/* 월별 매출추이 */}
+      <div style={{ border: '1px solid #d8cfa0', borderRadius: 8, background: '#fbf8ef', padding: '8px 10px', marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+          <b style={{ fontSize: 12.5, color: '#654' }}>📈 월별 매출추이</b>
+          <select value={trendYear || curSettlementYear} onChange={(e) => setTrendYear(Number(e.target.value))} style={selStyle} title="정산연도(회계연도 7/1~익6/30)">
+            {trendYearOpts.map((y) => <option key={y} value={y}>{y} 귀속(정산 {y}-07~{y + 1}-06)</option>)}
+          </select>
+          <span style={{ display: 'flex', gap: 2 }}>
+            <button className={trendBasis === 'accrual' ? 'btn-p' : 'btn-sm'} onClick={() => setTrendBasis('accrual')}>매출(발생)</button>
+            <button className={trendBasis === 'billing' ? 'btn-p' : 'btn-sm'} onClick={() => setTrendBasis('billing')}>청구</button>
+          </span>
+          <span style={{ fontSize: 10.5, color: '#a98' }}>공급가액(순액) · 회계감사 매출은 회계연도 월할 · 옅은 월 = 미경과(예정)</span>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 11.5, minWidth: 900 }}>
+            <thead><tr style={{ background: '#f0e9d2' }}>
+              <th style={{ ...thc, textAlign: 'left', position: 'sticky', left: 0, background: '#f0e9d2' }}>팀 \ 월</th>
+              {trend.months.map((m) => <th key={m} style={{ ...thc, textAlign: 'right', color: m > todayMonth ? '#bbb' : '#555' }}>{m.slice(2)}</th>)}
+              <th style={{ ...thc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}>합계</th>
+            </tr></thead>
+            <tbody>
+              {TEAMS.map((t) => (
+                <tr key={t} style={{ borderTop: '1px solid #eadfbf' }}>
+                  <td style={{ ...tdc, fontWeight: 600, position: 'sticky', left: 0, background: '#fbf8ef' }}>{t}</td>
+                  {trend.months.map((m) => { const v = trend.byTeam.get(t)!.get(m) ?? 0; return <td key={m} style={{ ...tdc, textAlign: 'right', color: v ? (m > todayMonth ? '#9bb' : '#245') : '#ccc' }}>{v ? won(v) : '·'}</td>; })}
+                  <td style={{ ...tdc, textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #c9a54a' }}>{won(trend.teamTotal(t))}</td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: '2px solid #c9a54a', background: '#f5efdd', fontWeight: 700 }}>
+                <td style={{ ...tdc, position: 'sticky', left: 0, background: '#f5efdd' }}>합계</td>
+                {trend.months.map((m, i) => { const v = trend.totals[i]; const pct = Math.round((v / trend.peak) * 100); return (
+                  <td key={m} style={{ ...tdc, textAlign: 'right', color: m > todayMonth ? '#9ab' : '#134', background: `linear-gradient(to top, rgba(36,85,120,.16) ${pct}%, transparent ${pct}%)` }}>{v ? won(v) : '·'}</td>
+                ); })}
+                <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}>{won(trend.grand)}</td>
+              </tr>
+              <tr style={{ borderTop: '1px solid #eadfbf', color: '#888' }}>
+                <td style={{ ...tdc, position: 'sticky', left: 0, background: '#fbf8ef' }}>누계</td>
+                {trend.months.map((m, i) => <td key={m} style={{ ...tdc, textAlign: 'right', color: m > todayMonth ? '#ccc' : '#889' }}>{won(trend.cumTotals[i])}</td>)}
+                <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* 거래처 현황 표 */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>

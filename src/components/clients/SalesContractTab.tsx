@@ -226,18 +226,10 @@ export default function SalesContractTab() {
     return sortedRows; // 전체
   }, [sortedRows, periodMode, pivotYear, win]);
   // 계약별 엔진 기간집계(매출=발생주의 월할·청구액=청구주의). 피봇·교차표·합계가 공유.
-  //   회계감사 매출은 회사 회계연도(=귀속 정산기간 7/1~익6/30)에 걸쳐 월할 인식 →
-  //   인식구간을 대상연도(개시1~종료12)가 아닌 정산연도(fy-07~fy+1-06)로 remap. 청구액(현금)은 원래 개시월/분할 그대로.
+  //   회계감사 매출을 회사 회계연도로 인식하는 remap은 엔진(billingSchedule.recognitionSpan)에서 처리.
   const revById = useMemo(() => {
     const m = new Map<string, { bill: number; acc: number }>();
-    for (const c of pivotRows) {
-      let accC = c;
-      if (c.categoryCode === 'AUD.AUDIT') {
-        const fy = contractFiscalYear(c);
-        if (fy != null) accC = { ...c, startDate: `${fy}-07`, endDate: `${fy + 1}-06` };
-      }
-      m.set(c.id, { bill: periodRevenue(c, 'billing', win.from, win.to), acc: periodRevenue(accC, 'accrual', win.from, win.to) });
-    }
+    for (const c of pivotRows) m.set(c.id, { bill: periodRevenue(c, 'billing', win.from, win.to), acc: periodRevenue(c, 'accrual', win.from, win.to) });
     return m;
   }, [pivotRows, win]);
   type Agg = { amt: number; ann: number; cnt: number; bill: number; acc: number };

@@ -81,6 +81,16 @@ test('발생시·건: 분할 없으면 스케줄 없음, 분할 있으면 due월
   assert.deepEqual(monthlyRevenue(withInst, 'billing', '2026-01', '2026-12'), [{ month: '2026-05', net: 5_000_000 }]);
 });
 
+test('회계감사(AUD.AUDIT): 매출은 회계연도(fy-07~fy+1-06) 월할, 청구는 개시월 그대로', () => {
+  const c = mk({ categoryCode: 'AUD.AUDIT', billingCycle: '연', amount: 12_000_000, fiscalYear: 2026, startDate: '2026-01', endDate: '2026-12' });
+  // 발생(매출): 회계연도 2026-07~2027-06에 걸쳐 12개월 균등 → 대상연도 상반기(1~6월)엔 0
+  assert.equal(periodRevenue(c, 'accrual', '2026-01', '2026-06'), 0);
+  assert.equal(periodRevenue(c, 'accrual', '2026-07', '2027-06'), 12_000_000);
+  assert.equal(monthlyRevenue(c, 'accrual', '2026-08', '2026-08')[0].net, 1_000_000); // 8월분 1/12
+  // 청구(현금): remap 없음 → 개시월 2026-01에 전액
+  assert.deepEqual(monthlyRevenue(c, 'billing', '2026-01', '2027-06'), [{ month: '2026-01', net: 12_000_000 }]);
+});
+
 test('부가세 포함 계약: 월별 순액 환산', () => {
   const c = mk({ billingCycle: '월', amount: 1_100_000, includesVat: true, startDate: '2026-07', endDate: '2026-09' });
   const rows = monthlyRevenue(c, 'billing', '2026-01', '2026-12');
