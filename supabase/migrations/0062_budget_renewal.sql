@@ -32,6 +32,8 @@ drop trigger if exists trg_biz_budget_renewal_bu on public.biz_budget_renewal;
 create trigger trg_biz_budget_renewal_bu before update on public.biz_budget_renewal for each row execute function public.biz_touch_updated();
 
 -- RLS: 조회=내부 실무자(외부·인당회계사 차단) / 편집=회계사·팀장·최고관리자(biz_can_reveal)
+-- biz_can_reveal()를 RLS 정책에서 호출하므로 authenticated 실행권한 필요(기존엔 security-definer 내부에서만 사용).
+grant execute on function public.biz_can_reveal() to authenticated;
 alter table public.biz_budget_renewal enable row level security;
 drop policy if exists biz_budget_renewal_sel on public.biz_budget_renewal;
 create policy biz_budget_renewal_sel on public.biz_budget_renewal for select to authenticated
