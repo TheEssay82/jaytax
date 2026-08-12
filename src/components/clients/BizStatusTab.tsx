@@ -7,6 +7,7 @@ import { listBizContacts, type BizContact } from '../../lib/bizContactApi';
 import { findNode } from '../../lib/salesContractTaxonomy';
 import { scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 import { monthlyTotals, monthIndex, indexToMonth, type Basis } from '../../lib/billingSchedule';
+import BudgetPanel from './BudgetPanel';
 
 const TEAMS = ['감사team', 'taxteam'] as const;
 
@@ -115,6 +116,8 @@ export default function BizStatusTab() {
     return { year, months, byTeam, teamTotal, totals, cumTotals, grand, peak };
   }, [contracts, trendYear, trendBasis, curSettlementYear]);
 
+  const entMap = useMemo(() => new Map(entities.map((e) => [e.id, e])), [entities]);
+
   if (loading) return <div className="card">불러오는 중…</div>;
 
   return (
@@ -183,6 +186,9 @@ export default function BizStatusTab() {
           </table>
         </div>
       </div>
+
+      {/* 예산 */}
+      <BudgetPanel contracts={contracts} entMap={entMap} />
 
       {/* 거래처 현황 표 */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
