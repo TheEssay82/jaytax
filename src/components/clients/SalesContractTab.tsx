@@ -38,10 +38,11 @@ function overlapsWindow(c: SalesContract, fromIdx: number, toIdx: number): boole
   if (s == null || e == null) return true; // 날짜 불명 → 일단 포함
   return s <= toIdx && e >= fromIdx;
 }
-// 피봇 값(measure) — bill/acc는 엔진 기반 기간 매출, 나머지는 계약 스냅샷(비율).
-type Measure = 'bill' | 'acc' | 'mon' | 'amt' | 'ann' | 'cnt';
+// 피봇 값(measure) — acc/bill는 엔진 기반 기간 집계, 나머지는 계약 스냅샷(비율).
+//   acc(발생주의 월할) = '매출' 인식액(감사 등은 대상기간 월할). bill(청구주의) = '청구액'(현금·선수금).
+type Measure = 'acc' | 'bill' | 'mon' | 'amt' | 'ann' | 'cnt';
 const MEASURE_LABEL: Record<Measure, string> = {
-  bill: '기간 청구액', acc: '기간 발생액', mon: '월환산', amt: '계약금액', ann: '연환산', cnt: '건수',
+  acc: '매출(월할)', bill: '청구액', mon: '월환산', amt: '계약금액', ann: '연환산', cnt: '건수',
 };
 // 대상기간 모드
 type PeriodMode = 'all' | 'year' | 'range' | 'month';
@@ -106,7 +107,7 @@ export default function SalesContractTab() {
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const [groupBy, setGroupBy] = useState<string>('');   // 피봇 행 기준
   const [groupBy2, setGroupBy2] = useState<string>(''); // 피봇 열 기준(교차표)
-  const [measure, setMeasure] = useState<Measure>('bill'); // 값(기본: 기간 청구액)
+  const [measure, setMeasure] = useState<Measure>('acc'); // 값(기본: 매출=발생주의 월할)
   // 피봇 대상기간
   const [periodMode, setPeriodMode] = useState<PeriodMode>('all');
   const [pivotYear, setPivotYear] = useState<string>('');   // 귀속연도 모드
@@ -224,10 +225,19 @@ export default function SalesContractTab() {
     }
     return sortedRows; // 전체
   }, [sortedRows, periodMode, pivotYear, win]);
-  // 계약별 엔진 기간매출(청구주의·발생주의) — 창구[win] 기준. 피봇·교차표·합계가 공유.
+  // 계약별 엔진 기간집계(매출=발생주의 월할·청구액=청구주의). 피봇·교차표·합계가 공유.
+  //   회계감사 매출은 회사 회계연도(=귀속 정산기간 7/1~익6/30)에 걸쳐 월할 인식 →
+  //   인식구간을 대상연도(개시1~종료12)가 아닌 정산연도(fy-07~fy+1-06)로 remap. 청구액(현금)은 원래 개시월/분할 그대로.
   const revById = useMemo(() => {
     const m = new Map<string, { bill: number; acc: number }>();
-    for (const c of pivotRows) m.set(c.id, { bill: periodRevenue(c, 'billing', win.from, win.to), acc: periodRevenue(c, 'accrual', win.from, win.to) });
+    for (const c of pivotRows) {
+      let accC = c;
+      if (c.categoryCode === 'AUD.AUDIT') {
+        const fy = contractFiscalYear(c);
+        if (fy != null) accC = { ...c, startDate: `${fy}-07`, endDate: `${fy + 1}-06` };
+      }
+      m.set(c.id, { bill: periodRevenue(c, 'billing', win.from, win.to), acc: periodRevenue(accC, 'accrual', win.from, win.to) });
+    }
     return m;
   }, [pivotRows, win]);
   type Agg = { amt: number; ann: number; cnt: number; bill: number; acc: number };
@@ -276,7 +286,7 @@ export default function SalesContractTab() {
   // 피봇 대상기간 표시 라벨.
   const periodLabel = useMemo(() => {
     const w = `${win.from}~${win.to}`;
-    if (periodMode === 'year' && /^\d{4}$/.test(pivotYear)) return `${pivotYear} 귀속(정산 ${win.from}~${win.to})`;
+    if (periodMode === 'year' && /^\d{4}$/.test(pivotYear)) return `${pivotYear} 귀속(정산 ${pivotYear}-07~${Number(pivotYear) + 1}-06)`;
     if (periodMode === 'range' && periodFrom && periodTo) return `기간 ${w}`;
     if (periodMode === 'month' && periodMonth) return `${periodMonth}월`;
     return `전체(${w})`;
@@ -410,9 +420,9 @@ export default function SalesContractTab() {
               </select>
             )}
             {groupBy && (
-              <select value={measure} onChange={(e) => setMeasure(e.target.value as Measure)} style={selStyle} title="값 — 기간 청구액/발생액은 대상기간 창구의 엔진 집계, 나머지는 계약 스냅샷">
-                <option value="bill">값: 기간 청구액</option>
-                <option value="acc">값: 기간 발생액</option>
+              <select value={measure} onChange={(e) => setMeasure(e.target.value as Measure)} style={selStyle} title="값 — 매출=발생주의 월할 인식(감사 등 기간귀속), 청구액=현금 청구(선수금). 둘 다 대상기간 창구 엔진 집계, 나머지는 계약 스냅샷">
+                <option value="acc">값: 매출(월할)</option>
+                <option value="bill">값: 청구액</option>
                 <option value="mon">값: 월환산</option>
                 <option value="amt">값: 계약금액</option>
                 <option value="ann">값: 연환산</option>
@@ -515,15 +525,15 @@ export default function SalesContractTab() {
           <div style={{ overflowX: 'auto', border: '1px solid #d8cfa0', borderRadius: 6, marginBottom: 8, background: '#fbf8ef' }}>
             <div style={{ fontSize: 11, color: '#846', padding: '5px 8px' }}>
               📊 <b>{GROUP_OPTS.find((g) => g.key === groupBy)?.label}</b>별 집계 · 대상기간: <b>{periodLabel}</b> · 필터 반영
-              <span style={{ color: '#a98', marginLeft: 6 }}>기간 청구액=청구주의, 발생액=발생주의(균등) · 모두 공급가액(순액) · 강조열=선택값</span>
+              <span style={{ color: '#a98', marginLeft: 6 }}>매출=월할 인식(회계감사는 회계연도 7/1~6/30 균등) · 청구액=현금 청구(선수금) · 모두 공급가액(순액) · 강조열=선택값</span>
             </div>
             <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: 640 }}>
               {(() => { const hi = (m: Measure) => (measure === m ? { background: '#efe7c8' } : undefined); return (<>
               <thead><tr style={{ background: '#f0e9d2' }}>
                 <th style={thc}>{GROUP_OPTS.find((g) => g.key === groupBy)?.label}별</th>
                 <th style={{ ...thc, textAlign: 'right' }}>건수</th>
-                <th style={{ ...thc, textAlign: 'right', ...hi('bill') }}>기간 청구액</th>
-                <th style={{ ...thc, textAlign: 'right', ...hi('acc') }}>기간 발생액</th>
+                <th style={{ ...thc, textAlign: 'right', ...hi('acc') }}>매출(월할)</th>
+                <th style={{ ...thc, textAlign: 'right', ...hi('bill') }}>청구액</th>
                 <th style={{ ...thc, textAlign: 'right', ...hi('amt') }}>계약금액</th>
                 <th style={{ ...thc, textAlign: 'right', ...hi('mon') }}>월환산</th>
                 <th style={{ ...thc, textAlign: 'right', ...hi('ann') }}>연환산</th>
@@ -533,8 +543,8 @@ export default function SalesContractTab() {
                   <tr key={g.key} style={{ borderTop: '1px solid #eadfbf' }}>
                     <td style={{ ...tdc, fontWeight: 600 }}>{g.key}</td>
                     <td style={{ ...tdc, textAlign: 'right' }}>{g.cnt}</td>
-                    <td style={{ ...tdc, textAlign: 'right', ...hi('bill') }}>{won(g.bill)}</td>
                     <td style={{ ...tdc, textAlign: 'right', ...hi('acc') }}>{won(g.acc)}</td>
+                    <td style={{ ...tdc, textAlign: 'right', ...hi('bill') }}>{won(g.bill)}</td>
                     <td style={{ ...tdc, textAlign: 'right', ...hi('amt') }}>{won(g.amt)}</td>
                     <td style={{ ...tdc, textAlign: 'right', ...hi('mon') }}>{won(Math.round(g.ann / 12))}</td>
                     <td style={{ ...tdc, textAlign: 'right', ...hi('ann') }}>{won(g.ann)}</td>
@@ -544,8 +554,8 @@ export default function SalesContractTab() {
               <tfoot><tr style={{ borderTop: '2px solid #c9a54a', background: '#f5efdd', fontWeight: 700 }}>
                 <td style={tdc}>총계</td>
                 <td style={{ ...tdc, textAlign: 'right' }}>{pivotSummary.cnt}</td>
-                <td style={{ ...tdc, textAlign: 'right', ...hi('bill') }}>{won(pivotSummary.bill)}</td>
                 <td style={{ ...tdc, textAlign: 'right', ...hi('acc') }}>{won(pivotSummary.acc)}</td>
+                <td style={{ ...tdc, textAlign: 'right', ...hi('bill') }}>{won(pivotSummary.bill)}</td>
                 <td style={{ ...tdc, textAlign: 'right', ...hi('amt') }}>{won(pivotSummary.amt)}</td>
                 <td style={{ ...tdc, textAlign: 'right', ...hi('mon') }}>{won(Math.round(pivotSummary.ann / 12))}</td>
                 <td style={{ ...tdc, textAlign: 'right', ...hi('ann') }}>{won(pivotSummary.ann)}</td>
