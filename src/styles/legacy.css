@@ -47,7 +47,7 @@ body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;font-size:13px
   .h-title .h-email{display:none}
   .h-title .bdg{margin-left:0!important}
 }
-#main{max-width:1440px;margin:0 auto;padding:16px 16px 56px}
+#main{max-width:1800px;margin:0 auto;padding:16px 16px 56px}
 .card{background:#fff;border:1px solid #E0DCD4;border-radius:12px;padding:12px 14px;margin-bottom:9px}
 .chdr{font-size:12px;font-weight:700;color:#555;border-bottom:1px solid #EDE9E2;padding-bottom:6px;margin-bottom:10px;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .chdr i{font-size:14px;vertical-align:-2px;color:#1A2B52}
