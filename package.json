@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test:types": "tsc -p tsconfig.test.json",
     "lint": "oxlint",
     "preview": "vite preview",
     "std:parse": "tsx scripts/standards/parse.ts",
