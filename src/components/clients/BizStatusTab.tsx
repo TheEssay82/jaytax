@@ -8,6 +8,7 @@ import { findNode } from '../../lib/salesContractTaxonomy';
 import { scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 import { monthlyTotals, monthIndex, indexToMonth, type Basis } from '../../lib/billingSchedule';
 import BudgetPanel from './BudgetPanel';
+import { listActualsForYear, type MonthlyActual } from '../../lib/revenueActualApi';
 
 const TEAMS = ['감사team', 'taxteam'] as const;
 
@@ -34,6 +35,7 @@ export default function BizStatusTab() {
   const curSettlementYear = useMemo(() => { const m = Number(todayMonth.slice(5, 7)), y = Number(todayMonth.slice(0, 4)); return m >= 7 ? y : y - 1; }, [todayMonth]);
   const [trendYear, setTrendYear] = useState<number>(0);          // 0 = 미설정 → curSettlementYear 사용
   const [trendBasis, setTrendBasis] = useState<Basis>('accrual'); // 매출(발생) 기본
+  const [actuals, setActuals] = useState<MonthlyActual[]>([]);    // 선택 정산연도 월별 실적
 
   useEffect(() => {
     (async () => {
@@ -116,6 +118,20 @@ export default function BizStatusTab() {
     return { year, months, byTeam, teamTotal, totals, cumTotals, grand, peak };
   }, [contracts, trendYear, trendBasis, curSettlementYear]);
 
+  // 선택 정산연도의 월별 실적 로드(biz_revenue_actual)
+  useEffect(() => { (async () => {
+    try { setActuals(await listActualsForYear(trend.year)); } catch { setActuals([]); }
+  })(); }, [trend.year]);
+  // 실적 월별 합계(전 팀)·누계 — 추이 창구 월과 정렬
+  const actualTrend = useMemo(() => {
+    const byMonth = new Map<string, number>();
+    for (const a of actuals) byMonth.set(a.ym, (byMonth.get(a.ym) ?? 0) + a.amount);
+    const totals = trend.months.map((m) => byMonth.get(m) ?? 0);
+    const has = actuals.length > 0;
+    let cum = 0; const cumTotals = totals.map((v) => (cum += v));
+    return { totals, cumTotals, has, grand: totals.reduce((s, v) => s + v, 0) };
+  }, [actuals, trend.months]);
+
   const entMap = useMemo(() => new Map(entities.map((e) => [e.id, e])), [entities]);
 
   if (loading) return <div className="card">불러오는 중…</div>;
@@ -182,9 +198,24 @@ export default function BizStatusTab() {
                 {trend.months.map((m, i) => <td key={m} style={{ ...tdc, textAlign: 'right', color: m > todayMonth ? '#ccc' : '#889' }}>{won(trend.cumTotals[i])}</td>)}
                 <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}></td>
               </tr>
+              {actualTrend.has && (<>
+                <tr style={{ borderTop: '2px solid #7a9', background: '#eef6ee', fontWeight: 700, color: '#274' }}>
+                  <td style={{ ...tdc, position: 'sticky', left: 0, background: '#eef6ee' }}>실적(청구)</td>
+                  {trend.months.map((m, i) => { const v = actualTrend.totals[i]; const pct = Math.round((v / trend.peak) * 100); return (
+                    <td key={m} style={{ ...tdc, textAlign: 'right', color: '#274', background: `linear-gradient(to top, rgba(40,120,70,.16) ${pct}%, transparent ${pct}%)` }}>{v ? won(v) : '·'}</td>
+                  ); })}
+                  <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}>{won(actualTrend.grand)}</td>
+                </tr>
+                <tr style={{ borderTop: '1px solid #d4e4d4', color: '#6a8' }}>
+                  <td style={{ ...tdc, position: 'sticky', left: 0, background: '#fbf8ef' }}>실적 누계</td>
+                  {trend.months.map((m, i) => <td key={m} style={{ ...tdc, textAlign: 'right' }}>{won(actualTrend.cumTotals[i])}</td>)}
+                  <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}></td>
+                </tr>
+              </>)}
             </tbody>
           </table>
         </div>
+        {actualTrend.has && <div style={{ fontSize: 10.5, color: '#798', marginTop: 4 }}>※ 위 3행(팀별·합계·누계)=계약 기준 {trendBasis === 'accrual' ? '매출(발생)' : '청구'} projection · 아래 <b style={{ color: '#274' }}>실적(청구)</b>=실제 청구실적(biz_revenue_actual). 계약 vs 실적 비교.</div>}
       </div>
 
       {/* 예산 */}
