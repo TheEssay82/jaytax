@@ -8,6 +8,7 @@ import {
 } from '../../lib/salesContractTaxonomy';
 import { ColFilter, scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 import { exportContractTemplate, parseContractExcelFile, applyContractExcel, type ContractExcelResult } from '../../lib/bizContractExcel';
+import { periodRevenue, defaultWindow, monthIndex } from '../../lib/billingSchedule';
 import {
   listSalesContracts, createSalesContract, updateSalesContract, deleteSalesContract,
   saveInstallments, saveDiscounts, saveContractStaff, listContractStaffProfiles, setInstallmentBilled,
@@ -30,6 +31,20 @@ function contractInYear(c: SalesContract, year: number): boolean {
   if (isOngoing(c)) return year >= Math.max(OPERATION_START_YEAR, settlementYearOfDate(c.startDate) ?? OPERATION_START_YEAR);
   return false;
 }
+/** 계약의 생애구간이 창구[fromIdx,toIdx](월 인덱스)와 겹치는가. 특정기간·특정월 대상기간의 포함 판정. */
+function overlapsWindow(c: SalesContract, fromIdx: number, toIdx: number): boolean {
+  const s = monthIndex(c.startDate) ?? (c.fiscalYear != null ? monthIndex(`${c.fiscalYear}-01`) : null);
+  const e = c.endDate ? monthIndex(c.endDate) : (isOngoing(c) ? Infinity : (c.fiscalYear != null ? monthIndex(`${c.fiscalYear}-12`) : null));
+  if (s == null || e == null) return true; // 날짜 불명 → 일단 포함
+  return s <= toIdx && e >= fromIdx;
+}
+// 피봇 값(measure) — bill/acc는 엔진 기반 기간 매출, 나머지는 계약 스냅샷(비율).
+type Measure = 'bill' | 'acc' | 'mon' | 'amt' | 'ann' | 'cnt';
+const MEASURE_LABEL: Record<Measure, string> = {
+  bill: '기간 청구액', acc: '기간 발생액', mon: '월환산', amt: '계약금액', ann: '연환산', cnt: '건수',
+};
+// 대상기간 모드
+type PeriodMode = 'all' | 'year' | 'range' | 'month';
 // 집계(피봇) 기준
 const GROUP_OPTS: { key: string; label: string }[] = [
   { key: 'team', label: '팀' }, { key: 'type', label: '매출유형' }, { key: 'cpa', label: '담당CPA' },
@@ -91,8 +106,14 @@ export default function SalesContractTab() {
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const [groupBy, setGroupBy] = useState<string>('');   // 피봇 행 기준
   const [groupBy2, setGroupBy2] = useState<string>(''); // 피봇 열 기준(교차표)
-  const [measure, setMeasure] = useState<'mon' | 'amt' | 'ann' | 'cnt'>('mon'); // 값
-  const [pivotYear, setPivotYear] = useState<string>(''); // 피봇 대상기간(정산연도) — '' = 전체 기간
+  const [measure, setMeasure] = useState<Measure>('bill'); // 값(기본: 기간 청구액)
+  // 피봇 대상기간
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('all');
+  const [pivotYear, setPivotYear] = useState<string>('');   // 귀속연도 모드
+  const [periodFrom, setPeriodFrom] = useState<string>(''); // 특정기간 시작월 'YYYY-MM'
+  const [periodTo, setPeriodTo] = useState<string>('');     // 특정기간 종료월
+  const [periodMonth, setPeriodMonth] = useState<string>(''); // 특정월
+  const [capToday, setCapToday] = useState<boolean>(true);  // 경과분(오늘까지 상한)
 
   async function load() {
     try {
@@ -126,6 +147,18 @@ export default function SalesContractTab() {
     }
     return [...ys].sort((a, b) => b - a);
   }, [contracts]);
+  // 오늘 월(경과분 상한 기준). 렌더당 1회.
+  const todayMonth = useMemo(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }, []);
+  // 대상기간 → 집계 창구[from,to] ('YYYY-MM'). 엔진 기간 매출은 이 창구로 계산.
+  const win = useMemo(() => {
+    const cap = (from: string, to: string) => ({ from, to: capToday && to > todayMonth ? todayMonth : to });
+    if (periodMode === 'year' && /^\d{4}$/.test(pivotYear)) {
+      const y = Number(pivotYear); return cap(`${y}-07`, `${y + 1}-06`);
+    }
+    if (periodMode === 'range' && periodFrom && periodTo && periodFrom <= periodTo) return cap(periodFrom, periodTo);
+    if (periodMode === 'month' && periodMonth) return { from: periodMonth, to: periodMonth };
+    return defaultWindow(contracts, todayMonth, capToday); // 전체(또는 입력 미완)
+  }, [periodMode, pivotYear, periodFrom, periodTo, periodMonth, capToday, contracts, todayMonth]);
 
   // 표(list)형 컬럼 정의 — 각 컬럼 val 로 필터·표시. opts 있으면 필터가 드롭다운.
   const COLUMNS: { key: string; label: string; val: (c: SalesContract) => string; w?: number; num?: boolean; opts?: readonly string[] }[] = [
@@ -176,51 +209,78 @@ export default function SalesContractTab() {
     for (const c of sortedRows) { cnt++; amt += c.amount; ann += annualize(c); }
     return { cnt, amt, ann, mon: Math.round(ann / 12) };
   }, [sortedRows]);
-  // 피봇 집계 대상 행 — 표 필터(sortedRows)에 대상기간(정산연도) 필터를 추가로 적용.
-  // 대상기간 선택 시 그 정산연도(7/1~익년 6/30)에 유효한 계약만(운영시작 2026-07 이전·타연도 제외, 계속계약은 연속 포함).
+  // 피봇 집계 대상 행 — 표 필터(sortedRows)에 대상기간 포함판정을 추가.
+  //   귀속연도: contractInYear(정산 7/1~6/30, 운영시작 이전·타연도 제외, 계속계약 연속포함)
+  //   특정기간·특정월: 창구와 생애구간이 겹치는 계약. 전체: 전부.
   const pivotRows = useMemo(() => {
-    if (!/^\d{4}$/.test(pivotYear)) return sortedRows;
-    const y = Number(pivotYear);
-    return sortedRows.filter((c) => contractInYear(c, y));
-  }, [sortedRows, pivotYear]);
+    if (periodMode === 'year') {
+      if (!/^\d{4}$/.test(pivotYear)) return sortedRows;
+      return sortedRows.filter((c) => contractInYear(c, Number(pivotYear)));
+    }
+    if (periodMode === 'range' || periodMode === 'month') {
+      const f = monthIndex(win.from), t = monthIndex(win.to);
+      if (f == null || t == null) return sortedRows;
+      return sortedRows.filter((c) => overlapsWindow(c, f, t));
+    }
+    return sortedRows; // 전체
+  }, [sortedRows, periodMode, pivotYear, win]);
+  // 계약별 엔진 기간매출(청구주의·발생주의) — 창구[win] 기준. 피봇·교차표·합계가 공유.
+  const revById = useMemo(() => {
+    const m = new Map<string, { bill: number; acc: number }>();
+    for (const c of pivotRows) m.set(c.id, { bill: periodRevenue(c, 'billing', win.from, win.to), acc: periodRevenue(c, 'accrual', win.from, win.to) });
+    return m;
+  }, [pivotRows, win]);
+  type Agg = { amt: number; ann: number; cnt: number; bill: number; acc: number };
+  const newAgg = (): Agg => ({ amt: 0, ann: 0, cnt: 0, bill: 0, acc: 0 });
+  const addAgg = (a: Agg, c: SalesContract) => {
+    const r = revById.get(c.id); a.amt += c.amount; a.ann += annualize(c); a.cnt++; a.bill += r?.bill ?? 0; a.acc += r?.acc ?? 0;
+  };
   const pivotSummary = useMemo(() => {
-    let cnt = 0, amt = 0, ann = 0;
-    for (const c of pivotRows) { cnt++; amt += c.amount; ann += annualize(c); }
-    return { cnt, amt, ann, mon: Math.round(ann / 12) };
-  }, [pivotRows]);
+    const a = newAgg(); for (const c of pivotRows) addAgg(a, c); return a;
+  }, [pivotRows, revById]); // eslint-disable-line react-hooks/exhaustive-deps
   // 집계(피봇) — groupBy 기준 부분합
   const pivot = useMemo(() => {
     if (!groupBy) return [];
-    const m = new Map<string, { key: string; cnt: number; amt: number; ann: number }>();
+    const m = new Map<string, Agg & { key: string }>();
     for (const c of pivotRows) {
       const k = groupKeyOf(groupBy, c);
-      const g = m.get(k) ?? { key: k, cnt: 0, amt: 0, ann: 0 };
-      g.cnt++; g.amt += c.amount; g.ann += annualize(c); m.set(k, g);
+      let g = m.get(k); if (!g) { g = { key: k, ...newAgg() }; m.set(k, g); }
+      addAgg(g, c);
     }
-    return [...m.values()].sort((a, b) => b.ann - a.ann);
-  }, [pivotRows, groupBy]);
+    return [...m.values()].sort((a, b) => mval(b) - mval(a));
+  }, [pivotRows, groupBy, revById, measure]); // eslint-disable-line react-hooks/exhaustive-deps
   // 교차표(피봇) — 행(groupBy) × 열(groupBy2), 모든 조합 표시
-  type Agg = { amt: number; ann: number; cnt: number };
   const matrix = useMemo(() => {
     if (!groupBy || !groupBy2) return null;
-    const add = (a: Agg, c: SalesContract) => { a.amt += c.amount; a.ann += annualize(c); a.cnt++; };
     const cells = new Map<string, Agg>(), rowTot = new Map<string, Agg>(), colTot = new Map<string, Agg>();
-    const grand: Agg = { amt: 0, ann: 0, cnt: 0 };
-    const get = (m: Map<string, Agg>, k: string) => { let v = m.get(k); if (!v) { v = { amt: 0, ann: 0, cnt: 0 }; m.set(k, v); } return v; };
+    const grand = newAgg();
+    const get = (m: Map<string, Agg>, k: string) => { let v = m.get(k); if (!v) { v = newAgg(); m.set(k, v); } return v; };
     for (const c of pivotRows) {
       const r = groupKeyOf(groupBy, c), col = groupKeyOf(groupBy2, c);
-      add(get(cells, `${r}\0${col}`), c); add(get(rowTot, r), c); add(get(colTot, col), c); add(grand, c);
+      addAgg(get(cells, `${r}\0${col}`), c); addAgg(get(rowTot, r), c); addAgg(get(colTot, col), c); addAgg(grand, c);
     }
-    const rowKeys = [...rowTot.keys()].sort((a, b) => rowTot.get(b)!.ann - rowTot.get(a)!.ann);
-    const colKeys = [...colTot.keys()].sort((a, b) => colTot.get(b)!.ann - colTot.get(a)!.ann);
+    const rowKeys = [...rowTot.keys()].sort((a, b) => mval(rowTot.get(b)!) - mval(rowTot.get(a)!));
+    const colKeys = [...colTot.keys()].sort((a, b) => mval(colTot.get(b)!) - mval(colTot.get(a)!));
     return { rowKeys, colKeys, cells, rowTot, colTot, grand };
-  }, [pivotRows, groupBy, groupBy2]);
+  }, [pivotRows, groupBy, groupBy2, revById, measure]); // eslint-disable-line react-hooks/exhaustive-deps
   // 값(measure) 계산·표시
-  const mval = (a?: Agg) => !a ? 0 : measure === 'amt' ? a.amt : measure === 'ann' ? a.ann : measure === 'cnt' ? a.cnt : Math.round(a.ann / 12);
+  function mval(a?: Agg): number {
+    if (!a) return 0;
+    switch (measure) {
+      case 'bill': return a.bill; case 'acc': return a.acc; case 'amt': return a.amt;
+      case 'ann': return a.ann; case 'cnt': return a.cnt; default: return Math.round(a.ann / 12);
+    }
+  }
   const mfmt = (n: number) => (measure === 'cnt' ? String(n) : won(n));
-  const measLabel = ({ mon: '월환산', amt: '계약금액', ann: '연환산', cnt: '건수' } as Record<string, string>)[measure];
-  // 피봇 대상기간 표시 라벨. 선택 시 정산기간(7/1~익년 6/30) 경계를 명시.
-  const periodLabel = /^\d{4}$/.test(pivotYear) ? `${pivotYear} 귀속(정산 ${pivotYear}-07~${Number(pivotYear) + 1}-06)` : '전체 기간';
+  const measLabel = MEASURE_LABEL[measure];
+  // 피봇 대상기간 표시 라벨.
+  const periodLabel = useMemo(() => {
+    const w = `${win.from}~${win.to}`;
+    if (periodMode === 'year' && /^\d{4}$/.test(pivotYear)) return `${pivotYear} 귀속(정산 ${win.from}~${win.to})`;
+    if (periodMode === 'range' && periodFrom && periodTo) return `기간 ${w}`;
+    if (periodMode === 'month' && periodMonth) return `${periodMonth}월`;
+    return `전체(${w})`;
+  }, [periodMode, pivotYear, periodFrom, periodTo, periodMonth, win]);
 
   // 청구예정일 경과 알람 — 로그인한 담당CPA 본인 계약의 분할 회차 중 예정일이 지난 것
   const myOverdue = useMemo(() => {
@@ -350,7 +410,9 @@ export default function SalesContractTab() {
               </select>
             )}
             {groupBy && (
-              <select value={measure} onChange={(e) => setMeasure(e.target.value as 'mon' | 'amt' | 'ann' | 'cnt')} style={selStyle} title="값">
+              <select value={measure} onChange={(e) => setMeasure(e.target.value as Measure)} style={selStyle} title="값 — 기간 청구액/발생액은 대상기간 창구의 엔진 집계, 나머지는 계약 스냅샷">
+                <option value="bill">값: 기간 청구액</option>
+                <option value="acc">값: 기간 발생액</option>
                 <option value="mon">값: 월환산</option>
                 <option value="amt">값: 계약금액</option>
                 <option value="ann">값: 연환산</option>
@@ -358,10 +420,33 @@ export default function SalesContractTab() {
               </select>
             )}
             {groupBy && (
-              <select value={pivotYear} onChange={(e) => setPivotYear(e.target.value)} style={selStyle} title="집계 대상기간 — 정산연도(7/1~익년 6/30). 선택 시 그 기간에 유효한 계약만 집계(운영시작 2026-07 이전 제외).">
-                <option value="">기간: 전체</option>
-                {pivotYearOpts.map((y) => <option key={y} value={String(y)}>기간: {y} 귀속</option>)}
+              <select value={periodMode} onChange={(e) => setPeriodMode(e.target.value as PeriodMode)} style={selStyle} title="집계 대상기간 모드">
+                <option value="all">기간: 전체</option>
+                <option value="year">기간: 귀속연도</option>
+                <option value="range">기간: 특정기간</option>
+                <option value="month">기간: 특정월</option>
               </select>
+            )}
+            {groupBy && periodMode === 'year' && (
+              <select value={pivotYear} onChange={(e) => setPivotYear(e.target.value)} style={selStyle} title="정산연도(7/1~익년 6/30)">
+                <option value="">귀속연도 선택</option>
+                {pivotYearOpts.map((y) => <option key={y} value={String(y)}>{y} 귀속</option>)}
+              </select>
+            )}
+            {groupBy && periodMode === 'range' && (
+              <>
+                <input type="month" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} style={selStyle} title="시작월" />
+                <span style={{ fontSize: 11, color: '#888' }}>~</span>
+                <input type="month" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} style={selStyle} title="종료월" />
+              </>
+            )}
+            {groupBy && periodMode === 'month' && (
+              <input type="month" value={periodMonth} onChange={(e) => setPeriodMonth(e.target.value)} style={selStyle} title="대상월" />
+            )}
+            {groupBy && periodMode !== 'month' && (
+              <label style={{ fontSize: 11, color: '#667', display: 'flex', alignItems: 'center', gap: 3 }} title="집계 상한을 이번 달까지로 제한(경과분만)">
+                <input type="checkbox" checked={capToday} onChange={(e) => setCapToday(e.target.checked)} /> 경과분
+              </label>
             )}
           </span>
         )}
@@ -430,33 +515,42 @@ export default function SalesContractTab() {
           <div style={{ overflowX: 'auto', border: '1px solid #d8cfa0', borderRadius: 6, marginBottom: 8, background: '#fbf8ef' }}>
             <div style={{ fontSize: 11, color: '#846', padding: '5px 8px' }}>
               📊 <b>{GROUP_OPTS.find((g) => g.key === groupBy)?.label}</b>별 집계 · 대상기간: <b>{periodLabel}</b> · 필터 반영
+              <span style={{ color: '#a98', marginLeft: 6 }}>기간 청구액=청구주의, 발생액=발생주의(균등) · 모두 공급가액(순액) · 강조열=선택값</span>
             </div>
-            <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: 520 }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: 640 }}>
+              {(() => { const hi = (m: Measure) => (measure === m ? { background: '#efe7c8' } : undefined); return (<>
               <thead><tr style={{ background: '#f0e9d2' }}>
                 <th style={thc}>{GROUP_OPTS.find((g) => g.key === groupBy)?.label}별</th>
                 <th style={{ ...thc, textAlign: 'right' }}>건수</th>
-                <th style={{ ...thc, textAlign: 'right' }}>계약금액 합계</th>
-                <th style={{ ...thc, textAlign: 'right' }}>월환산 합계</th>
-                <th style={{ ...thc, textAlign: 'right' }}>연환산 합계</th>
+                <th style={{ ...thc, textAlign: 'right', ...hi('bill') }}>기간 청구액</th>
+                <th style={{ ...thc, textAlign: 'right', ...hi('acc') }}>기간 발생액</th>
+                <th style={{ ...thc, textAlign: 'right', ...hi('amt') }}>계약금액</th>
+                <th style={{ ...thc, textAlign: 'right', ...hi('mon') }}>월환산</th>
+                <th style={{ ...thc, textAlign: 'right', ...hi('ann') }}>연환산</th>
               </tr></thead>
               <tbody>
                 {pivot.map((g) => (
                   <tr key={g.key} style={{ borderTop: '1px solid #eadfbf' }}>
                     <td style={{ ...tdc, fontWeight: 600 }}>{g.key}</td>
                     <td style={{ ...tdc, textAlign: 'right' }}>{g.cnt}</td>
-                    <td style={{ ...tdc, textAlign: 'right' }}>{won(g.amt)}</td>
-                    <td style={{ ...tdc, textAlign: 'right' }}>{won(Math.round(g.ann / 12))}</td>
-                    <td style={{ ...tdc, textAlign: 'right' }}>{won(g.ann)}</td>
+                    <td style={{ ...tdc, textAlign: 'right', ...hi('bill') }}>{won(g.bill)}</td>
+                    <td style={{ ...tdc, textAlign: 'right', ...hi('acc') }}>{won(g.acc)}</td>
+                    <td style={{ ...tdc, textAlign: 'right', ...hi('amt') }}>{won(g.amt)}</td>
+                    <td style={{ ...tdc, textAlign: 'right', ...hi('mon') }}>{won(Math.round(g.ann / 12))}</td>
+                    <td style={{ ...tdc, textAlign: 'right', ...hi('ann') }}>{won(g.ann)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot><tr style={{ borderTop: '2px solid #c9a54a', background: '#f5efdd', fontWeight: 700 }}>
                 <td style={tdc}>총계</td>
                 <td style={{ ...tdc, textAlign: 'right' }}>{pivotSummary.cnt}</td>
-                <td style={{ ...tdc, textAlign: 'right' }}>{won(pivotSummary.amt)}</td>
-                <td style={{ ...tdc, textAlign: 'right' }}>{won(pivotSummary.mon)}</td>
-                <td style={{ ...tdc, textAlign: 'right' }}>{won(pivotSummary.ann)}</td>
+                <td style={{ ...tdc, textAlign: 'right', ...hi('bill') }}>{won(pivotSummary.bill)}</td>
+                <td style={{ ...tdc, textAlign: 'right', ...hi('acc') }}>{won(pivotSummary.acc)}</td>
+                <td style={{ ...tdc, textAlign: 'right', ...hi('amt') }}>{won(pivotSummary.amt)}</td>
+                <td style={{ ...tdc, textAlign: 'right', ...hi('mon') }}>{won(Math.round(pivotSummary.ann / 12))}</td>
+                <td style={{ ...tdc, textAlign: 'right', ...hi('ann') }}>{won(pivotSummary.ann)}</td>
               </tr></tfoot>
+              </>); })()}
             </table>
           </div>
         )}
