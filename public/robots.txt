@@ -1,0 +1,3 @@
+# jaytax — 사내 도구. 검색엔진 색인 전면 차단.
+User-agent: *
+Disallow: /
