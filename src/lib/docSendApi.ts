@@ -54,6 +54,8 @@ export interface SendRequest {
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+  /** 소프트삭제(휴지통) 시각 — null이면 정상, 값 있으면 휴지통. */
+  deletedAt: string | null;
 }
 
 /** 발송요청 공통(문서) 정보 */
@@ -106,6 +108,7 @@ interface Row {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
 }
 
 function toReq(r: Row): SendRequest {
@@ -136,6 +139,7 @@ function toReq(r: Row): SendRequest {
     createdBy: r.created_by,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    deletedAt: r.deleted_at ?? null,
   };
 }
 
@@ -144,8 +148,20 @@ export async function listSendRequests(): Promise<SendRequest[]> {
   const { data, error } = await supabase
     .from('doc_send_requests')
     .select('*')
+    .is('deleted_at', null)
     .order('request_date', { ascending: false })
     .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data as Row[]).map(toReq);
+}
+
+/** 휴지통(소프트삭제된) 발송요청 조회 — 최근 삭제순. */
+export async function listTrashedSendRequests(): Promise<SendRequest[]> {
+  const { data, error } = await supabase
+    .from('doc_send_requests')
+    .select('*')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
   if (error) throw new Error(error.message);
   return (data as Row[]).map(toReq);
 }
@@ -198,8 +214,24 @@ export async function updateSendRequest(
   if (error) throw new Error(error.message);
 }
 
-/** 발송요청 삭제 (미접수 건만 — 서버 트리거가 그 외 차단). 배치의 마지막 건이면 첨부도 정리. */
+/** 발송요청 삭제 = 휴지통으로 이동(소프트삭제). 데이터·첨부는 보존하고 목록에서만 숨긴다. 복원 가능. */
 export async function deleteSendRequest(id: string): Promise<void> {
+  const { data, error } = await supabase.from('doc_send_requests')
+    .update({ deleted_at: new Date().toISOString() }).eq('id', id).is('deleted_at', null).select('id');
+  if (error) throw new Error(error.message);
+  if (!data || (data as unknown[]).length === 0) throw new Error('삭제(휴지통 이동) 대상이 없습니다.');
+}
+
+/** 휴지통 → 복원. */
+export async function restoreSendRequest(id: string): Promise<void> {
+  const { data, error } = await supabase.from('doc_send_requests')
+    .update({ deleted_at: null }).eq('id', id).not('deleted_at', 'is', null).select('id');
+  if (error) throw new Error(error.message);
+  if (!data || (data as unknown[]).length === 0) throw new Error('복원 대상이 없습니다.');
+}
+
+/** 영구삭제(휴지통에서만) — 행 제거 + 배치 마지막이면 첨부도 스토리지에서 정리. 되돌릴 수 없다. */
+export async function hardDeleteSendRequest(id: string): Promise<void> {
   const { data: row } = await supabase.from('doc_send_requests').select('batch_id').eq('id', id).maybeSingle();
   const { error } = await supabase.from('doc_send_requests').delete().eq('id', id);
   if (error) throw new Error(error.message);

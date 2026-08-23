@@ -8,6 +8,9 @@ import {
   createSendRequests,
   updateSendRequest,
   deleteSendRequest,
+  listTrashedSendRequests,
+  restoreSendRequest,
+  hardDeleteSendRequest,
   listAttachments,
   uploadSendFile,
   addAttachmentRecords,
@@ -176,26 +179,46 @@ export default function DocSendRequestTab() {
   }
 
   async function handleDelete(r: SendRequest) {
-    // 처리가 시작된 건은 실물 발송과 대응할 수 있어 더 분명히 경고한다(최고관리자만 도달).
-    const warn =
-      r.status === '미접수'
-        ? `발송요청(${r.companyName} · ${r.sendKind})을 삭제하시겠습니까?`
-        : `⚠️ 처리가 진행된 건입니다 (상태: ${r.status}${r.trackingNo ? `, 등기 ${r.trackingNo}` : ''}).
-` +
-          `${r.companyName} · ${r.sendKind}
-
-` +
-          `실제 발송과 대응하는 기록일 수 있습니다. 그래도 삭제할까요?
-` +
-          `(필요 없어진 요청이라면 '발송요청 처리'에서 취소로 남기는 편이 낫습니다. 삭제해도 변경 로그에는 원본이 남습니다.)`;
+    const warn = `발송요청(${r.companyName} · ${r.sendKind})을 휴지통으로 옮기시겠습니까?\n\n`
+      + `삭제해도 휴지통에서 복원할 수 있습니다.${r.status !== '미접수' ? `\n(상태: ${r.status}${r.trackingNo ? `, 등기 ${r.trackingNo}` : ''} — 실물 발송과 대응하는 기록일 수 있습니다.)` : ''}`;
     if (!confirm(warn)) return;
     try {
       await deleteSendRequest(r.id);
       await load();
-      flash('✓ 삭제됨');
+      flash('✓ 휴지통으로 이동됨');
     } catch (e) {
       alert('삭제 실패: ' + (e instanceof Error ? e.message : e));
     }
+  }
+
+  // ── 휴지통 ──────────────────────────────────────────────
+  const [showTrash, setShowTrash] = useState(false);
+  const [trashRows, setTrashRows] = useState<SendRequest[]>([]);
+  const [trashBusy, setTrashBusy] = useState(false);
+  async function openTrash() {
+    setShowTrash(true);
+    try { setTrashRows(await listTrashedSendRequests()); }
+    catch { setTrashRows([]); }
+  }
+  async function handleRestore(r: SendRequest) {
+    setTrashBusy(true);
+    try {
+      await restoreSendRequest(r.id);
+      setTrashRows((rows) => rows.filter((x) => x.id !== r.id));
+      await load();
+      flash('✓ 복원됨');
+    } catch (e) { alert('복원 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setTrashBusy(false); }
+  }
+  async function handleHardDelete(r: SendRequest) {
+    if (!confirm(`"${r.companyName} · ${r.docName || r.sendKind}"을(를) 영구삭제할까요?\n\n⚠️ 되돌릴 수 없습니다(첨부파일도 함께 삭제). 변경 로그에는 원본이 남습니다.`)) return;
+    setTrashBusy(true);
+    try {
+      await hardDeleteSendRequest(r.id);
+      setTrashRows((rows) => rows.filter((x) => x.id !== r.id));
+      flash('✓ 영구삭제됨');
+    } catch (e) { alert('영구삭제 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setTrashBusy(false); }
   }
   async function openLog() {
     setShowLog(true);
@@ -235,6 +258,7 @@ export default function DocSendRequestTab() {
         {msg && <span style={{ marginLeft: 12, fontSize: 11, color: '#059669' }}>{msg}</span>}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 5, alignItems: 'center' }}>
           <button className="btn-sm btn-sm-blue" onClick={openLog}>📜 변경 로그</button>
+          {isSuper && <button className="btn-sm" onClick={openTrash} title="삭제된(휴지통) 발송요청 복원">🗑 휴지통</button>}
           <button className="btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => void refresh()} disabled={busy} title="최신 내역을 다시 불러옵니다">{busy ? '⏳' : '🔄'} 새로고침</button>
           {canWrite && (
             <button className="btn-sm" onClick={() => { setShowAdd((v) => !v); setEditId(null); }}>
@@ -409,6 +433,9 @@ export default function DocSendRequestTab() {
         />
       )}
       {showLog && <LogModal rows={logRows} onClose={() => setShowLog(false)} />}
+      {showTrash && (
+        <TrashModal rows={trashRows} busy={trashBusy} onRestore={handleRestore} onHardDelete={handleHardDelete} onClose={() => setShowTrash(false)} />
+      )}
       {attachFor && (
         <AttachmentsModal
           req={attachFor}
@@ -840,6 +867,49 @@ function ResendModal({ req, onClose, onDone }: { req: SendRequest; onClose: () =
               {busy ? '요청 중…' : '재발송요청'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 휴지통 모달 ──────────────────────────────────────────
+function TrashModal({ rows, busy, onRestore, onHardDelete, onClose }: {
+  rows: SendRequest[]; busy: boolean; onRestore: (r: SendRequest) => void; onHardDelete: (r: SendRequest) => void; onClose: () => void;
+}) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, maxWidth: 900, width: '100%', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff' }}>
+          <span style={{ fontWeight: 700, color: '#1A2B52' }}>🗑 휴지통 — 삭제된 발송요청</span>
+          <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>복원하면 원래 상태 그대로 목록에 돌아옵니다.</span>
+          <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
+        </div>
+        <div style={{ padding: 12 }}>
+          {rows.length === 0 ? (
+            <div style={{ padding: 16, color: '#888', fontSize: 12.5 }}>휴지통이 비어 있습니다.</div>
+          ) : (
+            <table className="tbl">
+              <thead><tr><th style={{ minWidth: 88 }}>의뢰일</th><th>거래처·수신자</th><th>문서명</th><th>상태</th><th style={{ minWidth: 110 }}>삭제일</th><th style={{ minWidth: 130 }}>관리</th></tr></thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.requestDate}</td>
+                    <td style={{ fontSize: 12 }}><b>{r.companyName}</b>{r.recipientName ? ` · ${r.recipientName} ${r.recipientTitle}` : ''}</td>
+                    <td style={{ fontSize: 12, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.docName}>{r.docName || r.sendKind}</td>
+                    <td style={{ fontSize: 11 }}>{r.status}</td>
+                    <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.deletedAt ? dtTime(r.deletedAt) : ''}</td>
+                    <td>
+                      <span style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn-sm btn-sm-blue" disabled={busy} onClick={() => onRestore(r)}>↩ 복원</button>
+                        <button className="btn-sm btn-sm-del" disabled={busy} onClick={() => onHardDelete(r)} title="되돌릴 수 없는 영구삭제">영구삭제</button>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
