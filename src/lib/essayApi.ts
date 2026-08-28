@@ -52,6 +52,13 @@ export async function registerReader(name: string): Promise<{ token: string; nam
   return row;
 }
 
+/** 이름이 겹칠 때 쓸 수 있는 대안 이름(동명이인 대비). 실패해도 화면을 막지 않는다. */
+export async function nameSuggestions(name: string): Promise<string[]> {
+  const { data, error } = await supabase.rpc('essay_name_suggestions', { p_name: name });
+  if (error) return [];
+  return (data as string[] | null) ?? [];
+}
+
 /** 토큰으로 진행상태 복원. 토큰이 무효면 null */
 export async function readerState(token: string): Promise<ReaderState | null> {
   const { data, error } = await supabase.rpc('essay_state', { p_token: token });

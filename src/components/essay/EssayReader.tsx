@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   bgUrl,
   clearToken,
+  nameSuggestions,
   nextPiece,
   ratePiece,
   readerState,
@@ -24,6 +25,8 @@ export default function EssayReader() {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  /** 이름이 겹쳤을 때 눌러서 바로 쓸 수 있는 대안들 */
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [next, setNext] = useState<EssayNext | null>(null);
   const [stars, setStars] = useState(0);
 
@@ -70,6 +73,7 @@ export default function EssayReader() {
     }
     setBusy(true);
     setMsg('');
+    setSuggestions([]);
     try {
       const r = await registerReader(v);
       setToken(r.token);
@@ -77,7 +81,12 @@ export default function EssayReader() {
       applyNext(await nextPiece(r.token));
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);
-      setMsg(m === 'DUP' ? '이미 등록된 이름입니다. 다른 이름을 써 주세요.' : m);
+      if (m === 'DUP') {
+        setMsg('이미 쓰고 있는 이름입니다. 아래에서 고르거나 다르게 적어 주세요.');
+        setSuggestions(await nameSuggestions(v));
+      } else {
+        setMsg(m);
+      }
     } finally {
       setBusy(false);
     }
@@ -133,6 +142,32 @@ export default function EssayReader() {
             }}
           />
           {msg && <div style={{ marginTop: 10, fontSize: 13, color: '#b04a3a' }}>{msg}</div>}
+          {suggestions.length > 0 && (
+            <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    setName(s);
+                    setMsg('');
+                    setSuggestions([]);
+                  }}
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: 14,
+                    color: '#5c4a2e',
+                    background: 'rgba(255,255,255,0.85)',
+                    border: '1px solid #ddd2bb',
+                    borderRadius: 999,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             type="submit"
             disabled={busy}
@@ -152,7 +187,7 @@ export default function EssayReader() {
           >
             {busy ? '들어가는 중…' : '시작하기'}
           </button>
-          <div style={{ marginTop: 14, fontSize: 12, color: '#a3947c' }}>이름은 중복될 수 없습니다.</div>
+          <div style={{ marginTop: 14, fontSize: 12, color: '#a3947c' }}>다른 분과 겹치지 않는 이름으로 적어 주세요.</div>
         </form>
       </Plain>
     );

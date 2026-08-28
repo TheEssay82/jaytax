@@ -36,7 +36,7 @@ export default function App() {
   if (share) return <SharedConsult token={share[1]} />;
 
   // 습작(에세이) — 열람은 비로그인 공개, 관리는 로그인 + 숨김 URL. 마이그레이션 0065.
-  if (path === '/essay') return <EssayReader />;
+  if (path === '/essay' || path === '/e') return <EssayReader />; // /e = 문자로 보내기 좋은 짧은 주소
   if (path === '/essay/admin') {
     return (
       <AuthProvider>
