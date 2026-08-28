@@ -72,6 +72,16 @@ export default function Login() {
         <button className="btn-p" type="submit" disabled={busy} style={{ width: '100%', marginTop: 14 }}>
           {busy ? '로그인 중…' : '로그인'}
         </button>
+
+        {/* 습작 열람(비로그인) 링크 — 한시적. 기고가 끝나면 이 블록을 지운다. 마이그레이션 0065 참고. */}
+        <div style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid #ece7dc', textAlign: 'center' }}>
+          <a
+            href="/e"
+            style={{ fontSize: 12.5, color: '#8a8170', textDecoration: 'none', letterSpacing: '0.02em' }}
+          >
+            습작 읽기 <span style={{ color: '#C8963C' }}>→</span>
+          </a>
+        </div>
       </form>
     </div>
   );
