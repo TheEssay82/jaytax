@@ -160,12 +160,13 @@ export default function EssayReader() {
 
   if (phase === 'done') {
     const total = next?.total ?? 0;
+    // 아직 공개된 글이 없을 때(=공개 전)와 다 읽었을 때는 다른 인사를 보여준다.
     return (
       <Plain>
         <div style={{ textAlign: 'center', maxWidth: 420 }}>
-          <div style={{ fontSize: 40, marginBottom: 14 }}>🌾</div>
+          <div style={{ fontSize: 40, marginBottom: 14 }}>{total > 0 ? '🌾' : '🕯️'}</div>
           <h1 style={{ fontFamily: "'Nanum Myeongjo', serif", fontSize: 28, color: '#332c20', margin: '0 0 12px', fontWeight: 700 }}>
-            감사합니다
+            {total > 0 ? '감사합니다' : '아직 준비 중입니다'}
           </h1>
           <p style={{ fontSize: 15, color: '#8b7c63', lineHeight: 1.9, margin: 0 }}>
             {total > 0 ? (
@@ -175,7 +176,11 @@ export default function EssayReader() {
                 남겨 주신 별점은 잘 받았습니다.
               </>
             ) : (
-              <>아직 올라온 글이 없습니다. 곧 다시 찾아와 주세요.</>
+              <>
+                글을 다듬고 있습니다.
+                <br />
+                열리면 이 링크로 다시 찾아와 주세요.
+              </>
             )}
           </p>
         </div>

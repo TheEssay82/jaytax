@@ -26,10 +26,15 @@ export default function EssayPaper({ title, body, bgKey, bgImageUrl, fontKey, co
   // 작품별 업로드 이미지가 우선, 없으면 사진 프리셋, 그것도 없으면 CSS 프리셋
   const imageUrl = bgImageUrl ?? (theme.photo ? bgUrl(theme.photo) : null);
 
+  // 사진 배경은 background-attachment:fixed 대신 고정 레이어로 깐다.
+  // iOS 사파리가 fixed 첨부를 제대로 그리지 못해 이미지가 확대되거나 튀기 때문(지인 대부분 폰으로 본다).
+  const fixedPhoto = !embedded && imageUrl;
+
   return (
     <div
       style={{
-        ...pageStyle(theme, imageUrl),
+        ...(fixedPhoto ? { background: theme.base ?? '#efe9e0' } : pageStyle(theme, imageUrl)),
+        position: 'relative',
         minHeight: embedded ? 420 : '100vh',
         padding: embedded ? '28px 16px' : 'clamp(28px, 6vh, 64px) 16px clamp(40px, 8vh, 88px)',
         borderRadius: embedded ? 12 : 0,
@@ -37,7 +42,20 @@ export default function EssayPaper({ title, body, bgKey, bgImageUrl, fontKey, co
         maxHeight: embedded ? '70vh' : undefined,
       }}
     >
-      <div style={{ maxWidth: 720, margin: '0 auto' }}>
+      {fixedPhoto && (
+        <div
+          aria-hidden
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 0,
+            backgroundImage: `${theme.overlay ?? 'linear-gradient(rgba(0,0,0,0.12), rgba(0,0,0,0.12))'}, url(${JSON.stringify(imageUrl)})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        />
+      )}
+      <div style={{ maxWidth: 720, margin: '0 auto', position: 'relative', zIndex: 1 }}>
         {corner && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10, color: theme.soft, fontSize: 12.5 }}>
             {corner}

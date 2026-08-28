@@ -7,11 +7,13 @@ import {
   deletePiece,
   docxToParagraphs,
   listPieces,
+  listRatings,
   looksLikeTitle,
   scoreboard,
   updatePiece,
   uploadBg,
   type EssayPiece,
+  type RatingDetail,
   type ScoreRow,
 } from '../../lib/essayApi';
 import EssayPaper from './EssayPaper';
@@ -25,6 +27,7 @@ export default function EssayAdmin() {
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [pieces, setPieces] = useState<EssayPiece[]>([]);
   const [scores, setScores] = useState<ScoreRow[]>([]);
+  const [ratings, setRatings] = useState<RatingDetail[]>([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -37,14 +40,17 @@ export default function EssayAdmin() {
   const [bgKey, setBgKey] = useState(THEMES[0].key);
   const [fontKey, setFontKey] = useState(FONTS[0].key);
   const [bgPath, setBgPath] = useState<string | null>(null);
+  /** 확정 시 바로 공개할지. 기본은 비공개 — 원고를 미리 올려두고 공개일에 한꺼번에 열기 위함 */
+  const [publishNow, setPublishNow] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bgRef = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(async () => {
     try {
-      const [ps, sc] = await Promise.all([listPieces(), scoreboard()]);
+      const [ps, sc, rt] = await Promise.all([listPieces(), scoreboard(), listRatings()]);
       setPieces(ps);
       setScores(sc);
+      setRatings(rt);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -55,6 +61,14 @@ export default function EssayAdmin() {
   }, [reload]);
 
   const scoreOf = (id: string) => scores.find((s) => s.pieceId === id);
+  const publishedCount = pieces.filter((p) => p.status === 'published').length;
+  const readerCount = new Set(ratings.map((r) => r.reader)).size;
+  /** 작품별 별점 분포 — [1★,2★,3★,4★,5★] */
+  const distOf = (id: string) => {
+    const d = [0, 0, 0, 0, 0];
+    for (const r of ratings) if (r.pieceId === id) d[r.stars - 1] += 1;
+    return d;
+  };
   /** 화면·저장에 쓰는 최종 본문 */
   const body = (dropFirst ? paras.slice(1) : paras).join('\n\n');
 
@@ -114,7 +128,7 @@ export default function EssayAdmin() {
     setBusy(true);
     setErr('');
     try {
-      await createPiece({ title: title.trim(), body, bgKey, bgPath, fontKey, status: 'published' });
+      await createPiece({ title: title.trim(), body, bgKey, bgPath, fontKey, status: publishNow ? 'published' : 'draft' });
       resetDraft();
       setMode({ kind: 'list' });
       await reload();
@@ -144,6 +158,24 @@ export default function EssayAdmin() {
     setBusy(true);
     try {
       await updatePiece(p.id, { status: p.status === 'published' ? 'draft' : 'published' });
+      await reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 공개일(오픈)·마감에 한 번에 여닫기 */
+  async function setAllStatus(status: 'published' | 'draft') {
+    const targets = pieces.filter((p) => p.status !== status);
+    if (targets.length === 0) return;
+    const what = status === 'published' ? '공개' : '비공개';
+    if (!window.confirm(`${targets.length}편을 모두 ${what}로 바꿀까요?`)) return;
+    setBusy(true);
+    setErr('');
+    try {
+      for (const p of targets) await updatePiece(p.id, { status });
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -301,6 +333,26 @@ export default function EssayAdmin() {
 
           {err && <div style={errBox}>{err}</div>}
 
+          {!editing && (
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 13,
+                color: '#3d4756',
+                background: '#faf8f3',
+                border: '1px solid #ece5d6',
+                borderRadius: 8,
+                padding: '9px 12px',
+                marginTop: 14,
+              }}
+            >
+              <input type="checkbox" checked={publishNow} onChange={(e) => setPublishNow(e.target.checked)} />
+              등록과 동시에 <b>공개</b>하기 — 체크하지 않으면 <b>비공개</b>로 보관되고, 목록에서 한꺼번에 공개할 수 있습니다.
+            </label>
+          )}
+
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             {editing ? (
               <>
@@ -380,11 +432,33 @@ export default function EssayAdmin() {
       </div>
 
       <div style={card}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 16, color: '#1A2B52' }}>등록된 작품</b>
           <span style={{ fontSize: 12.5, color: '#8a8170' }}>
-            {pieces.length}편 · 공개 {pieces.filter((p) => p.status === 'published').length}편
+            {pieces.length}편 · 공개 {publishedCount}편 · 비공개 {pieces.length - publishedCount}편
           </span>
+          <span style={{ flex: 1 }} />
+          {readerCount > 0 && (
+            <span style={{ fontSize: 12.5, color: '#5b6472' }}>
+              읽은 사람 {readerCount}명 · 평가 {ratings.length}건
+            </span>
+          )}
+          <button
+            type="button"
+            disabled={busy || publishedCount === pieces.length || pieces.length === 0}
+            onClick={() => setAllStatus('published')}
+            style={primaryBtn}
+          >
+            모두 공개
+          </button>
+          <button
+            type="button"
+            disabled={busy || publishedCount === 0}
+            onClick={() => setAllStatus('draft')}
+            style={ghostBtn}
+          >
+            모두 비공개
+          </button>
         </div>
 
         {pieces.length === 0 ? (
@@ -411,6 +485,23 @@ export default function EssayAdmin() {
                         {ALL_THEMES.find((t) => t.key === p.bgKey)?.label ?? p.bgKey}
                         {p.bgPath ? ' · 이미지' : ''} · {FONTS.find((f) => f.key === p.fontKey)?.label ?? p.fontKey}
                       </div>
+                      {(s?.votes ?? 0) > 0 && (
+                        <div style={{ fontSize: 11.5, color: '#5b6472', marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {distOf(p.id).map((n, i) =>
+                            n > 0 ? (
+                              <span key={i} style={{ background: '#f4f1e8', borderRadius: 4, padding: '1px 6px' }}>
+                                {i + 1}★ {n}명
+                              </span>
+                            ) : null,
+                          )}
+                          <span style={{ color: '#9aa0ad' }}>
+                            {ratings
+                              .filter((r) => r.pieceId === p.id)
+                              .map((r) => `${r.reader} ${r.stars}★`)
+                              .join(' · ')}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td style={td}>
                       <span

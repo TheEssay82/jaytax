@@ -26,6 +26,8 @@ export type EssayTheme = {
   photo?: string;
   /** 사진 위에 덮는 막(밝은 사진엔 흰 막, 어두운 사진엔 검은 막) */
   overlay?: string;
+  /** 사진이 뜨기 전 깔리는 바탕색 */
+  base?: string;
 };
 
 export const THEMES: EssayTheme[] = [
@@ -111,6 +113,7 @@ export const THEMES: EssayTheme[] = [
 export const PHOTO_THEMES: EssayTheme[] = [
   {
     key: 'photo-night-stars',
+    base: '#0b1220',
     label: '별밤',
     photo: 'preset/night-stars.jpg',
     overlay: 'linear-gradient(rgba(4,8,20,0.45), rgba(4,8,20,0.55))',
@@ -123,6 +126,7 @@ export const PHOTO_THEMES: EssayTheme[] = [
   },
   {
     key: 'photo-moon-night',
+    base: '#07131a',
     label: '달밤',
     photo: 'preset/moon-night.jpg',
     overlay: 'linear-gradient(rgba(2,10,14,0.42), rgba(2,10,14,0.56))',
@@ -135,6 +139,7 @@ export const PHOTO_THEMES: EssayTheme[] = [
   },
   {
     key: 'photo-dawn-violet',
+    base: '#e6e3f2',
     label: '새벽 보라',
     photo: 'preset/dawn-violet.jpg',
     overlay: 'linear-gradient(rgba(255,255,255,0.20), rgba(255,255,255,0.30))',
@@ -147,6 +152,7 @@ export const PHOTO_THEMES: EssayTheme[] = [
   },
   {
     key: 'photo-dusk-clouds',
+    base: '#f4e2d6',
     label: '노을 구름',
     photo: 'preset/dusk-clouds.jpg',
     overlay: 'linear-gradient(rgba(255,252,248,0.26), rgba(255,252,248,0.38))',
@@ -159,6 +165,7 @@ export const PHOTO_THEMES: EssayTheme[] = [
   },
   {
     key: 'photo-pink-dusk',
+    base: '#f5e2e6',
     label: '분홍 어스름',
     photo: 'preset/pink-dusk.jpg',
     overlay: 'linear-gradient(rgba(255,250,250,0.24), rgba(255,250,250,0.36))',
