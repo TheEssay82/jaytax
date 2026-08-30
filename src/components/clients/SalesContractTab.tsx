@@ -15,6 +15,7 @@ import {
   listSalesContracts, createSalesContract, updateSalesContract, deleteSalesContract, backfillContractCodes,
   saveInstallments, saveDiscounts, saveContractStaff, listContractStaffProfiles, setInstallmentBilled,
   staffCandidatesForTeam, BILLING_CYCLES, CPA_LIST, settlementYearOfDate, contractFiscalYear,
+  changeContractStaffFrom, staffHistoryApplies,
   type SalesContract, type ContractInput, type Installment, type Discount,
   type OccurrenceUnit, type BillingUnit, type BillingCycle, type AdvisoryType, type StaffProfileLite,
 } from '../../lib/salesContractApi';
@@ -58,7 +59,7 @@ function groupKeyOf(g: string, c: SalesContract): string {
     case 'team': return c.team;
     case 'type': return pathLabel(c.categoryCode);
     case 'cpa': return c.effectiveCpa || '(미지정)';
-    case 'staff': return c.staff.map((s) => s.staffName).join(',') || '(미지정)';
+    case 'staff': return c.effectiveStaff.map((s) => s.staffName).join(',') || '(미지정)';
     case 'cycle': return c.billingCycle;
     case 'year': { const fy = contractFiscalYear(c); return fy != null ? String(fy) : (isOngoing(c) ? '계속' : '(없음)'); }
     default: return '';
@@ -76,7 +77,7 @@ interface FormState {
   includesVat: boolean; includesWht: boolean; advisoryType: AdvisoryType | '';
   occurrenceUnit: OccurrenceUnit; billingUnit: BillingUnit | '';
   fiscalYear: string; billingCycle: BillingCycle; isInstallment: boolean; amount: string;
-  cpa: string; staffIds: string[];
+  cpa: string; staffIds: string[]; staffApplyMonth: string;
   contractDate: string; startDate: string; endDate: string; dateEstimated: boolean;
   parentContractId: string; note: string; includedCodes: string[];
   installments: Installment[]; discounts: Discount[];
@@ -84,7 +85,7 @@ interface FormState {
 const emptyForm = (): FormState => ({
   entityId: '', placeId: '', team: '감사team', categoryCode: '', categoryEtcName: '',
   includesVat: false, includesWht: false, advisoryType: '', occurrenceUnit: '사업장', billingUnit: '',
-  fiscalYear: '', billingCycle: '월', isInstallment: false, amount: '', cpa: '', staffIds: [],
+  fiscalYear: '', billingCycle: '월', isInstallment: false, amount: '', cpa: '', staffIds: [], staffApplyMonth: '',
   contractDate: '', startDate: '', endDate: '', dateEstimated: false, parentContractId: '', note: '', includedCodes: [], installments: [], discounts: [],
 });
 
@@ -138,7 +139,7 @@ export default function SalesContractTab() {
   const placeName = (eid: string, pid: string | null) => { if (!pid) return ''; const e = entMap.get(eid); return e?.places.find((p) => p.id === pid)?.placeName ?? ''; };
 
   // 담당직원·귀속 필터 드롭다운 후보 — 현재 데이터 기준.
-  const staffOpts = useMemo(() => [...new Set(contracts.flatMap((c) => c.staff.map((s) => s.staffName)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')), [contracts]);
+  const staffOpts = useMemo(() => [...new Set(contracts.flatMap((c) => c.effectiveStaff.map((s) => s.staffName)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')), [contracts]);
   const yearOpts = useMemo(() => {
     const years = [...new Set(contracts.map((c) => contractFiscalYear(c)).filter((y): y is number => !!y))].sort((a, b) => b - a).map(String);
     return contracts.some(isOngoing) ? [...years, '계속'] : years;
@@ -180,7 +181,7 @@ export default function SalesContractTab() {
     { key: 'amount', label: '계약금액', val: (c) => won(c.amount), w: 90, num: true },
     { key: 'year', label: '귀속', val: (c) => { const fy = contractFiscalYear(c); return fy != null ? String(fy) : (isOngoing(c) ? '계속' : ''); }, w: 56, opts: yearOpts },
     { key: 'cpa', label: 'CPA', val: (c) => c.effectiveCpa, w: 66, opts: CPA_LIST },
-    { key: 'staff', label: '담당직원', val: (c) => c.staff.map((s) => s.staffName).join(','), w: 100, opts: staffOpts },
+    { key: 'staff', label: '담당직원', val: (c) => c.effectiveStaff.map((s) => s.staffName).join(','), w: 100, opts: staffOpts },
     { key: 'period', label: '개시~종료', val: (c) => `${dateToMonth(c.startDate) || ''}~${dateToMonth(c.endDate) || '계속'}`, w: 130 },
     { key: 'cdate', label: '계약일', val: (c) => c.contractDate ?? '', w: 90 },
     { key: 'note', label: '비고', val: (c) => c.note, w: 120 },
@@ -409,7 +410,13 @@ export default function SalesContractTab() {
       const discs = form.discounts.filter((d) => d.startDate || d.endDate || d.rate != null || d.amount != null || (d.note && d.note.trim()));
       await saveInstallments(id, insts);
       await saveDiscounts(id, discs);
-      await saveContractStaff(id, form.staffIds.map((sid) => ({ staffId: sid, staffName: staff.find((s) => s.id === sid)?.name ?? '' })));
+      const staffRows = form.staffIds.map((sid) => ({ staffId: sid, staffName: staff.find((s) => s.id === sid)?.name ?? '' }));
+      // 매월 청구하는 taxteam 계약에서 '적용월'을 적었으면 이력을 남기며 교체한다(그 전월까지는 이전 담당 유지).
+      if (existingId && form.staffApplyMonth && staffHistoryApplies({ team: form.team, billingCycle: form.billingCycle })) {
+        await changeContractStaffFrom(id, staffRows, form.staffApplyMonth);
+      } else {
+        await saveContractStaff(id, staffRows);
+      }
       setShowAdd(false); setEditId(null); await load();
       flash(existingId ? '✓ 매출계약 수정됨' : '✓ 매출계약 등록됨');
       if (!existingId) maybeOfferTaxFiling(form);
@@ -593,7 +600,7 @@ export default function SalesContractTab() {
                 {c.billingUnit && <span>청구단위 {c.billingUnit}</span>}
                 {c.fiscalYear && <span>귀속 {c.fiscalYear}</span>}
                 {c.effectiveCpa && <span>CPA {c.effectiveCpa}{c.cpaInherited && <span style={{ color: '#aaa' }}> (거래처)</span>}</span>}
-                {c.staff.length > 0 && <span>담당 {c.staff.map((s) => s.staffName).join('·')}</span>}
+                {c.effectiveStaff.length > 0 && <span>담당 {c.effectiveStaff.map((s) => s.staffName).join('·')}{c.staffInherited && <span style={{ color: '#aaa' }}> (거래처)</span>}</span>}
                 <span>{dateToMonth(c.startDate) || '개시?'} ~ {dateToMonth(c.endDate) || '계속'}</span>
                 {c.contractDate && <span>계약일 {c.contractDate}</span>}
                 {c.installments.length > 0 && <span style={{ color: '#a60' }}>분할 {c.installments.length}회</span>}
@@ -1051,6 +1058,32 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
             {staffCands.length === 0 && <span style={{ fontSize: 11, color: '#999' }}>후보 계정 없음</span>}
           </span></div>
         )}
+        {f.categoryCode !== 'AUD.AUDIT' && staffHistoryApplies({ team: f.team, billingCycle: f.billingCycle }) && initial && (
+          <div className="frow" style={{ gridColumn: '1 / -1' }}>
+            <span className="fl">담당 변경 적용월</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <input type="month" value={f.staffApplyMonth} onChange={(e) => set('staffApplyMonth', e.target.value)} style={{ width: 150 }} />
+              <span style={{ fontSize: 11, color: '#888' }}>
+                매월 청구하는 계약이라 <b>담당이 바뀐 달</b>을 적어야 그 전 달 청구가 누구 담당이었는지 남습니다.
+                비우면 이력 없이 지금 담당을 통째로 바꿉니다.
+              </span>
+            </span>
+          </div>
+        )}
+        {initial && initial.staffHistory.length > 0 && (
+          <div className="frow" style={{ gridColumn: '1 / -1' }}>
+            <span className="fl">담당 이력</span>
+            <span style={{ fontSize: 11, color: '#666', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {[...initial.staffHistory]
+                .sort((a, b) => (a.fromMonth ?? '').localeCompare(b.fromMonth ?? ''))
+                .map((h) => (
+                  <span key={h.id}>
+                    {h.staffName} · {h.fromMonth ? h.fromMonth.slice(0, 7) : '처음'} ~ {h.toMonth ? h.toMonth.slice(0, 7) : '현재'}
+                  </span>
+                ))}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 날짜: 계약일(일) + 개시·종료(월) */}
@@ -1175,7 +1208,7 @@ function fromContract(c: SalesContract): FormState {
     entityId: c.entityId, placeId: c.placeId ?? '', team: c.team, categoryCode: c.categoryCode, categoryEtcName: c.categoryEtcName,
     includesVat: c.includesVat, includesWht: c.includesWht, advisoryType: c.advisoryType ?? '', occurrenceUnit: c.occurrenceUnit,
     billingUnit: c.billingUnit ?? '', fiscalYear: c.fiscalYear ? String(c.fiscalYear) : '', billingCycle: c.billingCycle,
-    isInstallment: c.isInstallment, amount: c.amount ? String(c.amount) : '', cpa: c.cpa, staffIds: c.staff.map((s) => s.staffId),
+    isInstallment: c.isInstallment, amount: c.amount ? String(c.amount) : '', cpa: c.cpa, staffIds: c.staff.map((s) => s.staffId), staffApplyMonth: '',
     contractDate: c.contractDate ?? '', startDate: dateToMonth(c.startDate), endDate: dateToMonth(c.endDate), dateEstimated: c.dateEstimated, parentContractId: c.parentContractId ?? '',
     note: c.note, includedCodes: c.includedCodes ?? [], installments: c.installments.length ? c.installments : [], discounts: c.discounts,
   };

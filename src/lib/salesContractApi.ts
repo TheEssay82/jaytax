@@ -39,7 +39,25 @@ export async function listContractStaffProfiles(): Promise<StaffProfileLite[]> {
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
-export interface ContractStaff { id: string; contractId: string; staffId: string; staffName: string; active: boolean }
+export interface ContractStaff {
+  id: string; contractId: string; staffId: string; staffName: string; active: boolean;
+  /** 담당 시작 귀속월(YYYY-MM-01). null=처음부터 */
+  fromMonth: string | null;
+  /** 담당 종료 귀속월(YYYY-MM-01, 포함). null=현재까지 */
+  toMonth: string | null;
+}
+/** 담당직원 이력을 귀속월로 관리하는 대상 — 매월 청구하는 taxteam 계약(기장 등). */
+export function staffHistoryApplies(c: { team: Team; billingCycle: BillingCycle }): boolean {
+  return c.team === 'taxteam' && c.billingCycle === '월';
+}
+/** 그 달(YYYY-MM)에 유효한 담당직원인지 */
+export function staffActiveOn(s: ContractStaff, month: string): boolean {
+  if (!s.active) return false;
+  const m = `${month}-01`;
+  if (s.fromMonth && s.fromMonth > m) return false;
+  if (s.toMonth && s.toMonth < m) return false;
+  return true;
+}
 export interface Installment { id?: string; seq: number; label: string; amount: number; dueDate: string | null; conditionNote: string; billedAt?: string | null }
 export interface Discount { id?: string; discType: '무료' | '할인'; startDate: string | null; endDate: string | null; rate: number | null; amount: number | null; note: string }
 
@@ -78,6 +96,12 @@ export interface SalesContract {
   effectiveCpa: string;
   /** effectiveCpa 가 상속값인지(계약에 직접 적힌 값이 아님). */
   cpaInherited: boolean;
+  /** 담당직원 전체 이력(기간 포함). staff 는 조회시점에 유효한 것만. */
+  staffHistory: ContractStaff[];
+  /** 실제로 쓸 담당직원 — 계약에 있으면 그 값, 없으면 거래처(사업장)에서 상속. */
+  effectiveStaff: { staffId: string; staffName: string }[];
+  /** effectiveStaff 가 상속값인지. */
+  staffInherited: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -92,9 +116,10 @@ const toContract = (r: any): SalesContract => ({
   contractDate: r.contract_date, startDate: r.start_date, endDate: r.end_date, note: r.note || '',
   contractCode: r.contract_code || '', includedCodes: r.included_codes || [], dateEstimated: !!r.date_estimated,
   staff: [], installments: [], discounts: [], effectiveCpa: r.cpa || '', cpaInherited: false,
+  staffHistory: [], effectiveStaff: [], staffInherited: false,
   createdAt: r.created_at, updatedAt: r.updated_at,
 });
-const toStaff = (r: any): ContractStaff => ({ id: r.id, contractId: r.contract_id, staffId: r.staff_id, staffName: r.staff_name || '', active: !!r.active });
+const toStaff = (r: any): ContractStaff => ({ id: r.id, contractId: r.contract_id, staffId: r.staff_id, staffName: r.staff_name || '', active: !!r.active, fromMonth: r.from_month ?? null, toMonth: r.to_month ?? null });
 const toInst = (r: any): Installment => ({ id: r.id, seq: r.seq ?? 1, label: r.label || '', amount: r.amount != null ? Number(r.amount) : 0, dueDate: r.due_date, conditionNote: r.condition_note || '', billedAt: r.billed_at ?? null });
 const toDisc = (r: any): Discount => ({ id: r.id, discType: r.disc_type, startDate: r.start_date, endDate: r.end_date, rate: r.rate != null ? Number(r.rate) : null, amount: r.amount != null ? Number(r.amount) : null, note: r.note || '' });
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -103,21 +128,35 @@ const toDisc = (r: any): Discount => ({ id: r.id, discType: r.disc_type, startDa
 export async function listSalesContracts(): Promise<SalesContract[]> {
   const [con, stf, inst, disc] = await Promise.all([
     supabase.from('biz_sales_contract').select('*').order('created_at', { ascending: false }),
-    supabase.from('biz_contract_staff').select('*').eq('active', true),
+    supabase.from('biz_contract_staff').select('*').eq('active', true),   // 이력 포함(기간으로 걸러 쓴다)
     supabase.from('biz_contract_installment').select('*').order('seq'),
     supabase.from('biz_contract_discount').select('*'),
   ]);
   for (const r of [con, stf, inst, disc]) if (r.error) throw new Error(r.error.message);
   // 담당CPA 는 계약에 비어 있으면 거래처(사업장)에서 상속한다 — 폼 안내('거래처 CPA 상속·수정')대로.
   // 계약에 직접 적힌 값이 있으면 그게 우선(계약별 override).
-  const { data: pl, error: ple } = await supabase.from('biz_place').select('entity_id, cpa, is_headquarters');
+  const { data: pl, error: ple } = await supabase.from('biz_place').select('id, entity_id, cpa, is_headquarters');
   if (ple) throw new Error(ple.message);
   const cpaByEntity = new Map<string, string>();
+  // 담당직원도 같은 원칙 — 계약에 없으면 사업장(계약에 달린 사업장 → 본사 → 아무 사업장)에서 상속한다.
+  const { data: ps, error: pse } = await supabase
+    .from('biz_place_staff').select('place_id, staff_id, staff_name').eq('active', true);
+  if (pse) throw new Error(pse.message);
   /* eslint-disable @typescript-eslint/no-explicit-any */
   for (const p of (pl as any[]) ?? []) {
     const v = (p.cpa || '').trim();
     if (!v) continue;
     if (p.is_headquarters || !cpaByEntity.has(p.entity_id)) cpaByEntity.set(p.entity_id, v);
+  }
+  const staffByPlace = new Map<string, { staffId: string; staffName: string }[]>();
+  for (const r of (ps as any[]) ?? []) {
+    const list = staffByPlace.get(r.place_id) ?? staffByPlace.set(r.place_id, []).get(r.place_id)!;
+    list.push({ staffId: r.staff_id, staffName: r.staff_name || '' });
+  }
+  const placeOfEntity = new Map<string, string[]>();   // 거래처 → 사업장(본사 우선)
+  for (const p of (pl as any[]) ?? []) {
+    const list = placeOfEntity.get(p.entity_id) ?? placeOfEntity.set(p.entity_id, []).get(p.entity_id)!;
+    if (p.is_headquarters) list.unshift(p.id); else list.push(p.id);
   }
   /* eslint-enable @typescript-eslint/no-explicit-any */
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -129,11 +168,26 @@ export async function listSalesContracts(): Promise<SalesContract[]> {
   const sM = byC(stf.data as any[], toStaff);
   const iM = byC(inst.data as any[], toInst);
   const dM = byC(disc.data as any[], toDisc);
+  const nowMonth = new Date().toISOString().slice(0, 7);
   return (con.data as any[]).map(toContract).map((c) => {
     const inherited = !c.cpa ? cpaByEntity.get(c.entityId) ?? '' : '';
+    const history = sM.get(c.id) ?? [];
+    // 조회시점(이번 달) 기준으로 유효한 담당직원만 현재 담당으로 본다.
+    const current = history.filter((s) => staffActiveOn(s, nowMonth));
+    let inheritedStaff: { staffId: string; staffName: string }[] = [];
+    if (!current.length) {
+      const placeIds = c.placeId ? [c.placeId, ...(placeOfEntity.get(c.entityId) ?? [])] : placeOfEntity.get(c.entityId) ?? [];
+      for (const pid of placeIds) {
+        const hit = staffByPlace.get(pid);
+        if (hit?.length) { inheritedStaff = hit; break; }
+      }
+    }
     return {
-      ...c, staff: sM.get(c.id) ?? [], installments: iM.get(c.id) ?? [], discounts: dM.get(c.id) ?? [],
+      ...c, staff: current, installments: iM.get(c.id) ?? [], discounts: dM.get(c.id) ?? [],
       effectiveCpa: c.cpa || inherited, cpaInherited: !c.cpa && !!inherited,
+      staffHistory: history,
+      effectiveStaff: current.length ? current.map((s) => ({ staffId: s.staffId, staffName: s.staffName })) : inheritedStaff,
+      staffInherited: !current.length && inheritedStaff.length > 0,
     };
   });
   /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -328,13 +382,80 @@ export async function saveDiscounts(contractId: string, rows: Discount[]): Promi
   if (ins.error) throw new Error(ins.error.message);
 }
 /** 계약 담당직원 교체(활성 전부 삭제 후 재삽입). */
-export async function saveContractStaff(contractId: string, staff: { staffId: string; staffName: string }[]): Promise<void> {
-  const del = await supabase.from('biz_contract_staff').delete().eq('contract_id', contractId);
-  if (del.error) throw new Error(del.error.message);
+/**
+ * 담당직원을 '적용 귀속월'부터 교체한다(매월 청구하는 taxteam 계약용).
+ * 기존 담당은 지우지 않고 그 전월까지로 닫아서, 지난 달 청구가 누구 담당이었는지 남는다.
+ *  · applyMonth 는 'YYYY-MM'. 그 달부터 새 담당이 유효하다.
+ *  · 같은 달에 이미 시작한 행은 이력을 남길 게 없으므로 지우고 다시 넣는다.
+ */
+export async function changeContractStaffFrom(
+  contractId: string,
+  staff: { staffId: string; staffName: string }[],
+  applyMonth: string,
+): Promise<void> {
+  const from = `${applyMonth}-01`;
+  const prevEnd = (() => {
+    const [y, m] = applyMonth.split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 2, 1));           // 적용월의 전월
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const { data: cur, error } = await supabase
+    .from('biz_contract_staff').select('id, from_month').eq('contract_id', contractId).eq('active', true);
+  if (error) throw new Error(error.message);
+
+  for (const r of (cur as { id: string; from_month: string | null }[]) ?? []) {
+    if (r.from_month && r.from_month >= from) {
+      // 적용월 이후에 시작한 행 = 아직 청구 이력이 없는 예약분이라 지운다.
+      const del = await supabase.from('biz_contract_staff').delete().eq('id', r.id);
+      if (del.error) throw new Error(del.error.message);
+    } else {
+      const upd = await supabase.from('biz_contract_staff').update({ to_month: prevEnd }).eq('id', r.id);
+      if (upd.error) throw new Error(upd.error.message);
+    }
+  }
   if (!staff.length) return;
   const { data: u } = await supabase.auth.getUser();
   const ins = await supabase.from('biz_contract_staff').insert(
-    staff.map((s) => ({ contract_id: contractId, staff_id: s.staffId, staff_name: s.staffName, active: true, created_by: u.user?.id ?? null })),
+    staff.map((s) => ({
+      contract_id: contractId, staff_id: s.staffId, staff_name: s.staffName,
+      active: true, from_month: from, to_month: null, created_by: u.user?.id ?? null,
+    })),
+  );
+  if (ins.error) throw new Error(ins.error.message);
+}
+
+/**
+ * 현재 담당직원 교체(이력 없이). 닫힌 이력 행(to_month 있음)은 건드리지 않는다 —
+ * Excel 일괄등록이나 일반 수정이 지난 담당 기록까지 지우면 안 되기 때문이다.
+ * 닫힌 이력이 있으면 새 담당은 그 다음 달부터 시작한 것으로 본다.
+ */
+export async function saveContractStaff(contractId: string, staff: { staffId: string; staffName: string }[]): Promise<void> {
+  const { data: cur, error: se } = await supabase
+    .from('biz_contract_staff').select('id, to_month').eq('contract_id', contractId);
+  if (se) throw new Error(se.message);
+  const rows = (cur as { id: string; to_month: string | null }[]) ?? [];
+  const openIds = rows.filter((r) => !r.to_month).map((r) => r.id);
+  if (openIds.length) {
+    const del = await supabase.from('biz_contract_staff').delete().in('id', openIds);
+    if (del.error) throw new Error(del.error.message);
+  }
+  if (!staff.length) return;
+
+  // 닫힌 이력이 있으면 그 다음 달부터 이어붙인다(구멍이 생기지 않게).
+  const lastClosed = rows.map((r) => r.to_month).filter((v): v is string => !!v).sort().pop() ?? null;
+  let fromMonth: string | null = null;
+  if (lastClosed) {
+    const [y, m] = lastClosed.slice(0, 7).split('-').map(Number);
+    fromMonth = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+  }
+
+  const { data: u } = await supabase.auth.getUser();
+  const ins = await supabase.from('biz_contract_staff').insert(
+    staff.map((s) => ({
+      contract_id: contractId, staff_id: s.staffId, staff_name: s.staffName,
+      active: true, from_month: fromMonth, to_month: null, created_by: u.user?.id ?? null,
+    })),
   );
   if (ins.error) throw new Error(ins.error.message);
 }

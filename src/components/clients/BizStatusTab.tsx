@@ -57,7 +57,7 @@ export default function BizStatusTab() {
       const cons = conByEnt.get(e.id) ?? [];
       const annual = cons.reduce((s, c) => s + annualize(c), 0);
       const cpas = [...new Set(cons.map((c) => c.effectiveCpa).filter(Boolean))];
-      const staff = [...new Set(cons.flatMap((c) => c.staff.map((s) => s.staffName)).filter(Boolean))];
+      const staff = [...new Set(cons.flatMap((c) => c.effectiveStaff.map((s) => s.staffName)).filter(Boolean))];
       const isSales = e.places.some((p) => p.nature === '매출');
       return {
         e, code: e.code, kind: e.kind, name: corpDisplayName(e.name, e.corpForm, e.corpFormPosition),
