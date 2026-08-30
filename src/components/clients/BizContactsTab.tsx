@@ -8,6 +8,9 @@ import {
   listBizContacts, createBizContact, updateBizContact, deleteBizContact,
   type BizContact, type ContactInput,
 } from '../../lib/bizContactApi';
+import {
+  exportContactTemplate, parseContactExcelFile, applyContactExcel, type ContactExcelResult,
+} from '../../lib/bizContactExcel';
 import { ColFilter, scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 
 export default function BizContactsTab() {
@@ -125,6 +128,8 @@ export default function BizContactsTab() {
       </div>
 
       {showAdd && canWrite && <ContactForm entities={entities} onSubmit={(i) => persist(i)} onCancel={() => setShowAdd(false)} />}
+
+      {role === 'superuser' && <ContactImportPanel entities={entities} contacts={contacts} onImported={load} />}
 
       {viewMode === 'table' && (
         <div style={scrollBox()}>
@@ -281,3 +286,70 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
 
 const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: '#555', whiteSpace: 'nowrap' };
 const tdc: React.CSSProperties = { padding: '4px 6px', whiteSpace: 'nowrap' };
+
+// ── 거래처담당자 일괄등록 패널(최고관리자) ──────────────────
+function ContactImportPanel({ entities, contacts, onImported }: { entities: BizEntityFull[]; contacts: BizContact[]; onImported: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ContactExcelResult | null>(null);
+
+  async function doExport() {
+    try { await exportContactTemplate(entities, contacts); }
+    catch (e) { alert('내보내기 실패: ' + (e instanceof Error ? e.message : e)); }
+  }
+  async function onFile(ev: React.ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    ev.target.value = '';
+    if (!file) return;
+    if (!confirm('업로드한 Excel로 거래처담당자를 일괄 등록합니다. (담당자명이 채워진 행만 · 같은 거래처에 담당자명+연락처가 같은 건은 스킵) 진행할까요?')) return;
+    setBusy(true); setResult(null);
+    try {
+      const rows = await parseContactExcelFile(file);
+      const r = await applyContactExcel(rows, entities);
+      setResult(r);
+      onImported();
+    } catch (e) { alert('업로드 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ border: '1px dashed #c9a54a', borderRadius: 6, background: '#fdfaf1', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6d1f' }}>📥 거래처담당자 일괄등록 (Excel)</span>
+        <span style={{ fontSize: 11, color: '#a88' }}>최고관리자 · 거래처코드로 매칭</span>
+        <span style={{ marginLeft: 'auto', fontSize: 12 }}>{open ? '▾' : '▸'}</span>
+      </div>
+      {open && (
+        <div style={{ padding: '0 10px 10px' }}>
+          <div style={{ fontSize: 11.5, color: '#777', marginBottom: 8 }}>
+            <b>양식 내보내기</b> → <b>회색 열</b>=담당자ID·거래처코드·거래처명(키/참고, 수정금지),
+            <b>노란 칸</b>=입력·수정(담당자명·호칭·직책·연락처·이메일·수령지 등) → <b>업로드</b>.
+            <b>담당자ID 있는 행</b>=그 담당자 <b>수정</b>, <b>없는 행</b>=신규(한 거래처에 여럿이면 행 복사·ID 는 비움).
+            <b>담당자명 빈 행 제외</b>, 신규 중 같은 거래처에 담당자명+연락처가 같은 건은 <b>스킵</b>.
+            사업장명을 비우면 거래처 전체 담당자로 등록됩니다.
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn-sm btn-sm-blue" onClick={doExport} disabled={busy || entities.length === 0}>
+              📤 양식 내보내기 (거래처 {entities.length} · 담당자 {contacts.length})
+            </button>
+            <label className="btn-p" style={{ cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+              {busy ? '처리 중…' : '📥 Excel 업로드'}
+              <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} disabled={busy} onChange={onFile} />
+            </label>
+          </div>
+          {result && (
+            <div style={{ fontSize: 12, background: result.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${result.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
+              <div>✓ 완료 — 신규 {result.created} · 수정 {result.updated} · 스킵(중복) {result.skipped} {result.failed.length > 0 && <span style={{ color: '#c33' }}>· 실패 {result.failed.length}</span>}</div>
+              {result.failed.length > 0 && (
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#a33' }}>
+                  {result.failed.slice(0, 12).map((f, i) => <li key={i}><b>{f.ref}</b>: {f.error}</li>)}
+                  {result.failed.length > 12 && <li>… 외 {result.failed.length - 12}건</li>}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
