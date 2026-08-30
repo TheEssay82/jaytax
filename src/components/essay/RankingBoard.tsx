@@ -76,10 +76,12 @@ export default function RankingBoard({ pieces, initialOrder, initialComment, sub
                     </button>
                     <button
                       type="button"
-                      style={{ ...iconBtn, width: 'auto', padding: '0 9px', color: '#b04a3a' }}
+                      title="순위에서 빼기"
+                      aria-label="순위에서 빼기"
+                      style={{ ...iconBtn, color: '#b04a3a', fontSize: 15 }}
                       onClick={() => setOrder(order.filter((x) => x !== id))}
                     >
-                      빼기
+                      ✕
                     </button>
                   </span>
                 }
@@ -190,19 +192,27 @@ function Row({
           onClick={onToggle}
           style={{
             flex: 1,
+            minWidth: 0,
             textAlign: 'left',
             background: 'none',
             border: 'none',
             padding: 0,
-            fontSize: 15.5,
-            fontWeight: 600,
-            color: '#3d3527',
             cursor: 'pointer',
-            fontFamily: "'Nanum Myeongjo', serif",
           }}
         >
-          {piece.title}
-          <span style={{ fontSize: 11.5, color: '#a3947c', fontWeight: 400, marginLeft: 7, fontFamily: 'inherit' }}>
+          <span
+            style={{
+              display: 'block',
+              fontSize: 15.5,
+              fontWeight: 600,
+              color: '#3d3527',
+              fontFamily: "'Nanum Myeongjo', serif",
+              wordBreak: 'keep-all',
+            }}
+          >
+            {piece.title}
+          </span>
+          <span style={{ display: 'block', fontSize: 11.5, color: '#a3947c', marginTop: 2 }}>
             {open ? '접기' : '다시 읽기'}
           </span>
         </button>
@@ -265,8 +275,8 @@ const rankBadge: React.CSSProperties = {
   placeItems: 'center',
 };
 const iconBtn: React.CSSProperties = {
-  width: 34,
-  height: 34,
+  width: 38,
+  height: 38,
   flexShrink: 0,
   fontSize: 12,
   color: '#5c4a2e',
