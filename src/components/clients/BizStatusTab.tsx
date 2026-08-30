@@ -88,10 +88,12 @@ export default function BizStatusTab() {
     const places = entities.reduce((s, e) => s + e.places.length, 0);
     const salesPlaces = entities.reduce((s, e) => s + e.places.filter((p) => p.nature === '매출').length, 0);
     const totalAnnual = contracts.reduce((s, c) => s + annualize(c), 0);
+    const pending = contracts.filter((c) => !c.confirmed);
+    const pendingAnnual = pending.reduce((s, c) => s + annualize(c), 0);
     const byTeam = agg(contracts, (c) => c.team);
     const byCpa = agg(contracts.filter((c) => c.effectiveCpa), (c) => c.effectiveCpa);
     const byType = agg(contracts, (c) => `${c.team.replace('team', '')}·${topLabel(c.categoryCode)}`);
-    return { corp, person, places, salesPlaces, contracts: contracts.length, totalAnnual, contacts: contacts.length, byTeam, byCpa, byType };
+    return { corp, person, places, salesPlaces, contracts: contracts.length, totalAnnual, pendingCount: pending.length, pendingAnnual, contacts: contacts.length, byTeam, byCpa, byType };
   }, [entities, contracts, contacts]);
 
   // 정산연도 후보(추이 드롭다운)
@@ -146,7 +148,12 @@ export default function BizStatusTab() {
         <Stat label="거래처" value={`${stat.corp + stat.person}`} sub={`법인 ${stat.corp} · 개인 ${stat.person}`} />
         <Stat label="사업장" value={`${stat.places}`} sub={`매출 ${stat.salesPlaces}`} />
         <Stat label="매출계약" value={`${stat.contracts}`} />
-        <Stat label="연환산 매출(VAT별도)" value={`${won(stat.totalAnnual)}`} sub="주기별 1년 환산 합계" accent />
+        <Stat
+          label="연환산 매출(VAT별도)"
+          value={`${won(stat.totalAnnual)}`}
+          sub={stat.pendingCount > 0 ? `주기별 1년 환산 · 미계약 ${stat.pendingCount}건 ${won(stat.pendingAnnual)} 포함` : '주기별 1년 환산 합계'}
+          accent
+        />
         <Stat label="거래처담당자" value={`${stat.contacts}`} />
       </div>
 

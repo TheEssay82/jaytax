@@ -52,7 +52,7 @@ const MEASURE_LABEL: Record<Measure, string> = {
 type PeriodMode = 'all' | 'year' | 'range' | 'month';
 // 집계(피봇) 기준
 const GROUP_OPTS: { key: string; label: string }[] = [
-  { key: 'team', label: '팀' }, { key: 'type', label: '매출유형' }, { key: 'cpa', label: '담당CPA' },
+  { key: 'team', label: '팀' }, { key: 'type', label: '매출유형' }, { key: 'cpa', label: '담당CPA' }, { key: 'confirmed', label: '계약상태' },
   { key: 'staff', label: '담당직원' }, { key: 'cycle', label: '청구주기' }, { key: 'year', label: '귀속연도' },
 ];
 function groupKeyOf(g: string, c: SalesContract): string {
@@ -60,6 +60,7 @@ function groupKeyOf(g: string, c: SalesContract): string {
     case 'team': return c.team;
     case 'type': return pathLabel(c.categoryCode);
     case 'cpa': return c.effectiveCpa || '(미지정)';
+    case 'confirmed': return c.confirmed ? '확정' : '미계약';
     case 'staff': return c.effectiveStaff.map((s) => s.staffName).join(',') || '(미지정)';
     case 'cycle': return c.billingCycle;
     case 'year': { const fy = contractFiscalYear(c); return fy != null ? String(fy) : (isOngoing(c) ? '계속' : '(없음)'); }
@@ -79,7 +80,7 @@ interface FormState {
   occurrenceUnit: OccurrenceUnit; billingUnit: BillingUnit | '';
   fiscalYear: string; billingCycle: BillingCycle; isInstallment: boolean; amount: string;
   cpa: string; staffIds: string[]; staffApplyMonth: string;
-  contractDate: string; startDate: string; endDate: string; dateEstimated: boolean;
+  contractDate: string; startDate: string; endDate: string; dateEstimated: boolean; confirmed: boolean;
   parentContractId: string; note: string; includedCodes: string[];
   installments: Installment[]; discounts: Discount[];
 }
@@ -87,7 +88,7 @@ const emptyForm = (): FormState => ({
   entityId: '', placeId: '', team: '감사team', categoryCode: '', categoryEtcName: '',
   includesVat: false, includesWht: false, advisoryType: '', occurrenceUnit: '사업장', billingUnit: '',
   fiscalYear: '', billingCycle: '월', isInstallment: false, amount: '', cpa: '', staffIds: [], staffApplyMonth: '',
-  contractDate: '', startDate: '', endDate: '', dateEstimated: false, parentContractId: '', note: '', includedCodes: [], installments: [], discounts: [],
+  contractDate: '', startDate: '', endDate: '', dateEstimated: false, confirmed: true, parentContractId: '', note: '', includedCodes: [], installments: [], discounts: [],
 });
 
 interface TaxOffer { entityId: string; placeId: string | null; kind: '법인' | '개인'; code: string; year: number }
@@ -173,6 +174,7 @@ export default function SalesContractTab() {
   // 표(list)형 컬럼 정의 — 각 컬럼 val 로 필터·표시. opts 있으면 필터가 드롭다운.
   const COLUMNS: { key: string; label: string; val: (c: SalesContract) => string; w?: number; num?: boolean; opts?: readonly string[] }[] = [
     { key: 'ccode', label: '매출계약코드', val: (c) => c.contractCode + (c.dateEstimated ? ' ·추정' : ''), w: 150 },
+    { key: 'confirmed', label: '계약상태', val: (c) => (c.confirmed ? '확정' : '미계약'), w: 70, opts: ['확정', '미계약'] },
     { key: 'code', label: '거래처', val: (c) => entMap.get(c.entityId)?.code ?? '', w: 56 },
     { key: 'name', label: '거래처명', val: (c) => { const e = entMap.get(c.entityId); return e ? corpDisplayName(e.name, e.corpForm, e.corpFormPosition) : ''; }, w: 150 },
     { key: 'team', label: '팀', val: (c) => c.team, w: 66, opts: ['감사team', 'taxteam'] },
@@ -326,7 +328,8 @@ export default function SalesContractTab() {
     const total = contracts.length;
     const aud = contracts.filter((c) => c.team === '감사team').length;
     const tax = contracts.filter((c) => c.team === 'taxteam').length;
-    return { total, aud, tax };
+    const pending = contracts.filter((c) => !c.confirmed).length;
+    return { total, aud, tax, pending };
   }, [contracts]);
 
   // SQL 로 직접 적재한 계약은 앱의 생성 경로를 타지 않아 매출계약코드가 비어 있다. 규칙(contractCodeBase)을
@@ -403,7 +406,7 @@ export default function SalesContractTab() {
       billingCycle: form.billingCycle, isInstallment: form.isInstallment,
       amount: form.amount ? Number(form.amount.replace(/,/g, '')) : 0, cpa: form.cpa.trim(),
       contractDate: form.contractDate || null, startDate: monthToDate(form.startDate), endDate: monthToDate(form.endDate),
-      note: form.note.trim(), includedCodes: form.includedCodes, dateEstimated: form.dateEstimated,
+      note: form.note.trim(), includedCodes: form.includedCodes, dateEstimated: form.dateEstimated, confirmed: form.confirmed,
     };
     try {
       const id = existingId ? (await updateSalesContract(existingId, input), existingId) : await createSalesContract(input);
@@ -436,7 +439,10 @@ export default function SalesContractTab() {
     <div className="card">
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         📄 매출계약등록
-        <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>총 {stats.total} · 감사 {stats.aud} · tax {stats.tax}</span>
+        <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
+          총 {stats.total} · 감사 {stats.aud} · tax {stats.tax}
+          {stats.pending > 0 && <span style={{ color: '#b45309', fontWeight: 700 }}> · 미계약 {stats.pending}</span>}
+        </span>
         <button className="btn-sm" onClick={() => setShowCodeHelp(true)} title="매출계약코드 규칙 보기">📖 코드안내</button>
         {canWrite && (
           <button className="btn-sm btn-sm-blue" onClick={() => setShowRenew(true)} title="전년 세무조정(법인세·종합소득세) 계약을 올해 귀속으로 복제">
@@ -592,6 +598,7 @@ export default function SalesContractTab() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {c.parentContractId && <span style={{ fontSize: 10, color: '#a80' }}>↳종속</span>}
                 {c.contractCode && <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#667', background: '#f2f0ea', padding: '1px 5px', borderRadius: 3 }}>{c.contractCode}{c.dateEstimated && ' ·추정'}</span>}
+                {!c.confirmed && <span style={{ fontSize: 10, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '1px 5px', borderRadius: 3 }}>미계약</span>}
                 <span style={teamBadge(c.team)}>{c.team}</span>
                 <b style={{ fontSize: 12.5 }}>{entName(c.entityId)}</b>
                 {c.placeId && <span style={{ fontSize: 11, color: '#777' }}>· {placeName(c.entityId, c.placeId)}</span>}
@@ -1108,6 +1115,15 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
         <div className="frow"><span className="fl">종료월(비움=계속)</span>
           <input type="month" value={f.endDate} onChange={(e) => pickEndMonth(e.target.value)} /></div>
         <label
+          style={{ gridColumn: '1 / -1', fontSize: 11.5, color: f.confirmed ? '#666' : '#92400E', display: 'flex', alignItems: 'center', gap: 5, marginTop: 4, fontWeight: f.confirmed ? 400 : 700 }}
+          title="아직 체결되지 않은(예산·검토용) 계약이면 체크를 해제하세요. 목록에서 '미계약'으로 걸러볼 수 있습니다."
+        >
+          <input type="checkbox" checked={f.confirmed} onChange={(e) => set('confirmed', e.target.checked)} />
+          {f.confirmed
+            ? '계약 확정 (체결됨) — 해제하면 미계약으로 표시됩니다'
+            : '미계약 — 예산·검토용으로만 잡힌 계약입니다 (체결되면 체크하세요)'}
+        </label>
+        <label
           style={{ gridColumn: '1 / -1', fontSize: 11.5, color: '#666', display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}
           title="정보관리 시작(2026-07) 이전 계약은 날짜를 규칙으로 채워 넣어 추정으로 표시합니다. 실제 계약서 날짜를 넣었으면 해제하세요."
         >
@@ -1222,7 +1238,7 @@ function fromContract(c: SalesContract): FormState {
     includesVat: c.includesVat, includesWht: c.includesWht, advisoryType: c.advisoryType ?? '', occurrenceUnit: c.occurrenceUnit,
     billingUnit: c.billingUnit ?? '', fiscalYear: c.fiscalYear ? String(c.fiscalYear) : '', billingCycle: c.billingCycle,
     isInstallment: c.isInstallment, amount: c.amount ? String(c.amount) : '', cpa: c.cpa, staffIds: c.staff.map((s) => s.staffId), staffApplyMonth: '',
-    contractDate: c.contractDate ?? '', startDate: dateToMonth(c.startDate), endDate: dateToMonth(c.endDate), dateEstimated: c.dateEstimated, parentContractId: c.parentContractId ?? '',
+    contractDate: c.contractDate ?? '', startDate: dateToMonth(c.startDate), endDate: dateToMonth(c.endDate), dateEstimated: c.dateEstimated, confirmed: c.confirmed, parentContractId: c.parentContractId ?? '',
     note: c.note, includedCodes: c.includedCodes ?? [], installments: c.installments.length ? c.installments : [], discounts: c.discounts,
   };
 }
@@ -1297,6 +1313,8 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
         {rows && (
           <>
             <div className="alert-i" style={{ fontSize: 11 }}>
+              갱신분은 <b style={{ color: '#92400E' }}>미계약</b> 상태로 만들어집니다 — 연말이 지나기 전에는 매출확정으로 보지 않기 때문입니다.
+              체결되면 계약을 열어 '계약 확정'에 체크하세요(목록에서 계약상태로 걸러볼 수 있습니다).
               계약금액·담당CPA·담당직원을 그대로 이어받습니다. 정우철 담당분은 세무조정수수료관리에서 청구를 확정하면
               그 금액으로 다시 맞춰집니다. <b>올해 세무조정을 하지 않는 거래처는 체크를 빼세요.</b>
               폐업·이관 사업장과 이미 갱신된 건은 기본 선택에서 빠져 있습니다.

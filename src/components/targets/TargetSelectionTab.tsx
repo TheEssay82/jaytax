@@ -678,7 +678,7 @@ function ImportFromContracts({ fiscalYear, onClose, onDone }: { fiscalYear: numb
                       <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.code}</td>
                       <td><span className={`bdg ${r.bizType === '법인' ? 'b-law' : 'b-per'}`}>{r.bizType}</span></td>
                       <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.companyName}</td>
-                      <td>{r.taxType}</td>
+                      <td>{r.taxType}{!r.confirmed && <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>미계약</span>}</td>
                       <td className="r">{fm(r.amount)}</td>
                       <td>{r.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
                       <td style={{ fontSize: 11 }}>{r.taxId || <span style={{ color: '#CCC' }}>—</span>}</td>

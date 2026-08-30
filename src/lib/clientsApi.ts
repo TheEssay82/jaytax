@@ -232,6 +232,7 @@ export interface ImportableTaxContract {
   repName: string;
   manager: string;
   placeStatus: string;
+  confirmed: boolean;      // 계약확정 여부(false=미계약)
   already: boolean;        // 이미 청구 거래처로 편입됨
 }
 
@@ -245,7 +246,7 @@ export async function listImportableTaxContracts(fiscalYear: number): Promise<Im
   const [cons, taken, reps, staff] = await Promise.all([
     supabase
       .from('biz_sales_contract')
-      .select('id, contract_code, entity_id, place_id, category_code, amount, cpa, biz_entity(code, kind, name, corp_form, corp_form_position)')
+      .select('id, contract_code, entity_id, place_id, category_code, amount, cpa, confirmed, biz_entity(code, kind, name, corp_form, corp_form_position)')
       .in('category_code', ['TAX.FILING.CORP', 'TAX.FILING.INCOME'])
       .eq('fiscal_year', fiscalYear),
     supabase.from('clients').select('entity_id').not('entity_id', 'is', null),
@@ -283,6 +284,7 @@ export async function listImportableTaxContracts(fiscalYear: number): Promise<Im
       repName: repByEntity.get(c.entity_id) || '',
       manager: '',
       placeStatus: place?.status || '정상',
+      confirmed: c.confirmed !== false,
       already: takenEntities.has(c.entity_id as string),
     };
   }).sort((a, b) => a.companyName.localeCompare(b.companyName, 'ko'));

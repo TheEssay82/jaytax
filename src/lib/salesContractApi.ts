@@ -89,6 +89,8 @@ export interface SalesContract {
   includedCodes: string[];
   /** 개시/종료 추정 여부(정보관리 2026-07 이전 등). */
   dateEstimated: boolean;
+  /** 계약확정 여부. false = 미계약(예산 반영용 예정 계약) */
+  confirmed: boolean;
   staff: ContractStaff[];
   installments: Installment[];
   discounts: Discount[];
@@ -115,6 +117,7 @@ const toContract = (r: any): SalesContract => ({
   isInstallment: !!r.is_installment, amount: r.amount != null ? Number(r.amount) : 0, cpa: r.cpa || '',
   contractDate: r.contract_date, startDate: r.start_date, endDate: r.end_date, note: r.note || '',
   contractCode: r.contract_code || '', includedCodes: r.included_codes || [], dateEstimated: !!r.date_estimated,
+  confirmed: r.confirmed !== false,
   staff: [], installments: [], discounts: [], effectiveCpa: r.cpa || '', cpaInherited: false,
   staffHistory: [], effectiveStaff: [], staffInherited: false,
   createdAt: r.created_at, updatedAt: r.updated_at,
@@ -235,7 +238,7 @@ export interface ContractInput {
   advisoryType?: AdvisoryType | null; parentContractId?: string | null; fiscalYear?: number | null;
   billingCycle: BillingCycle; isInstallment?: boolean; amount: number; cpa?: string;
   contractDate?: string | null; startDate?: string | null; endDate?: string | null; note?: string;
-  includedCodes?: string[]; dateEstimated?: boolean;
+  includedCodes?: string[]; dateEstimated?: boolean; confirmed?: boolean;
 }
 function toRow(c: Partial<ContractInput>): Record<string, unknown> {
   const r: Record<string, unknown> = {};
@@ -247,7 +250,7 @@ function toRow(c: Partial<ContractInput>): Record<string, unknown> {
   set('fiscal_year', c.fiscalYear ?? undefined); set('billing_cycle', c.billingCycle); set('is_installment', c.isInstallment);
   set('amount', c.amount); set('cpa', c.cpa); set('contract_date', c.contractDate ?? undefined);
   set('start_date', c.startDate ?? undefined); set('end_date', c.endDate ?? undefined); set('note', c.note);
-  set('included_codes', c.includedCodes); set('date_estimated', c.dateEstimated);
+  set('included_codes', c.includedCodes); set('date_estimated', c.dateEstimated); set('confirmed', c.confirmed);
   return r;
 }
 
@@ -420,6 +423,7 @@ export async function renewTaxContracts(rows: RenewCandidate[], toYear: number):
       endDate: `${toYear + 1}-06-01`,
       includesVat: src.includesVat,
       includesWht: src.includesWht,
+      confirmed: false,                   // 갱신분은 아직 체결 전 — 미계약으로 시작
       note: `${fromLabel(src.fiscalYear)} 계약 갱신`,
     });
     // 계약에 직접 지정된 담당직원이 있으면 이어받는다(상속분은 자동으로 따라오므로 건드리지 않는다).
