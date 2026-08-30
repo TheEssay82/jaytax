@@ -8,14 +8,16 @@ import { can } from '../../lib/roles';
 import { calcS } from '../../lib/calc';
 import { updateClient } from '../../lib/clientsApi';
 import { createBillingRecord, updateBillingRecord } from '../../lib/billingApi';
-import { syncTaxContractFromBilling } from '../../lib/taxContractSync';
+import { syncTaxContractFromBilling, type TaxSyncResult } from '../../lib/taxContractSync';
 import { clearDraft } from '../../lib/draft';
+import { fm } from '../../lib/format';
 import type { BillingRecord } from '../../types';
 import type { WizardStepProps } from './stepProps';
 import InvoiceDocument from './InvoiceDocument';
 
 export default function Step5Invoice({ clients, refreshClients, refreshBilling }: WizardStepProps) {
   const { S, savedMsg, setSavedMsg, resetNew, editId, clearEdit } = useWizard();
+  const [taxSync, setTaxSync] = useState<TaxSyncResult | null>(null);   // 매출계약 금액 반영 결과
   const { config } = useConfig();
   const { role, readonly } = useAuth();
   const isFinalizer = can(role, 'finalizeInvoice'); // 확정 권한(팀장+)
@@ -60,17 +62,20 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
         }
       }
       // 확정분은 매출계약(세무조정)에 금액을 흘려보낸다 — taxteam 매출집계가 거래처관리에서 이뤄지도록.
-      // 실패해도 청구 저장은 이미 끝났으므로 막지 않고 알리기만 한다.
+      // 계약을 새로 만들지는 않는다(등록은 매출계약등록에서). 실패해도 청구 저장은 막지 않는다.
+      setTaxSync(null);
       if (rec.status === 'final') {
         try {
-          await syncTaxContractFromBilling({
-            clientId: S.selClientId,
-            fiscalYear: Number(S.fiscalYear),
-            bizType: S.bizType === '개인' ? '개인' : '법인',
-            grandTotal: c.grand,
-          });
+          setTaxSync(
+            await syncTaxContractFromBilling({
+              clientId: S.selClientId,
+              fiscalYear: Number(S.fiscalYear),
+              bizType: S.bizType === '개인' ? '개인' : '법인',
+              grandTotal: c.grand,
+            }),
+          );
         } catch (e) {
-          alert('청구는 저장됐지만 매출계약 금액 반영에 실패했습니다: ' + (e instanceof Error ? e.message : e));
+          setTaxSync({ action: 'skipped', reason: '반영 실패 — ' + (e instanceof Error ? e.message : String(e)) });
         }
       }
       if (S.selClientId) clearDraft(S.selClientId, S.fiscalYear);
@@ -108,6 +113,16 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
                 ? '✓ 청구 확정·저장 완료!'
                 : '✓ 임시저장 완료! (기장팀장 확정 대기)'}
           </div>
+          {taxSync?.action === 'updated' && (
+            <div className="alert-i no-print" style={{ fontSize: 11 }}>
+              🔗 매출계약 <b>{taxSync.contractCode}</b> 금액을 {fm(taxSync.amount ?? 0)}원(공급가액)으로 맞췄습니다.
+            </div>
+          )}
+          {taxSync?.action === 'skipped' && taxSync.reason && !/금액 동일/.test(taxSync.reason) && (
+            <div className="alert-w no-print" style={{ fontSize: 11 }}>
+              🔗 매출계약 금액 반영 안 됨 — {taxSync.reason}
+            </div>
+          )}
         </>
       ) : (
         <button className="btn-green no-print" onClick={saveRec} disabled={saving || readonly || !canSave}

@@ -6,6 +6,8 @@ import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/
 import {
   TAXONOMY, findNode, isLeaf, leafOf, pathLabel, typeMnemonicTable, contractTypeOptions, type Team, type TaxNode,
 } from '../../lib/salesContractTaxonomy';
+import { TAX_ADJ_CPA } from '../../lib/taxContractSync';
+import { todayYmd } from '../../lib/format';
 import { ColFilter, scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 import { exportContractTemplate, parseContractExcelFile, applyContractExcel, type ContractExcelResult } from '../../lib/bizContractExcel';
 import { periodRevenue, defaultWindow, monthIndex } from '../../lib/billingSchedule';
@@ -86,6 +88,8 @@ const emptyForm = (): FormState => ({
   contractDate: '', startDate: '', endDate: '', parentContractId: '', note: '', includedCodes: [], installments: [], discounts: [],
 });
 
+interface TaxOffer { entityId: string; placeId: string | null; kind: '법인' | '개인'; code: string; year: number }
+
 export default function SalesContractTab() {
   const { readonly, role, profileName } = useAuth();
   const canWrite = !readonly && role !== 'per_head_accountant'; // 인당회계사는 조회 전용
@@ -99,6 +103,7 @@ export default function SalesContractTab() {
   const [teamFilter, setTeamFilter] = useState<'' | Team>('');
   const [q, setQ] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [taxOffer, setTaxOffer] = useState<TaxOffer | null>(null);   // 세무조정 계약 동반등록 제안
   const [editId, setEditId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
   const [showCodeHelp, setShowCodeHelp] = useState(false);
@@ -320,6 +325,44 @@ export default function SalesContractTab() {
     return { total, aud, tax };
   }, [contracts]);
 
+  // 기장 등 taxteam 계약을 정우철 담당으로 새로 등록하면, 같은 거래처의 세무조정(법인세·종합소득세)
+  // 계약도 대개 함께 생긴다. 매번 따로 등록하지 않도록 바로 물어본다(금액은 청구기록에서 따라온다).
+  function maybeOfferTaxFiling(form: FormState) {
+    if (form.team !== 'taxteam') return;
+    if (form.cpa.trim() !== TAX_ADJ_CPA) return;
+    if (form.categoryCode === 'TAX.FILING.CORP' || form.categoryCode === 'TAX.FILING.INCOME') return;
+    const ent = entities.find((e) => e.id === form.entityId);
+    if (!ent) return;
+    const code = ent.kind === '개인' ? 'TAX.FILING.INCOME' : 'TAX.FILING.CORP';
+    const year = settlementYearOfDate(todayYmd()) ?? new Date().getFullYear();
+    // 이미 있는 해는 빼고 제안한다.
+    const has = (y: number) => contracts.some((c) => c.entityId === ent.id && c.categoryCode === code && Number(c.fiscalYear) === y);
+    if (has(year) && has(year - 1)) return;
+    setTaxOffer({ entityId: ent.id, placeId: form.placeId || null, kind: ent.kind === '개인' ? '개인' : '법인', code, year: has(year) ? year - 1 : year });
+  }
+
+  async function createTaxFiling(o: TaxOffer) {
+    try {
+      await createSalesContract({
+        entityId: o.entityId,
+        placeId: null,                       // 세무조정은 거래처(법인·개인) 단위
+        team: 'taxteam',
+        categoryCode: o.code,
+        occurrenceUnit: o.kind,
+        billingCycle: '연',
+        amount: 0,
+        cpa: TAX_ADJ_CPA,
+        fiscalYear: o.year,
+        startDate: `${o.year}-07-01`,
+        endDate: `${o.year + 1}-06-01`,
+        note: '기장계약 등록 시 함께 생성 — 금액은 세무조정수수료관리 청구 확정 시 반영',
+      });
+      setTaxOffer(null);
+      await load();
+      flash('✓ 세무조정 계약도 등록됨 (금액은 청구 확정 시 채워집니다)');
+    } catch (e) { alert('세무조정 계약 등록 실패: ' + (e instanceof Error ? e.message : e)); }
+  }
+
   async function persist(form: FormState, existingId?: string) {
     const leaf = leafOf(form.categoryCode);
     if (!form.entityId) return alert('거래처를 선택하세요.');
@@ -350,6 +393,7 @@ export default function SalesContractTab() {
       await saveContractStaff(id, form.staffIds.map((sid) => ({ staffId: sid, staffName: staff.find((s) => s.id === sid)?.name ?? '' })));
       setShowAdd(false); setEditId(null); await load();
       flash(existingId ? '✓ 매출계약 수정됨' : '✓ 매출계약 등록됨');
+      if (!existingId) maybeOfferTaxFiling(form);
     } catch (e) { alert('저장 실패: ' + (e instanceof Error ? e.message : e)); }
   }
   async function del(c: SalesContract) {
@@ -458,6 +502,39 @@ export default function SalesContractTab() {
 
       {showAdd && canWrite && (
         <ContractForm entities={entities} staff={staff} contracts={contracts} onSubmit={(f) => persist(f)} onCancel={() => setShowAdd(false)} />
+      )}
+
+      {taxOffer && (
+        <div className="modal-overlay" onClick={() => setTaxOffer(null)}>
+          <div className="modal-box" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, color: '#1A2B52', marginBottom: 8 }}>세무조정 계약도 함께 등록할까요?</div>
+            <div style={{ fontSize: 12.5, color: '#444', lineHeight: 1.6, marginBottom: 10 }}>
+              방금 등록한 계약이 <b>taxteam · 담당 {TAX_ADJ_CPA}</b> 이라, 같은 거래처의{' '}
+              <b>{taxOffer.code === 'TAX.FILING.CORP' ? '법인세' : '종합소득세'}</b> 계약도 대개 함께 생깁니다.
+              여기서 등록해 두면 <b>세무조정 대상선정</b>에서 바로 가져올 수 있습니다.
+              <div style={{ marginTop: 6, color: '#6B7280', fontSize: 11.5 }}>
+                금액은 비워둡니다 — 세무조정수수료관리에서 청구서를 확정하면 그 공급가액으로 자동으로 채워집니다.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#555' }}>귀속연도</span>
+              <select
+                value={taxOffer.year}
+                onChange={(e) => setTaxOffer({ ...taxOffer, year: Number(e.target.value) })}
+                style={{ fontWeight: 700 }}
+              >
+                {[taxOffer.year + 1, taxOffer.year, taxOffer.year - 1].map((y) => (
+                  <option key={y} value={y}>{y}년 귀속</option>
+                ))}
+              </select>
+              <span style={{ fontSize: 11, color: '#888' }}>정산기간 {taxOffer.year}-07 ~ {taxOffer.year + 1}-06</span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+              <button className="btn-sm" onClick={() => setTaxOffer(null)}>나중에</button>
+              <button className="btn-p" onClick={() => void createTaxFiling(taxOffer)}>세무조정 계약 등록</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {role === 'superuser' && <ContractImportPanel entities={entities} contracts={contracts} onImported={load} />}

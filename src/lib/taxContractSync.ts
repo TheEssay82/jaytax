@@ -2,29 +2,33 @@
 //
 // 세무조정은 담당회계사에 따라 관리 경로가 갈린다.
 //  · 정우철 담당 → 세무조정수수료관리에서 청구서를 만든다. 계약금액은 사람이 적는 값이 아니라
-//    그 청구 결과에서 따라와야 한다(여기서 하는 일).
+//    그 청구 결과에서 따라온다(여기서 하는 일).
 //  · 김준성·조현규 담당 → 청구서를 만들지 않고 매출계약에 금액을 직접 적는다(건드리지 않는다).
-// 어느 쪽이든 taxteam 매출은 거래처관리(매출계약)에서 집계돼야 하므로, 청구서를 확정하면
-// 해당 연도 세무조정 계약을 만들어 두거나 금액을 맞춰 준다.
 //
-// 금액 규칙: 계약금액 = 공급가액 = 청구총액 ÷ 1.1 (기존 84건 전부 이 관계로 들어와 있다).
+// 규칙(사용자 확정):
+//  · 계약이 **이미 등록돼 있을 때 금액만** 가져간다. 여기서 계약을 새로 만들지 않는다
+//    (등록은 매출계약등록에서 사람이 한다 — 기장계약 저장 시 동반 등록을 권하는 장치가 따로 있다).
+//  · 담당CPA가 정우철인 계약만 대상. CPA 는 계약에 비어 있으면 사업장(biz_place.cpa)을 따른다.
+//  · 계약금액 = 공급가액 = 청구총액 ÷ 1.1 (기존 84건 전부 이 관계로 들어와 있다).
 import { supabase } from './supabase';
-import { createSalesContract, listSalesContracts, updateSalesContract } from './salesContractApi';
+import { listSalesContracts, updateSalesContract } from './salesContractApi';
+
+/** 세무조정수수료관리로 청구하는 담당회계사 */
+export const TAX_ADJ_CPA = '정우철';
 
 /** 청구총액(부가세 포함) → 계약금액(공급가액) */
 export const supplyAmount = (grandTotal: number): number => Math.round((grandTotal / 1.1) * 100) / 100;
 
 export interface TaxSyncResult {
-  action: 'created' | 'updated' | 'skipped';
+  action: 'updated' | 'skipped';
   reason?: string;
   contractCode?: string;
   amount?: number;
 }
 
 /**
- * 확정된 청구기록 1건을 그 해 세무조정 매출계약에 반영한다.
- * 계약이 있으면 금액만 맞추고, 없으면 만든다(법인=법인세·개인=종합소득세).
- * 실패해도 청구 저장 자체를 막지 않도록, 호출부에서 결과만 보고 넘어가도 된다.
+ * 확정된 청구기록 1건의 금액을 그 해 세무조정 매출계약에 반영한다.
+ * 대상 계약이 없거나 담당CPA가 정우철이 아니면 아무것도 하지 않는다.
  */
 export async function syncTaxContractFromBilling(rec: {
   clientId: string | null;
@@ -36,45 +40,42 @@ export async function syncTaxContractFromBilling(rec: {
 
   const { data, error } = await supabase
     .from('clients')
-    .select('entity_id, place_id')
+    .select('entity_id')
     .eq('id', rec.clientId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  const link = data as { entity_id: string | null; place_id: string | null } | null;
-  if (!link?.entity_id) return { action: 'skipped', reason: '거래처관리에 연결되지 않은 거래처' };
+  const entityId = (data as { entity_id: string | null } | null)?.entity_id;
+  if (!entityId) return { action: 'skipped', reason: '거래처관리에 연결되지 않은 거래처' };
 
   const categoryCode = rec.bizType === '법인' ? 'TAX.FILING.CORP' : 'TAX.FILING.INCOME';
   const amount = supplyAmount(rec.grandTotal);
 
   const all = await listSalesContracts();
   const hit = all.find(
-    (c) => c.entityId === link.entity_id && c.categoryCode === categoryCode && Number(c.fiscalYear) === Number(rec.fiscalYear),
+    (c) => c.entityId === entityId && c.categoryCode === categoryCode && Number(c.fiscalYear) === Number(rec.fiscalYear),
   );
-
-  if (hit) {
-    if (Number(hit.amount) === amount) return { action: 'skipped', reason: '금액 동일', contractCode: hit.contractCode ?? undefined, amount };
-    await updateSalesContract(hit.id, { amount });
-    return { action: 'updated', contractCode: hit.contractCode ?? undefined, amount };
+  if (!hit) {
+    return { action: 'skipped', reason: `${rec.fiscalYear}년 귀속 세무조정 매출계약이 없음 — 매출계약등록에서 먼저 등록하세요` };
   }
 
-  // 0원 청구(미완성·면제 등)로는 계약을 새로 만들지 않는다 — 빈 계약이 집계를 어지럽힌다.
-  if (amount <= 0) return { action: 'skipped', reason: '금액 0원이라 계약을 만들지 않음' };
+  // 계약에 CPA 가 비어 있으면 사업장 담당회계사를 본다(기존 84건이 그런 형태다).
+  let cpa = (hit.cpa || '').trim();
+  if (!cpa) {
+    const { data: places, error: pe } = await supabase
+      .from('biz_place')
+      .select('cpa, is_headquarters')
+      .eq('entity_id', entityId);
+    if (pe) throw new Error(pe.message);
+    const rows = (places as { cpa: string | null; is_headquarters: boolean }[]) ?? [];
+    cpa = (rows.find((p) => p.is_headquarters && p.cpa)?.cpa ?? rows.find((p) => p.cpa)?.cpa ?? '').trim();
+  }
+  if (cpa !== TAX_ADJ_CPA) {
+    return { action: 'skipped', reason: `담당회계사가 ${cpa || '미지정'}이라 금액을 건드리지 않음` };
+  }
 
-  // 기존 세무조정 계약과 같은 규격으로 만든다: 정산기간 7/1~익년 6/30, 연 1회, 담당 정우철.
-  const y = Number(rec.fiscalYear);
-  await createSalesContract({
-    entityId: link.entity_id,
-    placeId: link.place_id,
-    team: 'taxteam',
-    categoryCode,
-    occurrenceUnit: rec.bizType === '법인' ? '법인' : '개인',
-    billingCycle: '연',
-    amount,
-    cpa: '정우철',
-    fiscalYear: y,
-    startDate: `${y}-07-01`,
-    endDate: `${y + 1}-06-01`,
-    note: '세무조정수수료관리 청구기록에서 자동 생성',
-  });
-  return { action: 'created', amount };
+  if (Number(hit.amount) === amount) {
+    return { action: 'skipped', reason: '금액 동일', contractCode: hit.contractCode ?? undefined, amount };
+  }
+  await updateSalesContract(hit.id, { amount });
+  return { action: 'updated', contractCode: hit.contractCode ?? undefined, amount };
 }
