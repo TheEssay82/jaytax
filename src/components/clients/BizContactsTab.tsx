@@ -1,12 +1,12 @@
 // 거래처관리 › 거래처담당자등록 (거래처관리 2.0.0 · step 3)
-// 거래처(법인/개인)의 외부 담당자(연락처) 관리 + 기존 doc_contacts 1회성 이관(최고관리자).
+// 거래처(법인/개인)의 외부 담당자(연락처) 관리. 여기가 담당자 정보의 유일한 등록·수정 창구이며,
+// 문서발송 발송요청·조회서등록은 0070 별칭 동기화로 이 데이터를 그대로 쓴다.
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
   listBizContacts, createBizContact, updateBizContact, deleteBizContact,
-  previewContactImport, runContactImport,
-  type BizContact, type ContactInput, type ContactImportRow, type ContactImportResult,
+  type BizContact, type ContactInput,
 } from '../../lib/bizContactApi';
 import { ColFilter, scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 
@@ -125,8 +125,6 @@ export default function BizContactsTab() {
       </div>
 
       {showAdd && canWrite && <ContactForm entities={entities} onSubmit={(i) => persist(i)} onCancel={() => setShowAdd(false)} />}
-
-      {role === 'superuser' && <ImportPanel onImported={load} />}
 
       {viewMode === 'table' && (
         <div style={scrollBox()}>
@@ -277,73 +275,6 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
         <button className="btn-p" onClick={() => onSubmit({ entityId, placeId: placeId || null, contactName: name, honorific, position, phone, email, address, isPrimary, note })}>{initial ? '저장' : '담당자 등록'}</button>
         <button className="btn-sm" onClick={onCancel}>취소</button>
       </div>
-    </div>
-  );
-}
-
-// ── doc_contacts 1회성 이관 패널(최고관리자) ────────────────
-function ImportPanel({ onImported }: { onImported: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [rows, setRows] = useState<ContactImportRow[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<ContactImportResult | null>(null);
-
-  async function preview() {
-    setLoading(true); setResult(null);
-    try { setRows(await previewContactImport()); }
-    catch (e) { alert('미리보기 실패: ' + (e instanceof Error ? e.message : e)); }
-    finally { setLoading(false); }
-  }
-  async function run() {
-    if (!rows) return;
-    const target = rows.filter((r) => r.entityId && !r.exists);
-    if (!target.length) return alert('이관할 신규 담당자가 없습니다.');
-    if (!confirm(`${target.length}명을 거래처담당자로 이관합니다. 진행할까요?`)) return;
-    setLoading(true);
-    try { const r = await runContactImport(rows); setResult(r); onImported(); await preview(); }
-    catch (e) { alert('이관 실패: ' + (e instanceof Error ? e.message : e)); }
-    finally { setLoading(false); }
-  }
-  const newCnt = rows?.filter((r) => r.entityId && !r.exists).length ?? 0;
-  const unmatched = rows?.filter((r) => !r.entityId).length ?? 0;
-
-  return (
-    <div style={{ border: '1px dashed #c9a54a', borderRadius: 6, background: '#fdfaf1', marginBottom: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6d1f' }}>📥 문서발송 담당자 이관</span>
-        <span style={{ fontSize: 11, color: '#a88' }}>최고관리자 · 1회성 (doc_contacts → 거래처담당자)</span>
-        <span style={{ marginLeft: 'auto', fontSize: 12 }}>{open ? '▾' : '▸'}</span>
-      </div>
-      {open && (
-        <div style={{ padding: '0 10px 10px' }}>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
-            <button className="btn-sm btn-sm-blue" disabled={loading} onClick={preview}>{loading ? '처리 중…' : '🔍 미리보기'}</button>
-            {rows && <span style={{ fontSize: 12, color: '#555' }}>신규 <b>{newCnt}</b> · 미매칭 {unmatched} · 전체 {rows.length}</span>}
-            {rows && <button className="btn-p" disabled={loading || newCnt === 0} onClick={run} style={{ marginLeft: 'auto' }}>신규 {newCnt}명 이관</button>}
-          </div>
-          {result && <div style={{ fontSize: 12, background: '#eef7ee', border: '1px solid #cbe3cb', borderRadius: 5, padding: '6px 8px', marginBottom: 8, color: '#256b25' }}>✓ 이관 — 생성 {result.created} · 건너뜀 {result.skipped} · 미매칭(제외) {result.unmatched}</div>}
-          {rows && rows.length > 0 && (
-            <div style={{ maxHeight: 300, overflow: 'auto', border: '1px solid #eee', borderRadius: 5 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                <thead><tr style={{ background: '#f4efe4', position: 'sticky', top: 0 }}>
-                  <th style={thc}>담당자</th><th style={thc}>회사(원본)</th><th style={thc}>매칭 거래처</th><th style={thc}>연락처</th><th style={thc}>상태</th>
-                </tr></thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.key} style={{ borderTop: '1px solid #eee', opacity: !r.entityId || r.exists ? 0.5 : 1 }}>
-                      <td style={{ ...tdc, fontWeight: 600 }}>{r.contactName} {r.honorific}</td>
-                      <td style={tdc}>{r.company}</td>
-                      <td style={tdc}>{r.entityLabel}</td>
-                      <td style={tdc}>{r.phone}</td>
-                      <td style={tdc}>{!r.entityId ? <span style={{ color: '#c33' }}>미매칭</span> : r.exists ? <span style={{ color: '#999' }}>이미있음</span> : <span style={{ color: '#2a8', fontWeight: 700 }}>신규</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

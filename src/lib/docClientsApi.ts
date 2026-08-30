@@ -1,13 +1,14 @@
-// 문서발송 › 거래처 담당자 관리 데이터 레이어
-// 계층형: 거래처(회사) → 담당자 N명. CRUD 는 트리거로 감사로그·회사명 변경이력이 자동 기록된다.
-import { supabase, assertWrote } from './supabase';
-
-/** 담당회계사 드롭다운 선택지 */
-export const DOC_ACCOUNTANTS = ['정우철', '송현주', '조현규', '김준성'] as const;
+// 문서발송·조회서용 거래처/담당자 '별칭(alias)' 읽기 레이어
+// 마스터는 거래처관리(biz_entity/biz_contact)다. 0070 마이그레이션 이후 doc_clients/doc_contacts 는
+// biz_* 에서 트리거로 자동 동기화되는 별칭이며, 등록·수정·삭제는 거래처관리에서만 한다.
+// (기존 발송·조회서 이력이 이 테이블의 id 를 FK 로 물고 있어 테이블 자체는 남겨둔다.)
+import { supabase } from './supabase';
 
 export interface DocContact {
   id: string;
   clientId: string;
+  /** 거래처관리 담당자(biz_contact) id — 별칭 연결 */
+  bizContactId: string | null;
   contactName: string;
   honorific: string;
   phone: string;
@@ -21,20 +22,13 @@ export interface DocContact {
 export interface DocClient {
   id: string;
   companyName: string;
+  /** 거래처관리 거래처(biz_entity) id — 별칭 연결 */
+  entityId: string | null;
   accountant: string;
   note: string;
   createdAt: string;
   updatedAt: string;
   contacts: DocContact[];
-}
-
-export interface DocNameHistory {
-  id: string;
-  clientId: string;
-  oldName: string;
-  newName: string;
-  changedByName: string;
-  changedAt: string;
 }
 
 export interface DocAudit {
@@ -76,6 +70,7 @@ export function auditChanges(a: DocAudit): string[] {
 interface ContactRow {
   id: string;
   client_id: string;
+  biz_contact_id: string | null;
   contact_name: string;
   honorific: string;
   phone: string | null;
@@ -88,6 +83,7 @@ interface ContactRow {
 interface ClientRow {
   id: string;
   company_name: string;
+  entity_id: string | null;
   accountant: string;
   note: string | null;
   created_at: string;
@@ -99,6 +95,7 @@ function toContact(r: ContactRow): DocContact {
   return {
     id: r.id,
     clientId: r.client_id,
+    bizContactId: r.biz_contact_id,
     contactName: r.contact_name || '',
     honorific: r.honorific || '님',
     phone: r.phone || '',
@@ -116,6 +113,7 @@ function toClient(r: ClientRow): DocClient {
   return {
     id: r.id,
     companyName: r.company_name || '',
+    entityId: r.entity_id,
     accountant: r.accountant || '',
     note: r.note || '',
     createdAt: r.created_at,
@@ -124,130 +122,21 @@ function toClient(r: ClientRow): DocClient {
   };
 }
 
-/** 거래처 전체(담당자 포함) 조회 — 회사명 오름차순 */
+/**
+ * 거래처 전체(담당자 포함) 조회 — 회사명 오름차순.
+ * 거래처관리에 연결된 별칭만 돌려준다. 연결이 끊긴 레거시 행(과거 발송·조회서 이력용)은
+ * 새 발송요청·조회서 후보로 뜨면 안 되므로 제외한다.
+ */
 export async function listDocClients(): Promise<DocClient[]> {
   const { data, error } = await supabase
     .from('doc_clients')
     .select('*, doc_contacts(*)')
+    .not('entity_id', 'is', null)
     .order('company_name', { ascending: true });
   if (error) throw new Error(error.message);
-  return (data as ClientRow[]).map(toClient);
-}
-
-/** 신규 거래처 생성 → id 반환 */
-export async function createDocClient(input: {
-  companyName: string;
-  accountant: string;
-  note?: string;
-}): Promise<string> {
-  const { data, error } = await supabase
-    .from('doc_clients')
-    .insert({ company_name: input.companyName, accountant: input.accountant, note: input.note || null })
-    .select('id')
-    .single();
-  if (error) throw new Error(error.message);
-  return (data as { id: string }).id;
-}
-
-/** 거래처 수정 (회사명 변경 시 트리거가 이력 적재) */
-export async function updateDocClient(
-  id: string,
-  patch: { companyName?: string; accountant?: string; note?: string },
-): Promise<void> {
-  const row: Record<string, unknown> = {};
-  if (patch.companyName !== undefined) row.company_name = patch.companyName;
-  if (patch.accountant !== undefined) row.accountant = patch.accountant;
-  if (patch.note !== undefined) row.note = patch.note || null;
-  const { data, error } = await supabase.from('doc_clients').update(row).eq('id', id).select('id');
-  if (error) throw new Error(error.message);
-  assertWrote(data, '저장');
-}
-
-/** 거래처 삭제 (담당자 cascade 삭제, 각각 로그 기록) */
-export async function deleteDocClient(id: string): Promise<void> {
-  const { data, error } = await supabase.from('doc_clients').delete().eq('id', id).select('id');
-  if (error) throw new Error(error.message);
-  assertWrote(data, '삭제');
-}
-
-/** 담당자 생성 (호칭 미기재 시 '님') */
-export async function createDocContact(input: {
-  clientId: string;
-  contactName: string;
-  honorific?: string;
-  phone?: string;
-  email?: string;
-  address?: string;
-  note?: string;
-}): Promise<void> {
-  const { error } = await supabase.from('doc_contacts').insert({
-    client_id: input.clientId,
-    contact_name: input.contactName,
-    honorific: (input.honorific || '').trim() || '님',
-    phone: input.phone || null,
-    email: input.email || null,
-    address: input.address || null,
-    note: input.note || null,
-  });
-  if (error) throw new Error(error.message);
-}
-
-/** 담당자 수정 */
-export async function updateDocContact(
-  id: string,
-  patch: {
-    contactName?: string;
-    honorific?: string;
-    phone?: string;
-    email?: string;
-    address?: string;
-    note?: string;
-  },
-): Promise<void> {
-  const row: Record<string, unknown> = {};
-  if (patch.contactName !== undefined) row.contact_name = patch.contactName;
-  if (patch.honorific !== undefined) row.honorific = (patch.honorific || '').trim() || '님';
-  if (patch.phone !== undefined) row.phone = patch.phone || null;
-  if (patch.email !== undefined) row.email = patch.email || null;
-  if (patch.address !== undefined) row.address = patch.address || null;
-  if (patch.note !== undefined) row.note = patch.note || null;
-  const { data, error } = await supabase.from('doc_contacts').update(row).eq('id', id).select('id');
-  if (error) throw new Error(error.message);
-  assertWrote(data, '저장');
-}
-
-/** 담당자 삭제 */
-export async function deleteDocContact(id: string): Promise<void> {
-  const { data, error } = await supabase.from('doc_contacts').delete().eq('id', id).select('id');
-  if (error) throw new Error(error.message);
-  assertWrote(data, '삭제');
-}
-
-/** 특정 거래처의 회사명 변경이력 (최신순) */
-export async function listNameHistory(clientId: string): Promise<DocNameHistory[]> {
-  const { data, error } = await supabase
-    .from('doc_client_name_history')
-    .select('*')
-    .eq('client_id', clientId)
-    .order('changed_at', { ascending: false });
-  if (error) throw new Error(error.message);
-  return (
-    data as {
-      id: string;
-      client_id: string;
-      old_name: string;
-      new_name: string;
-      changed_by_name: string | null;
-      changed_at: string;
-    }[]
-  ).map((r) => ({
-    id: r.id,
-    clientId: r.client_id,
-    oldName: r.old_name,
-    newName: r.new_name,
-    changedByName: r.changed_by_name || '',
-    changedAt: r.changed_at,
-  }));
+  return (data as ClientRow[])
+    .map(toClient)
+    .map((c) => ({ ...c, contacts: c.contacts.filter((ct) => ct.bizContactId) }));
 }
 
 /** 변경 로그 (최근순) */

@@ -31,7 +31,6 @@ import ConsultTab from './advisory/ConsultTab';
 import LibraryTab from './advisory/LibraryTab';
 import ConsultLogTab from './advisory/ConsultLogTab';
 import AiUsageTab from './advisory/AiUsageTab';
-import DocClientsTab from './docsend/DocClientsTab';
 import DocSendRequestTab from './docsend/DocSendRequestTab';
 import DocSendProcessTab from './docsend/DocSendProcessTab';
 import DocSendStatusTab from './docsend/DocSendStatusTab';
@@ -99,7 +98,6 @@ export const MENU_GROUPS: MenuGroup[] = [
         id: 'doc-send',
         label: '📄 문서발송관리',
         children: [
-          { id: 'doc-contacts', label: '👤 거래처 담당자 관리' },
           { id: 'doc-request', label: '✉️ 발송요청' },
           { id: 'doc-process', label: '🖨️ 발송요청 처리', cap: 'viewDispatch' },
           { id: 'doc-status', label: '📊 발송업무 현황' },
@@ -436,8 +434,6 @@ function TabContent({
     case 'billing-req-home':
       return <PlaceholderTab title="🧾 기장 및 개별업무 청구관리" desc="기장·개별 업무 건별 청구를 관리하는 대분류입니다. (설계 예정)" />;
     // 일반업무관리 › 문서발송관리
-    case 'doc-contacts':
-      return <DocClientsTab />;
     case 'doc-request':
       return <DocSendRequestTab />;
     case 'doc-process':

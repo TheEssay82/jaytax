@@ -1,4 +1,4 @@
-// 문서발송 › 발송요청 — 공통 문서정보 + 수신자 다중선택(거래처 담당자 관리 연동, 스냅샷) 요청 등록/목록/수정
+// 문서발송 › 발송요청 — 공통 문서정보 + 수신자 다중선택(거래처관리 › 거래처담당자등록 연동, 스냅샷) 요청 등록/목록/수정
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { todayYmd } from '../../lib/format';
 import { useAuth } from '../../context/AuthContext';
@@ -564,7 +564,7 @@ function ContactSearch({
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder || '🔍 담당자명 또는 거래처명 입력…'} style={{ width: '100%' }} />
       {q.trim() && (
         <div style={{ position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #D0CCC4', borderRadius: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 6px 18px rgba(0,0,0,0.15)' }}>
-          {matches.length === 0 && <div style={{ padding: 8, color: '#999', fontSize: 12 }}>일치하는 담당자가 없습니다.</div>}
+          {matches.length === 0 && <div style={{ padding: 8, color: '#999', fontSize: 12 }}>일치하는 담당자가 없습니다. 거래처관리 › 거래처담당자등록에서 먼저 등록해 주세요.</div>}
           {soleCompany && (
             <button
               type="button"
@@ -849,7 +849,7 @@ function ResendModal({ req, onClose, onDone }: { req: SendRequest; onClose: () =
             </div>
           )}
           <div style={{ fontSize: 11.5, color: '#666', marginBottom: 6 }}>
-            ⚠️ 주소·수신자가 잘못되었다면 <b>거래처 담당자 관리</b>에서 먼저 정보를 고친 뒤 요청하세요.
+            ⚠️ 주소·수신자가 잘못되었다면 <b>거래처관리 › 거래처담당자등록</b>에서 먼저 정보를 고친 뒤 요청하세요.
             (이 건의 수신자 정보는 발송 당시 스냅샷이라 자동으로 바뀌지 않습니다.)
           </div>
           <textarea

@@ -369,7 +369,7 @@ function ClientPicker({
         >
           {suggestions.length === 0 ? (
             <div style={{ padding: 10, fontSize: 12, color: '#888' }}>
-              일치하는 거래처가 없습니다. 거래처 담당자 관리에서 먼저 등록해 주세요.
+              일치하는 거래처가 없습니다. 거래처관리 › 거래처등록에서 먼저 등록해 주세요.
             </div>
           ) : (
             suggestions.map((c) => (
