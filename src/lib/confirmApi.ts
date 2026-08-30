@@ -633,3 +633,16 @@ export function countPending(rows: Confirmation[], itemsByConf: Record<string, C
   }
   return n;
 }
+
+/**
+ * 회계감사 계약(AUD.AUDIT)이 등록된 거래처(biz_entity) id 집합.
+ * 조회서는 감사 절차라, 등록 후보를 감사계약이 있는 거래처로 좁히는 데 쓴다.
+ */
+export async function listAuditEntityIds(): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('biz_sales_contract')
+    .select('entity_id')
+    .eq('category_code', 'AUD.AUDIT');
+  if (error) throw new Error(error.message);
+  return new Set((data as { entity_id: string }[]).map((r) => r.entity_id));
+}

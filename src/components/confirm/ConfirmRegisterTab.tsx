@@ -7,6 +7,7 @@ import { listProfiles, type UserProfile } from '../../lib/usersApi';
 import {
   listConfirmations,
   listFiscalYears,
+  listAuditEntityIds,
   createConfirmation,
   updateConfirmation,
   deleteConfirmation,
@@ -47,13 +48,15 @@ export default function ConfirmRegisterTab() {
   async function load() {
     try {
       setError(null);
-      const [cs, ps, list, ys] = await Promise.all([
+      const [cs, ps, list, ys, auditIds] = await Promise.all([
         listDocClients(),
         listProfiles(),
         listConfirmations(),
         listFiscalYears(),
+        listAuditEntityIds(),
       ]);
-      setClients(cs);
+      // 조회서는 감사 절차 — 회계감사 매출계약이 등록된 거래처만 등록 후보로 둔다.
+      setClients(cs.filter((c) => c.entityId && auditIds.has(c.entityId)));
       setPeople(ps.filter((p) => ACCOUNTANT_ROLES.includes(p.role)));
       setRows(list);
       setYears(ys);
@@ -369,7 +372,7 @@ function ClientPicker({
         >
           {suggestions.length === 0 ? (
             <div style={{ padding: 10, fontSize: 12, color: '#888' }}>
-              일치하는 거래처가 없습니다. 거래처관리 › 거래처등록에서 먼저 등록해 주세요.
+              일치하는 거래처가 없습니다. 조회서는 <b>회계감사 계약이 등록된 거래처</b>만 고를 수 있습니다 — 거래처관리 › 매출계약등록에서 회계감사 계약을 먼저 등록해 주세요.
             </div>
           ) : (
             suggestions.map((c) => (
