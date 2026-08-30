@@ -57,7 +57,7 @@ function groupKeyOf(g: string, c: SalesContract): string {
   switch (g) {
     case 'team': return c.team;
     case 'type': return pathLabel(c.categoryCode);
-    case 'cpa': return c.cpa || '(미지정)';
+    case 'cpa': return c.effectiveCpa || '(미지정)';
     case 'staff': return c.staff.map((s) => s.staffName).join(',') || '(미지정)';
     case 'cycle': return c.billingCycle;
     case 'year': { const fy = contractFiscalYear(c); return fy != null ? String(fy) : (isOngoing(c) ? '계속' : '(없음)'); }
@@ -179,7 +179,7 @@ export default function SalesContractTab() {
     { key: 'bunit', label: '청구단위', val: (c) => c.billingUnit ?? '', w: 70 },
     { key: 'amount', label: '계약금액', val: (c) => won(c.amount), w: 90, num: true },
     { key: 'year', label: '귀속', val: (c) => { const fy = contractFiscalYear(c); return fy != null ? String(fy) : (isOngoing(c) ? '계속' : ''); }, w: 56, opts: yearOpts },
-    { key: 'cpa', label: 'CPA', val: (c) => c.cpa, w: 66, opts: CPA_LIST },
+    { key: 'cpa', label: 'CPA', val: (c) => c.effectiveCpa, w: 66, opts: CPA_LIST },
     { key: 'staff', label: '담당직원', val: (c) => c.staff.map((s) => s.staffName).join(','), w: 100, opts: staffOpts },
     { key: 'period', label: '개시~종료', val: (c) => `${dateToMonth(c.startDate) || ''}~${dateToMonth(c.endDate) || '계속'}`, w: 130 },
     { key: 'cdate', label: '계약일', val: (c) => c.contractDate ?? '', w: 90 },
@@ -296,7 +296,7 @@ export default function SalesContractTab() {
     const today = new Date().toISOString().slice(0, 10);
     const out: { id: string; name: string; label: string; due: string; amount: number }[] = [];
     for (const c of contracts) {
-      if (c.cpa !== profileName) continue;
+      if (c.effectiveCpa !== profileName) continue;
       for (const it of c.installments) {
         if (it.id && it.dueDate && it.dueDate < today && !it.billedAt) out.push({ id: it.id, name: entName(c.entityId), label: it.label, due: it.dueDate, amount: it.amount });
       }
@@ -314,7 +314,7 @@ export default function SalesContractTab() {
     if (teamFilter) list = list.filter((c) => c.team === teamFilter);
     if (q.trim()) {
       const s = q.trim().toLowerCase();
-      list = list.filter((c) => entName(c.entityId).toLowerCase().includes(s) || pathLabel(c.categoryCode).toLowerCase().includes(s) || (c.cpa || '').toLowerCase().includes(s));
+      list = list.filter((c) => entName(c.entityId).toLowerCase().includes(s) || pathLabel(c.categoryCode).toLowerCase().includes(s) || (c.effectiveCpa || '').toLowerCase().includes(s));
     }
     return list;
   }, [contracts, teamFilter, q]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -592,7 +592,7 @@ export default function SalesContractTab() {
                 <span>발생 {c.occurrenceUnit}</span>
                 {c.billingUnit && <span>청구단위 {c.billingUnit}</span>}
                 {c.fiscalYear && <span>귀속 {c.fiscalYear}</span>}
-                {c.cpa && <span>CPA {c.cpa}</span>}
+                {c.effectiveCpa && <span>CPA {c.effectiveCpa}{c.cpaInherited && <span style={{ color: '#aaa' }}> (거래처)</span>}</span>}
                 {c.staff.length > 0 && <span>담당 {c.staff.map((s) => s.staffName).join('·')}</span>}
                 <span>{dateToMonth(c.startDate) || '개시?'} ~ {dateToMonth(c.endDate) || '계속'}</span>
                 {c.contractDate && <span>계약일 {c.contractDate}</span>}
@@ -1038,7 +1038,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px', marginTop: 8 }}>
         <div className="frow"><span className="fl">담당CPA</span>
           <>
-            <input list="sc-cpa" value={f.cpa} onChange={(e) => set('cpa', e.target.value)} placeholder="거래처 CPA 상속·수정" />
+            <input list="sc-cpa" value={f.cpa} onChange={(e) => set('cpa', e.target.value)} placeholder="비우면 거래처 CPA 상속" />
             <datalist id="sc-cpa">{CPA_LIST.map((c) => <option key={c} value={c} />)}</datalist>
           </></div>
         {f.categoryCode !== 'AUD.AUDIT' && (

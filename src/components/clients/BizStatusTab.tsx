@@ -56,7 +56,7 @@ export default function BizStatusTab() {
     return entities.map((e) => {
       const cons = conByEnt.get(e.id) ?? [];
       const annual = cons.reduce((s, c) => s + annualize(c), 0);
-      const cpas = [...new Set(cons.map((c) => c.cpa).filter(Boolean))];
+      const cpas = [...new Set(cons.map((c) => c.effectiveCpa).filter(Boolean))];
       const staff = [...new Set(cons.flatMap((c) => c.staff.map((s) => s.staffName)).filter(Boolean))];
       const isSales = e.places.some((p) => p.nature === '매출');
       return {
@@ -89,7 +89,7 @@ export default function BizStatusTab() {
     const salesPlaces = entities.reduce((s, e) => s + e.places.filter((p) => p.nature === '매출').length, 0);
     const totalAnnual = contracts.reduce((s, c) => s + annualize(c), 0);
     const byTeam = agg(contracts, (c) => c.team);
-    const byCpa = agg(contracts.filter((c) => c.cpa), (c) => c.cpa);
+    const byCpa = agg(contracts.filter((c) => c.effectiveCpa), (c) => c.effectiveCpa);
     const byType = agg(contracts, (c) => `${c.team.replace('team', '')}·${topLabel(c.categoryCode)}`);
     return { corp, person, places, salesPlaces, contracts: contracts.length, totalAnnual, contacts: contacts.length, byTeam, byCpa, byType };
   }, [entities, contracts, contacts]);

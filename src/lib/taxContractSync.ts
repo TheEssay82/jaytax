@@ -58,17 +58,8 @@ export async function syncTaxContractFromBilling(rec: {
     return { action: 'skipped', reason: `${rec.fiscalYear}년 귀속 세무조정 매출계약이 없음 — 매출계약등록에서 먼저 등록하세요` };
   }
 
-  // 계약에 CPA 가 비어 있으면 사업장 담당회계사를 본다(기존 84건이 그런 형태다).
-  let cpa = (hit.cpa || '').trim();
-  if (!cpa) {
-    const { data: places, error: pe } = await supabase
-      .from('biz_place')
-      .select('cpa, is_headquarters')
-      .eq('entity_id', entityId);
-    if (pe) throw new Error(pe.message);
-    const rows = (places as { cpa: string | null; is_headquarters: boolean }[]) ?? [];
-    cpa = (rows.find((p) => p.is_headquarters && p.cpa)?.cpa ?? rows.find((p) => p.cpa)?.cpa ?? '').trim();
-  }
+  // 담당CPA 는 계약값 우선, 비면 거래처(사업장) 상속 — listSalesContracts 가 계산해 준다.
+  const cpa = (hit.effectiveCpa || '').trim();
   if (cpa !== TAX_ADJ_CPA) {
     return { action: 'skipped', reason: `담당회계사가 ${cpa || '미지정'}이라 금액을 건드리지 않음` };
   }

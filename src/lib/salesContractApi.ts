@@ -74,6 +74,10 @@ export interface SalesContract {
   staff: ContractStaff[];
   installments: Installment[];
   discounts: Discount[];
+  /** 실제로 쓸 담당CPA — 계약에 적혀 있으면 그 값, 비어 있으면 거래처(사업장)에서 상속. */
+  effectiveCpa: string;
+  /** effectiveCpa 가 상속값인지(계약에 직접 적힌 값이 아님). */
+  cpaInherited: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -87,7 +91,8 @@ const toContract = (r: any): SalesContract => ({
   isInstallment: !!r.is_installment, amount: r.amount != null ? Number(r.amount) : 0, cpa: r.cpa || '',
   contractDate: r.contract_date, startDate: r.start_date, endDate: r.end_date, note: r.note || '',
   contractCode: r.contract_code || '', includedCodes: r.included_codes || [], dateEstimated: !!r.date_estimated,
-  staff: [], installments: [], discounts: [], createdAt: r.created_at, updatedAt: r.updated_at,
+  staff: [], installments: [], discounts: [], effectiveCpa: r.cpa || '', cpaInherited: false,
+  createdAt: r.created_at, updatedAt: r.updated_at,
 });
 const toStaff = (r: any): ContractStaff => ({ id: r.id, contractId: r.contract_id, staffId: r.staff_id, staffName: r.staff_name || '', active: !!r.active });
 const toInst = (r: any): Installment => ({ id: r.id, seq: r.seq ?? 1, label: r.label || '', amount: r.amount != null ? Number(r.amount) : 0, dueDate: r.due_date, conditionNote: r.condition_note || '', billedAt: r.billed_at ?? null });
@@ -103,6 +108,18 @@ export async function listSalesContracts(): Promise<SalesContract[]> {
     supabase.from('biz_contract_discount').select('*'),
   ]);
   for (const r of [con, stf, inst, disc]) if (r.error) throw new Error(r.error.message);
+  // 담당CPA 는 계약에 비어 있으면 거래처(사업장)에서 상속한다 — 폼 안내('거래처 CPA 상속·수정')대로.
+  // 계약에 직접 적힌 값이 있으면 그게 우선(계약별 override).
+  const { data: pl, error: ple } = await supabase.from('biz_place').select('entity_id, cpa, is_headquarters');
+  if (ple) throw new Error(ple.message);
+  const cpaByEntity = new Map<string, string>();
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  for (const p of (pl as any[]) ?? []) {
+    const v = (p.cpa || '').trim();
+    if (!v) continue;
+    if (p.is_headquarters || !cpaByEntity.has(p.entity_id)) cpaByEntity.set(p.entity_id, v);
+  }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const byC = <T,>(rows: any[], map: (r: any) => T & { contractId?: string }, key = 'contract_id') => {
     const m = new Map<string, T[]>();
@@ -112,9 +129,13 @@ export async function listSalesContracts(): Promise<SalesContract[]> {
   const sM = byC(stf.data as any[], toStaff);
   const iM = byC(inst.data as any[], toInst);
   const dM = byC(disc.data as any[], toDisc);
-  return (con.data as any[]).map(toContract).map((c) => ({
-    ...c, staff: sM.get(c.id) ?? [], installments: iM.get(c.id) ?? [], discounts: dM.get(c.id) ?? [],
-  }));
+  return (con.data as any[]).map(toContract).map((c) => {
+    const inherited = !c.cpa ? cpaByEntity.get(c.entityId) ?? '' : '';
+    return {
+      ...c, staff: sM.get(c.id) ?? [], installments: iM.get(c.id) ?? [], discounts: dM.get(c.id) ?? [],
+      effectiveCpa: c.cpa || inherited, cpaInherited: !c.cpa && !!inherited,
+    };
+  });
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
