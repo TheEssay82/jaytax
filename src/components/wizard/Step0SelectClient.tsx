@@ -195,9 +195,9 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
             등록된 거래처 없음. <b>세무조정 대상선정</b>에서 매출계약을 가져와 편입하거나, 아래 "직접 입력"으로 진행하세요.
           </div>
         )}
-        {hasTargets && (
+        {showAll && hasTargets && (
           <div className="alert-i">
-            {S.fiscalYear}년 청구대상 확정 {targetIds.length}개 — 목록 상단 우선 표시 (전체 거래처도 함께 표시)
+            전체 보기 — {S.fiscalYear}년 청구대상 확정 {targetIds.length}개를 목록 상단에 우선 표시합니다.
           </div>
         )}
 

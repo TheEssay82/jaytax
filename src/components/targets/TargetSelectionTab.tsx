@@ -32,7 +32,8 @@ export default function TargetSelectionTab() {
   const [busyTarget, setBusyTarget] = useState(false);
   const [filter, setFilter] = useState('');
   const [bizFilter, setBizFilter] = useState('');
-  const [displayYear, setDisplayYear] = useState(CURRENT_YEAR);
+  // 기본은 전년 귀속 — 세무조정은 전년도(예: 2025년 귀속)를 올해 신고·청구한다.
+  const [displayYear, setDisplayYear] = useState(CURRENT_YEAR - 1);
   const [sortKey, setSortKey] = useState('');
   const [sortDir, setSortDir] = useState(1);
   const [showImport, setShowImport] = useState(false);
