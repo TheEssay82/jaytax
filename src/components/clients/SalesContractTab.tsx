@@ -12,7 +12,7 @@ import { ColFilter, scrollBox, stickyTop, useColWidths, ResizeHandle, clip } fro
 import { exportContractTemplate, parseContractExcelFile, applyContractExcel, type ContractExcelResult } from '../../lib/bizContractExcel';
 import { periodRevenue, defaultWindow, monthIndex } from '../../lib/billingSchedule';
 import {
-  listSalesContracts, createSalesContract, updateSalesContract, deleteSalesContract,
+  listSalesContracts, createSalesContract, updateSalesContract, deleteSalesContract, backfillContractCodes,
   saveInstallments, saveDiscounts, saveContractStaff, listContractStaffProfiles, setInstallmentBilled,
   staffCandidatesForTeam, BILLING_CYCLES, CPA_LIST, settlementYearOfDate, contractFiscalYear,
   type SalesContract, type ContractInput, type Installment, type Discount,
@@ -77,7 +77,7 @@ interface FormState {
   occurrenceUnit: OccurrenceUnit; billingUnit: BillingUnit | '';
   fiscalYear: string; billingCycle: BillingCycle; isInstallment: boolean; amount: string;
   cpa: string; staffIds: string[];
-  contractDate: string; startDate: string; endDate: string;
+  contractDate: string; startDate: string; endDate: string; dateEstimated: boolean;
   parentContractId: string; note: string; includedCodes: string[];
   installments: Installment[]; discounts: Discount[];
 }
@@ -85,7 +85,7 @@ const emptyForm = (): FormState => ({
   entityId: '', placeId: '', team: '감사team', categoryCode: '', categoryEtcName: '',
   includesVat: false, includesWht: false, advisoryType: '', occurrenceUnit: '사업장', billingUnit: '',
   fiscalYear: '', billingCycle: '월', isInstallment: false, amount: '', cpa: '', staffIds: [],
-  contractDate: '', startDate: '', endDate: '', parentContractId: '', note: '', includedCodes: [], installments: [], discounts: [],
+  contractDate: '', startDate: '', endDate: '', dateEstimated: false, parentContractId: '', note: '', includedCodes: [], installments: [], discounts: [],
 });
 
 interface TaxOffer { entityId: string; placeId: string | null; kind: '법인' | '개인'; code: string; year: number }
@@ -107,6 +107,7 @@ export default function SalesContractTab() {
   const [editId, setEditId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
   const [showCodeHelp, setShowCodeHelp] = useState(false);
+  const [codeFixing, setCodeFixing] = useState(false);
   const { widthOf, startResize } = useColWidths();
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
@@ -325,6 +326,24 @@ export default function SalesContractTab() {
     return { total, aud, tax };
   }, [contracts]);
 
+  // SQL 로 직접 적재한 계약은 앱의 생성 경로를 타지 않아 매출계약코드가 비어 있다. 규칙(contractCodeBase)을
+  // 그대로 재사용해 일괄 부여한다.
+  async function fixMissingCodes() {
+    const missing = contracts.filter((c) => !c.contractCode).length;
+    if (!missing) return alert('매출계약코드가 없는 계약이 없습니다.');
+    if (!confirm(`매출계약코드가 없는 ${missing}건에 코드를 부여합니다.
+기존 코드는 건드리지 않습니다. 진행할까요?`)) return;
+    setCodeFixing(true);
+    try {
+      const r = await backfillContractCodes();
+      await load();
+      alert(`✓ 코드 부여 — 완료 ${r.updated}건` +
+        (r.skipped ? ` · 건너뜀 ${r.skipped}건(거래처코드·연도 없음)` : '') +
+        (r.failed.length ? ` · 실패 ${r.failed.length}건` : ''));
+    } catch (e) { alert('코드 부여 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setCodeFixing(false); }
+  }
+
   // 기장 등 taxteam 계약을 정우철 담당으로 새로 등록하면, 같은 거래처의 세무조정(법인세·종합소득세)
   // 계약도 대개 함께 생긴다. 매번 따로 등록하지 않도록 바로 물어본다(금액은 청구기록에서 따라온다).
   function maybeOfferTaxFiling(form: FormState) {
@@ -381,7 +400,7 @@ export default function SalesContractTab() {
       billingCycle: form.billingCycle, isInstallment: form.isInstallment,
       amount: form.amount ? Number(form.amount.replace(/,/g, '')) : 0, cpa: form.cpa.trim(),
       contractDate: form.contractDate || null, startDate: monthToDate(form.startDate), endDate: monthToDate(form.endDate),
-      note: form.note.trim(), includedCodes: form.includedCodes,
+      note: form.note.trim(), includedCodes: form.includedCodes, dateEstimated: form.dateEstimated,
     };
     try {
       const id = existingId ? (await updateSalesContract(existingId, input), existingId) : await createSalesContract(input);
@@ -410,6 +429,16 @@ export default function SalesContractTab() {
         📄 매출계약등록
         <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>총 {stats.total} · 감사 {stats.aud} · tax {stats.tax}</span>
         <button className="btn-sm" onClick={() => setShowCodeHelp(true)} title="매출계약코드 규칙 보기">📖 코드안내</button>
+        {role === 'superuser' && contracts.some((c) => !c.contractCode) && (
+          <button
+            className="btn-sm btn-sm-blue"
+            disabled={codeFixing}
+            onClick={() => void fixMissingCodes()}
+            title="SQL 로 적재돼 코드가 비어 있는 계약에 규칙대로 코드를 부여합니다"
+          >
+            {codeFixing ? '부여 중…' : `🏷 코드없는 ${contracts.filter((c) => !c.contractCode).length}건 코드부여`}
+          </button>
+        )}
         {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
       </div>
       {error && <div style={{ color: '#c33', fontSize: 12, marginBottom: 8 }}>{error}</div>}
@@ -1032,6 +1061,13 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
           <input type="month" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></div>
         <div className="frow"><span className="fl">종료월(비움=계속)</span>
           <input type="month" value={f.endDate} onChange={(e) => pickEndMonth(e.target.value)} /></div>
+        <label
+          style={{ gridColumn: '1 / -1', fontSize: 11.5, color: '#666', display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}
+          title="정보관리 시작(2026-07) 이전 계약은 날짜를 규칙으로 채워 넣어 추정으로 표시합니다. 실제 계약서 날짜를 넣었으면 해제하세요."
+        >
+          <input type="checkbox" checked={f.dateEstimated} onChange={(e) => set('dateEstimated', e.target.checked)} />
+          개시·종료일이 <b>추정값</b>임 (표에 <b>·추정</b> 으로 표시 — 실제 날짜를 확인해 넣었으면 체크를 해제하세요)
+        </label>
       </div>
 
       {/* 상세(접기) — 청구단위·무료할인·메인종속·비고 */}
@@ -1140,7 +1176,7 @@ function fromContract(c: SalesContract): FormState {
     includesVat: c.includesVat, includesWht: c.includesWht, advisoryType: c.advisoryType ?? '', occurrenceUnit: c.occurrenceUnit,
     billingUnit: c.billingUnit ?? '', fiscalYear: c.fiscalYear ? String(c.fiscalYear) : '', billingCycle: c.billingCycle,
     isInstallment: c.isInstallment, amount: c.amount ? String(c.amount) : '', cpa: c.cpa, staffIds: c.staff.map((s) => s.staffId),
-    contractDate: c.contractDate ?? '', startDate: dateToMonth(c.startDate), endDate: dateToMonth(c.endDate), parentContractId: c.parentContractId ?? '',
+    contractDate: c.contractDate ?? '', startDate: dateToMonth(c.startDate), endDate: dateToMonth(c.endDate), dateEstimated: c.dateEstimated, parentContractId: c.parentContractId ?? '',
     note: c.note, includedCodes: c.includedCodes ?? [], installments: c.installments.length ? c.installments : [], discounts: c.discounts,
   };
 }

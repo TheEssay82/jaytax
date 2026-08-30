@@ -204,6 +204,60 @@ async function genContractCode(input: ContractInput): Promise<string | undefined
   return `${base}-${String(maxSeq + 1).padStart(2, '0')}`;
 }
 
+/** 매출계약코드가 비어 있는 계약에 코드를 일괄 부여한다(최고관리자 정리용).
+ *  SQL 로 직접 적재한 계약은 앱의 생성 경로를 타지 않아 코드가 비어 있다.
+ *  규칙이 두 벌이 되지 않도록 contractCodeBase 를 그대로 쓴다. */
+export interface CodeBackfillResult { updated: number; skipped: number; failed: { id: string; error: string }[] }
+
+export async function backfillContractCodes(): Promise<CodeBackfillResult> {
+  const res: CodeBackfillResult = { updated: 0, skipped: 0, failed: [] };
+  const [rows, ents, places, all] = await Promise.all([
+    supabase.from('biz_sales_contract')
+      .select('id, entity_id, place_id, occurrence_unit, category_code, team, start_date, end_date, fiscal_year')
+      .or('contract_code.is.null,contract_code.eq.')
+      .order('created_at'),
+    supabase.from('biz_entity').select('id, code'),
+    supabase.from('biz_place').select('id, place_no'),
+    supabase.from('biz_sales_contract').select('contract_code').not('contract_code', 'is', null),
+  ]);
+  for (const r of [rows, ents, places, all]) if (r.error) throw new Error(r.error.message);
+
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const entCode = new Map((ents.data as any[]).map((e) => [e.id as string, e.code as string]));
+  const placeNo = new Map((places.data as any[]).map((p) => [p.id as string, p.place_no as number]));
+  // 같은 base 안에서 순번이 겹치지 않도록 기존 최대순번을 미리 모아 둔다.
+  const maxSeq = new Map<string, number>();
+  for (const r of all.data as any[]) {
+    const code = (r.contract_code as string) || '';
+    const m = /^(.*)-(\d+)$/.exec(code);
+    if (m) maxSeq.set(m[1], Math.max(maxSeq.get(m[1]) ?? 0, Number(m[2])));
+  }
+
+  for (const c of rows.data as any[]) {
+    const entityCode = entCode.get(c.entity_id as string);
+    if (!entityCode) { res.skipped++; continue; }
+    const year = (c.start_date as string | null)?.slice(0, 4) || (c.fiscal_year ? String(c.fiscal_year) : '');
+    if (!year) { res.skipped++; continue; }
+    const base = contractCodeBase({
+      entityCode,
+      placeNo: c.place_id ? placeNo.get(c.place_id as string) ?? null : null,
+      occurrenceUnit: c.occurrence_unit as OccurrenceUnit,
+      endDate: (c.end_date as string | null) ?? null,
+      categoryCode: c.category_code as string,
+      team: c.team as Team,
+      year,
+    });
+    const seq = (maxSeq.get(base) ?? 0) + 1;
+    maxSeq.set(base, seq);
+    const code = `${base}-${String(seq).padStart(2, '0')}`;
+    const { error } = await supabase.from('biz_sales_contract').update({ contract_code: code }).eq('id', c.id);
+    if (error) res.failed.push({ id: c.id as string, error: error.message });
+    else res.updated++;
+  }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  return res;
+}
+
 export async function createSalesContract(input: ContractInput): Promise<string> {
   const { data: u } = await supabase.auth.getUser();
   const row = toRow(input);
