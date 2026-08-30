@@ -24,6 +24,8 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
   const [bz, setBz] = useState('');
   const [mg, setMg] = useState('');
   const [billedFilter, setBilledFilter] = useState<BilledFilter>('unbilled');
+  // 흐름상 청구서는 '세무조정 대상선정'에서 확정한 거래처에만 만든다. 급할 때만 전체를 편다.
+  const [showAll, setShowAll] = useState(false);
 
   const yrOpts = getWizardYears(clients, records);
   const targetIds = getTargetIds(targets, S.fiscalYear);
@@ -48,6 +50,7 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
   }, [clients, records, S.fiscalYear]);
 
   let shown = filtered;
+  if (!showAll && hasTargets) shown = shown.filter((c) => targetIds.includes(c.id));
   if (billedFilter === 'unbilled') shown = shown.filter((c) => statusOf(c) === 'unbilled');
   else if (billedFilter === 'drafting') shown = shown.filter((c) => statusOf(c) === 'drafting');
   else if (billedFilter === 'billed') shown = shown.filter((c) => statusOf(c) === 'billed');
@@ -164,14 +167,32 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
               {lbl}
             </span>
           ))}
-          <span style={{ fontSize: 11, color: '#888', marginLeft: 'auto' }}>
+          <label
+            style={{ fontSize: 11, color: '#555', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}
+            title="확정하지 않은 거래처까지 모두 봅니다"
+          >
+            <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+            전체 보기
+          </label>
+          <span style={{ fontSize: 11, color: '#888' }}>
             미청구: {unbilledCnt}개 · 작성중: {draftingCnt}개 · 완료: {billedCnt}개
           </span>
         </div>
 
+        {!showAll && hasTargets && (
+          <div className="alert-i" style={{ fontSize: 11 }}>
+            🎯 <b>{S.fiscalYear}년 청구대상으로 확정된 {targetIds.length}개</b> 거래처만 보입니다. 확정 전 거래처까지 보려면 위 <b>전체 보기</b>를 켜세요.
+          </div>
+        )}
+        {!hasTargets && (
+          <div className="alert-w" style={{ fontSize: 11 }}>
+            {S.fiscalYear}년 청구대상으로 확정된 거래처가 없습니다 — <b>세무조정 대상선정</b>에서 먼저 확정하세요. (지금은 전체 거래처가 보입니다)
+          </div>
+        )}
+
         {clients.length === 0 && (
           <div className="alert-w">
-            등록된 거래처 없음. 거래처 관리 탭에서 추가하거나 아래 "직접 입력"으로 진행하세요.
+            등록된 거래처 없음. <b>세무조정 대상선정</b>에서 매출계약을 가져와 편입하거나, 아래 "직접 입력"으로 진행하세요.
           </div>
         )}
         {hasTargets && (

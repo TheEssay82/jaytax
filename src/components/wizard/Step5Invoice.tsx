@@ -8,6 +8,7 @@ import { can } from '../../lib/roles';
 import { calcS } from '../../lib/calc';
 import { updateClient } from '../../lib/clientsApi';
 import { createBillingRecord, updateBillingRecord } from '../../lib/billingApi';
+import { syncTaxContractFromBilling } from '../../lib/taxContractSync';
 import { clearDraft } from '../../lib/draft';
 import type { BillingRecord } from '../../types';
 import type { WizardStepProps } from './stepProps';
@@ -56,6 +57,20 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
         if (cl) {
           const revs = { ...(cl.revenues || {}), [S.fiscalYear]: c.rev };
           await updateClient(S.selClientId, { revenues: revs });
+        }
+      }
+      // 확정분은 매출계약(세무조정)에 금액을 흘려보낸다 — taxteam 매출집계가 거래처관리에서 이뤄지도록.
+      // 실패해도 청구 저장은 이미 끝났으므로 막지 않고 알리기만 한다.
+      if (rec.status === 'final') {
+        try {
+          await syncTaxContractFromBilling({
+            clientId: S.selClientId,
+            fiscalYear: Number(S.fiscalYear),
+            bizType: S.bizType === '개인' ? '개인' : '법인',
+            grandTotal: c.grand,
+          });
+        } catch (e) {
+          alert('청구는 저장됐지만 매출계약 금액 반영에 실패했습니다: ' + (e instanceof Error ? e.message : e));
         }
       }
       if (S.selClientId) clearDraft(S.selClientId, S.fiscalYear);

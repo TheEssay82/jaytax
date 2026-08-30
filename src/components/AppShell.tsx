@@ -13,7 +13,6 @@ import {
 } from '../lib/roles';
 import PasswordModal from './PasswordModal';
 import NotificationBell from './NotificationBell';
-import ClientsTab from './clients/ClientsTab';
 import BizRegistryTab from './clients/BizRegistryTab';
 import SalesContractTab from './clients/SalesContractTab';
 import BizContactsTab from './clients/BizContactsTab';
@@ -21,7 +20,7 @@ import BizStatusTab from './clients/BizStatusTab';
 import WizardTab from './wizard/WizardTab';
 import HistoryTab from './history/HistoryTab';
 import RequestsTab from './requests/RequestsTab';
-import TargetsTab from './targets/TargetsTab';
+import TargetSelectionTab from './targets/TargetSelectionTab';
 import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
 import UsersTab from './users/UsersTab';
@@ -70,9 +69,8 @@ export const MENU_GROUPS: MenuGroup[] = [
     id: 'billing',
     label: '세무조정수수료관리',
     items: [
+      { id: 'targets', label: '🎯 세무조정 대상선정', cap: 'viewClients' },
       { id: 'wizard', label: '📝 청구서 작성' },
-      { id: 'clients', label: '🏢 거래처 관리', cap: 'viewClients' },
-      { id: 'targets', label: '✅ 청구대상', cap: 'manageTargets' },
       { id: 'history', label: '📋 청구기록' },
       { id: 'stats', label: '📊 통계' },
       { id: 'settings', label: '⚙️ 설정', cap: 'changeSettings' },
@@ -394,12 +392,10 @@ function TabContent({
       return <InternalHome onNavigate={onNavigate} onOpenDevNotes={onOpenDevNotes} />;
     case 'wizard':
       return <WizardTab />;
-    case 'clients':
-      return <ClientsTab />;
     case 'history':
       return <HistoryTab onSwitchTab={setCurTab} />;
     case 'targets':
-      return <TargetsTab />;
+      return <TargetSelectionTab />;
     case 'stats':
       return <StatsTab />;
     case 'settings':

@@ -215,3 +215,103 @@ export async function clientBillingUsage(id: string): Promise<{ records: number;
   for (const r of [rec, tgt, con]) if (r.error) throw new Error(r.error.message);
   return { records: rec.count ?? 0, targets: tgt.count ?? 0, consults: con.count ?? 0 };
 }
+
+/** 세무조정 매출계약(법인세·종합소득세) 기준 편입 후보 */
+export interface ImportableTaxContract {
+  contractId: string;
+  contractCode: string;
+  entityId: string;
+  placeId: string | null;
+  code: string;            // 거래처코드 (L0001 / I0001)
+  bizType: '법인' | '개인';
+  companyName: string;
+  taxType: '법인세' | '종합소득세';
+  amount: number;          // 계약금액(공급가액)
+  cpa: string;             // 담당회계사 — 사업장 기준
+  taxId: string;
+  repName: string;
+  manager: string;
+  placeStatus: string;
+  already: boolean;        // 이미 청구 거래처로 편입됨
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/**
+ * 그 해 세무조정 계약이 있는 거래처를 청구 편입 후보로 뽑는다.
+ * 세무조정수수료관리는 정우철 담당분만 청구서를 만든다(김준성·조현규 담당분은 매출계약으로만
+ * 매출을 잡는다) — 담당회계사는 사업장(biz_place.cpa)에 들어 있어 그 값을 그대로 싣는다.
+ */
+export async function listImportableTaxContracts(fiscalYear: number): Promise<ImportableTaxContract[]> {
+  const [cons, taken, reps, staff] = await Promise.all([
+    supabase
+      .from('biz_sales_contract')
+      .select('id, contract_code, entity_id, place_id, category_code, amount, cpa, biz_entity(code, kind, name, corp_form, corp_form_position)')
+      .in('category_code', ['TAX.FILING.CORP', 'TAX.FILING.INCOME'])
+      .eq('fiscal_year', fiscalYear),
+    supabase.from('clients').select('entity_id').not('entity_id', 'is', null),
+    supabase.from('biz_representative').select('entity_id, rep_name'),
+    supabase.from('biz_place').select('id, entity_id, cpa, biz_reg_no, status, is_headquarters'),
+  ]);
+  for (const r of [cons, taken, reps, staff]) if (r.error) throw new Error(r.error.message);
+
+  const takenEntities = new Set((taken.data as any[]).map((r) => r.entity_id as string));
+  const repByEntity = new Map<string, string>();
+  for (const r of reps.data as any[]) if (!repByEntity.has(r.entity_id)) repByEntity.set(r.entity_id, r.rep_name || '');
+  const places = staff.data as any[];
+
+  return (cons.data as any[]).map((c) => {
+    const e = c.biz_entity || {};
+    const sym: Record<string, string> = { 주식회사: '㈜', 유한회사: '(유)', 유한책임회사: '(유책)', 합자회사: '(합자)', 합명회사: '(합명)' };
+    const mark = e.corp_form ? sym[e.corp_form] ?? '' : '';
+    const companyName = !mark || !e.corp_form_position ? (e.name || '')
+      : e.corp_form_position === '앞' ? mark + (e.name || '') : (e.name || '') + mark;
+    // 담당회계사·사업자번호는 계약에 달린 사업장 → 없으면 본사 → 없으면 아무 사업장 순으로 찾는다.
+    const mine = places.filter((p) => p.entity_id === c.entity_id);
+    const place = mine.find((p) => p.id === c.place_id) ?? mine.find((p) => p.is_headquarters) ?? mine[0];
+    return {
+      contractId: c.id as string,
+      contractCode: c.contract_code || '',
+      entityId: c.entity_id as string,
+      placeId: (place?.id as string) ?? null,
+      code: e.code ?? '',
+      bizType: (e.kind === '개인' ? '개인' : '법인') as '법인' | '개인',
+      companyName,
+      taxType: (c.category_code === 'TAX.FILING.CORP' ? '법인세' : '종합소득세') as '법인세' | '종합소득세',
+      amount: Number(c.amount) || 0,
+      cpa: c.cpa || place?.cpa || '',
+      taxId: place?.biz_reg_no || '',
+      repName: repByEntity.get(c.entity_id) || '',
+      manager: '',
+      placeStatus: place?.status || '정상',
+      already: takenEntities.has(c.entity_id as string),
+    };
+  }).sort((a, b) => a.companyName.localeCompare(b.companyName, 'ko'));
+}
+
+/** 세무조정 계약 기준으로 청구 거래처(clients) 편입 — 생성 건수 반환 */
+export async function importTaxContractsAsClients(rows: ImportableTaxContract[]): Promise<number> {
+  const { data: u } = await supabase.auth.getUser();
+  const seen = new Set<string>();
+  const list = rows.filter((r) => !r.already && !seen.has(r.entityId) && (seen.add(r.entityId), true));
+  if (!list.length) return 0;
+  const { data, error } = await supabase.from('clients').insert(list.map((r) => ({
+    biz_type: r.bizType,
+    company_name: r.companyName,
+    trade_name: '',
+    tax_id: r.taxId,
+    rep_name: r.repName,
+    manager: r.manager,
+    bank_account: '',
+    is_model: false,
+    revenues: {},
+    managers: {},
+    model_years: {},
+    loss_years: [],
+    entity_id: r.entityId,
+    place_id: r.placeId,
+    created_by: u.user?.id ?? null,
+  }))).select('id');
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */

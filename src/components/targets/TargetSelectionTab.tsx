@@ -1,26 +1,35 @@
-// 세무조정수수료관리 › 거래처 관리 탭 — 매출액·성실신고 관리 전용.
-// 거래처 '등록'은 거래처관리(biz_*) 한 곳에서만 한다(0071). 여기서는 청구 대상 거래처를
-// 거래처관리에서 '가져오기'로 편입하고, 청구에만 쓰이는 값(가상계좌 등)과 연도별 매출액·
-// 성실신고를 관리한다. 청구이력이 붙은 거래처는 지울 수 없다.
+// 세무조정수수료관리 › 세무조정 대상선정 — 옛 '거래처 관리' + '청구대상'을 한 화면으로 합쳤다.
+// 흐름: 거래처관리에서 거래처 등록 → 매출계약등록에서 법인세/종합소득세 계약 등록
+//       → 여기서 그 계약을 가져와 청구대상 편입 → 매출액·성실신고 입력 → 확정
+//       → 청구서 작성 → 청구기록.
+// 거래처 '등록'은 거래처관리(biz_*)에서만 한다(0070·0071). 여기서 관리하는 값은
+// 청구 모집단(편입·확정)과 수수료 계산 기초자료(매출액·성실신고·상실), 청구 전용 정보(가상계좌 등)뿐이다.
+// 담당회계사가 김준성·조현규인 세무조정은 이 시스템으로 청구하지 않는다(매출계약으로만 매출을 잡는다).
 import { useEffect, useMemo, useState } from 'react';
 import type { Client } from '../../types';
 import { CURRENT_YEAR } from '../../lib/constants';
 import { fm, dtFmt, getRevForYear, getClientDispYears, sortIndicator } from '../../lib/format';
 import {
   updateClient, deleteClient, clientBillingUsage,
-  listImportablePlaces, importPlacesAsClients, type ImportablePlace,
+  listImportableTaxContracts, importTaxContractsAsClients, type ImportableTaxContract,
 } from '../../lib/clientsApi';
+import { setTarget } from '../../lib/targetsApi';
+import { isBilled, hasDraftRecord, getTargetIds } from '../../lib/wizardHelpers';
 import { useClients } from '../../hooks/useClients';
+import { useBillingData } from '../../hooks/useBillingData';
 import { useAuth } from '../../context/AuthContext';
 import { can } from '../../lib/roles';
-import ClientForm, { type ClientFormData } from './ClientForm';
-import BulkRevenue from './BulkRevenue';
+import ClientForm, { type ClientFormData } from '../clients/ClientForm';
+import BulkRevenue from '../clients/BulkRevenue';
 
-export default function ClientsTab() {
+export default function TargetSelectionTab() {
   const { clients, loading, error, refresh } = useClients();
+  const { records, targets, loading: bdLoading, refresh: refreshBilling } = useBillingData();
   const { role, readonly } = useAuth();
   // 전체 관리(등록·삭제·일괄·엑셀·모든 필드) 권한. 없으면(기장팀원) 일부 필드만 수정.
   const canManage = can(role, 'manageClients');
+  const canTarget = can(role, 'manageTargets') && !readonly;   // 청구대상 확정 권한
+  const [busyTarget, setBusyTarget] = useState(false);
   const [filter, setFilter] = useState('');
   const [bizFilter, setBizFilter] = useState('');
   const [displayYear, setDisplayYear] = useState(CURRENT_YEAR);
@@ -57,6 +66,37 @@ export default function ClientsTab() {
   }, [clients, filter, bizFilter, sortKey, sortDir, displayYear]);
 
   const dispYears = useMemo(() => getClientDispYears(clients, displayYear), [clients, displayYear]);
+
+  // 귀속연도(=매출액 기준연도) 기준 확정·청구 상태
+  const targetIds = useMemo(() => new Set(getTargetIds(targets, displayYear)), [targets, displayYear]);
+  const statusOf = (c: Client): '청구완료' | '작성중' | '확정' | '미확정' => {
+    if (isBilled(records, displayYear, c)) return '청구완료';
+    if (hasDraftRecord(records, displayYear, c)) return '작성중';
+    return targetIds.has(c.id) ? '확정' : '미확정';
+  };
+  const prevGrand = (c: Client) =>
+    records.find((r) => r.selClientId === c.id && String(r.fiscalYear) === String(displayYear - 1))?.grand ?? null;
+
+  async function toggleTarget(id: string, val: boolean) {
+    try {
+      await setTarget(displayYear, id, val);
+      await refreshBilling();
+    } catch (e) {
+      alert('확정 변경 실패: ' + (e instanceof Error ? e.message : e));
+    }
+  }
+  async function bulkTarget(val: boolean) {
+    if (!confirm(`화면에 보이는 ${view.length}개 거래처를 ${displayYear}년 청구대상에서 ${val ? '전체 확정' : '전체 해제'}할까요?`)) return;
+    setBusyTarget(true);
+    try {
+      await Promise.all(view.map((c) => setTarget(displayYear, c.id, val)));
+      await refreshBilling();
+    } catch (e) {
+      alert('일괄 변경 실패: ' + (e instanceof Error ? e.message : e));
+    } finally {
+      setBusyTarget(false);
+    }
+  }
 
   // 기준연도 선택지: 데이터 있는 연도 전체 + CY±3 (>=2015, 내림차순)
   const baseOpts = useMemo(() => {
@@ -164,7 +204,7 @@ export default function ClientsTab() {
     }
   }
 
-  if (loading) {
+  if (loading || bdLoading) {
     return (
       <div className="card">
         <div className="chdr">🏢 거래처 관리</div>
@@ -178,12 +218,12 @@ export default function ClientsTab() {
   }
 
   // 체크박스 열은 관리자(일괄삭제)만 → 팀원은 열 하나 줄어든다.
-  const colCount = 6 + dispYears.length + 3;
+  const colCount = (canTarget ? 8 : 7) + dispYears.length + 3;
 
   return (
     <div className="card">
       <div className="chdr">
-        거래처 관리 (총 {clients.length}개)
+        🎯 세무조정 대상선정 — {displayYear}년 귀속 (대상 {clients.length} · 확정 {clients.filter((c) => targetIds.has(c.id)).length} · 청구완료 {clients.filter((c) => statusOf(c) === '청구완료').length})
         <div
           style={{
             marginLeft: 'auto',
@@ -193,13 +233,19 @@ export default function ClientsTab() {
             alignItems: 'center',
           }}
         >
+          {canTarget && (
+            <>
+              <button className="btn-sm" disabled={busyTarget} onClick={() => void bulkTarget(true)}>보이는 건 전체 확정</button>
+              <button className="btn-sm" disabled={busyTarget} onClick={() => void bulkTarget(false)}>전체 해제</button>
+            </>
+          )}
           {!readonly && canManage && (
             <>
               <button className="btn-sm btn-sm-blue" style={{ fontWeight: 600 }} onClick={() => setMode('bulk')}>
                 📊 매출액 일괄입력
               </button>
               <button className="btn-p" onClick={() => setShowImport(true)}>
-                ＋ 거래처관리에서 가져오기
+                ＋ 매출계약에서 가져오기
               </button>
             </>
           )}
@@ -209,7 +255,7 @@ export default function ClientsTab() {
       {error && <div className="alert-w">{error}</div>}
       {canManage ? (
         <div className="alert-i" style={{ fontSize: 11 }}>
-          매출 셀: <b>숫자</b>=매출액 · <b style={{ color: '#6B7280' }}>0</b>=매출 0원(기록됨) · <b style={{ color: '#CCC' }}>—</b>=데이터 없음 · <span className="bdg b-loss">상실</span>=거래종료(‘상실?’ 버튼으로 처리/‘해제’로 취소). <b>거래처 등록은 거래처관리에서</b> 하고, 여기에는 <b>＋ 거래처관리에서 가져오기</b>로 청구 대상만 편입합니다.
+          흐름: <b>매출계약등록</b>에 법인세·종합소득세 계약을 넣고 → <b>＋ 매출계약에서 가져오기</b>로 편입 → <b>매출액·성실신고</b> 입력 → <b>확정</b> → 청구서 작성. 매출 셀: <b>숫자</b>=매출액 · <b style={{ color: '#6B7280' }}>0</b>=매출 0원(기록됨) · <b style={{ color: '#CCC' }}>—</b>=데이터 없음 · <span className="bdg b-loss">상실</span>=거래종료.
         </div>
       ) : (
         <div className="alert-i" style={{ fontSize: 11 }}>
@@ -218,7 +264,8 @@ export default function ClientsTab() {
       )}
 
       {showImport && canManage && !readonly && (
-        <ImportFromBiz
+        <ImportFromContracts
+          fiscalYear={displayYear}
           onClose={() => setShowImport(false)}
           onDone={async () => {
             setShowImport(false);
@@ -239,7 +286,7 @@ export default function ClientsTab() {
           <option value="개인">개인</option>
         </select>
         <span style={{ fontSize: 12, color: '#555', fontWeight: 700, whiteSpace: 'nowrap' }}>
-          매출액 기준연도:
+          귀속연도:
         </span>
         <select
           value={displayYear}
@@ -248,12 +295,12 @@ export default function ClientsTab() {
         >
           {baseOpts.map((y) => (
             <option key={y} value={y}>
-              {y}년 기준
+              {y}년 귀속
             </option>
           ))}
         </select>
         <span style={{ fontSize: 10, color: '#888', whiteSpace: 'nowrap' }}>
-          ← 기준연도 포함 최근 4개년 + 데이터 있는 연도 전체 표시
+          ← 확정·청구 상태와 매출액이 이 연도 기준으로 보입니다
         </span>
       </div>
 
@@ -261,6 +308,8 @@ export default function ClientsTab() {
         <table className="tbl">
           <thead>
             <tr>
+              {canTarget && <th style={{ width: 44 }} title="청구대상 확정">확정</th>}
+              <th style={{ width: 78 }}>상태</th>
               <th onClick={() => clientSort('bizType')} style={{ cursor: 'pointer' }}>
                 구분{sortIndicator('bizType', sortKey, sortDir)}
               </th>
@@ -280,7 +329,7 @@ export default function ClientsTab() {
                   {y}년 매출액{sortIndicator('rev_' + y, sortKey, sortDir)}
                 </th>
               ))}
-              <th>등록일</th>
+              <th className="r">전년 청구액</th>
               <th>수정일</th>
               <th>관리</th>
             </tr>
@@ -301,6 +350,11 @@ export default function ClientsTab() {
                   key={c.id}
                   c={c}
                   dispYears={dispYears}
+                  canTarget={canTarget}
+                  status={statusOf(c)}
+                  isTarget={targetIds.has(c.id)}
+                  prevGrand={prevGrand(c)}
+                  onToggleTarget={(v) => void toggleTarget(c.id, v)}
                   displayYear={displayYear}
                   mvBg={mvBg}
                   mv={mv}
@@ -326,6 +380,11 @@ export default function ClientsTab() {
 interface RowProps {
   c: Client;
   dispYears: number[];
+  canTarget: boolean;
+  status: '청구완료' | '작성중' | '확정' | '미확정';
+  isTarget: boolean;
+  prevGrand: number | null;
+  onToggleTarget: (v: boolean) => void;
   displayYear: number;
   mvBg: string;
   mv: boolean | undefined;
@@ -343,6 +402,11 @@ interface RowProps {
 function ClientRow({
   c,
   dispYears,
+  canTarget,
+  status,
+  isTarget,
+  prevGrand,
+  onToggleTarget,
   mv,
   mvBg,
   canManage,
@@ -356,9 +420,32 @@ function ClientRow({
   onCancelEdit,
 }: RowProps) {
   const { readonly } = useAuth();
+  const statusStyle: Record<string, { bg: string; fg: string }> = {
+    청구완료: { bg: '#D1FAE5', fg: '#065F46' },
+    작성중: { bg: '#FEF3C7', fg: '#92400E' },
+    확정: { bg: '#DBEAFE', fg: '#1E3A8A' },
+    미확정: { bg: '#F3F4F6', fg: '#6B7280' },
+  };
   return (
     <>
       <tr>
+        {canTarget && (
+          <td style={{ textAlign: 'center' }}>
+            <input
+              type="checkbox"
+              checked={isTarget}
+              disabled={status === '청구완료'}
+              title={status === '청구완료' ? '이미 청구된 건은 확정 해제할 수 없습니다' : '청구대상 확정'}
+              onChange={(e) => onToggleTarget(e.target.checked)}
+            />
+          </td>
+        )}
+        <td>
+          <span style={{
+            display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700,
+            background: statusStyle[status].bg, color: statusStyle[status].fg, whiteSpace: 'nowrap',
+          }}>{status}</span>
+        </td>
         <td>
           <span className={`bdg ${c.bizType === '법인' ? 'b-law' : 'b-per'}`}>{c.bizType}</span>
         </td>
@@ -446,7 +533,9 @@ function ClientRow({
             </td>
           );
         })}
-        <td style={{ fontSize: 10, color: '#888', whiteSpace: 'nowrap' }}>{dtFmt(c.createdAt)}</td>
+        <td className="r" style={{ fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>
+          {prevGrand != null ? fm(prevGrand) : <span style={{ color: '#CCC' }}>—</span>}
+        </td>
         <td style={{ fontSize: 10, color: '#888', whiteSpace: 'nowrap' }}>{dtFmt(c.updatedAt)}</td>
         <td>
           <div style={{ display: 'flex', gap: 4 }}>
@@ -474,43 +563,46 @@ function ClientRow({
   );
 }
 
-// ── 거래처관리에서 가져오기 ────────────────────────────────
-// 거래처관리 사업장 목록에서 골라 청구 거래처(clients)로 편입한다. 값은 이때 한 번 복사되고
-// 이후 거래처관리에서 이름이 바뀌어도 따라오지 않는다(과거 청구서 표기 보호).
-function ImportFromBiz({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
-  const [rows, setRows] = useState<ImportablePlace[] | null>(null);
+// ── 매출계약에서 가져오기 ──────────────────────────────────
+// 그 해 세무조정 계약(법인세·종합소득세)이 있는 거래처를 청구 모집단으로 편입한다.
+// 담당회계사가 김준성·조현규인 건은 이 시스템으로 청구하지 않으므로 기본으로 감춘다.
+function ImportFromContracts({ fiscalYear, onClose, onDone }: { fiscalYear: number; onClose: () => void; onDone: () => Promise<void> }) {
+  const [rows, setRows] = useState<ImportableTaxContract[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [hideTaken, setHideTaken] = useState(true);
-  const [hideClosed, setHideClosed] = useState(true);
+  const [onlyMain, setOnlyMain] = useState(true);   // 정우철 담당분만
   const [pick, setPick] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    listImportablePlaces()
+    setRows(null);
+    listImportableTaxContracts(fiscalYear)
       .then(setRows)
-      .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
-  }, []);
+      .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
+  }, [fiscalYear]);
 
   const view = useMemo(() => {
     let list = rows ?? [];
     if (hideTaken) list = list.filter((r) => !r.already);
-    if (hideClosed) list = list.filter((r) => r.status === '정상');
+    if (onlyMain) list = list.filter((r) => r.cpa === '정우철');
     if (q.trim()) {
       const k = q.trim().toLowerCase();
-      list = list.filter((r) => (r.code + r.companyName + r.placeName + r.taxId + r.manager).toLowerCase().includes(k));
+      list = list.filter((r) => (r.code + r.companyName + r.taxId + r.cpa).toLowerCase().includes(k));
     }
     return list;
-  }, [rows, q, hideTaken, hideClosed]);
+  }, [rows, q, hideTaken, onlyMain]);
+
+  const otherCpaCnt = (rows ?? []).filter((r) => !r.already && r.cpa !== '정우철').length;
 
   async function run() {
-    const target = (rows ?? []).filter((r) => pick.has(r.placeId) && !r.already);
+    const target = (rows ?? []).filter((r) => pick.has(r.contractId) && !r.already);
     if (!target.length) return;
-    if (!confirm(`${target.length}개 사업장을 청구 거래처로 가져올까요?`)) return;
+    if (!confirm(`${target.length}건을 ${fiscalYear}년 청구 거래처로 편입할까요?`)) return;
     setBusy(true);
     try {
-      const n = await importPlacesAsClients(target);
-      alert(`✅ ${n}개 거래처를 가져왔습니다.`);
+      const n = await importTaxContractsAsClients(target);
+      alert(`✅ ${n}개 거래처를 편입했습니다. 매출액·성실신고를 입력한 뒤 확정하세요.`);
       await onDone();
     } catch (e) {
       alert('가져오기 실패: ' + (e instanceof Error ? e.message : e));
@@ -523,8 +615,8 @@ function ImportFromBiz({ onClose, onDone }: { onClose: () => void; onDone: () =>
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box" style={{ maxWidth: 980 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <b style={{ color: '#1A2B52' }}>거래처관리에서 가져오기</b>
-          <span style={{ fontSize: 11, color: '#888' }}>사업장 단위로 편입 · 이미 편입된 건은 회색</span>
+          <b style={{ color: '#1A2B52' }}>매출계약에서 가져오기 — {fiscalYear}년 귀속</b>
+          <span style={{ fontSize: 11, color: '#888' }}>법인세·종합소득세 계약 기준 · 이미 편입된 건은 회색</span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
 
@@ -534,42 +626,49 @@ function ImportFromBiz({ onClose, onDone }: { onClose: () => void; onDone: () =>
         {rows && (
           <>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-              <input placeholder="🔍 코드·거래처·사업장·사업자번호·담당직원" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
+              <input placeholder="🔍 코드·거래처·사업자번호·담당CPA" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
               <label style={{ fontSize: 11.5 }}>
                 <input type="checkbox" checked={hideTaken} onChange={(e) => setHideTaken(e.target.checked)} /> 편입된 건 숨김
               </label>
-              <label style={{ fontSize: 11.5 }}>
-                <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} /> 정상 사업장만
+              <label style={{ fontSize: 11.5 }} title="김준성·조현규 담당 세무조정은 이 시스템으로 청구하지 않습니다">
+                <input type="checkbox" checked={onlyMain} onChange={(e) => setOnlyMain(e.target.checked)} /> 정우철 담당분만
               </label>
               <button className="btn-p" disabled={busy || pick.size === 0} onClick={() => void run()}>
-                {busy ? '처리 중…' : `선택 ${pick.size}개 가져오기`}
+                {busy ? '처리 중…' : `선택 ${pick.size}건 편입`}
               </button>
             </div>
+            {onlyMain && otherCpaCnt > 0 && (
+              <div className="alert-i" style={{ fontSize: 11 }}>
+                김준성·조현규 담당 세무조정 계약 <b>{otherCpaCnt}건</b>은 숨겨져 있습니다 — 이 시스템으로 청구하지 않고 매출계약으로만 매출을 잡습니다.
+              </div>
+            )}
 
             <div style={{ maxHeight: '55vh', overflow: 'auto', border: '1px solid #E5E1D8', borderRadius: 6 }}>
               <table className="tbl" style={{ fontSize: 11.5 }}>
                 <thead>
                   <tr>
                     <th style={{ width: 32 }}></th>
-                    <th>코드</th><th>구분</th><th>거래처</th><th>사업장</th><th>사업자번호</th><th>대표자</th><th>담당직원</th><th>상태</th>
+                    <th>코드</th><th>구분</th><th>거래처</th><th>유형</th><th className="r">계약금액</th><th>담당CPA</th><th>사업자번호</th><th>상태</th>
                   </tr>
                 </thead>
                 <tbody>
                   {view.length === 0 && (
-                    <tr><td colSpan={9} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>가져올 사업장이 없습니다.</td></tr>
+                    <tr><td colSpan={9} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+                      가져올 계약이 없습니다. 거래처관리 › 매출계약등록에서 {fiscalYear}년 귀속 법인세·종합소득세 계약을 먼저 등록하세요.
+                    </td></tr>
                   )}
                   {view.map((r) => (
-                    <tr key={r.placeId} style={{ opacity: r.already ? 0.45 : 1 }}>
+                    <tr key={r.contractId} style={{ opacity: r.already ? 0.45 : 1 }}>
                       <td>
                         <input
                           type="checkbox"
                           disabled={r.already}
-                          checked={pick.has(r.placeId)}
+                          checked={pick.has(r.contractId)}
                           onChange={() =>
                             setPick((prev) => {
                               const n = new Set(prev);
-                              if (n.has(r.placeId)) n.delete(r.placeId);
-                              else n.add(r.placeId);
+                              if (n.has(r.contractId)) n.delete(r.contractId);
+                              else n.add(r.contractId);
                               return n;
                             })
                           }
@@ -578,11 +677,11 @@ function ImportFromBiz({ onClose, onDone }: { onClose: () => void; onDone: () =>
                       <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.code}</td>
                       <td><span className={`bdg ${r.bizType === '법인' ? 'b-law' : 'b-per'}`}>{r.bizType}</span></td>
                       <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.companyName}</td>
-                      <td>{r.placeName}</td>
+                      <td>{r.taxType}</td>
+                      <td className="r">{fm(r.amount)}</td>
+                      <td>{r.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
                       <td style={{ fontSize: 11 }}>{r.taxId || <span style={{ color: '#CCC' }}>—</span>}</td>
-                      <td>{r.repName}</td>
-                      <td>{r.manager}</td>
-                      <td>{r.already ? <span style={{ color: '#888' }}>편입됨</span> : r.status}</td>
+                      <td>{r.already ? <span style={{ color: '#888' }}>편입됨</span> : r.placeStatus}</td>
                     </tr>
                   ))}
                 </tbody>

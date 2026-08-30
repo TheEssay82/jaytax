@@ -907,6 +907,12 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
           </select></div>
         <div className="frow"><span className="fl">{f.isInstallment ? '계약금액(총액)' : '계약금액'} <span style={{ fontSize: 10, color: '#a55' }}>VAT별도</span></span>
           <input value={f.amount} onChange={(e) => set('amount', e.target.value)} placeholder={f.billingCycle === '월' ? '월 금액 (예: 150000)' : f.billingCycle === '건' ? '건당 금액' : '1회 금액'} /></div>
+        {(f.categoryCode === 'TAX.FILING.CORP' || f.categoryCode === 'TAX.FILING.INCOME') && f.cpa === '정우철' && (
+          <div style={{ gridColumn: '1 / -1', fontSize: 11, color: '#8a6d1f', background: '#fdfaf1', border: '1px dashed #c9a54a', borderRadius: 5, padding: '5px 8px' }}>
+            🔗 정우철 담당 세무조정입니다 — 이 계약금액은 <b>세무조정수수료관리</b>에서 청구서를 확정할 때
+            그 청구총액의 공급가액(÷1.1)으로 <b>자동 갱신</b>됩니다. 여기서 적은 값은 다음 청구 때 덮어써집니다.
+          </div>
+        )}
         <div className="frow"><span className="fl">귀속연도</span>
           <>
             <input value={f.fiscalYear} onChange={(e) => pickYear(e.target.value)} placeholder="연단위 신고만 (예: 2025)" maxLength={4} />
