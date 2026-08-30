@@ -19,7 +19,7 @@ import { ensureEssayFonts, themeOf } from './essayTheme';
 import EssayPaper from './EssayPaper';
 import RankingBoard from './RankingBoard';
 
-type Phase = 'boot' | 'register' | 'reading' | 'ranking' | 'thanks' | 'empty' | 'error';
+type Phase = 'boot' | 'register' | 'reading' | 'ranking' | 'thanks' | 'closed' | 'empty' | 'error';
 
 export default function EssayReader() {
   useEffect(ensureEssayFonts, []);
@@ -71,10 +71,11 @@ export default function EssayReader() {
         }
         setToken(t);
         setName(st.name);
-        // 이미 순위를 낸 사람은 감사 화면부터(원하면 거기서 다시 정할 수 있다)
+        // 이미 순위를 낸 사람은 감사 화면부터(원하면 거기서 다시 정할 수 있다).
+        // 확정 후 일정 시간이 지나 잠긴 사람은 마감 안내만 본다.
         if (st.submitted) {
           setSheet(await rankingSheet(t));
-          setPhase('thanks');
+          setPhase(st.locked ? 'closed' : 'thanks');
           return;
         }
         await applyNext(await nextPiece(t), t);
@@ -195,6 +196,23 @@ export default function EssayReader() {
               boxSizing: 'border-box',
             }}
           />
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 12.5,
+              lineHeight: 1.7,
+              color: '#8b7c63',
+              background: 'rgba(255,255,255,0.55)',
+              border: '1px solid #e6ddc9',
+              borderRadius: 10,
+              padding: '10px 12px',
+              textAlign: 'left',
+            }}
+          >
+            <b style={{ color: '#5c4a2e' }}>지금 열어둔 이 창에서 끝까지 읽어 주세요.</b>
+            <br />
+            중간에 다른 앱이나 다른 기기로 옮기면 이어서 볼 수 없습니다. 카카오톡으로 링크를 받으셨다면 카카오톡 안에서 그대로 읽으시면 됩니다.
+          </div>
           {msg && <div style={{ marginTop: 10, fontSize: 13, color: '#b04a3a' }}>{msg}</div>}
           {suggestions.length > 0 && (
             <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -261,17 +279,28 @@ export default function EssayReader() {
     );
   }
 
-  if (phase === 'thanks' && sheet) {
+  if ((phase === 'thanks' || phase === 'closed') && sheet) {
+    const closed = phase === 'closed';
     const ordered = sheet.myOrder.map((id) => sheet.pieces.find((p) => p.id === id)).filter(Boolean);
     return (
       <Plain>
         <div style={{ textAlign: 'center', maxWidth: 460, width: '100%' }}>
-          <div style={{ fontSize: 40, marginBottom: 14 }}>🌾</div>
-          <h1 style={headline}>감사합니다</h1>
+          <div style={{ fontSize: 40, marginBottom: 14 }}>{closed ? '🔒' : '🌾'}</div>
+          <h1 style={headline}>{closed ? '평가가 마감되었습니다' : '감사합니다'}</h1>
           <p style={{ ...sub, marginBottom: 22 }}>
-            {sheet.name}님이 정해 주신 순위입니다.
-            <br />
-            큰 도움이 되었습니다.
+            {closed ? (
+              <>
+                {sheet.name}님의 순위는 잘 저장되었습니다.
+                <br />
+                읽어 주셔서 고맙습니다.
+              </>
+            ) : (
+              <>
+                {sheet.name}님이 정해 주신 순위입니다.
+                <br />
+                큰 도움이 되었습니다.
+              </>
+            )}
           </p>
           <ol style={{ textAlign: 'left', margin: '0 0 18px', padding: 0, listStyle: 'none' }}>
             {ordered.map((p, i) => (
@@ -311,24 +340,26 @@ export default function EssayReader() {
           {sheet.comment && (
             <div style={{ fontSize: 13.5, color: '#8b7c63', fontStyle: 'italic', marginBottom: 18 }}>“{sheet.comment}”</div>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              setMsg('');
-              setPhase('ranking');
-            }}
-            style={{
-              padding: '10px 18px',
-              fontSize: 13.5,
-              color: '#5c4a2e',
-              background: 'rgba(255,255,255,0.8)',
-              border: '1px solid #ddd2bb',
-              borderRadius: 999,
-              cursor: 'pointer',
-            }}
-          >
-            순위 다시 정하기
-          </button>
+          {!closed && (
+            <button
+              type="button"
+              onClick={() => {
+                setMsg('');
+                setPhase('ranking');
+              }}
+              style={{
+                padding: '10px 18px',
+                fontSize: 13.5,
+                color: '#5c4a2e',
+                background: 'rgba(255,255,255,0.8)',
+                border: '1px solid #ddd2bb',
+                borderRadius: 999,
+                cursor: 'pointer',
+              }}
+            >
+              순위 다시 정하기
+            </button>
+          )}
         </div>
       </Plain>
     );

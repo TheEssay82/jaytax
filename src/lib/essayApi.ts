@@ -15,12 +15,14 @@ export type EssayPieceView = {
   fontKey: string;
 };
 export type EssayNext = { done: boolean; total: number; read: number; piece?: EssayPieceView };
-export type ReaderState = { name: string; total: number; read: number; submitted: boolean; comment: string };
+export type ReaderState = { name: string; total: number; read: number; submitted: boolean; locked: boolean; comment: string };
 /** 순위 화면에 필요한 것 — 전체 공개작(다시 읽기용 본문 포함)과 내가 이미 낸 순서 */
 export type RankingSheet = {
   name: string;
   comment: string;
   submitted: boolean;
+  /** 확정 후 일정 시간이 지나 잠긴 상태 — 수정·재열람 불가 */
+  locked: boolean;
   pieces: EssayPieceView[];
   myOrder: string[];
 };
@@ -101,6 +103,9 @@ export async function submitRanking(token: string, order: string[], comment: str
     p_comment: comment,
   });
   if (error) {
+    if (error.message.includes('ESSAY_LOCKED')) {
+      throw new Error('평가가 마감되어 순위를 바꿀 수 없습니다.');
+    }
     if (error.message.includes('ESSAY_BADORDER')) {
       throw new Error('작품 목록이 바뀌었습니다. 새로고침한 뒤 다시 정해 주세요.');
     }
