@@ -333,6 +333,103 @@ export async function backfillContractCodes(): Promise<CodeBackfillResult> {
   return res;
 }
 
+// ── 전년 세무조정 계약 갱신 ────────────────────────────────
+// 세무조정(법인세·종합소득세)은 귀속연도가 고정된 재계약형이라 해마다 새로 등록해야 한다.
+// 기장처럼 종료일 없는 계속계약이 아니어서, 전년 계약을 다음 해로 복제하는 창구가 필요하다.
+
+export interface RenewCandidate {
+  id: string;
+  contractCode: string;
+  entityId: string;
+  placeId: string | null;
+  code: string;               // 거래처코드
+  companyName: string;
+  taxType: '법인세' | '종합소득세';
+  amount: number;
+  cpa: string;                // 담당CPA(계약값 우선, 없으면 사업장 상속)
+  placeStatus: string;        // 사업장 상태(폐업·이관이면 기본 제외)
+  alreadyRenewed: boolean;    // 대상연도 계약이 이미 있음
+}
+
+/** fromYear 귀속 세무조정 계약을 toYear 로 갱신할 후보 목록 */
+export async function listRenewableTaxContracts(fromYear: number, toYear: number): Promise<RenewCandidate[]> {
+  const all = await listSalesContracts();
+  const TAX = ['TAX.FILING.CORP', 'TAX.FILING.INCOME'];
+  const src = all.filter((c) => TAX.includes(c.categoryCode) && Number(c.fiscalYear) === fromYear);
+  const done = new Set(
+    all.filter((c) => TAX.includes(c.categoryCode) && Number(c.fiscalYear) === toYear)
+       .map((c) => `${c.entityId}|${c.categoryCode}`),
+  );
+
+  const { data: ents, error: ee } = await supabase.from('biz_entity').select('id, code, name, corp_form, corp_form_position');
+  if (ee) throw new Error(ee.message);
+  const { data: pls, error: pe } = await supabase.from('biz_place').select('id, entity_id, status, is_headquarters');
+  if (pe) throw new Error(pe.message);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const sym: Record<string, string> = { 주식회사: '㈜', 유한회사: '(유)', 유한책임회사: '(유책)', 합자회사: '(합자)', 합명회사: '(합명)' };
+  const entMap = new Map((ents as any[]).map((e) => {
+    const mark = e.corp_form ? sym[e.corp_form] ?? '' : '';
+    const name = !mark || !e.corp_form_position ? (e.name || '')
+      : e.corp_form_position === '앞' ? mark + (e.name || '') : (e.name || '') + mark;
+    return [e.id as string, { code: e.code as string, name }];
+  }));
+  const places = pls as any[];
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+
+  return src.map((c) => {
+    const e = entMap.get(c.entityId);
+    const mine = places.filter((p) => p.entity_id === c.entityId);
+    const place = mine.find((p) => p.id === c.placeId) ?? mine.find((p) => p.is_headquarters) ?? mine[0];
+    return {
+      id: c.id,
+      contractCode: c.contractCode,
+      entityId: c.entityId,
+      placeId: c.placeId,
+      code: e?.code ?? '',
+      companyName: e?.name ?? '',
+      taxType: (c.categoryCode === 'TAX.FILING.CORP' ? '법인세' : '종합소득세') as '법인세' | '종합소득세',
+      amount: c.amount,
+      cpa: c.effectiveCpa,
+      placeStatus: place?.status ?? '정상',
+      alreadyRenewed: done.has(`${c.entityId}|${c.categoryCode}`),
+    };
+  }).sort((a, b) => a.companyName.localeCompare(b.companyName, 'ko'));
+}
+
+/** 선택한 전년 계약을 toYear 귀속으로 복제 — 생성 건수 반환 */
+export async function renewTaxContracts(rows: RenewCandidate[], toYear: number): Promise<number> {
+  const all = await listSalesContracts();
+  const byId = new Map(all.map((c) => [c.id, c]));
+  let made = 0;
+  for (const r of rows) {
+    if (r.alreadyRenewed) continue;
+    const src = byId.get(r.id);
+    if (!src) continue;
+    const newId = await createSalesContract({
+      entityId: src.entityId,
+      placeId: src.placeId,
+      team: src.team,
+      categoryCode: src.categoryCode,
+      occurrenceUnit: src.occurrenceUnit,
+      billingUnit: src.billingUnit,
+      billingCycle: src.billingCycle,
+      amount: src.amount,
+      cpa: src.cpa,                       // 원본이 비어 있으면 그대로 비워 상속을 유지한다
+      fiscalYear: toYear,
+      startDate: `${toYear}-07-01`,
+      endDate: `${toYear + 1}-06-01`,
+      includesVat: src.includesVat,
+      includesWht: src.includesWht,
+      note: `${fromLabel(src.fiscalYear)} 계약 갱신`,
+    });
+    // 계약에 직접 지정된 담당직원이 있으면 이어받는다(상속분은 자동으로 따라오므로 건드리지 않는다).
+    if (src.staff.length) await saveContractStaff(newId, src.staff.map((x) => ({ staffId: x.staffId, staffName: x.staffName })));
+    made++;
+  }
+  return made;
+}
+const fromLabel = (y: number | null) => (y ? `${y}년 귀속` : '전년');
+
 export async function createSalesContract(input: ContractInput): Promise<string> {
   const { data: u } = await supabase.auth.getUser();
   const row = toRow(input);

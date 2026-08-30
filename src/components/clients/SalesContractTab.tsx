@@ -16,6 +16,7 @@ import {
   saveInstallments, saveDiscounts, saveContractStaff, listContractStaffProfiles, setInstallmentBilled,
   staffCandidatesForTeam, BILLING_CYCLES, CPA_LIST, settlementYearOfDate, contractFiscalYear,
   changeContractStaffFrom, staffHistoryApplies,
+  listRenewableTaxContracts, renewTaxContracts, type RenewCandidate,
   type SalesContract, type ContractInput, type Installment, type Discount,
   type OccurrenceUnit, type BillingUnit, type BillingCycle, type AdvisoryType, type StaffProfileLite,
 } from '../../lib/salesContractApi';
@@ -109,6 +110,7 @@ export default function SalesContractTab() {
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
   const [showCodeHelp, setShowCodeHelp] = useState(false);
   const [codeFixing, setCodeFixing] = useState(false);
+  const [showRenew, setShowRenew] = useState(false);
   const { widthOf, startResize } = useColWidths();
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
@@ -436,6 +438,11 @@ export default function SalesContractTab() {
         📄 매출계약등록
         <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>총 {stats.total} · 감사 {stats.aud} · tax {stats.tax}</span>
         <button className="btn-sm" onClick={() => setShowCodeHelp(true)} title="매출계약코드 규칙 보기">📖 코드안내</button>
+        {canWrite && (
+          <button className="btn-sm btn-sm-blue" onClick={() => setShowRenew(true)} title="전년 세무조정(법인세·종합소득세) 계약을 올해 귀속으로 복제">
+            🔄 세무조정 계약 갱신
+          </button>
+        )}
         {role === 'superuser' && contracts.some((c) => !c.contractCode) && (
           <button
             className="btn-sm btn-sm-blue"
@@ -756,6 +763,12 @@ export default function SalesContractTab() {
       )}
 
       {showCodeHelp && <CodeHelpModal onClose={() => setShowCodeHelp(false)} />}
+      {showRenew && (
+        <RenewTaxPanel
+          onClose={() => setShowRenew(false)}
+          onDone={async () => { setShowRenew(false); await load(); }}
+        />
+      )}
     </div>
   );
 }
@@ -1217,3 +1230,130 @@ function fromContract(c: SalesContract): FormState {
 const selStyle: React.CSSProperties = { padding: '4px 7px', fontSize: 12 };
 const teamBadge = (t: Team): React.CSSProperties => ({ fontSize: 9.5, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: '#fff', background: t === '감사team' ? '#4a6fa5' : '#7a9a4a' });
 const chip = (on: boolean): React.CSSProperties => ({ fontSize: 10.5, padding: '2px 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid', borderColor: on ? '#2a7' : '#ccc', background: on ? '#e3f5ec' : '#fff', color: on ? '#175' : '#888' });
+
+// ── 전년 세무조정 계약 갱신 ────────────────────────────────
+// 세무조정은 귀속연도가 고정된 재계약형이라 해마다 새로 등록해야 한다. 전년 계약을 띄워
+// 체크한 것만 올해 귀속으로 복제한다(올해 세무조정을 안 하는 거래처는 체크를 빼면 된다).
+function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
+  const thisYear = settlementYearOfDate(todayYmd()) ?? new Date().getFullYear();
+  const [toYear, setToYear] = useState(thisYear);
+  const [rows, setRows] = useState<RenewCandidate[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [pick, setPick] = useState<Set<string>>(new Set());
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setRows(null); setErr(null);
+    listRenewableTaxContracts(toYear - 1, toYear)
+      .then((r) => {
+        setRows(r);
+        // 기본 선택: 아직 갱신 안 됐고 사업장이 정상인 건.
+        setPick(new Set(r.filter((x) => !x.alreadyRenewed && x.placeStatus === '정상').map((x) => x.id)));
+      })
+      .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
+  }, [toYear]);
+
+  const view = useMemo(() => {
+    const list = rows ?? [];
+    if (!q.trim()) return list;
+    const k = q.trim().toLowerCase();
+    return list.filter((r) => (r.code + r.companyName + r.cpa + r.taxType).toLowerCase().includes(k));
+  }, [rows, q]);
+
+  const target = (rows ?? []).filter((r) => pick.has(r.id) && !r.alreadyRenewed);
+  const sum = target.reduce((a, r) => a + r.amount, 0);
+
+  async function run() {
+    if (!target.length) return;
+    if (!confirm(`${target.length}건을 ${toYear}년 귀속 세무조정 계약으로 만듭니다. 진행할까요?`)) return;
+    setBusy(true);
+    try {
+      const n = await renewTaxContracts(target, toYear);
+      alert(`✓ ${n}건을 ${toYear}년 귀속으로 갱신했습니다. 세무조정 대상선정에서 가져올 수 있습니다.`);
+      await onDone();
+    } catch (e) { alert('갱신 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: 1000 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <b style={{ color: '#1A2B52' }}>세무조정 계약 갱신</b>
+          <span style={{ fontSize: 11.5, color: '#666' }}>
+            {toYear - 1}년 귀속 계약을
+            <select value={toYear} onChange={(e) => setToYear(Number(e.target.value))} style={{ margin: '0 4px', fontWeight: 700 }}>
+              {[thisYear + 1, thisYear, thisYear - 1].map((y) => <option key={y} value={y}>{y}년 귀속</option>)}
+            </select>
+            으로 복제 (정산기간 {toYear}-07 ~ {toYear + 1}-06)
+          </span>
+          <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
+        </div>
+
+        {err && <div className="alert-w">{err}</div>}
+        {!rows && !err && <div style={{ padding: 20, color: '#888', fontSize: 12.5 }}>불러오는 중…</div>}
+
+        {rows && (
+          <>
+            <div className="alert-i" style={{ fontSize: 11 }}>
+              계약금액·담당CPA·담당직원을 그대로 이어받습니다. 정우철 담당분은 세무조정수수료관리에서 청구를 확정하면
+              그 금액으로 다시 맞춰집니다. <b>올해 세무조정을 하지 않는 거래처는 체크를 빼세요.</b>
+              폐업·이관 사업장과 이미 갱신된 건은 기본 선택에서 빠져 있습니다.
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '8px 0' }}>
+              <input placeholder="🔍 코드·거래처·담당CPA·유형" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+              <button className="btn-sm" onClick={() => setPick(new Set(view.filter((r) => !r.alreadyRenewed).map((r) => r.id)))}>보이는 건 전체선택</button>
+              <button className="btn-sm" onClick={() => setPick(new Set())}>전체해제</button>
+              <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{target.length}</b>건 · 합계 {won(sum)}</span>
+              <button className="btn-p" disabled={busy || target.length === 0} onClick={() => void run()}>
+                {busy ? '처리 중…' : `${toYear}년 귀속으로 갱신`}
+              </button>
+            </div>
+
+            <div style={{ maxHeight: '55vh', overflow: 'auto', border: '1px solid #E5E1D8', borderRadius: 6 }}>
+              <table className="tbl" style={{ fontSize: 11.5 }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 32 }}></th>
+                    <th>거래처코드</th><th>거래처</th><th>유형</th><th className="r">계약금액</th><th>담당CPA</th><th>사업장</th><th>상태</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {view.length === 0 && (
+                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+                      {toYear - 1}년 귀속 세무조정 계약이 없습니다.
+                    </td></tr>
+                  )}
+                  {view.map((r) => (
+                    <tr key={r.id} style={{ opacity: r.alreadyRenewed ? 0.45 : 1 }}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          disabled={r.alreadyRenewed}
+                          checked={pick.has(r.id)}
+                          onChange={() => setPick((prev) => {
+                            const n = new Set(prev);
+                            if (n.has(r.id)) n.delete(r.id); else n.add(r.id);
+                            return n;
+                          })}
+                        />
+                      </td>
+                      <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.code}</td>
+                      <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.companyName}</td>
+                      <td>{r.taxType}</td>
+                      <td className="r">{won(r.amount)}</td>
+                      <td>{r.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
+                      <td>{r.placeStatus}</td>
+                      <td>{r.alreadyRenewed ? <span style={{ color: '#888' }}>이미 갱신됨</span> : ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
