@@ -37,6 +37,9 @@ export interface Client {
   modelYears?: Record<string, boolean>;
   /** 상실 연도 */
   lossYears?: number[];
+  /** 거래처관리 연결 — 거래처(biz_entity)·사업장(biz_place) */
+  entityId?: string | null;
+  placeId?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

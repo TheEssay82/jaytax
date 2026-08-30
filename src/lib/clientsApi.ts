@@ -18,6 +18,8 @@ interface ClientRow {
   managers: Record<string, string> | null;
   model_years: Record<string, boolean> | null;
   loss_years: number[] | null;
+  entity_id: string | null;
+  place_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -37,6 +39,8 @@ function rowToClient(r: ClientRow): Client {
     managers: r.managers || {},
     modelYears: r.model_years || {},
     lossYears: r.loss_years || [],
+    entityId: r.entity_id ?? null,
+    placeId: r.place_id ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -109,4 +113,105 @@ export async function deleteClients(ids: string[]): Promise<void> {
   if (done < ids.length) {
     throw new Error(`${ids.length}건 중 ${done}건만 삭제되었습니다 — 나머지는 권한이 없거나 이미 삭제된 건입니다.`);
   }
+}
+
+// ── 거래처관리(biz_*) 연동 ────────────────────────────────
+// 거래처 등록 창구는 거래처관리 하나뿐이고, 세무조정 청구대상은 여기서 '가져오기'로 편입한다.
+// 가져올 때 값을 한 번 복사만 하고 이후 자동 동기화는 하지 않는다 — 회사명이 바뀌면
+// 과거 청구서 표기까지 흔들리기 때문이다.
+
+export interface ImportablePlace {
+  placeId: string;
+  entityId: string;
+  code: string;          // 거래처코드-사업장번호 (예: L0001-01)
+  bizType: '법인' | '개인';
+  companyName: string;   // 거래처(법인격 포함) 표기
+  placeName: string;
+  taxId: string;
+  repName: string;
+  manager: string;       // 담당직원(활성 1인)
+  status: string;
+  already: boolean;      // 이미 청구 거래처로 편입됨
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/** 거래처관리 사업장 목록 — 청구 거래처로 가져올 후보(이미 편입된 건은 already=true) */
+export async function listImportablePlaces(): Promise<ImportablePlace[]> {
+  const [places, taken, reps, staff] = await Promise.all([
+    supabase
+      .from('biz_place')
+      .select('id, entity_id, place_no, place_name, biz_reg_no, status, biz_entity(code, kind, name, corp_form, corp_form_position)')
+      .order('place_no'),
+    supabase.from('clients').select('place_id').not('place_id', 'is', null),
+    supabase.from('biz_representative').select('entity_id, rep_name'),
+    supabase.from('biz_place_staff').select('place_id, staff_name, active'),
+  ]);
+  for (const r of [places, taken, reps, staff]) if (r.error) throw new Error(r.error.message);
+
+  const takenIds = new Set((taken.data as any[]).map((r) => r.place_id as string));
+  const repByEntity = new Map<string, string>();
+  for (const r of reps.data as any[]) if (!repByEntity.has(r.entity_id)) repByEntity.set(r.entity_id, r.rep_name || '');
+  const staffByPlace = new Map<string, string>();
+  for (const r of staff.data as any[]) if (r.active !== false && !staffByPlace.has(r.place_id)) staffByPlace.set(r.place_id, r.staff_name || '');
+
+  return (places.data as any[]).map((p) => {
+    const e = p.biz_entity || {};
+    const sym: Record<string, string> = { 주식회사: '㈜', 유한회사: '(유)', 유한책임회사: '(유책)', 합자회사: '(합자)', 합명회사: '(합명)' };
+    const mark = e.corp_form ? sym[e.corp_form] ?? '' : '';
+    const companyName = !mark || !e.corp_form_position ? (e.name || '')
+      : e.corp_form_position === '앞' ? mark + (e.name || '') : (e.name || '') + mark;
+    return {
+      placeId: p.id as string,
+      entityId: p.entity_id as string,
+      code: `${e.code ?? ''}-${String(p.place_no ?? '').padStart(2, '0')}`,
+      bizType: (e.kind === '개인' ? '개인' : '법인') as '법인' | '개인',
+      companyName,
+      placeName: p.place_name || '',
+      taxId: p.biz_reg_no || '',
+      repName: repByEntity.get(p.entity_id) || '',
+      manager: staffByPlace.get(p.id) || '',
+      status: p.status || '정상',
+      already: takenIds.has(p.id as string),
+    };
+  });
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/** 선택한 사업장을 청구 거래처(clients)로 편입 — 생성 건수 반환 */
+export async function importPlacesAsClients(places: ImportablePlace[]): Promise<number> {
+  const { data: u } = await supabase.auth.getUser();
+  const rows = places
+    .filter((p) => !p.already)
+    .map((p) => ({
+      biz_type: p.bizType,
+      company_name: p.companyName,
+      trade_name: p.placeName && p.placeName !== p.companyName ? p.placeName : '',
+      tax_id: p.taxId,
+      rep_name: p.repName,
+      manager: p.manager,
+      bank_account: '',
+      is_model: false,
+      revenues: {},
+      managers: {},
+      model_years: {},
+      loss_years: [],
+      entity_id: p.entityId,
+      place_id: p.placeId,
+      created_by: u.user?.id ?? null,
+    }));
+  if (!rows.length) return 0;
+  const { data, error } = await supabase.from('clients').insert(rows).select('id');
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}
+
+/** 청구 이력이 있는지 확인 — 있으면 삭제(가져오기 취소)를 막는다. */
+export async function clientBillingUsage(id: string): Promise<{ records: number; targets: number; consults: number }> {
+  const [rec, tgt, con] = await Promise.all([
+    supabase.from('billing_records').select('id', { count: 'exact', head: true }).eq('client_id', id),
+    supabase.from('billing_targets').select('id', { count: 'exact', head: true }).eq('client_id', id),
+    supabase.from('consultations').select('id', { count: 'exact', head: true }).eq('client_id', id),
+  ]);
+  for (const r of [rec, tgt, con]) if (r.error) throw new Error(r.error.message);
+  return { records: rec.count ?? 0, targets: tgt.count ?? 0, consults: con.count ?? 0 };
 }

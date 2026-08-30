@@ -1,10 +1,15 @@
-// 거래처 관리 탭 — 원본 HTML rClients() 포팅 (목록·필터·정렬·CRUD)
-import { useMemo, useState } from 'react';
+// 세무조정수수료관리 › 거래처 관리 탭 — 매출액·성실신고 관리 전용.
+// 거래처 '등록'은 거래처관리(biz_*) 한 곳에서만 한다(0071). 여기서는 청구 대상 거래처를
+// 거래처관리에서 '가져오기'로 편입하고, 청구에만 쓰이는 값(가상계좌 등)과 연도별 매출액·
+// 성실신고를 관리한다. 청구이력이 붙은 거래처는 지울 수 없다.
+import { useEffect, useMemo, useState } from 'react';
 import type { Client } from '../../types';
 import { CURRENT_YEAR } from '../../lib/constants';
 import { fm, dtFmt, getRevForYear, getClientDispYears, sortIndicator } from '../../lib/format';
-import { createClient, updateClient, deleteClient, deleteClients } from '../../lib/clientsApi';
-import { downloadTemplate, parseClientsFile } from '../../lib/clientsExcel';
+import {
+  updateClient, deleteClient, clientBillingUsage,
+  listImportablePlaces, importPlacesAsClients, type ImportablePlace,
+} from '../../lib/clientsApi';
 import { useClients } from '../../hooks/useClients';
 import { useAuth } from '../../context/AuthContext';
 import { can } from '../../lib/roles';
@@ -21,64 +26,9 @@ export default function ClientsTab() {
   const [displayYear, setDisplayYear] = useState(CURRENT_YEAR);
   const [sortKey, setSortKey] = useState('');
   const [sortDir, setSortDir] = useState(1);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<'list' | 'bulk'>('list');
-
-  // 엑셀 업로드: 사업자번호 기준 일괄 upsert (원본 importClients)
-  async function importExcel(file: File) {
-    setBusy(true);
-    try {
-      const parsed = await parseClientsFile(file);
-      if (!parsed.length) {
-        alert('업로드할 데이터가 없습니다.');
-        return;
-      }
-      const norm = (s: string) => s.replace(/-/g, '');
-      let added = 0;
-      let updated = 0;
-      for (const p of parsed) {
-        const dup = p.taxId ? clients.find((c) => c.taxId && norm(c.taxId) === norm(p.taxId)) : undefined;
-        if (dup) {
-          await updateClient(dup.id, {
-            revenues: { ...(dup.revenues || {}), ...p.revenues },
-            modelYears: { ...(dup.modelYears || {}), ...p.modelYears },
-            manager: p.manager || dup.manager,
-            tradeName: p.tradeName || dup.tradeName,
-            repName: p.repName || dup.repName,
-            bankAccount: p.bankAccount || dup.bankAccount,
-            bizType: p.bizType,
-          });
-          updated++;
-        } else {
-          await createClient({
-            bizType: p.bizType,
-            companyName: p.companyName,
-            taxId: p.taxId,
-            manager: p.manager,
-            tradeName: p.tradeName,
-            repName: p.repName,
-            bankAccount: p.bankAccount,
-            revenues: p.revenues,
-            modelYears: p.modelYears,
-            managers: {},
-            lossYears: [],
-          });
-          added++;
-        }
-      }
-      await refresh();
-      alert(`✅ 업로드 완료 — 신규 ${added}개, 갱신 ${updated}개`);
-    } catch (e) {
-      alert('업로드 실패: ' + (e instanceof Error ? e.message : e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const norm = (s: string) => s.replace(/-/g, '');
 
   // 필터 + 정렬
   const view = useMemo(() => {
@@ -115,8 +65,6 @@ export default function ClientsTab() {
     return [...new Set([...data, ...around])].filter((y) => y >= 2015).sort((a, b) => b - a);
   }, [clients]);
 
-  const allSel = view.length > 0 && view.every((c) => selected.has(c.id));
-
   function clientSort(key: string) {
     if (sortKey === key) setSortDir((d) => d * -1);
     else {
@@ -125,51 +73,6 @@ export default function ClientsTab() {
     }
   }
 
-  function toggleSel(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleAll() {
-    setSelected(allSel ? new Set() : new Set(view.map((c) => c.id)));
-  }
-
-  // 신규 추가: 사업자번호 기준 upsert (원본 upsertClient)
-  async function handleAdd(data: ClientFormData, mgrYear: number, modelYear: number) {
-    const dup = data.taxId ? clients.find((c) => c.taxId && norm(c.taxId) === norm(data.taxId)) : undefined;
-    try {
-      if (dup) {
-        const upd: Partial<Client> = { revenues: { ...(dup.revenues || {}), ...data.revenues } };
-        if (data.companyName && data.companyName !== dup.companyName)
-          upd.companyName = `${data.companyName}(M:${dup.companyName})`;
-        if (data.manager && mgrYear) {
-          upd.managers = { ...(dup.managers || {}), [mgrYear]: data.manager };
-          upd.manager = data.manager;
-        } else if (data.manager) upd.manager = data.manager;
-        if (modelYear) {
-          upd.modelYears = { ...(dup.modelYears || {}), [modelYear]: data.isModel };
-          upd.isModel = data.isModel;
-        }
-        if (data.tradeName) upd.tradeName = data.tradeName;
-        if (data.repName) upd.repName = data.repName;
-        if (data.bankAccount) upd.bankAccount = data.bankAccount;
-        await updateClient(dup.id, upd);
-        alert(`기존 거래처(${dup.companyName})를 갱신했습니다.`);
-      } else {
-        await createClient({ ...data, managers: {}, modelYears: {}, lossYears: [] });
-      }
-      setShowAdd(false);
-      await refresh();
-    } catch (e) {
-      alert('저장 실패: ' + (e instanceof Error ? e.message : e));
-    }
-  }
-
-  // 수정 저장 (원본 doSaveClient: id 경로)
   async function handleEdit(
     target: Client,
     data: ClientFormData,
@@ -206,32 +109,30 @@ export default function ClientsTab() {
     }
   }
 
+  // 삭제 = '가져오기 취소'. 청구기록·청구대상·상담이 하나라도 붙어 있으면 막는다
+  // (예전엔 그냥 지워져서 청구기록의 거래처 연결이 조용히 끊겼다).
   async function handleDelete(c: Client) {
-    if (!confirm(`'${c.companyName}'을(를) 삭제하시겠습니까?`)) return;
     try {
-      await deleteClient(c.id);
-      setSelected((prev) => {
-        const n = new Set(prev);
-        n.delete(c.id);
-        return n;
-      });
-      await refresh();
-    } catch (e) {
-      alert('삭제 실패: ' + (e instanceof Error ? e.message : e));
-    }
-  }
+      const u = await clientBillingUsage(c.id);
+      const total = u.records + u.targets + u.consults;
+      if (total > 0) {
+        alert(
+          `'${c.companyName}'은(는) 지울 수 없습니다.
 
-  async function handleBulkDelete() {
-    if (!confirm(`선택한 ${selected.size}개 거래처를 삭제하시겠습니까?`)) return;
-    setBusy(true);
-    try {
-      await deleteClients([...selected]);
-      setSelected(new Set());
+` +
+            `청구기록 ${u.records}건 · 청구대상 ${u.targets}건 · 상담 ${u.consults}건이 연결돼 있습니다.
+` +
+            '거래처 자체를 정리하려면 거래처관리에서 처리하세요.',
+        );
+        return;
+      }
+      if (!confirm(`'${c.companyName}'을(를) 청구 거래처에서 제외할까요?
+
+거래처관리의 원본은 그대로 남습니다.`)) return;
+      await deleteClient(c.id);
       await refresh();
     } catch (e) {
       alert('삭제 실패: ' + (e instanceof Error ? e.message : e));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -277,7 +178,7 @@ export default function ClientsTab() {
   }
 
   // 체크박스 열은 관리자(일괄삭제)만 → 팀원은 열 하나 줄어든다.
-  const colCount = (canManage ? 7 : 6) + dispYears.length + 3;
+  const colCount = 6 + dispYears.length + 3;
 
   return (
     <div className="card">
@@ -294,38 +195,11 @@ export default function ClientsTab() {
         >
           {!readonly && canManage && (
             <>
-              {selected.size > 0 && (
-                <button className="btn-sm btn-sm-red" onClick={handleBulkDelete} disabled={busy}>
-                  선택 {selected.size}개 삭제
-                </button>
-              )}
               <button className="btn-sm btn-sm-blue" style={{ fontWeight: 600 }} onClick={() => setMode('bulk')}>
                 📊 매출액 일괄입력
               </button>
-              <button className="btn-sm btn-sm-blue" onClick={() => void downloadTemplate()}>
-                ⬇ 엑셀 양식
-              </button>
-              <label className="btn-sm btn-sm-blue" style={{ cursor: 'pointer' }}>
-                ⬆ 엑셀 업로드
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,.xlsm,.csv"
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) void importExcel(f);
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-              <button
-                className="btn-sm"
-                onClick={() => {
-                  setShowAdd(true);
-                  setEditingId(null);
-                }}
-              >
-                + 새 거래처
+              <button className="btn-p" onClick={() => setShowImport(true)}>
+                ＋ 거래처관리에서 가져오기
               </button>
             </>
           )}
@@ -335,16 +209,22 @@ export default function ClientsTab() {
       {error && <div className="alert-w">{error}</div>}
       {canManage ? (
         <div className="alert-i" style={{ fontSize: 11 }}>
-          매출 셀: <b>숫자</b>=매출액 · <b style={{ color: '#6B7280' }}>0</b>=매출 0원(기록됨) · <b style={{ color: '#CCC' }}>—</b>=데이터 없음 · <span className="bdg b-loss">상실</span>=거래종료(‘상실?’ 버튼으로 처리/‘해제’로 취소). 사업자번호가 같은 거래처를 새로 추가하면 기존 정보가 갱신됩니다.
+          매출 셀: <b>숫자</b>=매출액 · <b style={{ color: '#6B7280' }}>0</b>=매출 0원(기록됨) · <b style={{ color: '#CCC' }}>—</b>=데이터 없음 · <span className="bdg b-loss">상실</span>=거래종료(‘상실?’ 버튼으로 처리/‘해제’로 취소). <b>거래처 등록은 거래처관리에서</b> 하고, 여기에는 <b>＋ 거래처관리에서 가져오기</b>로 청구 대상만 편입합니다.
         </div>
       ) : (
         <div className="alert-i" style={{ fontSize: 11 }}>
-          🔧 기장팀원은 <b>사업자번호·대표자명·가상계좌·성실신고</b>만 수정할 수 있습니다. 거래처 등록·삭제·매출/담당자 변경은 기장팀장 이상만 가능합니다.
+          🔧 기장팀원은 <b>사업자번호·대표자명·가상계좌·성실신고</b>만 수정할 수 있습니다. 거래처 편입·제외·매출/담당자 변경은 기장팀장 이상만 가능합니다.
         </div>
       )}
 
-      {showAdd && editingId === null && (
-        <ClientForm isAdd onSubmit={handleAdd} onCancel={() => setShowAdd(false)} />
+      {showImport && canManage && !readonly && (
+        <ImportFromBiz
+          onClose={() => setShowImport(false)}
+          onDone={async () => {
+            setShowImport(false);
+            await refresh();
+          }}
+        />
       )}
 
       <div className="sbar">
@@ -381,11 +261,6 @@ export default function ClientsTab() {
         <table className="tbl">
           <thead>
             <tr>
-              {canManage && (
-                <th style={{ width: 36 }}>
-                  <input type="checkbox" checked={allSel} onChange={toggleAll} title="전체선택" />
-                </th>
-              )}
               <th onClick={() => clientSort('bizType')} style={{ cursor: 'pointer' }}>
                 구분{sortIndicator('bizType', sortKey, sortDir)}
               </th>
@@ -430,14 +305,9 @@ export default function ClientsTab() {
                   mvBg={mvBg}
                   mv={mv}
                   canManage={canManage}
-                  selected={selected.has(c.id)}
                   editing={editingId === c.id}
                   colCount={colCount}
-                  onToggleSel={() => toggleSel(c.id)}
-                  onEdit={() => {
-                    setEditingId(c.id);
-                    setShowAdd(false);
-                  }}
+                  onEdit={() => setEditingId(c.id)}
                   onDelete={() => handleDelete(c)}
                   onModelYear={(v) => setModelYear(c, displayYear, v)}
                   onToggleLoss={(y, setLoss) => toggleLossYear(c, y, setLoss)}
@@ -460,10 +330,8 @@ interface RowProps {
   mvBg: string;
   mv: boolean | undefined;
   canManage: boolean;
-  selected: boolean;
   editing: boolean;
   colCount: number;
-  onToggleSel: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onModelYear: (v: string) => void;
@@ -478,10 +346,8 @@ function ClientRow({
   mv,
   mvBg,
   canManage,
-  selected,
   editing,
   colCount,
-  onToggleSel,
   onEdit,
   onDelete,
   onModelYear,
@@ -493,11 +359,6 @@ function ClientRow({
   return (
     <>
       <tr>
-        {canManage && (
-          <td>
-            <input type="checkbox" checked={selected} onChange={onToggleSel} />
-          </td>
-        )}
         <td>
           <span className={`bdg ${c.bizType === '법인' ? 'b-law' : 'b-per'}`}>{c.bizType}</span>
         </td>
@@ -595,7 +456,7 @@ function ClientRow({
               </button>
             )}
             {!readonly && canManage && (
-              <button className="btn-sm btn-sm-del" onClick={onDelete} title="삭제">
+              <button className="btn-sm btn-sm-del" onClick={onDelete} title="청구 거래처에서 제외(청구이력 없는 건만)">
                 🗑
               </button>
             )}
@@ -610,5 +471,126 @@ function ClientRow({
         </tr>
       )}
     </>
+  );
+}
+
+// ── 거래처관리에서 가져오기 ────────────────────────────────
+// 거래처관리 사업장 목록에서 골라 청구 거래처(clients)로 편입한다. 값은 이때 한 번 복사되고
+// 이후 거래처관리에서 이름이 바뀌어도 따라오지 않는다(과거 청구서 표기 보호).
+function ImportFromBiz({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
+  const [rows, setRows] = useState<ImportablePlace[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const [hideTaken, setHideTaken] = useState(true);
+  const [hideClosed, setHideClosed] = useState(true);
+  const [pick, setPick] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    listImportablePlaces()
+      .then(setRows)
+      .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  const view = useMemo(() => {
+    let list = rows ?? [];
+    if (hideTaken) list = list.filter((r) => !r.already);
+    if (hideClosed) list = list.filter((r) => r.status === '정상');
+    if (q.trim()) {
+      const k = q.trim().toLowerCase();
+      list = list.filter((r) => (r.code + r.companyName + r.placeName + r.taxId + r.manager).toLowerCase().includes(k));
+    }
+    return list;
+  }, [rows, q, hideTaken, hideClosed]);
+
+  async function run() {
+    const target = (rows ?? []).filter((r) => pick.has(r.placeId) && !r.already);
+    if (!target.length) return;
+    if (!confirm(`${target.length}개 사업장을 청구 거래처로 가져올까요?`)) return;
+    setBusy(true);
+    try {
+      const n = await importPlacesAsClients(target);
+      alert(`✅ ${n}개 거래처를 가져왔습니다.`);
+      await onDone();
+    } catch (e) {
+      alert('가져오기 실패: ' + (e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: 980 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <b style={{ color: '#1A2B52' }}>거래처관리에서 가져오기</b>
+          <span style={{ fontSize: 11, color: '#888' }}>사업장 단위로 편입 · 이미 편입된 건은 회색</span>
+          <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
+        </div>
+
+        {err && <div className="alert-w">{err}</div>}
+        {!rows && !err && <div style={{ padding: 20, color: '#888', fontSize: 12.5 }}>불러오는 중…</div>}
+
+        {rows && (
+          <>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+              <input placeholder="🔍 코드·거래처·사업장·사업자번호·담당직원" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
+              <label style={{ fontSize: 11.5 }}>
+                <input type="checkbox" checked={hideTaken} onChange={(e) => setHideTaken(e.target.checked)} /> 편입된 건 숨김
+              </label>
+              <label style={{ fontSize: 11.5 }}>
+                <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} /> 정상 사업장만
+              </label>
+              <button className="btn-p" disabled={busy || pick.size === 0} onClick={() => void run()}>
+                {busy ? '처리 중…' : `선택 ${pick.size}개 가져오기`}
+              </button>
+            </div>
+
+            <div style={{ maxHeight: '55vh', overflow: 'auto', border: '1px solid #E5E1D8', borderRadius: 6 }}>
+              <table className="tbl" style={{ fontSize: 11.5 }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 32 }}></th>
+                    <th>코드</th><th>구분</th><th>거래처</th><th>사업장</th><th>사업자번호</th><th>대표자</th><th>담당직원</th><th>상태</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {view.length === 0 && (
+                    <tr><td colSpan={9} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>가져올 사업장이 없습니다.</td></tr>
+                  )}
+                  {view.map((r) => (
+                    <tr key={r.placeId} style={{ opacity: r.already ? 0.45 : 1 }}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          disabled={r.already}
+                          checked={pick.has(r.placeId)}
+                          onChange={() =>
+                            setPick((prev) => {
+                              const n = new Set(prev);
+                              if (n.has(r.placeId)) n.delete(r.placeId);
+                              else n.add(r.placeId);
+                              return n;
+                            })
+                          }
+                        />
+                      </td>
+                      <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.code}</td>
+                      <td><span className={`bdg ${r.bizType === '법인' ? 'b-law' : 'b-per'}`}>{r.bizType}</span></td>
+                      <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.companyName}</td>
+                      <td>{r.placeName}</td>
+                      <td style={{ fontSize: 11 }}>{r.taxId || <span style={{ color: '#CCC' }}>—</span>}</td>
+                      <td>{r.repName}</td>
+                      <td>{r.manager}</td>
+                      <td>{r.already ? <span style={{ color: '#888' }}>편입됨</span> : r.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
