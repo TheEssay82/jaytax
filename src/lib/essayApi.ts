@@ -14,8 +14,16 @@ export type EssayPieceView = {
   bgPath: string | null;
   fontKey: string;
 };
-export type EssayNext = { done: boolean; total: number; rated: number; piece?: EssayPieceView };
-export type ReaderState = { name: string; total: number; rated: number };
+export type EssayNext = { done: boolean; total: number; read: number; piece?: EssayPieceView };
+export type ReaderState = { name: string; total: number; read: number; submitted: boolean; comment: string };
+/** 순위 화면에 필요한 것 — 전체 공개작(다시 읽기용 본문 포함)과 내가 이미 낸 순서 */
+export type RankingSheet = {
+  name: string;
+  comment: string;
+  submitted: boolean;
+  pieces: EssayPieceView[];
+  myOrder: string[];
+};
 
 /** 이 기기에 기억된 독자 토큰(이어보기용) */
 export function savedToken(): string | null {
@@ -72,15 +80,32 @@ export async function nextPiece(token: string): Promise<EssayNext> {
   return data as EssayNext;
 }
 
-/** 별점 확정 → 곧바로 다음 작품을 돌려준다(없으면 done) */
-export async function ratePiece(token: string, pieceId: string, stars: number): Promise<EssayNext> {
-  const { data, error } = await supabase.rpc('essay_rate', {
-    p_token: token,
-    p_piece: pieceId,
-    p_stars: stars,
-  });
+/** 한 편 다 읽음 → 곧바로 다음 편을 돌려준다(없으면 done) */
+export async function markRead(token: string, pieceId: string): Promise<EssayNext> {
+  const { data, error } = await supabase.rpc('essay_mark_read', { p_token: token, p_piece: pieceId });
   if (error) throw new Error(error.message);
   return data as EssayNext;
+}
+
+export async function rankingSheet(token: string): Promise<RankingSheet> {
+  const { data, error } = await supabase.rpc('essay_ranking_sheet', { p_token: token });
+  if (error) throw new Error(error.message);
+  return data as RankingSheet;
+}
+
+/** 순위 확정. order 는 1위부터 나열한 작품 id. 다시 내면 이전 것을 대체한다. */
+export async function submitRanking(token: string, order: string[], comment: string): Promise<void> {
+  const { error } = await supabase.rpc('essay_submit_ranking', {
+    p_token: token,
+    p_order: order,
+    p_comment: comment,
+  });
+  if (error) {
+    if (error.message.includes('ESSAY_BADORDER')) {
+      throw new Error('작품 목록이 바뀌었습니다. 새로고침한 뒤 다시 정해 주세요.');
+    }
+    throw new Error(error.message);
+  }
 }
 
 // ── 관리(로그인·최고관리자) ──────────────────────────────────────────────
@@ -189,37 +214,44 @@ export function bgUrl(path: string): string {
   return supabase.storage.from(BG_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
-export type ScoreRow = {
-  pieceId: string;
-  title: string;
-  status: 'draft' | 'published';
-  votes: number;
-  avgStars: number;
-};
+/** 관리용 원자료 — 이걸로 평균순위·1위표·평가자별 분석을 화면에서 계산한다. */
+export type RankRow = { reader: string; pieceId: string; rank: number };
+export type ReaderRow = { name: string; comment: string | null; submittedAt: string | null; readCount: number };
 
-export async function scoreboard(): Promise<ScoreRow[]> {
-  const { data, error } = await supabase.rpc('essay_scoreboard');
-  if (error) throw new Error(error.message);
-  return (data as { piece_id: string; title: string; status: 'draft' | 'published'; votes: number; avg_stars: number }[]).map(
-    (r) => ({ pieceId: r.piece_id, title: r.title, status: r.status, votes: r.votes, avgStars: Number(r.avg_stars) }),
-  );
-}
-
-/** 어떤 독자가 어떤 작품에 몇 점을 줬는지(관리용 상세) */
-export type RatingDetail = { reader: string; pieceId: string; stars: number; at: string };
-export async function listRatings(): Promise<RatingDetail[]> {
+export async function listRankings(): Promise<RankRow[]> {
   const { data, error } = await supabase
-    .from('essay_rating')
-    .select('stars,created_at,piece_id,essay_reader(name)')
-    .order('created_at', { ascending: false });
+    .from('essay_ranking')
+    .select('rank,piece_id,essay_reader(name)')
+    .order('rank');
   if (error) throw new Error(error.message);
-  type Row = { stars: number; created_at: string; piece_id: string; essay_reader: { name: string } | null };
+  type Row = { rank: number; piece_id: string; essay_reader: { name: string } | null };
   return (data as unknown as Row[]).map((r) => ({
     reader: r.essay_reader?.name ?? '(알 수 없음)',
     pieceId: r.piece_id,
-    stars: r.stars,
-    at: r.created_at,
+    rank: r.rank,
   }));
+}
+
+export async function listReaders(): Promise<ReaderRow[]> {
+  const { data, error } = await supabase
+    .from('essay_reader')
+    .select('name,comment,submitted_at,essay_read(count)')
+    .order('created_at');
+  if (error) throw new Error(error.message);
+  type Row = { name: string; comment: string | null; submitted_at: string | null; essay_read: { count: number }[] };
+  return (data as unknown as Row[]).map((r) => ({
+    name: r.name,
+    comment: r.comment,
+    submittedAt: r.submitted_at,
+    readCount: r.essay_read?.[0]?.count ?? 0,
+  }));
+}
+
+/** 평가 기록 전체 삭제(독자·읽음·순위). 작품은 그대로 둔다 — 시험 데이터 정리용. */
+export async function resetEvaluations(): Promise<number> {
+  const { data, error } = await supabase.from('essay_reader').delete().not('id', 'is', null).select('id');
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
 }
 
 // ── Word(.docx) → 본문 텍스트 ────────────────────────────────────────────

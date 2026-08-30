@@ -7,16 +7,18 @@ import {
   deletePiece,
   docxToParagraphs,
   listPieces,
-  listRatings,
+  listRankings,
+  listReaders,
   looksLikeTitle,
-  scoreboard,
+  resetEvaluations,
   updatePiece,
   uploadBg,
   type EssayPiece,
-  type RatingDetail,
-  type ScoreRow,
+  type RankRow,
+  type ReaderRow,
 } from '../../lib/essayApi';
 import EssayPaper from './EssayPaper';
+import RankingStats from './RankingStats';
 import { ALL_THEMES, FONTS, THEMES } from './essayTheme';
 
 type Mode = { kind: 'list' } | { kind: 'preview' } | { kind: 'edit'; piece: EssayPiece };
@@ -26,8 +28,8 @@ const PUBLIC_PATH = '/essay';
 export default function EssayAdmin() {
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [pieces, setPieces] = useState<EssayPiece[]>([]);
-  const [scores, setScores] = useState<ScoreRow[]>([]);
-  const [ratings, setRatings] = useState<RatingDetail[]>([]);
+  const [rankings, setRankings] = useState<RankRow[]>([]);
+  const [readers, setReaders] = useState<ReaderRow[]>([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -47,10 +49,10 @@ export default function EssayAdmin() {
 
   const reload = useCallback(async () => {
     try {
-      const [ps, sc, rt] = await Promise.all([listPieces(), scoreboard(), listRatings()]);
+      const [ps, rk, rd] = await Promise.all([listPieces(), listRankings(), listReaders()]);
       setPieces(ps);
-      setScores(sc);
-      setRatings(rt);
+      setRankings(rk);
+      setReaders(rd);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -60,15 +62,8 @@ export default function EssayAdmin() {
     void reload();
   }, [reload]);
 
-  const scoreOf = (id: string) => scores.find((s) => s.pieceId === id);
   const publishedCount = pieces.filter((p) => p.status === 'published').length;
-  const readerCount = new Set(ratings.map((r) => r.reader)).size;
-  /** 작품별 별점 분포 — [1★,2★,3★,4★,5★] */
-  const distOf = (id: string) => {
-    const d = [0, 0, 0, 0, 0];
-    for (const r of ratings) if (r.pieceId === id) d[r.stars - 1] += 1;
-    return d;
-  };
+  const submittedCount = readers.filter((r) => r.submittedAt).length;
   /** 화면·저장에 쓰는 최종 본문 */
   const body = (dropFirst ? paras.slice(1) : paras).join('\n\n');
 
@@ -184,8 +179,27 @@ export default function EssayAdmin() {
     }
   }
 
+  /** 시험 삼아 돌려본 평가 기록을 공개 전에 비운다(작품은 유지) */
+  async function resetAll() {
+    if (readers.length === 0) return;
+    if (!window.confirm(`평가 기록을 모두 지웁니다.
+등록 ${readers.length}명 · 순위 제출 ${submittedCount}명 분이 사라지고 되돌릴 수 없습니다.
+작품은 그대로 남습니다. 계속할까요?`)) return;
+    if (!window.confirm('정말 지울까요? 이 작업은 되돌릴 수 없습니다.')) return;
+    setBusy(true);
+    setErr('');
+    try {
+      await resetEvaluations();
+      await reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function remove(p: EssayPiece) {
-    if (!window.confirm(`"${p.title}" 을(를) 삭제할까요? 남은 별점도 함께 지워집니다.`)) return;
+    if (!window.confirm(`"${p.title}" 을(를) 삭제할까요? 이 글에 매겨진 순위도 함께 지워집니다.`)) return;
     setBusy(true);
     try {
       await deletePiece(p);
@@ -431,6 +445,8 @@ export default function EssayAdmin() {
         {err && <div style={errBox}>{err}</div>}
       </div>
 
+      <RankingStats pieces={pieces} rankings={rankings} readers={readers} />
+
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 16, color: '#1A2B52' }}>등록된 작품</b>
@@ -438,10 +454,15 @@ export default function EssayAdmin() {
             {pieces.length}편 · 공개 {publishedCount}편 · 비공개 {pieces.length - publishedCount}편
           </span>
           <span style={{ flex: 1 }} />
-          {readerCount > 0 && (
-            <span style={{ fontSize: 12.5, color: '#5b6472' }}>
-              읽은 사람 {readerCount}명 · 평가 {ratings.length}건
-            </span>
+          {readers.length > 0 && (
+            <>
+              <span style={{ fontSize: 12.5, color: '#5b6472' }}>
+                등록 {readers.length}명 · 순위 제출 {submittedCount}명
+              </span>
+              <button type="button" disabled={busy} onClick={resetAll} style={dangerBtn}>
+                평가 초기화
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -469,14 +490,14 @@ export default function EssayAdmin() {
               <tr style={{ textAlign: 'left', color: '#6b7280', fontSize: 12.5 }}>
                 <th style={th}>제목</th>
                 <th style={{ ...th, width: 80 }}>상태</th>
-                <th style={{ ...th, width: 110, textAlign: 'right' }}>평균 별점</th>
-                <th style={{ ...th, width: 70, textAlign: 'right' }}>평가수</th>
+                <th style={{ ...th, width: 110, textAlign: 'right' }}>평균 순위</th>
                 <th style={{ ...th, width: 210 }} />
               </tr>
             </thead>
             <tbody>
               {pieces.map((p) => {
-                const s = scoreOf(p.id);
+                const rs = rankings.filter((r) => r.pieceId === p.id).map((r) => r.rank);
+                const avg = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : 0;
                 return (
                   <tr key={p.id} style={{ borderTop: '1px solid #eee9dd' }}>
                     <td style={td}>
@@ -485,21 +506,9 @@ export default function EssayAdmin() {
                         {ALL_THEMES.find((t) => t.key === p.bgKey)?.label ?? p.bgKey}
                         {p.bgPath ? ' · 이미지' : ''} · {FONTS.find((f) => f.key === p.fontKey)?.label ?? p.fontKey}
                       </div>
-                      {(s?.votes ?? 0) > 0 && (
-                        <div style={{ fontSize: 11.5, color: '#5b6472', marginTop: 5, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          {distOf(p.id).map((n, i) =>
-                            n > 0 ? (
-                              <span key={i} style={{ background: '#f4f1e8', borderRadius: 4, padding: '1px 6px' }}>
-                                {i + 1}★ {n}명
-                              </span>
-                            ) : null,
-                          )}
-                          <span style={{ color: '#9aa0ad' }}>
-                            {ratings
-                              .filter((r) => r.pieceId === p.id)
-                              .map((r) => `${r.reader} ${r.stars}★`)
-                              .join(' · ')}
-                          </span>
+                      {rs.length > 0 && (
+                        <div style={{ fontSize: 11.5, color: '#9aa0ad', marginTop: 4 }}>
+                          {rs.length}명 평가 · 1위표 {rs.filter((r) => r === 1).length}
                         </div>
                       )}
                     </td>
@@ -519,9 +528,8 @@ export default function EssayAdmin() {
                       </span>
                     </td>
                     <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                      {s && s.votes > 0 ? `★ ${s.avgStars.toFixed(2)}` : '—'}
+                      {rs.length ? avg.toFixed(2) : '—'}
                     </td>
-                    <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{s?.votes ?? 0}</td>
                     <td style={{ ...td, textAlign: 'right' }}>
                       <button type="button" onClick={() => openEdit(p)} style={ghostBtn}>
                         보기·수정
