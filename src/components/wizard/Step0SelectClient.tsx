@@ -268,6 +268,9 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
             justifyContent: 'flex-end',
           }}
         >
+          <span style={{ fontSize: 11, color: '#a55', marginRight: 'auto' }}>
+            ⚠ 직접 입력 건은 거래처에 붙지 않아 <b>매출계약에 잡히지 않습니다</b> — 매출집계에서 빠집니다.
+          </span>
           <button className="btn-s" onClick={directInput} style={{ fontSize: 12 }}>
             직접 입력 (DB 없이) →
           </button>
