@@ -4,6 +4,31 @@ import { useEffect, type ReactNode } from 'react';
 import { bgUrl } from '../../lib/essayApi';
 import { ensureEssayFonts, fontOf, pageStyle, themeOf } from './essayTheme';
 
+/** 좁은 화면 보정 — 폰에서 기본 글자크기 그대로면 한 줄에 13~14자밖에 안 들어가
+ *  글이 세로로 한없이 길어진다. 420px 이하에서 본문과 여백을 줄여 한 줄을 늘린다.
+ *  인라인 스타일로는 미디어쿼리를 못 쓰므로 한 번만 <style> 을 심는다. */
+const NARROW_CSS = `
+.essay-body p { font-size: var(--essay-fs); line-height: var(--essay-lh); }
+@media (max-width: 420px) {
+  .essay-sheet { padding: 24px 17px 28px !important; }
+  .essay-body p { font-size: calc(var(--essay-fs) * 0.88); line-height: 1.85; }
+  .essay-title { font-size: 23px !important; }
+}
+@media (max-width: 360px) {
+  .essay-sheet { padding: 22px 14px 26px !important; }
+  .essay-body p { font-size: calc(var(--essay-fs) * 0.84); }
+}`;
+
+function useNarrowCss() {
+  useEffect(() => {
+    if (document.getElementById('essay-narrow-css')) return;
+    const el = document.createElement('style');
+    el.id = 'essay-narrow-css';
+    el.textContent = NARROW_CSS;
+    document.head.appendChild(el);
+  }, []);
+}
+
 type Props = {
   title: string;
   body: string;
@@ -20,6 +45,7 @@ type Props = {
 
 export default function EssayPaper({ title, body, bgKey, bgImageUrl, fontKey, corner, footer, embedded }: Props) {
   useEffect(ensureEssayFonts, []);
+  useNarrowCss();
   const theme = themeOf(bgKey);
   const font = fontOf(fontKey);
   const paragraphs = body.split(/\n{2,}/).filter((p) => p.trim() !== '');
@@ -63,6 +89,7 @@ export default function EssayPaper({ title, body, bgKey, bgImageUrl, fontKey, co
         )}
 
         <article
+          className="essay-sheet"
           style={{
             ...theme.sheet,
             borderRadius: 14,
@@ -72,6 +99,7 @@ export default function EssayPaper({ title, body, bgKey, bgImageUrl, fontKey, co
           }}
         >
           <h1
+            className="essay-title"
             style={{
               margin: '0 0 6px',
               fontFamily: font.family,
@@ -90,14 +118,22 @@ export default function EssayPaper({ title, body, bgKey, bgImageUrl, fontKey, co
             style={{ width: 46, height: 1, background: theme.soft, opacity: 0.55, margin: '18px auto clamp(22px, 4vh, 36px)' }}
           />
 
-          <div style={{ fontFamily: font.family, color: theme.ink }}>
+          <div
+            className="essay-body"
+            style={
+              {
+                fontFamily: font.family,
+                color: theme.ink,
+                '--essay-fs': `${font.size}px`,
+                '--essay-lh': String(font.lineHeight),
+              } as React.CSSProperties
+            }
+          >
             {paragraphs.map((p, i) => (
               <p
                 key={i}
                 style={{
                   margin: i === 0 ? 0 : '1.15em 0 0',
-                  fontSize: font.size,
-                  lineHeight: font.lineHeight,
                   letterSpacing: font.letterSpacing,
                   textIndent: '1em',
                   wordBreak: 'keep-all',
