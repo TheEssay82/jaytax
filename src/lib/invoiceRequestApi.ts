@@ -65,6 +65,8 @@ export interface InvoiceCandidate {
   label: string;                // 분할 회차명
   supplyAmount: number;
   confirmed: boolean;           // 계약확정 여부(미계약이면 표시해 준다)
+  billingCycle: string;         // 청구주기 — 연 1회면 청구월을 실제 요청월로 맞춘다
+  billingMonth: number | null;  // 계약에 적힌 청구월(잠정값일 수 있다)
 }
 
 /**
@@ -104,6 +106,8 @@ export async function listInvoiceCandidates(ym: string, entities: BizEntityFull[
         label: it.label,
         supplyAmount: it.net,
         confirmed: c.confirmed,
+        billingCycle: c.billingCycle,
+        billingMonth: c.billingMonth,
       });
     }
   }
@@ -135,7 +139,26 @@ export async function createInvoiceRequests(ym: string, rows: InvoiceCandidate[]
   });
   const { data, error } = await supabase.from('biz_invoice_request').insert(payload).select('id');
   if (error) throw new Error(error.message);
+  await syncContractBillingMonth(ym, rows);
   return data?.length ?? 0;
+}
+
+/**
+ * 연 1회 계약의 청구월을 '실제로 요청한 달'로 맞춘다.
+ * 세무조정 청구월(법인세 3월·소득세 5월/성실 6월)은 지난 해 실적에서 잡은 값이라 잠정치다 —
+ * 실제로 발행요청을 낸 달이 곧 그 계약의 청구월이므로, 요청하는 순간 계약이 현실을 따라간다.
+ * 분할회차가 있는 계약(감사 등)은 회차 납기가 기준이라 건드리지 않는다.
+ */
+async function syncContractBillingMonth(ym: string, rows: InvoiceCandidate[]): Promise<void> {
+  const month = Number(ym.slice(5, 7));
+  if (!month) return;
+  const targets = [...new Set(
+    rows.filter((r) => r.billingCycle === '연' && !r.installmentId && r.billingMonth !== month)
+      .map((r) => r.contractId),
+  )];
+  if (!targets.length) return;
+  // 실패해도 요청 자체는 이미 등록됐으므로 조용히 넘어간다(다음 요청 때 다시 맞춰진다).
+  await supabase.from('biz_sales_contract').update({ billing_month: month }).in('id', targets);
 }
 
 /** 발행완료 처리 — 세금계산서 번호·발행일 기록 */

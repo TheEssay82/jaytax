@@ -1051,6 +1051,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
               </select>
               <span style={{ fontSize: 11, color: '#888' }}>
                 정산기간 안에서 실제 청구하는 달. 세무조정은 신고 뒤에 청구하므로 <b>법인세 3월 · 소득세 5월(성실신고 6월)</b>입니다.
+                지난 실적에서 잡은 <b>예상치</b>이며, 발행요청을 실제로 내면 <b>그 달로 자동으로 맞춰집니다</b>.
               </span>
             </span></div>
         )}
