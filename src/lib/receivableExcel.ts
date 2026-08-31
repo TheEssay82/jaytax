@@ -17,7 +17,8 @@ const COLS = [
   { h: '사업장명', w: 18 },
   { h: '사업자번호', w: 14 },
   { h: '상태', w: 8 },
-  { h: `기초 미수금(${OPENING_AS_OF} 기준, VAT포함)`, w: 22 },
+  { h: `기초 미수금(${OPENING_AS_OF} 기준, 공급가액)`, w: 24 },
+  { h: 'VAT포함 금액', w: 16 },
   { h: '비고', w: 24 },
 ];
 const REF = new Set([0, 1, 2, 3, 4, 5]);
@@ -38,7 +39,7 @@ export async function exportOpeningTemplate(entities: BizEntityFull[], openings:
     const name = corpDisplayName(e.name, e.corpForm, e.corpFormPosition);
     for (const p of e.places) {
       const o = byPlace.get(p.id);
-      ws.addRow([p.id, e.code, name, p.placeName, p.bizRegNo || '', p.status, o ? o.amount : '', o?.note ?? '']);
+      ws.addRow([p.id, e.code, name, p.placeName, p.bizRegNo || '', p.status, o ? o.amount : '', o ? o.amountGross : '', o?.note ?? '']);
     }
   }
 
@@ -51,13 +52,14 @@ export async function exportOpeningTemplate(entities: BizEntityFull[], openings:
     for (let r = start; r <= end; r++) {
       for (let ci = 0; ci < N; ci++) ws.getCell(r, ci + 1).fill = REF.has(ci) ? FILL_REF : FILL_EDIT;
       ws.getCell(r, 7).numFmt = '#,##0';
+      ws.getCell(r, 8).numFmt = '#,##0';
     }
   }
   setWidths(ws, COLS.map((c) => c.w));
   await saveWorkbook(wb, `기초미수금_${OPENING_AS_OF}.xlsx`);
 }
 
-export interface OpeningExcelRow { placeId: string; amount: number; note: string; label: string }
+export interface OpeningExcelRow { placeId: string; amount: number; amountGross: number; note: string; label: string }
 
 export async function parseOpeningFile(file: File): Promise<OpeningExcelRow[]> {
   const XLSX = await import('xlsx');
@@ -68,7 +70,7 @@ export async function parseOpeningFile(file: File): Promise<OpeningExcelRow[]> {
   if (raw.length < 2) return [];
   const header = (raw[0] as unknown[]).map((h) => String(h).trim());
   const idx = (kw: string) => header.findIndex((h) => h.includes(kw));
-  const map = { id: idx('사업장ID'), name: idx('사업장명'), amount: idx('기초'), note: idx('비고'), company: idx('거래처명') };
+  const map = { id: idx('사업장ID'), name: idx('사업장명'), amount: idx('기초'), gross: idx('VAT포함'), note: idx('비고'), company: idx('거래처명') };
   const get = (row: unknown[], i: number) => (i >= 0 ? String(row[i] ?? '').trim() : '');
   const out: OpeningExcelRow[] = [];
   for (const r of raw.slice(1)) {
@@ -79,7 +81,9 @@ export async function parseOpeningFile(file: File): Promise<OpeningExcelRow[]> {
     if (cell === '') continue;                       // 빈칸은 건너뜀(0 은 저장)
     const amount = Number(cell.replace(/[^\d.-]/g, ''));
     if (!Number.isFinite(amount)) continue;
-    out.push({ placeId, amount, note: get(row, map.note), label: `${get(row, map.company)} ${get(row, map.name)}`.trim() });
+    const g = Number(get(row, map.gross).replace(/[^\d.-]/g, ''));
+    out.push({ placeId, amount, amountGross: Number.isFinite(g) && g ? g : Math.round(amount * 1.1),
+      note: get(row, map.note), label: `${get(row, map.company)} ${get(row, map.name)}`.trim() });
   }
   return out;
 }

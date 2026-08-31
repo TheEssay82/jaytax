@@ -221,7 +221,10 @@ export interface ReceivableOpening {
   id: string;
   placeId: string;
   asOf: string;
+  /** 공급가액(부가세 제외) 기준 잔액 — 기초 미수금의 기본값 */
   amount: number;
+  /** 부가세 포함 잔액 — 거래처가 VAT 뺀 금액만 입금했는지 가려내는 데 쓴다 */
+  amountGross: number;
   note: string;
 }
 
@@ -230,21 +233,26 @@ export async function listReceivableOpenings(asOf = OPENING_AS_OF): Promise<Rece
   if (error) throw new Error(error.message);
   /* eslint-disable @typescript-eslint/no-explicit-any */
   return (data as any[]).map((r) => ({
-    id: r.id, placeId: r.place_id, asOf: r.as_of, amount: Number(r.amount) || 0, note: r.note || '',
+    id: r.id, placeId: r.place_id, asOf: r.as_of, amount: Number(r.amount) || 0,
+    amountGross: Number(r.amount_gross) || 0, note: r.note || '',
   }));
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 /** 기초 미수금 저장(사업장당 1행 upsert). 0원도 '확인함'의 의미로 저장한다. */
 export async function saveReceivableOpenings(
-  rows: { placeId: string; amount: number; note?: string }[],
+  rows: { placeId: string; amount: number; amountGross?: number; note?: string }[],
   asOf = OPENING_AS_OF,
 ): Promise<number> {
   if (!rows.length) return 0;
   const { data: u } = await supabase.auth.getUser();
   const { data, error } = await supabase.from('biz_receivable_opening')
     .upsert(
-      rows.map((r) => ({ place_id: r.placeId, as_of: asOf, amount: r.amount, note: r.note || null, created_by: u.user?.id ?? null })),
+      rows.map((r) => ({
+        place_id: r.placeId, as_of: asOf, amount: r.amount,
+        amount_gross: r.amountGross ?? Math.round(r.amount * (1 + VAT_RATE)),
+        note: r.note || null, created_by: u.user?.id ?? null,
+      })),
       { onConflict: 'place_id,as_of' },
     )
     .select('id');

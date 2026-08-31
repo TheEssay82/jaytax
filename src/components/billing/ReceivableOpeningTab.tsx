@@ -15,7 +15,7 @@ const won = (n: number) => n.toLocaleString('ko-KR');
 
 interface Row {
   placeId: string; code: string; company: string; placeName: string;
-  bizRegNo: string; status: string; amount: number | null; note: string;
+  bizRegNo: string; status: string; amount: number | null; amountGross: number; note: string;
 }
 
 export default function ReceivableOpeningTab() {
@@ -54,7 +54,7 @@ export default function ReceivableOpeningTab() {
         out.push({
           placeId: p.id, code: e.code, company, placeName: p.placeName,
           bizRegNo: p.bizRegNo || '', status: p.status,
-          amount: o ? o.amount : null, note: o?.note ?? '',
+          amount: o ? o.amount : null, amountGross: o?.amountGross ?? 0, note: o?.note ?? '',
         });
       }
     }
@@ -73,6 +73,7 @@ export default function ReceivableOpeningTab() {
 
   const entered = rows.filter((r) => r.amount !== null);
   const total = entered.reduce((s, r) => s + (r.amount ?? 0), 0);
+  const totalGross = entered.reduce((s, r) => s + r.amountGross, 0);
   const dirty = Object.keys(edit).filter((k) => edit[k] !== '');
 
   async function saveEdits() {
@@ -92,7 +93,7 @@ export default function ReceivableOpeningTab() {
       const parsed = await parseOpeningFile(file);
       if (!parsed.length) { alert('업로드할 금액이 없습니다. (금액 칸이 빈 행은 건너뜁니다)'); return; }
       if (!confirm(`${parsed.length}개 사업장의 기초 미수금을 저장합니다. 진행할까요?`)) return;
-      const n = await saveReceivableOpenings(parsed.map((p) => ({ placeId: p.placeId, amount: p.amount, note: p.note })));
+      const n = await saveReceivableOpenings(parsed.map((p) => ({ placeId: p.placeId, amount: p.amount, amountGross: p.amountGross, note: p.note })));
       await load(); flash(`✓ ${n}건 저장`);
     } catch (e) { alert('업로드 실패: ' + (e instanceof Error ? e.message : e)); }
     finally { setBusy(false); }
@@ -105,14 +106,15 @@ export default function ReceivableOpeningTab() {
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         💰 기초 미수금 <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>{OPENING_AS_OF} 기준 · 사업장 단위</span>
         <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
-          입력 {entered.length}/{rows.length} · 합계 {won(total)}
+          입력 {entered.length}/{rows.length} · 합계 {won(total)} <span style={{ color: '#aaa' }}>(VAT포함 {won(totalGross)})</span>
         </span>
         {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
       </div>
       {err && <div className="alert-w">{err}</div>}
 
       <div className="alert-i" style={{ fontSize: 11 }}>
-        {OPENING_AS_OF} 시점에 아직 못 받은 금액(부가세 포함)을 <b>사업장별로</b> 적습니다. 세금계산서가 사업자번호 단위로
+        {OPENING_AS_OF} 시점에 아직 못 받은 금액을 <b>사업장별로</b> 적습니다. 기준은 <b>공급가액(부가세 제외)</b>이고,
+        VAT포함 금액을 함께 보관해 거래처가 부가세를 뺀 금액만 입금했는지 가려낼 수 있게 했습니다. 세금계산서가 사업자번호 단위로
         나가기 때문에 사업장이 기준입니다. <b>0원도 저장하면 '확인함'</b>으로 남아, 아직 안 본 사업장과 구분됩니다.
         이 시점 이후 발행분은 발행요청에 계약·회차가 붙으므로 그때부터는 계약별로 추적됩니다.
       </div>
@@ -143,12 +145,12 @@ export default function ReceivableOpeningTab() {
           <thead>
             <tr>
               <th>거래처코드</th><th>거래처</th><th>사업장</th><th>사업자번호</th><th>상태</th>
-              <th className="r">기초 미수금</th><th>비고</th>
+              <th className="r">기초 미수금<div style={{ fontSize: 9.5, fontWeight: 400, color: '#888' }}>공급가액</div></th><th className="r">VAT포함</th><th>비고</th>
             </tr>
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>해당 사업장 없음</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>해당 사업장 없음</td></tr>
             )}
             {view.map((r) => (
               <tr key={r.placeId} style={{ opacity: r.status === '정상' ? 1 : 0.6 }}>
@@ -166,6 +168,9 @@ export default function ReceivableOpeningTab() {
                       style={{ width: 110, textAlign: 'right', fontSize: 11.5 }}
                     />
                   ) : r.amount === null ? <span style={{ color: '#CCC' }}>미입력</span> : won(r.amount)}
+                </td>
+                <td className="r" style={{ fontSize: 11, color: '#666' }}>
+                  {r.amount === null ? <span style={{ color: '#CCC' }}>—</span> : won(r.amountGross)}
                 </td>
                 <td style={{ fontSize: 11, color: '#666' }}>{r.note}</td>
               </tr>
