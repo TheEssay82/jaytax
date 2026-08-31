@@ -94,6 +94,12 @@ const placeToDraft = (p: BizPlace): PlaceDraft => ({
   cpa: p.cpa, hometaxId: p.hometaxId, hometaxPw: '', note: p.note, staffIds: [], staffStatus: p.staffStatus ?? '',
 });
 
+/** 주민번호 표기 통일 — 원본이 하이픈 유무가 섞여 있어 타이핑용으로 ######-####### 로 맞춘다. */
+function fmtRrn(v: string): string {
+  const d = v.replace(/\D/g, '');
+  return d.length === 13 ? `${d.slice(0, 6)}-${d.slice(6)}` : v;
+}
+
 export default function BizRegistryTab() {
   const { readonly, role } = useAuth();
   const canWrite = !readonly && role !== 'per_head_accountant'; // 인당회계사는 거래처관리 조회 전용
@@ -184,8 +190,9 @@ export default function BizRegistryTab() {
     { key: 'kind', label: '구분', val: (e) => e.kind, w: 46, opts: ['법인', '개인'] },
     { key: 'name', label: '상호/성명', val: (e) => corpDisplayName(e.name, e.corpForm, e.corpFormPosition), w: 150 },
     { key: 'rep', label: '대표', val: (e) => e.representatives.map((r) => r.repName).join(','), w: 54 },
-    { key: 'resident', label: '주민번호', w: 108,
-      val: (e) => (residents ? (residents.get(e.id) ?? '') : (e.kind === '개인' ? (e.hasResidentNo ? '등록됨' : '') : (e.representatives.some((r) => r.hasResidentNo) ? '등록됨' : ''))) },
+    { key: 'resident', label: '주민번호', w: 112,
+      val: (e) => (residents ? fmtRrn(residents.get(e.id) ?? '')
+        : (e.kind === '개인' ? (e.hasResidentNo ? '등록됨' : '') : (e.representatives.some((r) => r.hasResidentNo) ? '등록됨' : ''))) },
     { key: 'place', label: '사업장명', val: (_e, p) => p?.placeName ?? '', w: 84 },
     { key: 'bizno', label: '사업자번호', val: (_e, p) => (p ? (p.bizRegNo || (p.noBiz ? '없음' : '')) : ''), w: 90 },
     { key: 'branch', label: '본/지점', val: (_e, p) => p?.branchType ?? '', w: 54, opts: ['본점', '지점'] },
