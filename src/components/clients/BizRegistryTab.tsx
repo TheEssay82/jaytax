@@ -388,7 +388,7 @@ export default function BizRegistryTab() {
           <button
             className={residents ? 'btn-sm btn-sm-del' : 'btn-sm btn-sm-blue'}
             onClick={() => void toggleResidents()}
-            title="개인은 본인, 법인은 대표자 주민등록번호. 회계사·팀장·최고관리자만 열람됩니다."
+            title="개인은 본인, 법인은 대표자 주민등록번호. 외부인을 제외한 전 직원이 열람합니다."
           >
             {residents ? '🔒 주민번호 가리기' : '🔓 주민번호 보기'}
           </button>
