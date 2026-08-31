@@ -535,3 +535,15 @@ export async function listInternalStaff(): Promise<StaffProfile[]> {
     .sort((a, b) => STAFF_WHITELIST.indexOf(a.name as never) - STAFF_WHITELIST.indexOf(b.name as never));
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
+
+/** 거래처등록 표뷰용 — 개인 본인/법인 대표자 주민번호를 한 번에 열람(권한자만). */
+export interface ResidentRow { entityId: string; kind: string; holder: string; residentNo: string }
+export async function revealAllResidents(): Promise<ResidentRow[]> {
+  const { data, error } = await supabase.rpc('biz_reveal_residents');
+  if (error) throw new Error(error.message);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  return (data as any[]).map((r) => ({
+    entityId: r.entity_id, kind: r.kind, holder: r.holder || '', residentNo: r.resident_no || '',
+  }));
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+}

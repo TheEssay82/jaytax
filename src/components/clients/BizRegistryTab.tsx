@@ -22,6 +22,7 @@ import {
   assignStaff,
   unassignStaff,
   revealEntityResident,
+  revealAllResidents,
   revealRepResident,
   revealPlaceHometaxPw,
   createBizRelation,
@@ -108,6 +109,7 @@ export default function BizRegistryTab() {
   const [natureFilter, setNatureFilter] = useState<'' | BizNature>('');
   const [noBizOnly, setNoBizOnly] = useState(false);
   const [q, setQ] = useState('');
+  const [residents, setResidents] = useState<Map<string, string> | null>(null);   // 표뷰 주민번호 열람분
 
   const [showAdd, setShowAdd] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -182,6 +184,8 @@ export default function BizRegistryTab() {
     { key: 'kind', label: '구분', val: (e) => e.kind, w: 46, opts: ['법인', '개인'] },
     { key: 'name', label: '상호/성명', val: (e) => corpDisplayName(e.name, e.corpForm, e.corpFormPosition), w: 150 },
     { key: 'rep', label: '대표', val: (e) => e.representatives.map((r) => r.repName).join(','), w: 54 },
+    { key: 'resident', label: '주민번호', w: 108,
+      val: (e) => (residents ? (residents.get(e.id) ?? '') : (e.kind === '개인' ? (e.hasResidentNo ? '등록됨' : '') : (e.representatives.some((r) => r.hasResidentNo) ? '등록됨' : ''))) },
     { key: 'place', label: '사업장명', val: (_e, p) => p?.placeName ?? '', w: 84 },
     { key: 'bizno', label: '사업자번호', val: (_e, p) => (p ? (p.bizRegNo || (p.noBiz ? '없음' : '')) : ''), w: 90 },
     { key: 'branch', label: '본/지점', val: (_e, p) => p?.branchType ?? '', w: 54, opts: ['본점', '지점'] },
@@ -320,6 +324,16 @@ export default function BizRegistryTab() {
       await load();
     } catch (e) { alert('담당직원 상태 변경 실패: ' + (e instanceof Error ? e.message : e)); }
   }
+  // 표뷰 주민번호 열 — 직원들이 보고 타이핑하는 용도라 한 번에 열고 닫는다(권한 없으면 실패).
+  async function toggleResidents() {
+    if (residents) { setResidents(null); return; }
+    try { const rows = await revealAllResidents();
+      const m = new Map<string, string>();
+      for (const r of rows) if (!m.has(r.entityId)) m.set(r.entityId, r.residentNo);
+      setResidents(m);
+    } catch (e) { alert('열람 권한이 없거나 오류입니다: ' + (e instanceof Error ? e.message : e)); }
+  }
+
   async function reveal(kind: 'entity' | 'rep' | 'hometax', id: string, label: string) {
     try {
       const v = kind === 'entity' ? await revealEntityResident(id)
@@ -363,6 +377,15 @@ export default function BizRegistryTab() {
           style={{ flex: 1, minWidth: 200 }} />
         {viewMode === 'table' && <span style={{ fontSize: 11, color: '#888' }}>컬럼 아래 칸 필터 ({tableRows.length}행)</span>}
         {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
+        {viewMode === 'table' && (
+          <button
+            className={residents ? 'btn-sm btn-sm-del' : 'btn-sm btn-sm-blue'}
+            onClick={() => void toggleResidents()}
+            title="개인은 본인, 법인은 대표자 주민등록번호. 회계사·팀장·최고관리자만 열람됩니다."
+          >
+            {residents ? '🔒 주민번호 가리기' : '🔓 주민번호 보기'}
+          </button>
+        )}
         {canWrite && (
           <button className="btn-p" onClick={() => setShowAdd((s) => !s)}>{showAdd ? '닫기' : '＋ 신규 거래처'}</button>
         )}
