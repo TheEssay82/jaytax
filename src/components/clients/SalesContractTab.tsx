@@ -78,7 +78,7 @@ interface FormState {
   team: Team; categoryCode: string; categoryEtcName: string;
   includesVat: boolean; includesWht: boolean; advisoryType: AdvisoryType | '';
   occurrenceUnit: OccurrenceUnit; billingUnit: BillingUnit | '';
-  fiscalYear: string; billingCycle: BillingCycle; isInstallment: boolean; amount: string;
+  fiscalYear: string; billingCycle: BillingCycle; isInstallment: boolean; amount: string; billingMonth: string;
   cpa: string; staffIds: string[]; staffApplyMonth: string;
   contractDate: string; startDate: string; endDate: string; dateEstimated: boolean; confirmed: boolean;
   parentContractId: string; note: string; includedCodes: string[];
@@ -87,7 +87,7 @@ interface FormState {
 const emptyForm = (): FormState => ({
   entityId: '', placeId: '', team: '감사team', categoryCode: '', categoryEtcName: '',
   includesVat: false, includesWht: false, advisoryType: '', occurrenceUnit: '사업장', billingUnit: '',
-  fiscalYear: '', billingCycle: '월', isInstallment: false, amount: '', cpa: '', staffIds: [], staffApplyMonth: '',
+  fiscalYear: '', billingCycle: '월', isInstallment: false, amount: '', billingMonth: '', cpa: '', staffIds: [], staffApplyMonth: '',
   contractDate: '', startDate: '', endDate: '', dateEstimated: false, confirmed: true, parentContractId: '', note: '', includedCodes: [], installments: [], discounts: [],
 });
 
@@ -404,6 +404,7 @@ export default function SalesContractTab() {
       parentContractId: form.parentContractId || null,
       fiscalYear: form.fiscalYear ? Number(form.fiscalYear) : null,
       billingCycle: form.billingCycle, isInstallment: form.isInstallment,
+      billingMonth: form.billingCycle === '연' && form.billingMonth ? Number(form.billingMonth) : null,
       amount: form.amount ? Number(form.amount.replace(/,/g, '')) : 0, cpa: form.cpa.trim(),
       contractDate: form.contractDate || null, startDate: monthToDate(form.startDate), endDate: monthToDate(form.endDate),
       note: form.note.trim(), includedCodes: form.includedCodes, dateEstimated: form.dateEstimated, confirmed: form.confirmed,
@@ -613,6 +614,7 @@ export default function SalesContractTab() {
                 <span>발생 {c.occurrenceUnit}</span>
                 {c.billingUnit && <span>청구단위 {c.billingUnit}</span>}
                 {c.fiscalYear && <span>귀속 {c.fiscalYear}</span>}
+                {c.billingMonth && <span>청구 {c.billingMonth}월</span>}
                 {c.effectiveCpa && <span>CPA {c.effectiveCpa}{c.cpaInherited && <span style={{ color: '#aaa' }}> (거래처)</span>}</span>}
                 {c.effectiveStaff.length > 0 && <span>담당 {c.effectiveStaff.map((s) => s.staffName).join('·')}{c.staffInherited && <span style={{ color: '#aaa' }}> (거래처)</span>}</span>}
                 <span>{dateToMonth(c.startDate) || '개시?'} ~ {dateToMonth(c.endDate) || '계속'}</span>
@@ -1040,6 +1042,18 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
           </select></div>
         <div className="frow"><span className="fl">{f.isInstallment ? '계약금액(총액)' : '계약금액'} <span style={{ fontSize: 10, color: '#a55' }}>VAT별도</span></span>
           <input value={f.amount} onChange={(e) => set('amount', e.target.value)} placeholder={f.billingCycle === '월' ? '월 금액 (예: 150000)' : f.billingCycle === '건' ? '건당 금액' : '1회 금액'} /></div>
+        {f.billingCycle === '연' && (
+          <div className="frow"><span className="fl">청구월 <span style={{ fontSize: 10, color: '#999' }}>(연 1회)</span></span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <select value={f.billingMonth} onChange={(e) => set('billingMonth', e.target.value)} style={selStyle}>
+                <option value="">개시월에 청구</option>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={String(m)}>{m}월</option>)}
+              </select>
+              <span style={{ fontSize: 11, color: '#888' }}>
+                정산기간 안에서 실제 청구하는 달. 세무조정은 신고 뒤에 청구하므로 <b>법인세 3월 · 소득세 5월(성실신고 6월)</b>입니다.
+              </span>
+            </span></div>
+        )}
         {(f.categoryCode === 'TAX.FILING.CORP' || f.categoryCode === 'TAX.FILING.INCOME') && f.cpa === '정우철' && (
           <div style={{ gridColumn: '1 / -1', fontSize: 11, color: '#8a6d1f', background: '#fdfaf1', border: '1px dashed #c9a54a', borderRadius: 5, padding: '5px 8px' }}>
             🔗 정우철 담당 세무조정입니다 — 이 계약금액은 <b>세무조정수수료관리</b>에서 청구서를 확정할 때
@@ -1237,7 +1251,7 @@ function fromContract(c: SalesContract): FormState {
     entityId: c.entityId, placeId: c.placeId ?? '', team: c.team, categoryCode: c.categoryCode, categoryEtcName: c.categoryEtcName,
     includesVat: c.includesVat, includesWht: c.includesWht, advisoryType: c.advisoryType ?? '', occurrenceUnit: c.occurrenceUnit,
     billingUnit: c.billingUnit ?? '', fiscalYear: c.fiscalYear ? String(c.fiscalYear) : '', billingCycle: c.billingCycle,
-    isInstallment: c.isInstallment, amount: c.amount ? String(c.amount) : '', cpa: c.cpa, staffIds: c.staff.map((s) => s.staffId), staffApplyMonth: '',
+    isInstallment: c.isInstallment, amount: c.amount ? String(c.amount) : '', billingMonth: c.billingMonth ? String(c.billingMonth) : '', cpa: c.cpa, staffIds: c.staff.map((s) => s.staffId), staffApplyMonth: '',
     contractDate: c.contractDate ?? '', startDate: dateToMonth(c.startDate), endDate: dateToMonth(c.endDate), dateEstimated: c.dateEstimated, confirmed: c.confirmed, parentContractId: c.parentContractId ?? '',
     note: c.note, includedCodes: c.includedCodes ?? [], installments: c.installments.length ? c.installments : [], discounts: c.discounts,
   };

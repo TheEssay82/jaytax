@@ -69,6 +69,22 @@ function settlementYearOf(d: string | null | undefined): number | null {
 }
 
 /**
+ * 청구주의 정기청구의 첫 청구월(인덱스).
+ * 연 1회 계약에 청구월(billingMonth)이 지정돼 있으면 계약기간 안의 그 달이 첫 청구다 —
+ * 세무조정처럼 '정산기간은 7월에 시작하지만 청구는 신고 후 익년 상반기'인 계약을 위한 것.
+ * 지정이 없으면 기존대로 개시월.
+ */
+function billingAnchor(c: SalesContract): number | null {
+  const start = monthIndex(c.startDate);
+  if (start == null) return null;
+  const bm = c.billingMonth;
+  if (!bm || c.billingCycle !== '연') return start;
+  const startMonth = (start % 12) + 1;            // 1~12
+  const diff = (bm - startMonth + 12) % 12;       // 개시월부터 청구월까지 남은 개월
+  return start + diff;
+}
+
+/**
  * 계약의 월별 순매출을 [fromMonth, toMonth] 창구 안에서 전개.
  * fromMonth/toMonth = 'YYYY-MM'(포함). 종료 없는 계속계약은 창구 상한까지만 생성.
  */
@@ -91,8 +107,8 @@ export function monthlyRevenue(c: SalesContract, basis: Basis, fromMonth: string
         out.push({ month: indexToMonth(mi), net: net(mi, it.amount) });
       }
     } else if (step) {
-      // 정기: 개시월부터 주기마다 계약금액(주기당) 청구.
-      const start = monthIndex(c.startDate);
+      // 정기: 첫 청구월(연 1회는 청구월 지정 반영)부터 주기마다 계약금액(주기당) 청구.
+      const start = billingAnchor(c);
       if (start == null) return [];
       const end = monthIndex(c.endDate); // null = 계속 → 창구 상한까지
       const last = end == null ? to : Math.min(end, to);
@@ -155,7 +171,7 @@ export function billingItemsForMonth(c: SalesContract, ym: string): BillingItem[
   }
   const step = CYCLE_STEP[c.billingCycle];
   if (!step) return [];                       // 발생시·건 = 예측 스케줄 없음
-  const start = monthIndex(c.startDate);
+  const start = billingAnchor(c);
   if (start == null || mi < start) return [];
   const end = monthIndex(c.endDate);
   if (end != null && mi > end) return [];
