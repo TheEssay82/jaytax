@@ -128,6 +128,42 @@ export function monthlyRevenue(c: SalesContract, basis: Basis, fromMonth: string
   return out;
 }
 
+/** 그 달에 청구할 항목 하나. 분할계약이면 회차별로 나뉜다. */
+export interface BillingItem {
+  /** 분할 회차 id(정기청구면 null) */
+  installmentId: string | null;
+  /** 회차 라벨(정기청구면 '') */
+  label: string;
+  /** 공급가액(할인·부가세 반영 후) */
+  net: number;
+}
+
+/**
+ * 계약의 'YYYY-MM' 월 청구 항목 전개 — 세금계산서 발행요청 후보를 만드는 데 쓴다.
+ * monthlyRevenue(basis='billing')와 같은 규칙(분할 우선·정기는 개시월부터 주기마다)이되,
+ * 어느 분할 회차인지까지 돌려준다.
+ */
+export function billingItemsForMonth(c: SalesContract, ym: string): BillingItem[] {
+  const mi = monthIndex(ym);
+  if (mi == null) return [];
+  const net = (gross: number) => toNet(applyDiscounts(c, gross, mi), c.includesVat);
+
+  if (c.installments.length > 0) {
+    return c.installments
+      .filter((it) => monthIndex(it.dueDate) === mi)
+      .map((it) => ({ installmentId: it.id ?? null, label: it.label || '', net: net(it.amount) }));
+  }
+  const step = CYCLE_STEP[c.billingCycle];
+  if (!step) return [];                       // 발생시·건 = 예측 스케줄 없음
+  const start = monthIndex(c.startDate);
+  if (start == null || mi < start) return [];
+  const end = monthIndex(c.endDate);
+  if (end != null && mi > end) return [];
+  if ((mi - start) % step !== 0) return [];   // 주기에 해당하는 달이 아님
+  const v = net(c.amount);
+  return v > 0 ? [{ installmentId: null, label: '', net: v }] : [];
+}
+
 /** 계약의 [from,to] 기간 순매출 합계(단일 스칼라). */
 export function periodRevenue(c: SalesContract, basis: Basis, fromMonth: string, toMonth: string): number {
   return monthlyRevenue(c, basis, fromMonth, toMonth).reduce((s, m) => s + m.net, 0);

@@ -21,6 +21,8 @@ import WizardTab from './wizard/WizardTab';
 import HistoryTab from './history/HistoryTab';
 import RequestsTab from './requests/RequestsTab';
 import TargetSelectionTab from './targets/TargetSelectionTab';
+import InvoiceRequestTab from './billing/InvoiceRequestTab';
+import ReceivableOpeningTab from './billing/ReceivableOpeningTab';
 import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
 import UsersTab from './users/UsersTab';
@@ -62,7 +64,8 @@ export const MENU_GROUPS: MenuGroup[] = [
     id: 'billing-req',
     label: '기장등청구관리',
     items: [
-      { id: 'billing-req-home', label: '🧾 기장·개별업무 청구 (준비 중)' },
+      { id: 'invoice-request', label: '🧾 세금계산서 발행요청' },
+      { id: 'receivable-opening', label: '💰 기초 미수금' },
     ],
   },
   {
@@ -427,8 +430,10 @@ function TabContent({
       return <BizContactsTab />;
     case 'biz-status':
       return <BizStatusTab />;
-    case 'billing-req-home':
-      return <PlaceholderTab title="🧾 기장 및 개별업무 청구관리" desc="기장·개별 업무 건별 청구를 관리하는 대분류입니다. (설계 예정)" />;
+    case 'invoice-request':
+      return <InvoiceRequestTab />;
+    case 'receivable-opening':
+      return <ReceivableOpeningTab />;
     // 일반업무관리 › 문서발송관리
     case 'doc-request':
       return <DocSendRequestTab />;
