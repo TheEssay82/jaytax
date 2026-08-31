@@ -69,6 +69,7 @@ export default function BizContactsTab() {
     { key: 'position', label: '직책', val: (r) => r.c.position, w: 80 },
     { key: 'primary', label: '대표', val: (r) => (r.c.isPrimary ? '대표' : ''), w: 46, opts: ['대표'] },
     { key: 'phone', label: '연락처', val: (r) => r.c.phone, w: 120 },
+    { key: 'fax', label: '팩스', val: (r) => r.c.fax, w: 110 },
     { key: 'email', label: '이메일', val: (r) => r.c.email, w: 150 },
     { key: 'address', label: '수령지', val: (r) => r.c.address, w: 190 },
     { key: 'note', label: '비고', val: (r) => r.c.note, w: 120 },
@@ -192,6 +193,7 @@ export default function BizContactsTab() {
                   {c.position && <span style={{ color: '#888' }}>{c.position}</span>}
                   {c.isPrimary && <span style={{ fontSize: 9.5, background: '#2a8', color: '#fff', padding: '1px 5px', borderRadius: 3 }}>대표</span>}
                   {c.phone && <span>☎ {c.phone}</span>}
+                  {c.fax && <span>📠 {c.fax}</span>}
                   {c.email && <span>✉ {c.email}</span>}
                   {c.placeId && entity && <span style={{ color: '#77a' }}>[{placeName(entity, c.placeId)}]</span>}
                   {c.address && <span style={{ color: '#777' }}>📮 {c.address}</span>}
@@ -228,6 +230,7 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
   const [honorific, setHonorific] = useState(initial?.honorific ?? '님');
   const [position, setPosition] = useState(initial?.position ?? '');
   const [phone, setPhone] = useState(initial?.phone ?? '');
+  const [fax, setFax] = useState(initial?.fax ?? '');
   const [email, setEmail] = useState(initial?.email ?? '');
   const [address, setAddress] = useState(initial?.address ?? '');
   const [isPrimary, setIsPrimary] = useState(initial?.isPrimary ?? false);
@@ -264,6 +267,8 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
           </span></div>
         <div className="frow"><span className="fl">연락처</span>
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="010-0000-0000" /></div>
+        <div className="frow"><span className="fl">팩스</span>
+          <input value={fax} onChange={(e) => setFax(e.target.value)} placeholder="02-000-0000" /></div>
         <div className="frow"><span className="fl">이메일</span>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="(선택)" /></div>
         <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">수령지주소</span>
@@ -277,7 +282,7 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
           </span></div>
       </div>
       <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-        <button className="btn-p" onClick={() => onSubmit({ entityId, placeId: placeId || null, contactName: name, honorific, position, phone, email, address, isPrimary, note })}>{initial ? '저장' : '담당자 등록'}</button>
+        <button className="btn-p" onClick={() => onSubmit({ entityId, placeId: placeId || null, contactName: name, honorific, position, phone, fax, email, address, isPrimary, note })}>{initial ? '저장' : '담당자 등록'}</button>
         <button className="btn-sm" onClick={onCancel}>취소</button>
       </div>
     </div>

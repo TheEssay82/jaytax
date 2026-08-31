@@ -9,6 +9,7 @@ export interface BizContact {
   honorific: string;
   position: string;
   phone: string;
+  fax: string;
   email: string;
   address: string;
   isPrimary: boolean;
@@ -19,7 +20,7 @@ export interface BizContact {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const toContact = (r: any): BizContact => ({
   id: r.id, entityId: r.entity_id, placeId: r.place_id, contactName: r.contact_name || '',
-  honorific: r.honorific || '님', position: r.position || '', phone: r.phone || '', email: r.email || '',
+  honorific: r.honorific || '님', position: r.position || '', phone: r.phone || '', fax: r.fax || '', email: r.email || '',
   address: r.address || '', isPrimary: !!r.is_primary, note: r.note || '', createdAt: r.created_at,
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -32,13 +33,13 @@ export async function listBizContacts(): Promise<BizContact[]> {
 
 export interface ContactInput {
   entityId: string; placeId?: string | null; contactName: string; honorific?: string; position?: string;
-  phone?: string; email?: string; address?: string; isPrimary?: boolean; note?: string;
+  phone?: string; fax?: string; email?: string; address?: string; isPrimary?: boolean; note?: string;
 }
 function toRow(c: Partial<ContactInput>): Record<string, unknown> {
   const r: Record<string, unknown> = {};
   const s = (k: string, v: unknown) => { if (v !== undefined) r[k] = v; };
   s('entity_id', c.entityId); s('place_id', c.placeId ?? undefined); s('contact_name', c.contactName);
-  s('honorific', c.honorific); s('position', c.position); s('phone', c.phone); s('email', c.email);
+  s('honorific', c.honorific); s('position', c.position); s('phone', c.phone); s('fax', c.fax); s('email', c.email);
   s('address', c.address); s('is_primary', c.isPrimary); s('note', c.note);
   return r;
 }

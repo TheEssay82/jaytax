@@ -28,6 +28,7 @@ const COLS: ColMeta[] = [
   { h: '호칭', w: 8, list: HONORIFICS },
   { h: '직책', w: 12 },
   { h: '연락처', w: 15 },
+  { h: '팩스', w: 14 },
   { h: '이메일', w: 22 },
   { h: '수령지주소', w: 34 },
   { h: '대표연락처(O/X)', w: 13, list: OX },
@@ -68,11 +69,11 @@ export async function exportContactTemplate(entities: BizEntityFull[], contacts:
       for (const c of mine) {
         ws.addRow([
           c.id, e.code, name, placeName(c.placeId), c.contactName, c.honorific, c.position,
-          c.phone, c.email, c.address, c.isPrimary ? 'O' : '', c.note,
+          c.phone, c.fax, c.email, c.address, c.isPrimary ? 'O' : '', c.note,
         ]);
       }
     } else {
-      ws.addRow(['', e.code, name, '', '', '', '', '', '', '', '', '']);
+      ws.addRow(['', e.code, name, '', '', '', '', '', '', '', '', '', '']);
     }
   }
 
@@ -100,7 +101,7 @@ export async function exportContactTemplate(entities: BizEntityFull[], contacts:
 
 export interface ContactExcelRow {
   id: string; code: string; placeName: string; contactName: string; honorific: string;
-  position: string; phone: string; email: string; address: string; primary: string; note: string;
+  position: string; phone: string; fax: string; email: string; address: string; primary: string; note: string;
 }
 
 export async function parseContactExcelFile(file: File): Promise<ContactExcelRow[]> {
@@ -114,7 +115,7 @@ export async function parseContactExcelFile(file: File): Promise<ContactExcelRow
   const idx = (kw: string) => header.findIndex((h) => h.includes(kw));
   const map = {
     id: idx('담당자ID'), code: idx('거래처코드'), placeName: idx('사업장명'), contactName: idx('담당자명'),
-    honorific: idx('호칭'), position: idx('직책'), phone: idx('연락처'), email: idx('이메일'),
+    honorific: idx('호칭'), position: idx('직책'), phone: idx('연락처'), fax: idx('팩스'), email: idx('이메일'),
     address: idx('수령지'), primary: idx('대표연락처'), note: idx('비고'),
   };
   const get = (row: unknown[], i: number) => (i >= 0 ? String(row[i] ?? '').trim() : '');
@@ -127,7 +128,7 @@ export async function parseContactExcelFile(file: File): Promise<ContactExcelRow
     if (!code && !contactName) continue;
     out.push({
       id: get(row, map.id), code, placeName: get(row, map.placeName), contactName,
-      honorific: get(row, map.honorific), position: get(row, map.position), phone: get(row, map.phone),
+      honorific: get(row, map.honorific), position: get(row, map.position), phone: get(row, map.phone), fax: get(row, map.fax),
       email: get(row, map.email), address: get(row, map.address), primary: get(row, map.primary),
       note: get(row, map.note),
     });
@@ -172,6 +173,7 @@ export async function applyContactExcel(rows: ContactExcelRow[], entities: BizEn
         honorific: r.honorific || '님',
         position: r.position,
         phone: r.phone,
+        fax: r.fax,
         email: r.email,
         address: r.address,
         isPrimary: isO(r.primary),
