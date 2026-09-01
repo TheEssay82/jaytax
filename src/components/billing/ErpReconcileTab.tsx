@@ -40,6 +40,8 @@ export default function ErpReconcileTab() {
   const [open, setOpen] = useState<Record<string, boolean>>({ diff: true, erpOnly: true, ourOnly: true, corr: true });
   const [issuedDate, setIssuedDate] = useState(todayYmd);
   const [help, setHelp] = useState(false);
+  // 감사팀 부서에는 다른 회계사 담당 거래처가 함께 잡힌다. 기본은 우리 거래처만 본다.
+  const [oursOnly, setOursOnly] = useState(true);
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3500); };
 
@@ -56,7 +58,17 @@ export default function ErpReconcileTab() {
   }, [ym, entities]);
   useEffect(() => { void load(); }, [load]);
 
-  const m: MatchResult = useMemo(() => matchSlips(slips, reqs, entities), [slips, reqs, entities]);
+  const all: MatchResult = useMemo(() => matchSlips(slips, reqs, entities), [slips, reqs, entities]);
+  /**
+   * 우리 거래처관리에 없는 곳을 접어 둔다.
+   * ERP 부서에는 다른 회계사(김영식·정훈석 등) 담당 거래처가 함께 들어 있어,
+   * 그대로 두면 매달 처리할 수 없는 줄이 목록을 덮는다.
+   */
+  const hiddenOther = all.erpOnly.filter((r) => !r.known).length;
+  const m: MatchResult = useMemo(() => (oursOnly ? {
+    ...all,
+    erpOnly: all.erpOnly.filter((r) => r.known),
+  } : all), [all, oursOnly]);
   const erpTotal = slips.filter((s) => s.supplyAmount >= 0).reduce((s, x) => s + x.supplyAmount, 0);
   const ourTotal = reqs.filter((r) => r.status !== '취소' && r.status !== '수정발행').reduce((s, r) => s + r.supplyAmount, 0);
   const todo = m.amountDiff.length + m.erpOnly.length + m.ourOnly.length
@@ -110,6 +122,10 @@ export default function ErpReconcileTab() {
         <span style={{ display: 'flex', gap: 4 }}>
           <Step n={1} label="① 파일" /><Step n={2} label="② 확인" /><Step n={3} label="③ 처리" /><Step n={4} label="④ 마감" />
         </span>
+        <label style={{ fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}
+          title="ERP 부서에는 다른 회계사 담당 거래처가 함께 들어 있습니다. 우리 거래처관리에 등록된 곳만 봅니다.">
+          <input type="checkbox" checked={oursOnly} onChange={(e) => setOursOnly(e.target.checked)} /> 우리 거래처만
+        </label>
         <button className="btn-sm btn-sm-blue" onClick={() => setHelp(true)}>❓ 차이가 날 때 보는 안내</button>
         {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
       </div>
@@ -218,7 +234,9 @@ export default function ErpReconcileTab() {
           </Bucket>
 
           <Bucket title={`❓ ERP에만 있음 ${m.erpOnly.length}곳`} tone="#a15" openKey="erpOnly" open={open} setOpen={setOpen}
-            hint="우리 발행요청에 없는 발행입니다. 건별매출(결산료 등)이거나 새로 수임한 곳입니다.">
+            hint={oursOnly && hiddenOther > 0
+              ? `우리 발행요청에 없는 발행입니다. 미등록 거래처 ${hiddenOther}곳은 감춰져 있습니다 — 위 「우리 거래처만」을 끄면 보입니다.`
+              : '우리 발행요청에 없는 발행입니다. 건별매출(결산료 등)이거나 새로 수임한 곳입니다.'}>
             <Table rows={m.erpOnly} kind="erpOnly" busy={busy} canWrite={canWrite}
               onImport={(row) => void run(() => importErpOnly(row, ym, issuedDate), '✓ 발행요청으로 들여왔습니다 — 매출계약을 등록해 주세요')} />
           </Bucket>
