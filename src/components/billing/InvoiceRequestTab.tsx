@@ -93,6 +93,9 @@ export default function InvoiceRequestTab() {
   const live = (list: InvoiceRequest[]) => list.filter((r) => r.status !== '취소');
   const sum = (list: InvoiceRequest[]) => live(list).reduce((s, r) => s + r.total, 0);
   const sumSupply = (list: InvoiceRequest[]) => live(list).reduce((s, r) => s + r.supplyAmount, 0);
+  const sumVat = (list: InvoiceRequest[]) => live(list).reduce((s, r) => s + r.vat, 0);
+  /** 지금 보이는 목록에서 아직 '요청'인 건 — 발행완료 일괄처리 대상. */
+  const issuable = (list: InvoiceRequest[]) => list.filter((r) => r.status === '요청');
   const stat = useMemo(() => ({
     요청: reqs.filter((r) => r.status === '요청'),
     발행완료: reqs.filter((r) => r.status === '발행완료'),
@@ -399,6 +402,12 @@ export default function InvoiceRequestTab() {
           </b>
           {canWrite && (
             <>
+              <button className="btn-sm" onClick={() => setPickReq(new Set(issuable(reqView).map((r) => r.id)))}
+                title="보이는 목록에서 아직 '요청' 상태인 건을 모두 고릅니다">
+                요청 전체선택 ({issuable(reqView).length})
+              </button>
+              <button className="btn-sm" onClick={() => setPickReq(new Set())}>선택해제</button>
+              <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{pickedReqs.length}</b>건</span>
               <span style={{ fontSize: 11.5, color: '#666' }}>발행일</span>
               <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 12 }} />
               <button className="btn-p" disabled={busy || !pickedReqs.length || !isApprover} onClick={() => void doIssue()}
@@ -414,14 +423,25 @@ export default function InvoiceRequestTab() {
           <table className="tbl" style={{ fontSize: 11.5 }}>
             <thead>
               <tr>
-                {canWrite && <th style={{ width: 32 }}></th>}
-                <th>상태</th><th>거래처</th><th>사업장</th><th>계약코드</th><th>비고</th>
-                <th className="r">공급가액</th><th className="r">합계</th><th>승인번호</th><th>발행일</th><th>처리자</th>
+                {canWrite && (() => {
+                  const ids = issuable(reqView).map((r) => r.id);
+                  const all = ids.length > 0 && ids.every((id) => pickReq.has(id));
+                  return (
+                    <th style={{ width: 32 }}>
+                      <input type="checkbox" checked={all} title="요청 상태인 건 전체선택"
+                        onChange={() => setPickReq(all ? new Set() : new Set(ids))} />
+                    </th>
+                  );
+                })()}
+                <th>상태</th><th>팀</th><th>거래처</th><th>사업장</th><th>매출계정</th><th>계약코드</th>
+                <th>담당CPA</th><th>담당직원</th><th>비고</th>
+                <th className="r">공급가액</th><th className="r">VAT</th><th className="r">합계</th>
+                <th>승인번호</th><th>발행일</th><th>처리자</th>
               </tr>
             </thead>
             <tbody>
               {reqView.length === 0 && (
-                <tr><td colSpan={canWrite ? 11 : 10} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+                <tr><td colSpan={canWrite ? 16 : 15} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
                   발행요청이 없습니다. 위에서 청구예정을 골라 등록하세요.
                 </td></tr>
               )}
@@ -440,14 +460,19 @@ export default function InvoiceRequestTab() {
                     <td>
                       <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.status}</span>
                     </td>
+                    <td style={{ fontSize: 10.5, color: '#667' }}>{r.team === 'taxteam' ? 'tax' : '감사'}</td>
                     <td style={{ fontWeight: 700, color: '#1A2B52' }}>
                       {r.companyName}
                       <DiffBadge d={diff.mark.get(r.contractId ?? '')} amount={r.supplyAmount} />
                     </td>
                     <td>{r.placeName}</td>
+                    <td style={{ fontSize: 11, color: '#666' }}>{r.erpAccount || <span style={{ color: '#CCC' }}>—</span>}</td>
                     <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.contractCode}</td>
-                    <td>{r.note}</td>
+                    <td style={{ fontSize: 11 }}>{r.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
+                    <td style={{ fontSize: 11, fontWeight: 600, color: '#1A2B52' }}>{r.staff || <span style={{ color: '#CCC', fontWeight: 400 }}>—</span>}</td>
+                    <td style={{ fontSize: 11, color: '#666' }}>{r.summary || r.note}</td>
                     <td className="r">{won(r.supplyAmount)}</td>
+                    <td className="r" style={{ color: '#888' }}>{won(r.vat)}</td>
                     <td className="r" style={{ fontWeight: 700 }}>{won(r.total)}</td>
                     <td>
                       {r.invoiceNo || <span style={{ color: '#CCC' }}>—</span>}
@@ -463,6 +488,15 @@ export default function InvoiceRequestTab() {
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
+                <td colSpan={canWrite ? 10 : 9}>합계 {live(reqView).length}건 (취소 제외)</td>
+                <td className="r">{won(sumSupply(reqView))}</td>
+                <td className="r">{won(sumVat(reqView))}</td>
+                <td className="r">{won(sum(reqView))}</td>
+                <td colSpan={3}></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>

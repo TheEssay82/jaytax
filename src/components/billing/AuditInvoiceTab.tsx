@@ -95,12 +95,16 @@ export default function AuditInvoiceTab() {
     if (!f.summary.trim()) return alert('발행 시 적요를 적어 주세요. (예: 2026년 회계감사 착수금)');
     const o = options.find((x) => x.id === f.entityId)!;
     const place = o.places.find((p) => p.id === f.placeId);
+    // 청구 시점의 담당을 함께 굳힌다 — 나중에 담당이 바뀌어도 이 기록은 그대로여야 한다.
+    const cpa = place?.cpa ?? '';
+    const staff = (place?.staff ?? []).map((x) => x.staffName).join(',');
     setBusy(true);
     try {
       await createManualInvoiceRequest({
         ym, team: TEAM, entityId: f.entityId, placeId: f.placeId || null,
         supplyAmount: amt, erpAccount: f.account, phase: f.phase,
         summary: f.summary.trim(), issueDate: f.issueDate, docEmail: f.email.trim(),
+        cpa, staff,
         companyName: o.label.replace(/^\S+\s/, ''), placeName: place?.placeName ?? '',
       });
       setF((p) => ({ ...p, company: '', entityId: '', placeId: '', amount: '', summary: '', email: '' }));
@@ -118,6 +122,10 @@ export default function AuditInvoiceTab() {
   };
 
   const live = reqs.filter((r) => r.status !== '취소');
+  const liveView = (l: InvoiceRequest[]) => l.filter((r) => r.status !== '취소');
+  const sumBy = (l: InvoiceRequest[], f: (r: InvoiceRequest) => number) => liveView(l).reduce((s, r) => s + f(r), 0);
+  /** 지금 보이는 목록에서 아직 '요청'인 건 — 발행완료 일괄처리 대상. */
+  const issuable = (l: InvoiceRequest[]) => l.filter((r) => r.status === '요청');
   const view = useMemo(() => {
     if (!q.trim()) return reqs;
     const k = q.trim().toLowerCase();
@@ -237,6 +245,12 @@ export default function AuditInvoiceTab() {
         <input placeholder="🔍 거래처·적요·계정·승인번호" value={q} onChange={(e) => setQ(e.target.value)} />
         {canWrite && (
           <>
+            <button className="btn-sm" onClick={() => setPick(new Set(issuable(view).map((r) => r.id)))}
+              title="보이는 목록에서 아직 '요청' 상태인 건을 모두 고릅니다">
+              요청 전체선택 ({issuable(view).length})
+            </button>
+            <button className="btn-sm" onClick={() => setPick(new Set())}>선택해제</button>
+            <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{picked.length}</b>건</span>
             <span style={{ fontSize: 11.5, color: '#666' }}>발행일</span>
             <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 12 }} />
             <button className="btn-p" disabled={busy || !picked.length || !isApprover}
@@ -258,15 +272,25 @@ export default function AuditInvoiceTab() {
         <table className="tbl" style={{ fontSize: 11.5 }}>
           <thead>
             <tr>
-              {canWrite && <th style={{ width: 32 }}></th>}
-              <th>상태</th><th>거래처</th><th>매출계정</th><th>구분</th>
-              <th className="r">공급가액</th><th className="r">합계</th>
+              {canWrite && (() => {
+                const ids = issuable(view).map((r) => r.id);
+                const all = ids.length > 0 && ids.every((id) => pick.has(id));
+                return (
+                  <th style={{ width: 32 }}>
+                    <input type="checkbox" checked={all} title="요청 상태인 건 전체선택"
+                      onChange={() => setPick(all ? new Set() : new Set(ids))} />
+                  </th>
+                );
+              })()}
+              <th>상태</th><th>팀</th><th>거래처</th><th>사업장</th><th>매출계정</th><th>구분</th>
+              <th>담당CPA</th><th>담당직원</th><th>계약코드</th>
+              <th className="r">공급가액</th><th className="r">VAT</th><th className="r">합계</th>
               <th>발행 시 적요</th><th>작성일</th><th>요청자</th><th>승인번호</th><th>처리자</th>
             </tr>
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={canWrite ? 12 : 11} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+              <tr><td colSpan={canWrite ? 18 : 17} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
                 {ym} 감사팀 발행요청이 없습니다. 위에서 한 줄 등록해 보세요.
               </td></tr>
             )}
@@ -282,10 +306,16 @@ export default function AuditInvoiceTab() {
                     })} /></td>
                   )}
                   <td><span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.status}</span></td>
-                  <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.companyName}{r.placeName && <span style={{ fontWeight: 400, color: '#888' }}> {r.placeName}</span>}</td>
+                  <td style={{ fontSize: 10.5, color: '#667' }}>{r.team === 'taxteam' ? 'tax' : '감사'}</td>
+                  <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.companyName}</td>
+                  <td>{r.placeName}</td>
                   <td style={{ fontSize: 11 }}>{r.erpAccount || <span style={{ color: '#CCC' }}>—</span>}</td>
                   <td>{r.phase || <span style={{ color: '#CCC' }}>—</span>}</td>
+                  <td style={{ fontSize: 11 }}>{r.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
+                  <td style={{ fontSize: 11, fontWeight: 600, color: '#1A2B52' }}>{r.staff || <span style={{ color: '#CCC', fontWeight: 400 }}>—</span>}</td>
+                  <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.contractCode}</td>
                   <td className="r">{won(r.supplyAmount)}</td>
+                  <td className="r" style={{ color: '#888' }}>{won(r.vat)}</td>
                   <td className="r" style={{ fontWeight: 700 }}>{won(r.total)}</td>
                   <td style={{ fontSize: 11 }}>{r.summary || r.note}</td>
                   <td style={{ fontSize: 11 }}>{r.issueDate ?? <span style={{ color: '#CCC' }}>—</span>}</td>
@@ -306,6 +336,15 @@ export default function AuditInvoiceTab() {
               );
             })}
           </tbody>
+          <tfoot>
+            <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
+              <td colSpan={canWrite ? 10 : 9}>합계 {liveView(view).length}건 (취소 제외)</td>
+              <td className="r">{won(sumBy(view, (r) => r.supplyAmount))}</td>
+              <td className="r">{won(sumBy(view, (r) => r.vat))}</td>
+              <td className="r">{won(sumBy(view, (r) => r.total))}</td>
+              <td colSpan={4}></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>

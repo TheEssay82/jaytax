@@ -64,6 +64,10 @@ export interface InvoiceRequest {
   issueDate: string | null;
   issuedByName: string;         // 발행완료를 누른 사람(누가 처리했는지 화면에 보인다)
   requestedByName: string;      // 요청한 사람(감사팀 건별에서 '발행요청자')
+  /** 청구 시점의 담당 회계사(스냅샷). 계약이 나중에 바뀌어도 이 값은 그대로다. */
+  cpa: string;
+  /** 청구 시점의 담당 직원(스냅샷). 직원별 매출 집계의 근거 — 계속계약은 연중에도 바뀐다. */
+  staff: string;
   phase: string;                // 계약금·중도금·잔금·총액 (감사팀 건별)
   summary: string;              // 발행 시 적요
 }
@@ -80,6 +84,7 @@ const toReq = (r: any): InvoiceRequest => ({
   issuedByName: r.issued_by_name || '',
   requestedByName: r.requested_by_name || '',
   phase: r.phase || '', summary: r.summary || '',
+  cpa: r.cpa || '', staff: r.staff || '',
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -224,6 +229,7 @@ export async function createInvoiceRequests(
       status: '요청',
       team: opt.team ?? 'taxteam',
       issue_date: opt.issueDate ?? null,
+      cpa: r.cpa || null, staff: r.staff || null,     // 청구 시점 담당을 굳혀 둔다
       erp_account: r.erpAccount,
       doc_email: r.docEmail || null,
       company_name: r.companyName,
@@ -274,6 +280,8 @@ export interface ManualInvoiceInput {
   companyName: string;
   placeName: string;
   contractCode?: string;
+  cpa?: string;
+  staff?: string;
   note?: string;
 }
 export async function createManualInvoiceRequest(input: ManualInvoiceInput): Promise<string> {
@@ -286,6 +294,7 @@ export async function createManualInvoiceRequest(input: ManualInvoiceInput): Pro
     status: '요청', erp_account: input.erpAccount || null, phase: input.phase || null,
     summary: input.summary || null, issue_date: input.issueDate || null,
     doc_email: input.docEmail || null,
+    cpa: input.cpa || null, staff: input.staff || null,
     company_name: input.companyName, place_name: input.placeName,
     contract_code: input.contractCode ?? '', note: input.note ?? null,
     requested_by: u.user?.id ?? null,
