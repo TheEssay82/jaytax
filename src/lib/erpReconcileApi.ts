@@ -261,21 +261,66 @@ export async function alignToErp(row: MatchRow): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-/** ERP 에만 있는 발행을 우리 발행요청으로 들여온다(계약은 나중에 붙인다). */
+/** ERP 계약유형 → 우리 ERP 매출계정. */
+function accountOfContractKind(kind: string): string {
+  if (/감사\s*및\s*검토/.test(kind)) return '회계감사수입';
+  if (/임의감사|비외감/.test(kind)) return '임의감사수입';
+  if (/기장/.test(kind)) return '기장대리수입';
+  if (/세무조정/.test(kind)) return '세무조정수입';
+  return '기타용역수입';
+}
+/** 적요에서 회차를 읽는다 — '2026년 회계감사 착수금', '외감법감사(지정)-중도금'. */
+function phaseOfDescription(desc: string): string {
+  if (/착수금|계약금/.test(desc)) return '계약금';
+  if (/중도금/.test(desc)) return '중도금';
+  if (/잔금/.test(desc)) return '잔금';
+  return '총액';
+}
+
+/**
+ * 그 거래처의 살아있는 계약 중 이 발행에 붙일 것을 찾는다.
+ *
+ * 감사 계약은 계약금·중도금·잔금이 건별로 나가는데 **분할청구일자를 jaytax 에 넣지 않는 경우가 많다**.
+ * 그래서 회차를 못 찾아도 계약만 맞으면 **그 계약의 부분청구로 붙인다**(사용자 확정 2026-09-01).
+ * 계약이 여럿이면 붙이지 않는다 — 잘못 붙는 것보다 비워 두고 사람이 고르는 편이 낫다.
+ */
+async function findContract(entityId: string, team: string, ym: string): Promise<{ id: string; code: string } | null> {
+  const { data } = await supabase.from('biz_sales_contract')
+    .select('id, contract_code, start_date, end_date, category_code')
+    .eq('entity_id', entityId).eq('team', team);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const rows = (data as any[] ?? []).filter((c) => {
+    const from = `${ym}-01`, to = `${ym}-31`;
+    return (!c.start_date || c.start_date <= to) && (!c.end_date || c.end_date >= from);
+  });
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  if (rows.length !== 1) return null;
+  return { id: rows[0].id, code: rows[0].contract_code || '' };
+}
+
+/**
+ * ERP 에만 있는 발행을 우리 발행요청으로 들여온다.
+ * 계약이 하나로 좁혀지면 **그 계약의 부분청구로 붙이고**, 아니면 계약 없이 넣는다.
+ */
 export async function importErpOnly(
   row: MatchRow, ym: string, issuedDate: string, team = 'taxteam',
 ): Promise<void> {
   if (!row.entityId) throw new Error('우리 거래처관리에 없는 사업자번호입니다. 거래처를 먼저 등록해 주세요.');
   const { data: u } = await supabase.auth.getUser();
   const sup = row.erpAmount, vat = Math.round(sup * VAT_RATE);
+  const desc = row.slips.map((s) => s.description).filter(Boolean).join(' / ');
+  const kind = row.slips.map((s) => s.contractKind).find(Boolean) ?? '';
+  const linked = await findContract(row.entityId, team, ym);
   const { data, error } = await supabase.from('biz_invoice_request').insert({
     ym, entity_id: row.entityId, place_id: row.placeId, team,
+    contract_id: linked?.id ?? null, contract_code: linked?.code ?? '',
     supply_amount: sup, vat, total: sup + vat,
     status: '발행완료', issued_date: issuedDate,
     invoice_no: row.slips[0]?.slipNo ?? null,
+    erp_account: accountOfContractKind(kind), phase: phaseOfDescription(desc),
     company_name: row.ourName || row.clientName, place_name: '',
-    summary: row.slips.map((s) => s.description).filter(Boolean).join(' / '),
-    note: 'ERP 대사에서 들여옴 — 매출계약 미연결',
+    summary: desc,
+    note: linked ? 'ERP 대사에서 들여옴 — 계약의 부분청구로 연결' : 'ERP 대사에서 들여옴 — 매출계약 미연결',
     requested_by: u.user?.id ?? null, issued_by: u.user?.id ?? null,
   }).select('id').single();
   if (error) throw new Error(error.message);

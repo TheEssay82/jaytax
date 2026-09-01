@@ -6,7 +6,7 @@
  *   node scripts/erp/fetch.mjs --bu 1024 --dept 기장24팀
  *   node scripts/erp/fetch.mjs --only slip,ledger  일부만
  *   node scripts/erp/fetch.mjs --depts            이 계정이 볼 수 있는 부서·코드 확인
- *   node scripts/erp/fetch.mjs --profile audit --bu 2050 --dept 감사팀 --month 2026-07
+ *   node scripts/erp/fetch.mjs --profile audit --bu 0205 --dept 감사팀 --month 2026-07
  *   (--out 으로 저장 폴더를 바꿀 수 있습니다)
  *   node scripts/erp/fetch.mjs --inspect unpaid   조회 조건 배우기(사람이 한 번 조회)
  *   node scripts/erp/fetch.mjs --doctor            환경 점검(크롬 안 띄움)
@@ -57,8 +57,12 @@ const BASE = process.env.LOCALAPPDATA || os.tmpdir();
 const LEGACY = path.join(BASE, 'jaytax-erp-profile');
 const PROFILE_DIR = (profile === 'tax' && fs.existsSync(LEGACY))
   ? LEGACY : path.join(BASE, `jaytax-erp-${profile}`);
-const OUT_DIR = arg('out') || process.env.ERP_OUT_DIR
-  || 'D:/Dropbox/4.영업관리/5520_기장사업부관리/기장24팀ERP데이터';
+// 팀마다 폴더가 다르다. --out 으로 언제든 바꿀 수 있다.
+const OUT_BY_PROFILE = {
+  tax: 'D:/Dropbox/4.영업관리/5520_기장사업부관리/기장24팀ERP데이터',
+  audit: 'D:/Dropbox/4.영업관리/2본부5팀',
+};
+const OUT_DIR = arg('out') || process.env.ERP_OUT_DIR || OUT_BY_PROFILE[profile] || OUT_BY_PROFILE.tax;
 
 const month = arg('month') || prevMonth();
 const dept = arg('dept', '기장24팀');
