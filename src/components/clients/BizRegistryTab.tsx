@@ -25,6 +25,7 @@ import {
   revealAllResidents,
   revealRepResident,
   revealPlaceHometaxPw,
+  revealAllHometaxPws,
   createBizRelation,
   deleteBizRelation,
   corpDisplayName,
@@ -47,7 +48,8 @@ import {
   type StaffProfile,
 } from '../../lib/bizRegistryApi';
 import { listPlaceContractStaff } from '../../lib/salesContractApi';
-import { ColFilter, useColWidths, ResizeHandle, clip } from './tableKit';
+import { ColFilter, useTableView, ColumnSettings, ResizeHandle, clip } from './tableKit';
+import { VIEW_KEYS } from '../../lib/tableViewApi';
 
 const TAX_TYPES: TaxType[] = ['과세', '겸영', '면세'];
 const WITHHOLDINGS: Withholding[] = ['월별', '반기별', 'N/A'];
@@ -116,6 +118,7 @@ export default function BizRegistryTab() {
   const [noBizOnly, setNoBizOnly] = useState(false);
   const [q, setQ] = useState('');
   const [residents, setResidents] = useState<Map<string, string> | null>(null);   // 표뷰 주민번호 열람분
+  const [hometaxPws, setHometaxPws] = useState<Map<string, string> | null>(null); // 표뷰 홈택스PW 열람분
 
   const [showAdd, setShowAdd] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -124,7 +127,8 @@ export default function BizRegistryTab() {
   const [editPlace, setEditPlace] = useState<{ place: BizPlace; entity: BizEntityFull } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
-  const { widthOf, startResize } = useColWidths();
+  const tv = useTableView(VIEW_KEYS.bizRegistry);
+  const { widthOf, startResize } = tv;
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set()); // 일괄삭제 선택(거래처 id)
@@ -197,7 +201,8 @@ export default function BizRegistryTab() {
     { key: 'bizno', label: '사업자번호', val: (_e, p) => (p ? (p.bizRegNo || (p.noBiz ? '없음' : '')) : ''), w: 90 },
     { key: 'branch', label: '본/지점', val: (_e, p) => p?.branchType ?? '', w: 54, opts: ['본점', '지점'] },
     { key: 'htid', label: '홈텍스ID', val: (_e, p) => p?.hometaxId ?? '', w: 88 },
-    { key: 'htpw', label: '홈텍스PW', val: (_e, p) => (p?.hasHometaxPw ? '있음' : ''), w: 62, opts: ['있음'] },
+    { key: 'htpw', label: '홈텍스PW', w: 82, opts: ['있음'],
+      val: (_e, p) => (hometaxPws ? (p ? hometaxPws.get(p.id) ?? '' : '') : (p?.hasHometaxPw ? '있음' : '')) },
     { key: 'nature', label: '성격', val: (_e, p) => p?.nature ?? '', w: 50, opts: ['매출', '일반'] },
     { key: 'teams', label: '매출팀', val: (_e, p) => (p?.salesTeams ?? []).join(','), w: 88, opts: SALES_TEAMS },
     { key: 'tax', label: '과세', val: (_e, p) => p?.taxType ?? '', w: 50, opts: TAX_TYPES },
@@ -206,7 +211,9 @@ export default function BizRegistryTab() {
     { key: 'staff', label: '담당직원', val: (_e, p) => effStaff(p), w: 96, opts: staffOpts },
     { key: 'note', label: '비고', val: (e, p) => p?.note || e.note, w: 120 },
   ];
-  const tableW = (canWrite ? 26 : 0) + COLUMNS.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 100 : 0);
+  // 숨긴 열은 표에서 빼되, 필터·정렬 로직은 전체 COLUMNS 기준을 그대로 둔다(숨겨도 걸어둔 필터는 유효).
+  const shownCols = COLUMNS.filter((c) => !tv.isHidden(c.key));
+  const tableW = (canWrite ? 26 : 0) + shownCols.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 100 : 0);
   const flatRows = useMemo(() => view.flatMap((e) => (e.places.length ? e.places.map((p) => ({ e, p: p as BizPlace | null })) : [{ e, p: null as BizPlace | null }])), [view]);
   const tableRows = useMemo(() => flatRows.filter(({ e, p }) => COLUMNS.every((c) => {
     const fv = (colF[c.key] || '').trim().toLowerCase();
@@ -331,14 +338,20 @@ export default function BizRegistryTab() {
       await load();
     } catch (e) { alert('담당직원 상태 변경 실패: ' + (e instanceof Error ? e.message : e)); }
   }
-  // 표뷰 주민번호 열 — 직원들이 보고 타이핑하는 용도라 한 번에 열고 닫는다(권한 없으면 실패).
-  async function toggleResidents() {
-    if (residents) { setResidents(null); return; }
-    try { const rows = await revealAllResidents();
+  // 표뷰 민감정보 열(주민번호·홈택스PW) — 직원들이 보고 타이핑하는 용도라 한 번에 열고 닫는다.
+  // 두 정보의 열람 권한 게이트가 다르다(주민번호=내부자 전체, 홈택스PW=기장 실무자까지).
+  // 한쪽만 막혀도 나머지는 열리게 따로 처리한다.
+  async function toggleSecrets() {
+    if (residents || hometaxPws) { setResidents(null); setHometaxPws(null); return; }
+    const failed: string[] = [];
+    try {
+      const rows = await revealAllResidents();
       const m = new Map<string, string>();
       for (const r of rows) if (!m.has(r.entityId)) m.set(r.entityId, r.residentNo);
       setResidents(m);
-    } catch (e) { alert('열람 권한이 없거나 오류입니다: ' + (e instanceof Error ? e.message : e)); }
+    } catch { failed.push('주민번호'); }
+    try { setHometaxPws(await revealAllHometaxPws()); } catch { failed.push('홈택스PW'); }
+    if (failed.length) alert(`${failed.join('·')} 은(는) 열람 권한이 없습니다.`);
   }
 
   async function reveal(kind: 'entity' | 'rep' | 'hometax', id: string, label: string) {
@@ -386,13 +399,14 @@ export default function BizRegistryTab() {
         {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
         {viewMode === 'table' && (
           <button
-            className={residents ? 'btn-sm btn-sm-del' : 'btn-sm btn-sm-blue'}
-            onClick={() => void toggleResidents()}
-            title="개인은 본인, 법인은 대표자 주민등록번호. 외부인을 제외한 전 직원이 열람합니다."
+            className={residents || hometaxPws ? 'btn-sm btn-sm-del' : 'btn-sm btn-sm-blue'}
+            onClick={() => void toggleSecrets()}
+            title="주민번호(개인은 본인·법인은 대표자)와 홈택스 비밀번호를 표에 함께 펼칩니다."
           >
-            {residents ? '🔒 주민번호 가리기' : '🔓 주민번호 보기'}
+            {residents || hometaxPws ? '🔒 주민번호및PASS 가리기' : '🔓 주민번호및PASS 보기'}
           </button>
         )}
+        {viewMode === 'table' && <ColumnSettings cols={COLUMNS} view={tv} onMessage={flash} />}
         {canWrite && (
           <button className="btn-p" onClick={() => setShowAdd((s) => !s)}>{showAdd ? '닫기' : '＋ 신규 거래처'}</button>
         )}
@@ -528,7 +542,7 @@ export default function BizRegistryTab() {
           <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5 }}>
             <colgroup>
               {canWrite && <col style={{ width: 26 }} />}
-              {COLUMNS.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}
+              {shownCols.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}
               {canWrite && <col style={{ width: 100 }} />}
             </colgroup>
             <thead>
@@ -536,7 +550,7 @@ export default function BizRegistryTab() {
                 {canWrite && (() => { const ids = [...new Set(sortedRows.map((r) => r.e.id))]; const all = ids.length > 0 && ids.every((id) => selected.has(id)); return (
                   <th style={{ ...thc, height: 26, position: 'sticky', top: 0, zIndex: 3, background: '#f4efe4' }}><input type="checkbox" checked={all} onChange={() => setSelected(all ? new Set() : new Set(ids))} title="현재 목록 전체 선택" /></th>
                 ); })()}
-                {COLUMNS.map((col) => (
+                {shownCols.map((col) => (
                   <th key={col.key} style={{ ...thc, ...clip, height: 26, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 0, zIndex: 2, background: '#f4efe4' }} onClick={() => toggleSort(col.key)} title="클릭: 정렬 · 우측 끝 드래그: 너비 조절">
                     {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
                     <ResizeHandle onMouseDown={startResize(col.key, widthOf(col.key, col.w))} />
@@ -546,7 +560,7 @@ export default function BizRegistryTab() {
               </tr>
               <tr>
                 {canWrite && <th style={{ padding: 2, position: 'sticky', top: 26, zIndex: 3, background: '#faf7f0' }}></th>}
-                {COLUMNS.map((col) => (
+                {shownCols.map((col) => (
                   <th key={col.key} style={{ padding: 2, position: 'sticky', top: 26, zIndex: 2, background: '#faf7f0' }}>
                     <ColFilter opts={col.opts} value={colF[col.key] || ''} onChange={(v) => setColF((p) => ({ ...p, [col.key]: v }))} />
                   </th>
@@ -555,13 +569,13 @@ export default function BizRegistryTab() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length === 0 && <tr><td colSpan={COLUMNS.length + (canWrite ? 2 : 1)} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 거래처가 없습니다.</td></tr>}
+              {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + (canWrite ? 2 : 1)} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 거래처가 없습니다.</td></tr>}
               {sortedRows.map(({ e, p }) => (
                 <tr key={p ? p.id : e.id} style={{ background: selected.has(e.id) ? '#fdf3f3' : undefined }}>
                   {canWrite && <td style={{ ...tdc, textAlign: 'center', borderTop: '1px solid #eee' }}><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSelect(e.id)} /></td>}
-                  {COLUMNS.map((col) => (
-                    <td key={col.key} style={{ ...tdc, ...clip, fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }} title={col.key === 'htpw' ? undefined : col.val(e, p)}>
-                      {col.key === 'htpw'
+                  {shownCols.map((col) => (
+                    <td key={col.key} style={{ ...tdc, ...clip, fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }} title={col.val(e, p)}>
+                      {col.key === 'htpw' && !hometaxPws
                         ? (p?.hasHometaxPw ? <button className="btn-sm btn-sm-blue" onClick={() => reveal('hometax', p.id, '홈텍스PW')}>🔒 보기</button> : '')
                         : col.val(e, p)}
                     </td>

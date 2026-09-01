@@ -9,8 +9,9 @@ export type BizNature = '매출' | '일반';
 export type TaxType = '과세' | '겸영' | '면세';
 export type Withholding = '월별' | '반기별' | 'N/A';
 export type RepType = '단독' | '공동대표' | '각자대표';
-export type PlaceStatus = '정상' | '폐업' | '이관';
-export const PLACE_STATUSES: PlaceStatus[] = ['정상', '폐업', '이관'];
+/** 사업장 상태 — '우리와의 거래 상태'다. 폐업=사업자등록 소멸, 이관=타 사무소로, 종료=우리 업무만 끝남. */
+export type PlaceStatus = '정상' | '폐업' | '이관' | '종료';
+export const PLACE_STATUSES: PlaceStatus[] = ['정상', '폐업', '이관', '종료'];
 /** 담당직원 상태 — 실제 직원 배정과 별개(과거·임시거래처=N/A, 배정 전=배정예정). */
 export type StaffStatus = '배정예정' | 'N/A';
 export const STAFF_STATUSES: StaffStatus[] = ['배정예정', 'N/A'];
@@ -538,6 +539,15 @@ export async function listInternalStaff(): Promise<StaffProfile[]> {
 
 /** 거래처등록 표뷰용 — 개인 본인/법인 대표자 주민번호를 한 번에 열람(권한자만). */
 export interface ResidentRow { entityId: string; kind: string; holder: string; residentNo: string }
+/** 홈택스PW 일괄 열람 — 표뷰에서 한 번에 펼치기 위한 것. 반환은 사업장id → 비밀번호. */
+export async function revealAllHometaxPws(): Promise<Map<string, string>> {
+  const { data, error } = await supabase.rpc('biz_reveal_hometax_pws');
+  if (error) throw new Error(error.message);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  return new Map((data as any[]).map((r) => [r.place_id as string, (r.hometax_pw || '') as string]));
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
 export async function revealAllResidents(): Promise<ResidentRow[]> {
   const { data, error } = await supabase.rpc('biz_reveal_residents');
   if (error) throw new Error(error.message);
