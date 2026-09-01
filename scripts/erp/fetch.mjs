@@ -20,11 +20,15 @@
  *  새로 열지 않고 **같은 탭을 계속 이동**시킨다. 그래도 세션이 죽으면
  *  브라우저를 다시 띄워 그 리포트만 재시도한다(프로필이 남아 보통 재로그인 불필요).
  *
- * 화면 구조(2026-09-01 탐색으로 확인)
- *  · 거래전표 리스트    /apps/invjunpyo/invjunpyonolist.jsp   엑셀 = xls_click()
- *  · 기준일자 미수금현황 /apps/sales/accfirm/arlistbybucode.jsp
+ * 화면 구조(2026-09-01 확인)
+ *  · 거래전표 리스트    /apps/invjunpyo/invjunpyonolist.jsp          엑셀 = xls_click()
+ *  · 기준일자 미수금현황 /apps/sales/accfirm/arlistbybucode.jsp       엑셀 = xls_click()
  *  · 기간 미수금대장     /apps/sales/accfirm/arlistbybucode_flow.jsp  엑셀 = xls_click('1')
  *  · 부서별원장         /apps/common/buperiodselect.jsp → 조회 결과가 팝업으로 열린다
+ *
+ *  ※ 버튼 이름에 속지 말 것. 목록 화면의 **[검색] 이 질의**이고(`search('search')`),
+ *    **[조회] 는 고른 행의 상세로 들어가는 버튼**이다(`doSubmit()`). doSubmit 을 질의로
+ *    부르면 rowcount 가 0이라 "레코드가 없습니다"만 뜨고 끝난다.
  *  엑셀은 어느 화면이든 숨은 폼(df)을 /apps/{모듈}/xls/xls_{화면}.jsp 로 POST 한다.
  */
 import fs from 'node:fs';
@@ -267,22 +271,18 @@ async function fetchSlip(page, r) {
 async function fetchUnpaid(page, r) {
   await open(page, `${ERP}/apps/sales/accfirm/arlistbybucode.jsp?menu=BCC&ReadBU=1`);
   await ready(page);
-  await setFields(page, { reportDate: r.to, SearchReportDate: r.to, BuCode: buCode, SearchBuCode: buCode });
-  await submitAndWait(page, () => window.doSubmit());
+  await setFields(page, { SearchReportDate: r.to, SearchBuCode: buCode });
+  await submitAndWait(page, () => window.search('search'));
   return grab(page, [() => window.xls_click(), clickExcelButton], `${tag}_${dept}_미수금현황.xls`);
 }
 
 async function fetchFlow(page, r) {
   await open(page, `${ERP}/apps/sales/accfirm/arlistbybucode_flow.jsp?menu=BCC&ReadBU=1`);
   await ready(page);
-  await setFields(page, {
-    FromDate: r.from, ToDate: r.to, SearchFromDate: r.from, SearchToDate: r.to,
-    Bucode: buCode, SearchBuCode: buCode,
-  });
-  await submitAndWait(page, () => window.doSubmit());
-  // gubun=1 이 기본 양식. 인자 형태가 다를 수 있어 세 가지를 차례로 시도한다.
-  return grab(page, [() => window.xls_click('1'), () => window.xls_click(), clickExcelButton],
-    `${tag}_${dept}_미수금대장.xls`);
+  await setFields(page, { SearchFromDate: r.from, SearchToDate: r.to, SearchBuCode: buCode });
+  await submitAndWait(page, () => window.search('search'));
+  // 엑셀 = gubun 1, Excel2 = gubun 2. 우리가 쓰는 건 1.
+  return grab(page, [() => window.xls_click('1')], `${tag}_${dept}_미수금대장.xls`);
 }
 
 async function fetchLedger(page, r) {
