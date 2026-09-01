@@ -17,6 +17,9 @@ export interface Receipt {
   clientCode: string; clientName: string; summary: string;
   amount: number;                       // VAT 포함
   placeId: string | null; entityId: string | null;
+  /** 우리와 무관하다고 판단해 접어 둔 건. 미매칭 목록에서만 빠진다. */
+  excluded?: boolean;
+  excludeNote?: string;
 }
 export interface LedgerRead {
   rows: Receipt[];
@@ -133,8 +136,59 @@ export async function listReceipts(ym?: string, team?: string): Promise<Receipt[
     id: r.id, ym: r.ym, team: r.team, slipNo: r.slip_no, lineNo: r.line_no ?? 1, paidDate: r.paid_date,
     clientCode: r.client_code || '', clientName: r.client_name || '', summary: r.summary || '',
     amount: Number(r.amount) || 0, placeId: r.place_id, entityId: r.entity_id,
+    excluded: !!r.excluded, excludeNote: r.exclude_note || '',
   }));
   /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
+/**
+ * 못 붙은 입금에 거래처를 손으로 붙인다.
+ *
+ * `saveCode` 를 주면 그 사업장에 **ERP 거래처코드를 적어 둔다** — 다음 달부터는 저절로 붙는다.
+ * 한 번 손으로 붙이고 끝나는 게 아니라 다음을 위해 배우는 것이 요점이다.
+ */
+export async function assignReceipt(
+  id: string, placeId: string, entityId: string, clientCode: string, saveCode: boolean,
+): Promise<void> {
+  const { error } = await supabase.from('biz_receipt')
+    .update({ place_id: placeId, entity_id: entityId, excluded: false }).eq('id', id);
+  if (error) throw new Error(error.message);
+  if (saveCode && clientCode.trim()) {
+    const e2 = await supabase.from('biz_place')
+      .update({ erp_client_code: clientCode.trim() }).eq('id', placeId);
+    if (e2.error) throw new Error(e2.error.message);
+  }
+}
+
+/** 우리와 무관한 입금을 접거나 되돌린다. */
+export async function excludeReceipts(ids: string[], on: boolean, note = ''): Promise<void> {
+  if (!ids.length) return;
+  const { error } = await supabase.from('biz_receipt')
+    .update({ excluded: on, exclude_note: on ? (note || null) : null }).in('id', ids);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * 아직 못 붙은 입금을 **거래처코드로만** 다시 붙여 본다.
+ * 이름으로 억지로 붙이지 않는 이유 — 사업장이 여럿인 거래처(이찬혁·차트 등)에서
+ * 엉뚱한 사업장에 붙으면 미수금이 조용히 틀어진다. 그런 건은 손으로 고르게 둔다.
+ */
+export async function rematchReceipts(entities: BizEntityFull[]): Promise<number> {
+  const byCode = new Map<string, { placeId: string; entityId: string }>();
+  for (const e of entities) {
+    for (const pl of e.places) if (pl.erpClientCode) byCode.set(pl.erpClientCode, { placeId: pl.id, entityId: e.id });
+  }
+  const { data, error } = await supabase.from('biz_receipt')
+    .select('id, client_code').is('place_id', null).eq('excluded', false);
+  if (error) throw new Error(error.message);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const rows = ((data as any[]) ?? []).filter((r) => r.client_code && byCode.has(r.client_code));
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  for (const r of rows) {
+    const hit = byCode.get(r.client_code)!;
+    await supabase.from('biz_receipt').update({ place_id: hit.placeId, entity_id: hit.entityId }).eq('id', r.id);
+  }
+  return rows.length;
 }
 
 export async function clearReceipts(ym: string, team: string): Promise<void> {
