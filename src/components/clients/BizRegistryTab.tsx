@@ -25,6 +25,7 @@ import {
   revealAllResidents,
   revealRepResident,
   revealPlaceHometaxPw,
+  updateBizRepresentative,
   revealAllHometaxPws,
   createBizRelation,
   deleteBizRelation,
@@ -35,6 +36,7 @@ import {
   PLACE_STATUSES,
   STAFF_STATUSES,
   type BizEntityFull,
+  type BizRepresentative,
   type BizKind,
   type BizNature,
   type BizPlace,
@@ -514,7 +516,7 @@ export default function BizRegistryTab() {
 
                 {/* 대표이사(법인) / 공동사업자·개인관계(개인) */}
                 {e.kind === '법인' ? (
-                  <RepSection entity={e} allEntities={entities} canWrite={canWrite} onChanged={load} onReveal={reveal} />
+                  <RepEditor entity={e} allEntities={entities} canWrite={canWrite} onChanged={load} onReveal={reveal} />
                 ) : (
                   <>
                     <PartnerSection entity={e} allEntities={entities} canWrite={canWrite} onChanged={load} />
@@ -611,7 +613,9 @@ export default function BizRegistryTab() {
       )}
       {editEntity && (
         <Modal title={`✏️ 거래처 수정 — [${editEntity.code}] ${editEntity.name}`} onClose={() => setEditEntity(null)}>
-          <EntityEditForm entity={editEntity} onSave={(p) => handleEditEntity(editEntity, p)} onCancel={() => setEditEntity(null)} />
+          <EntityEditForm entity={editEntity} allEntities={entities} canWrite={canWrite}
+            onChanged={load} onReveal={reveal}
+            onSave={(p) => handleEditEntity(editEntity, p)} onCancel={() => setEditEntity(null)} />
         </Modal>
       )}
       {editPlace && (
@@ -865,7 +869,13 @@ function PlaceFields({ staff, siblings = [], initial, submitLabel, onSubmit, onC
 }
 
 // 귀속주체 수정 폼
-function EntityEditForm({ entity, onSave, onCancel }: { entity: BizEntityFull; onSave: (p: { name: string; corpForm: CorpForm | ''; corpFormPosition: '앞' | '뒤'; corpRegNo: string; establishedDate: string; note: string; residentNo: string }) => void; onCancel: () => void }) {
+function EntityEditForm({ entity, allEntities, canWrite, onChanged, onReveal, onSave, onCancel }: {
+  entity: BizEntityFull; allEntities: BizEntityFull[]; canWrite: boolean;
+  onChanged: () => Promise<void> | void;
+  onReveal: (kind: 'entity' | 'rep' | 'hometax', id: string, label: string) => void;
+  onSave: (p: { name: string; corpForm: CorpForm | ''; corpFormPosition: '앞' | '뒤'; corpRegNo: string; establishedDate: string; note: string; residentNo: string }) => void;
+  onCancel: () => void;
+}) {
   const [name, setName] = useState(entity.name);
   const [corpForm, setCorpForm] = useState<CorpForm | ''>(entity.corpForm ?? '');
   const [corpFormPosition, setCorpFormPosition] = useState<'앞' | '뒤'>(entity.corpFormPosition ?? '앞');
@@ -902,6 +912,12 @@ function EntityEditForm({ entity, onSave, onCancel }: { entity: BizEntityFull; o
         <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">비고</span>
           <input value={note} onChange={(e) => setNote(e.target.value)} /></div>
       </div>
+      {/* 법인은 주민번호가 거래처가 아니라 대표이사에 붙는다 — 여기서 바로 등록·수정한다.
+          위 <저장>과 별개로 각 줄의 <저장>이 즉시 반영된다(암호화 저장이라 폼과 같이 묶기 어렵다). */}
+      {entity.kind === '법인' && (
+        <RepEditor entity={entity} allEntities={allEntities} canWrite={canWrite}
+          onChanged={onChanged} onReveal={onReveal} />
+      )}
       <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
         <button className="btn-p" onClick={() => { if (!name.trim()) return alert('필수 항목입니다.'); onSave({ name, corpForm, corpFormPosition, corpRegNo, establishedDate, note, residentNo }); }}>저장</button>
         <button className="btn-sm" onClick={onCancel}>취소</button>
@@ -910,51 +926,124 @@ function EntityEditForm({ entity, onSave, onCancel }: { entity: BizEntityFull; o
   );
 }
 
-// ── 대표이사 섹션 (법인) ────────────────────────────────────
-function RepSection({ entity, allEntities, canWrite, onChanged, onReveal }: {
-  entity: BizEntityFull; allEntities: BizEntityFull[]; canWrite: boolean; onChanged: () => Promise<void> | void;
+// ── 대표이사 (법인) ────────────────────────────────────────
+// 등록·수정·삭제를 한자리에서. 거래처 수정 모달과 박스뷰 양쪽에서 같은 걸 쓴다.
+// 주민번호는 값을 다시 읽어올 수 없으므로(암호화 저장) **빈칸이면 그대로 두고**,
+// 무언가 적었을 때만 덮어쓴다.
+function RepEditor({ entity, allEntities, canWrite, onChanged, onReveal }: {
+  entity: BizEntityFull; allEntities: BizEntityFull[]; canWrite: boolean;
+  onChanged: () => Promise<void> | void;
   onReveal: (kind: 'entity' | 'rep' | 'hometax', id: string, label: string) => void;
 }) {
+  const [reps, setReps] = useState(entity.representatives);
   const [adding, setAdding] = useState(false);
-  const [repName, setRepName] = useState('');
-  const [repType, setRepType] = useState<RepType>('단독');
-  const [residentNo, setResidentNo] = useState('');
-  const [linkedEntityId, setLinkedEntityId] = useState('');
+  const [busy, setBusy] = useState(false);
   const persons = allEntities.filter((e) => e.kind === '개인');
 
+  const [nf, setNf] = useState({ repName: '', repType: '단독' as RepType, residentNo: '', linkedEntityId: '' });
+  const [ef, setEf] = useState<Record<string, { repName: string; repType: RepType; residentNo: string; linkedEntityId: string }>>({});
+  const draft = (r: BizRepresentative) =>
+    ef[r.id] ?? { repName: r.repName, repType: r.repType, residentNo: '', linkedEntityId: r.linkedEntityId ?? '' };
+  const patch = (id: string, k: string, v: string) =>
+    setEf((p) => ({ ...p, [id]: { ...draft(reps.find((r) => r.id === id)!), ...p[id], [k]: v } }));
+
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try { await fn(); await onChanged(); }
+    catch (e) { alert('실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  };
+
   async function add() {
-    if (!repName.trim()) return alert('대표이사명은 필수입니다.');
-    try {
-      await createBizRepresentative({ entityId: entity.id, repName: repName.trim(), repType, residentNo: residentNo.trim(), linkedEntityId: linkedEntityId || null });
-      setAdding(false); setRepName(''); setResidentNo(''); setLinkedEntityId(''); setRepType('단독');
-      await onChanged();
-    } catch (e) { alert('추가 실패: ' + (e instanceof Error ? e.message : e)); }
+    if (!nf.repName.trim()) return alert('대표이사명은 필수입니다.');
+    await run(async () => {
+      const id = await createBizRepresentative({
+        entityId: entity.id, repName: nf.repName.trim(), repType: nf.repType,
+        residentNo: nf.residentNo.trim(), linkedEntityId: nf.linkedEntityId || null,
+      });
+      setReps((p) => [...p, {
+        id, entityId: entity.id, repName: nf.repName.trim(), repType: nf.repType,
+        hasResidentNo: !!nf.residentNo.trim(), linkedEntityId: nf.linkedEntityId || null,
+      }]);
+      setNf({ repName: '', repType: '단독', residentNo: '', linkedEntityId: '' });
+      setAdding(false);
+    });
   }
-  async function del(id: string) { if (confirm('대표이사를 삭제할까요?')) { try { await deleteBizRepresentative(id); await onChanged(); } catch (e) { alert(e instanceof Error ? e.message : String(e)); } } }
+  async function save(r: BizRepresentative) {
+    const d = draft(r);
+    if (!d.repName.trim()) return alert('대표이사명은 필수입니다.');
+    await run(async () => {
+      await updateBizRepresentative(r.id, {
+        repName: d.repName.trim(), repType: d.repType,
+        linkedEntityId: d.linkedEntityId || null, residentNo: d.residentNo.trim(),
+      });
+      setReps((p) => p.map((x) => x.id === r.id ? {
+        ...x, repName: d.repName.trim(), repType: d.repType,
+        linkedEntityId: d.linkedEntityId || null,
+        hasResidentNo: x.hasResidentNo || !!d.residentNo.trim(),
+      } : x));
+      setEf((p) => { const n = { ...p }; delete n[r.id]; return n; });
+    });
+  }
+  async function del(r: BizRepresentative) {
+    if (!confirm(`대표이사 '${r.repName}' 을(를) 삭제할까요?`)) return;
+    await run(async () => {
+      await deleteBizRepresentative(r.id);
+      setReps((p) => p.filter((x) => x.id !== r.id));
+    });
+  }
+
+  const box: React.CSSProperties = { display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center', marginBottom: 4 };
 
   return (
-    <div style={{ borderTop: '1px dashed #ddd', paddingTop: 6 }}>
-      <div style={{ fontSize: 10.5, color: '#999', marginBottom: 3 }}>대표이사</div>
-      {entity.representatives.map((r) => (
-        <div key={r.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginBottom: 2 }}>
-          <b>{r.repName}</b><span style={{ fontSize: 10.5, color: '#888' }}>{r.repType}</span>
-          {r.linkedEntityId && <span style={{ fontSize: 10.5, color: '#47a' }}>🔗 개인거래처 연결</span>}
-          {r.hasResidentNo && canWrite && <button className="btn-sm btn-sm-blue" onClick={() => onReveal('rep', r.id, '주민번호')}>주민번호</button>}
-          {canWrite && <button className="btn-sm btn-sm-del" onClick={() => del(r.id)}>삭제</button>}
-        </div>
-      ))}
+    <div style={{ borderTop: '1px dashed #ddd', paddingTop: 8, marginTop: 8 }}>
+      <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>
+        대표이사 <span style={{ color: '#aaa' }}>· 주민번호는 암호화 저장됩니다. 이미 등록된 번호는 빈칸으로 두면 그대로 유지됩니다.</span>
+      </div>
+
+      {reps.length === 0 && !adding && (
+        <div style={{ fontSize: 11.5, color: '#c80', marginBottom: 4 }}>등록된 대표이사가 없습니다.</div>
+      )}
+
+      {reps.map((r) => {
+        const d = draft(r);
+        const dirty = !!ef[r.id];
+        return (
+          <div key={r.id} style={box}>
+            <input value={d.repName} onChange={(e) => patch(r.id, 'repName', e.target.value)}
+              placeholder="대표이사명" style={{ width: 110 }} disabled={!canWrite} />
+            <select value={d.repType} onChange={(e) => patch(r.id, 'repType', e.target.value)}
+              style={selStyle} disabled={!canWrite}>{REP_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
+            <input value={d.residentNo} onChange={(e) => patch(r.id, 'residentNo', e.target.value)}
+              placeholder={r.hasResidentNo ? '주민번호🔒 변경 시에만' : '주민번호🔒 (선택)'}
+              style={{ width: 150 }} disabled={!canWrite} />
+            <select value={d.linkedEntityId} onChange={(e) => patch(r.id, 'linkedEntityId', e.target.value)}
+              style={selStyle} disabled={!canWrite}>
+              <option value="">개인거래처 연결(선택)</option>
+              {persons.map((p) => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
+            </select>
+            {r.hasResidentNo && <button className="btn-sm btn-sm-blue" onClick={() => onReveal('rep', r.id, `${r.repName} 주민번호`)}>🔓 보기</button>}
+            {canWrite && <button className="btn-p" disabled={busy || !dirty} onClick={() => void save(r)}>저장</button>}
+            {canWrite && <button className="btn-sm btn-sm-del" disabled={busy} onClick={() => void del(r)}>삭제</button>}
+          </div>
+        );
+      })}
+
       {canWrite && !adding && <button className="btn-sm" onClick={() => setAdding(true)}>＋대표이사</button>}
-      {adding && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
-          <input placeholder="대표이사명" value={repName} onChange={(e) => setRepName(e.target.value)} style={{ width: 120 }} />
-          <select value={repType} onChange={(e) => setRepType(e.target.value as RepType)} style={selStyle}>{REP_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
-          <input placeholder="주민번호🔒(선택)" value={residentNo} onChange={(e) => setResidentNo(e.target.value)} style={{ width: 130 }} />
-          <select value={linkedEntityId} onChange={(e) => setLinkedEntityId(e.target.value)} style={selStyle}>
+      {canWrite && adding && (
+        <div style={{ ...box, background: '#fbf8f0', padding: 5, borderRadius: 4 }}>
+          <input value={nf.repName} onChange={(e) => setNf((p) => ({ ...p, repName: e.target.value }))}
+            placeholder="대표이사명" style={{ width: 110 }} />
+          <select value={nf.repType} onChange={(e) => setNf((p) => ({ ...p, repType: e.target.value as RepType }))}
+            style={selStyle}>{REP_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
+          <input value={nf.residentNo} onChange={(e) => setNf((p) => ({ ...p, residentNo: e.target.value }))}
+            placeholder="주민번호🔒 (선택)" style={{ width: 150 }} />
+          <select value={nf.linkedEntityId} onChange={(e) => setNf((p) => ({ ...p, linkedEntityId: e.target.value }))} style={selStyle}>
             <option value="">개인거래처 연결(선택)</option>
             {persons.map((p) => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
           </select>
-          <button className="btn-p" onClick={add}>추가</button>
-          <button className="btn-sm" onClick={() => setAdding(false)}>취소</button>
+          <button className="btn-p" disabled={busy} onClick={() => void add()}>추가</button>
+          <button className="btn-sm" disabled={busy} onClick={() => { setAdding(false); setNf({ repName: '', repType: '단독', residentNo: '', linkedEntityId: '' }); }}>취소</button>
         </div>
       )}
     </div>

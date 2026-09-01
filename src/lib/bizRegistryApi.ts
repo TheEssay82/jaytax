@@ -441,6 +441,24 @@ export async function createBizRepresentative(input: RepInput): Promise<string> 
   if (input.residentNo && input.residentNo.trim()) await setRepResident(id, input.residentNo.trim());
   return id;
 }
+/** 대표이사 수정. 주민번호는 값이 있을 때만 덮어쓴다(빈칸 = 그대로 둠). */
+export async function updateBizRepresentative(
+  id: string,
+  patch: { repName: string; repType: RepType; linkedEntityId?: string | null; residentNo?: string },
+): Promise<void> {
+  const { data, error } = await supabase
+    .from('biz_representative')
+    .update({
+      rep_name: patch.repName,
+      rep_type: patch.repType,
+      linked_entity_id: patch.linkedEntityId ?? null,
+    })
+    .eq('id', id).select('id');
+  if (error) throw new Error(error.message);
+  assertWrote(data, '수정');
+  if (patch.residentNo && patch.residentNo.trim()) await setRepResident(id, patch.residentNo.trim());
+}
+
 export async function deleteBizRepresentative(id: string): Promise<void> {
   const { data, error } = await supabase.from('biz_representative').delete().eq('id', id).select('id');
   if (error) throw new Error(error.message);
