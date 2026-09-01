@@ -20,7 +20,8 @@
     "std:load:fulltext": "tsx scripts/standards/load-pdf-fulltext.ts",
     "std:gen:gist": "tsx scripts/standards/gen-gist.ts",
     "lib:load:rag": "tsx scripts/library/load-library-rag.ts",
-    "skill:sync": "tsx scripts/standards/sync-skill.ts"
+    "skill:sync": "tsx scripts/standards/sync-skill.ts",
+    "erp": "node scripts/erp/fetch.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
@@ -38,6 +39,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "oxlint": "^1.69.0",
     "pdf-parse": "^1.1.1",
+    "playwright-core": "^1.62.1",
     "tsx": "^4.20.6",
     "typescript": "~6.0.2",
     "vite": "^8.1.0"
