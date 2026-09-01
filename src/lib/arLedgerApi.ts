@@ -83,8 +83,10 @@ export async function parseArLedger(file: File, ym: string, team: string): Promi
  * 이름만 보고 고르면 엉뚱한 곳에 붙기 때문이다(이찬혁·장석종).
  */
 export function attachEntities(rows: ArItem[], entities: BizEntityFull[]): ArItem[] {
+  // 법인격 표기는 대장과 우리 등록이 서로 다르게 쓴다 —
+  // 대장 '오큘러스제1호사모투자합자회사' = 우리 '오큘러스제1호(합자)'. 그 꼬리를 떼고 맞춘다.
   const norm = (s: string) => s
-    .replace(/주식회사|유한회사|\(주\)|\(유\)|㈜|\(재\)|재단법인|사단법인/g, '')
+    .replace(/사모투자합자회사|합자회사|유한책임회사|주식회사|유한회사|\(주\)|\(유\)|\(합자\)|㈜|\(재\)|재단법인|사단법인/g, '')
     .replace(/[()[\]\s\-_.,·]/g, '').toLowerCase();
   const byName = new Map<string, { entityId: string; placeId: string | null }>();
   for (const e of entities) {
