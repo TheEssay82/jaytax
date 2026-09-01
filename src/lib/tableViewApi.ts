@@ -20,6 +20,8 @@ export const VIEW_KEYS = {
   invoiceCandidate: 'invoice_candidate',
   invoiceRequest: 'invoice_request',
   auditInvoiceRequest: 'audit_invoice_request',
+  auditProposal: 'audit_proposal',
+  auditHistory: 'audit_history',
 } as const;
 
 export async function loadTableView(viewKey: string): Promise<TableViewSettings | null> {
