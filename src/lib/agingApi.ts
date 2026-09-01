@@ -88,7 +88,10 @@ async function fromLedger(
 
   const out: AgingRow[] = [];
   for (const g of groups.values()) {
-    const left = g.items.sort((a, b) => a.date.localeCompare(b.date));
+    const left = settle(g.items.sort((a, b) => a.date.localeCompare(b.date)));
+    // 상계하고 나면 남는 게 없는 곳이 있다(마이너스 전표로 이미 정리된 건).
+    // 그런 곳까지 '705일 경과'로 세우면 목록을 믿지 않게 된다.
+    if (!left.length) continue;
     const buckets = Object.fromEntries(BUCKETS.map((b) => [b.key, 0])) as Record<BucketKey, number>;
     for (const x of left) {
       const b = BUCKETS.find((k) => x.days >= k.min && x.days <= k.max) ?? BUCKETS[BUCKETS.length - 1];
@@ -106,6 +109,31 @@ async function fromLedger(
     });
   }
   return out.sort((a, b) => b.overdue - a.overdue || b.total - a.total);
+}
+
+/**
+ * 마이너스 전표(수정·취소)를 같은 거래처의 채권에서 **오래된 것부터** 덜어 낸다.
+ *
+ * 대장에는 (−)전표가 별개 줄로 남고 어느 청구를 되돌린 것인지 적혀 있지 않다.
+ * 그대로 두면 합계가 0인 거래처가 "705일 경과"로 목록에 서는 일이 생긴다(이티머니).
+ * 상계 방향을 오래된 쪽으로 잡은 것은 그쪽이 **경고를 부풀리지 않는** 쪽이기 때문이다.
+ */
+function settle(items: AgingRow['items']): AgingRow['items'] {
+  let credit = items.filter((x) => x.amount < 0).reduce((s, x) => s - x.amount, 0);
+  if (!credit) return items.filter((x) => Math.round(x.amount) !== 0);
+  const out: AgingRow['items'] = [];
+  for (const x of items) {
+    if (x.amount <= 0) continue;
+    let amt = x.amount;
+    if (credit > 0) { const cut = Math.min(credit, amt); amt -= cut; credit -= cut; }
+    if (Math.round(amt) !== 0) out.push({ ...x, amount: amt });
+  }
+  // 갚고도 남은 마이너스는 선수금이다 — 감추지 않고 가장 최근 자리에 남긴다.
+  if (credit > 0.5) {
+    const last = items[items.length - 1];
+    out.push({ date: last.date, label: '선수금(마이너스 잔액)', amount: -credit, days: last.days });
+  }
+  return out;
 }
 
 /** 대장에 있는데 거래처를 못 붙인 줄 — 화면에서 손으로 붙이거나 접을 대상. */
