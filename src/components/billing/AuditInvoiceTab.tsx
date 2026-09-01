@@ -16,8 +16,12 @@ import {
   type InvoiceCandidate, type InvoiceRequest,
 } from '../../lib/invoiceRequestApi';
 import { FINAL_APPROVER } from '../../lib/invoiceMonthApi';
+import { Grid, useGrid, type GridCol } from './grid';
+import { ColumnSettings } from '../clients/tableKit';
+import { VIEW_KEYS } from '../../lib/tableViewApi';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
+const dash = <span style={{ color: '#CCC' }}>—</span>;
 const TEAM = '감사team';
 /** 발행체크 시트의 '구분' — 감사 용역은 계약금·중도금·잔금으로 나눠 청구한다. */
 const PHASES = ['계약금', '중도금', '잔금', '총액'] as const;
@@ -123,10 +127,9 @@ export default function AuditInvoiceTab() {
 
   const live = reqs.filter((r) => r.status !== '취소');
   const liveView = (l: InvoiceRequest[]) => l.filter((r) => r.status !== '취소');
-  const sumBy = (l: InvoiceRequest[], f: (r: InvoiceRequest) => number) => liveView(l).reduce((s, r) => s + f(r), 0);
   /** 지금 보이는 목록에서 아직 '요청'인 건 — 발행완료 일괄처리 대상. */
   const issuable = (l: InvoiceRequest[]) => l.filter((r) => r.status === '요청');
-  const view = useMemo(() => {
+  const searched = useMemo(() => {
     if (!q.trim()) return reqs;
     const k = q.trim().toLowerCase();
     return reqs.filter((r) => (r.companyName + r.summary + r.erpAccount + r.phase + r.invoiceNo).toLowerCase().includes(k));
@@ -139,6 +142,50 @@ export default function AuditInvoiceTab() {
       return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
     });
   }, []);
+
+  // ── 표 열 정의 — 제목행 정렬 · 열별 필터 · 너비 조절 ──
+  const cols: GridCol<InvoiceRequest>[] = [
+    { key: 'status', label: '상태', width: 74, value: (r) => r.status, opts: ['요청', '발행완료', '취소', '수정발행'],
+      cell: (r) => {
+        const c = r.status === '발행완료' ? { bg: '#D1FAE5', fg: '#065F46' }
+          : r.status === '취소' ? { bg: '#F3F4F6', fg: '#6B7280' }
+            : r.status === '수정발행' ? { bg: '#FEE2E2', fg: '#991B1B' } : { bg: '#DBEAFE', fg: '#1E3A8A' };
+        return <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.status}</span>;
+      } },
+    { key: 'team', label: '팀', width: 46, value: (r) => (r.team === 'taxteam' ? 'tax' : '감사'), opts: ['tax', '감사'], style: { color: '#667' } },
+    { key: 'company', label: '거래처', width: 150, value: (r) => r.companyName, style: { fontWeight: 700, color: '#1A2B52' } },
+    { key: 'place', label: '사업장', width: 110, value: (r) => r.placeName },
+    { key: 'erp', label: '매출계정', width: 120, value: (r) => r.erpAccount, opts: ERP_ACCOUNTS, cell: (r) => r.erpAccount || dash },
+    { key: 'phase', label: '구분', width: 66, value: (r) => r.phase, opts: PHASES, cell: (r) => r.phase || dash },
+    { key: 'cpa', label: '담당회계사', width: 80, value: (r) => r.cpa, cell: (r) => r.cpa || dash },
+    { key: 'staff', label: '담당직원', width: 84, value: (r) => r.staff, style: { fontWeight: 600, color: '#1A2B52' }, cell: (r) => r.staff || dash },
+    { key: 'code', label: '계약코드', width: 100, value: (r) => r.contractCode, style: { fontFamily: 'monospace', fontSize: 10.5 } },
+    { key: 'supply', label: '공급가액', width: 104, num: true, value: (r) => r.supplyAmount,
+      cell: (r) => won(r.supplyAmount), sum: (r) => (r.status === '취소' ? 0 : r.supplyAmount) },
+    { key: 'vat', label: 'VAT', width: 90, num: true, value: (r) => r.vat,
+      cell: (r) => won(r.vat), sum: (r) => (r.status === '취소' ? 0 : r.vat), style: { color: '#888' } },
+    { key: 'total', label: '합계', width: 104, num: true, value: (r) => r.total,
+      cell: (r) => won(r.total), sum: (r) => (r.status === '취소' ? 0 : r.total), style: { fontWeight: 700 } },
+    { key: 'summary', label: '발행 시 적요', width: 140, value: (r) => r.summary || r.note },
+    { key: 'issueDate', label: '작성일', width: 88, value: (r) => r.issueDate ?? '', cell: (r) => r.issueDate ?? dash },
+    { key: 'requestedBy', label: '요청자', width: 76, value: (r) => r.requestedByName, cell: (r) => r.requestedByName || dash },
+    { key: 'invoiceNo', label: '승인번호', width: 110, value: (r) => r.invoiceNo,
+      cell: (r) => (
+        <>
+          {r.invoiceNo || dash}
+          {canWrite && r.status === '발행완료' && (
+            <button className="btn-sm" style={{ marginLeft: 4 }} onClick={() => {
+              const no = prompt(`${r.companyName} — 세금계산서 승인번호`, r.invoiceNo);
+              if (no !== null) void run(() => updateInvoiceRequest(r.id, { invoiceNo: no }), '저장했습니다');
+            }}>✏️</button>
+          )}
+        </>
+      ) },
+    { key: 'issuedBy', label: '처리자', width: 76, value: (r) => r.issuedByName, cell: (r) => r.issuedByName || dash,
+      style: { color: '#666' } },
+  ];
+  const grid = useGrid(VIEW_KEYS.auditInvoiceRequest, cols, searched, { key: 'company', dir: 'asc' });
+  const view = grid.rowsView;
 
   if (loading) return <div className="card">불러오는 중…</div>;
 
@@ -266,87 +313,22 @@ export default function AuditInvoiceTab() {
               onClick={() => { if (confirm(`${picked.length}건을 취소합니다.`)) void run(() => cancelRequests(picked.map((r) => r.id)), '취소했습니다'); }}>취소</button>
           </>
         )}
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          {grid.filterCount > 0 && <button className="btn-sm" onClick={grid.clearFilters}>필터 초기화 ({grid.filterCount})</button>}
+          <ColumnSettings cols={grid.ordered} view={grid.view} onMessage={flash} />
+        </span>
       </div>
 
-      <div className="tbl-scroll" style={{ maxHeight: 460 }}>
-        <table className="tbl" style={{ fontSize: 11.5 }}>
-          <thead>
-            <tr>
-              {canWrite && (() => {
-                const ids = issuable(view).map((r) => r.id);
-                const all = ids.length > 0 && ids.every((id) => pick.has(id));
-                return (
-                  <th style={{ width: 32 }}>
-                    <input type="checkbox" checked={all} title="요청 상태인 건 전체선택"
-                      onChange={() => setPick(all ? new Set() : new Set(ids))} />
-                  </th>
-                );
-              })()}
-              <th>상태</th><th>팀</th><th>거래처</th><th>사업장</th><th>매출계정</th><th>구분</th>
-              <th>담당회계사</th><th>담당직원</th><th>계약코드</th>
-              <th className="r">공급가액</th><th className="r">VAT</th><th className="r">합계</th>
-              <th>발행 시 적요</th><th>작성일</th><th>요청자</th><th>승인번호</th><th>처리자</th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.length === 0 && (
-              <tr><td colSpan={canWrite ? 18 : 17} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
-                {ym} 감사팀 발행요청이 없습니다. 위에서 한 줄 등록해 보세요.
-              </td></tr>
-            )}
-            {view.map((r) => {
-              const c = r.status === '발행완료' ? { bg: '#D1FAE5', fg: '#065F46' }
-                : r.status === '취소' ? { bg: '#F3F4F6', fg: '#6B7280' }
-                  : r.status === '수정발행' ? { bg: '#FEE2E2', fg: '#991B1B' } : { bg: '#DBEAFE', fg: '#1E3A8A' };
-              return (
-                <tr key={r.id} style={{ opacity: r.status === '취소' ? 0.55 : 1 }}>
-                  {canWrite && (
-                    <td><input type="checkbox" checked={pick.has(r.id)} onChange={() => setPick((p) => {
-                      const n = new Set(p); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n;
-                    })} /></td>
-                  )}
-                  <td><span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.status}</span></td>
-                  <td style={{ fontSize: 10.5, color: '#667' }}>{r.team === 'taxteam' ? 'tax' : '감사'}</td>
-                  <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.companyName}</td>
-                  <td>{r.placeName}</td>
-                  <td style={{ fontSize: 11 }}>{r.erpAccount || <span style={{ color: '#CCC' }}>—</span>}</td>
-                  <td>{r.phase || <span style={{ color: '#CCC' }}>—</span>}</td>
-                  <td style={{ fontSize: 11 }}>{r.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
-                  <td style={{ fontSize: 11, fontWeight: 600, color: '#1A2B52' }}>{r.staff || <span style={{ color: '#CCC', fontWeight: 400 }}>—</span>}</td>
-                  <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.contractCode}</td>
-                  <td className="r">{won(r.supplyAmount)}</td>
-                  <td className="r" style={{ color: '#888' }}>{won(r.vat)}</td>
-                  <td className="r" style={{ fontWeight: 700 }}>{won(r.total)}</td>
-                  <td style={{ fontSize: 11 }}>{r.summary || r.note}</td>
-                  <td style={{ fontSize: 11 }}>{r.issueDate ?? <span style={{ color: '#CCC' }}>—</span>}</td>
-                  <td style={{ fontSize: 11 }}>{r.requestedByName || <span style={{ color: '#CCC' }}>—</span>}</td>
-                  <td style={{ fontSize: 11 }}>
-                    {r.invoiceNo || <span style={{ color: '#CCC' }}>—</span>}
-                    {canWrite && r.status === '발행완료' && (
-                      <button className="btn-sm" style={{ marginLeft: 4 }} onClick={() => {
-                        const no = prompt(`${r.companyName} — 세금계산서 승인번호`, r.invoiceNo);
-                        if (no !== null) void run(() => updateInvoiceRequest(r.id, { invoiceNo: no }), '저장했습니다');
-                      }}>✏️</button>
-                    )}
-                  </td>
-                  <td style={{ fontSize: 11, color: r.issuedByName === FINAL_APPROVER ? '#666' : '#a15', fontWeight: r.issuedByName && r.issuedByName !== FINAL_APPROVER ? 700 : 400 }}>
-                    {r.issuedByName || <span style={{ color: '#CCC' }}>—</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
-              <td colSpan={canWrite ? 10 : 9}>합계 {liveView(view).length}건 (취소 제외)</td>
-              <td className="r">{won(sumBy(view, (r) => r.supplyAmount))}</td>
-              <td className="r">{won(sumBy(view, (r) => r.vat))}</td>
-              <td className="r">{won(sumBy(view, (r) => r.total))}</td>
-              <td colSpan={4}></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+      <Grid grid={grid} rowKey={(r) => r.id} maxHeight={460}
+        empty={`${ym} 감사팀 발행요청이 없습니다. 위에서 한 줄 등록해 보세요.`}
+        footerLabel={`합계 ${liveView(view).length}건 (취소 제외)`}
+        rowStyle={(r) => ({ opacity: r.status === '취소' ? 0.55 : 1 })}
+        select={canWrite ? {
+          picked: pick, toggle: (k) => setPick((p) => { const n = new Set(p); if (n.has(k)) n.delete(k); else n.add(k); return n; }),
+          selectableKeys: view.map((r) => r.id),
+          headerKeys: issuable(view).map((r) => r.id),
+          setAll: (keys) => setPick(new Set(keys ?? [])),
+        } : undefined} />
     </div>
   );
 }

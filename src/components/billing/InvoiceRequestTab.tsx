@@ -3,15 +3,18 @@
 // 오른쪽: 그 달 요청 목록 → 발행완료(세계번호·발행일) / 취소 / 되돌리기
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { listBizEntities, type BizEntityFull } from '../../lib/bizRegistryApi';
+import { listBizEntities, CPA_OPTIONS, type BizEntityFull } from '../../lib/bizRegistryApi';
 import { pathLabel } from '../../lib/salesContractTaxonomy';
 import { todayYmd } from '../../lib/format';
 import {
   listInvoiceCandidates, listInvoiceRequests, createInvoiceRequests,
   markIssued, cancelRequests, revertToRequested, updateInvoiceRequest,
-  type InvoiceCandidate, type InvoiceRequest, type InvoiceStatus,
+  type InvoiceCandidate, type InvoiceRequest,
 } from '../../lib/invoiceRequestApi';
 import { listInvoiceStaff, type InvoiceStaffShare } from '../../lib/invoiceStaffApi';
+import { Grid, useGrid, type GridCol } from './grid';
+import { ColumnSettings } from '../clients/tableKit';
+import { VIEW_KEYS } from '../../lib/tableViewApi';
 import { StaffShareEditor, shareLabel } from './StaffShareEditor';
 import { listInternalStaff } from '../../lib/bizRegistryApi';
 import {
@@ -20,6 +23,11 @@ import {
 } from '../../lib/invoiceMonthApi';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
+const dash = <span style={{ color: '#CCC' }}>—</span>;
+/** 전월 대비 차이 한 줄. */
+interface DiffRow { kind: '신규' | '변동' | '없어짐'; company: string; place: string; prev: number; now: number }
+const KIND_ORDER: Record<DiffRow['kind'], number> = { 없어짐: 0, 변동: 1, 신규: 2 };
+const cpaOpts = CPA_OPTIONS;
 const thisMonth = () => todayYmd().slice(0, 7);
 const prevMonthOf = (ym: string) => {
   const [y, m] = ym.split('-').map(Number);
@@ -47,12 +55,12 @@ export default function InvoiceRequestTab() {
   const [prev, setPrev] = useState<InvoiceRequest[]>([]);   // 전월 요청(비교용)
   const [pick, setPick] = useState<Set<string>>(new Set());
   const [pickReq, setPickReq] = useState<Set<string>>(new Set());
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatus | ''>('');
   const [issuedDate, setIssuedDate] = useState(todayYmd);
   const [shares, setShares] = useState<Map<string, InvoiceStaffShare[]>>(new Map());
   const [staffOpts, setStaffOpts] = useState<string[]>([]);
   const [editShare, setEditShare] = useState<InvoiceRequest | null>(null);
   const [q, setQ] = useState('');
+  const [showDiff, setShowDiff] = useState(false);
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3000); };
 
@@ -78,20 +86,16 @@ export default function InvoiceRequestTab() {
   }, [ym, entities, staffOpts.length]);
   useEffect(() => { void load(); }, [load]);
 
-  const candView = useMemo(() => {
+  const candSearched = useMemo(() => {
     if (!q.trim()) return cands;
     const k = q.trim().toLowerCase();
     return cands.filter((c) => (c.companyName + c.placeName + c.contractCode + c.cpa + c.staff).toLowerCase().includes(k));
   }, [cands, q]);
-  const reqView = useMemo(() => {
-    let list = reqs;
-    if (statusFilter) list = list.filter((r) => r.status === statusFilter);
-    if (q.trim()) {
-      const k = q.trim().toLowerCase();
-      list = list.filter((r) => (r.companyName + r.placeName + r.contractCode + r.invoiceNo).toLowerCase().includes(k));
-    }
-    return list;
-  }, [reqs, statusFilter, q]);
+  const reqSearched = useMemo(() => {
+    if (!q.trim()) return reqs;
+    const k = q.trim().toLowerCase();
+    return reqs.filter((r) => (r.companyName + r.placeName + r.contractCode + r.invoiceNo + r.cpa + r.staff).toLowerCase().includes(k));
+  }, [reqs, q]);
 
   const picked = cands.filter((c) => pick.has(c.key));
   const pickedSupply = picked.reduce((s, c) => s + c.supplyAmount, 0);
@@ -101,7 +105,6 @@ export default function InvoiceRequestTab() {
   const live = (list: InvoiceRequest[]) => list.filter((r) => r.status !== '취소');
   const sum = (list: InvoiceRequest[]) => live(list).reduce((s, r) => s + r.total, 0);
   const sumSupply = (list: InvoiceRequest[]) => live(list).reduce((s, r) => s + r.supplyAmount, 0);
-  const sumVat = (list: InvoiceRequest[]) => live(list).reduce((s, r) => s + r.vat, 0);
   /** 지금 보이는 목록에서 아직 '요청'인 건 — 발행완료 일괄처리 대상. */
   const issuable = (list: InvoiceRequest[]) => list.filter((r) => r.status === '요청');
   const stat = useMemo(() => ({
@@ -119,18 +122,27 @@ export default function InvoiceRequestTab() {
     for (const r of prev) if (r.status !== '취소' && r.contractId) prevBy.set(r.contractId, r);
     const nowIds = new Set<string>();
     const mark = new Map<string, { kind: '신규' | '변동'; prevAmount: number }>();
-    const put = (contractId: string | null, amount: number) => {
-      if (!contractId) return;
+    // 요약 옆에서 바로 펼쳐 볼 상세 — 어느 거래처가 어떻게 달라졌는지.
+    const rows: DiffRow[] = [];
+    const put = (contractId: string | null, company: string, place: string, amount: number) => {
+      if (!contractId || nowIds.has(contractId)) return;
       nowIds.add(contractId);
       const p = prevBy.get(contractId);
-      if (!p) mark.set(contractId, { kind: '신규', prevAmount: 0 });
-      else if (p.supplyAmount !== amount) mark.set(contractId, { kind: '변동', prevAmount: p.supplyAmount });
+      if (!p) {
+        mark.set(contractId, { kind: '신규', prevAmount: 0 });
+        rows.push({ kind: '신규', company, place, prev: 0, now: amount });
+      } else if (p.supplyAmount !== amount) {
+        mark.set(contractId, { kind: '변동', prevAmount: p.supplyAmount });
+        rows.push({ kind: '변동', company, place, prev: p.supplyAmount, now: amount });
+      }
     };
-    for (const c of cands) put(c.contractId, c.supplyAmount);
-    for (const r of reqs) if (r.status !== '취소') put(r.contractId, r.supplyAmount);
+    for (const c of cands) put(c.contractId, c.companyName, c.placeName, c.supplyAmount);
+    for (const r of reqs) if (r.status !== '취소') put(r.contractId, r.companyName, r.placeName, r.supplyAmount);
     // 전월엔 있었는데 이번 달엔 없는 것 = 해지 의심(엑셀의 'X')
     const dropped = [...prevBy.values()].filter((p) => !nowIds.has(p.contractId!));
-    return { mark, dropped };
+    for (const d of dropped) rows.push({ kind: '없어짐', company: d.companyName, place: d.placeName, prev: d.supplyAmount, now: 0 });
+    rows.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.company.localeCompare(b.company, 'ko'));
+    return { mark, dropped, rows };
   }, [prev, cands, reqs]);
 
   const checkedNames = new Set((month?.checks ?? []).map((c) => c.name));
@@ -223,6 +235,83 @@ export default function InvoiceRequestTab() {
     catch (e) { alert('저장 실패: ' + (e instanceof Error ? e.message : e)); }
   }
 
+  // ── 표 열 정의 ────────────────────────────────────────
+  // 제목행을 누르면 정렬, 아래 칸에 값을 넣으면 그 열만 걸러진다. 너비는 끝을 끌어 조절(더블클릭=내용맞춤).
+  const candCols: GridCol<InvoiceCandidate>[] = [
+    { key: 'company', label: '거래처', width: 150, value: (c) => c.companyName,
+      style: { fontWeight: 700, color: '#1A2B52' },
+      cell: (c) => (
+        <>
+          {c.companyName}
+          {!c.confirmed && <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>미계약</span>}
+          <DiffBadge d={diff.mark.get(c.contractId)} amount={c.supplyAmount} />
+        </>
+      ) },
+    { key: 'place', label: '사업장', width: 110, value: (c) => c.placeName },
+    { key: 'type', label: '매출유형', width: 130, value: (c) => pathLabel(c.typeLabel) },
+    { key: 'code', label: '계약코드', width: 100, value: (c) => c.contractCode, style: { fontFamily: 'monospace', fontSize: 10.5 } },
+    { key: 'round', label: '회차', width: 64, value: (c) => c.label },
+    { key: 'supply', label: '공급가액', width: 96, num: true, value: (c) => c.supplyAmount,
+      cell: (c) => won(c.supplyAmount), sum: (c) => c.supplyAmount },
+    { key: 'vat', label: '부가세', width: 84, num: true, value: (c) => Math.round(c.supplyAmount * 0.1),
+      cell: (c) => won(Math.round(c.supplyAmount * 0.1)), sum: (c) => Math.round(c.supplyAmount * 0.1), style: { color: '#888' } },
+    { key: 'total', label: '합계', width: 96, num: true, value: (c) => c.supplyAmount + Math.round(c.supplyAmount * 0.1),
+      cell: (c) => won(c.supplyAmount + Math.round(c.supplyAmount * 0.1)),
+      sum: (c) => c.supplyAmount + Math.round(c.supplyAmount * 0.1), style: { fontWeight: 700 } },
+    { key: 'cpa', label: '담당회계사', width: 80, value: (c) => c.cpa, opts: cpaOpts, cell: (c) => c.cpa || dash },
+    { key: 'staff', label: '담당직원', width: 84, value: (c) => c.staff, opts: staffOpts,
+      style: { fontWeight: 600, color: '#1A2B52' }, cell: (c) => c.staff || dash },
+  ];
+
+  const reqCols: GridCol<InvoiceRequest>[] = [
+    { key: 'status', label: '상태', width: 74, value: (r) => r.status, opts: ['요청', '발행완료', '취소', '수정발행'],
+      cell: (r) => {
+        const c = r.status === '발행완료' ? { bg: '#D1FAE5', fg: '#065F46' }
+          : r.status === '취소' ? { bg: '#F3F4F6', fg: '#6B7280' } : { bg: '#DBEAFE', fg: '#1E3A8A' };
+        return <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.status}</span>;
+      } },
+    { key: 'company', label: '거래처', width: 150, value: (r) => r.companyName,
+      style: { fontWeight: 700, color: '#1A2B52' },
+      cell: (r) => <>{r.companyName}<DiffBadge d={diff.mark.get(r.contractId ?? '')} amount={r.supplyAmount} /></> },
+    { key: 'place', label: '사업장', width: 110, value: (r) => r.placeName },
+    { key: 'erp', label: '매출계정', width: 120, value: (r) => r.erpAccount, cell: (r) => r.erpAccount || dash, style: { color: '#666' } },
+    { key: 'code', label: '계약코드', width: 100, value: (r) => r.contractCode, style: { fontFamily: 'monospace', fontSize: 10.5 } },
+    { key: 'cpa', label: '담당회계사', width: 80, value: (r) => r.cpa, opts: cpaOpts, cell: (r) => r.cpa || dash },
+    { key: 'staff', label: '담당직원', width: 96, value: (r) => shareLabel(shares.get(r.id), r.staff), opts: staffOpts,
+      style: { fontWeight: 600, color: '#1A2B52' },
+      cell: (r) => (canWrite ? (
+        <button className="btn-sm" style={{ fontWeight: 600 }} onClick={() => setEditShare(r)}
+          title="담당직원을 바꾸거나, 둘이 나눠 한 일이면 비율을 정합니다">
+          {shareLabel(shares.get(r.id), r.staff || '지정')}
+        </button>
+      ) : (shareLabel(shares.get(r.id), r.staff) || dash)) },
+    { key: 'summary', label: '비고', width: 130, value: (r) => r.summary || r.note, style: { color: '#666' } },
+    { key: 'supply', label: '공급가액', width: 96, num: true, value: (r) => r.supplyAmount,
+      cell: (r) => won(r.supplyAmount), sum: (r) => (r.status === '취소' ? 0 : r.supplyAmount) },
+    { key: 'vat', label: 'VAT', width: 84, num: true, value: (r) => r.vat,
+      cell: (r) => won(r.vat), sum: (r) => (r.status === '취소' ? 0 : r.vat), style: { color: '#888' } },
+    { key: 'total', label: '합계', width: 96, num: true, value: (r) => r.total,
+      cell: (r) => won(r.total), sum: (r) => (r.status === '취소' ? 0 : r.total), style: { fontWeight: 700 } },
+    { key: 'invoiceNo', label: '승인번호', width: 110, value: (r) => r.invoiceNo,
+      cell: (r) => (
+        <>
+          {r.invoiceNo || dash}
+          {canWrite && r.status === '발행완료' && (
+            <button className="btn-sm" style={{ marginLeft: 4 }} onClick={() => void editNo(r)}>✏️</button>
+          )}
+        </>
+      ) },
+    { key: 'issuedDate', label: '발행일', width: 88, value: (r) => r.issuedDate ?? '', cell: (r) => r.issuedDate ?? dash },
+    { key: 'issuedBy', label: '처리자', width: 76, value: (r) => r.issuedByName,
+      cell: (r) => r.issuedByName || dash,
+      style: { color: '#666' } },
+  ];
+
+  const candGrid = useGrid(VIEW_KEYS.invoiceCandidate, candCols, candSearched, { key: 'company', dir: 'asc' });
+  const reqGrid = useGrid(VIEW_KEYS.invoiceRequest, reqCols, reqSearched, { key: 'company', dir: 'asc' });
+  const candView = candGrid.rowsView;
+  const reqView = reqGrid.rowsView;
+
   const monthOpts = useMemo(() => {
     const base = thisMonth();
     const [y, m] = base.split('-').map(Number);
@@ -309,40 +398,75 @@ export default function InvoiceRequestTab() {
             </>
           )}
         </div>
-        {month?.opened && (diff.mark.size > 0 || diff.dropped.length > 0) && (
+        {diff.rows.length > 0 && (
           <div style={{ marginTop: 5, fontSize: 11.5, color: '#7a5' }}>
-            전월 대비 — 🆕신규·⚠️금액변동 <b>{diff.mark.size}</b>건
-            {diff.dropped.length > 0 && (
-              <> · ❌전월에 있었는데 이번 달 없음 <b style={{ color: '#c33' }}>{diff.dropped.length}</b>건
-                <span style={{ color: '#999' }}> ({diff.dropped.slice(0, 4).map((d) => d.companyName).join(', ')}{diff.dropped.length > 4 ? ' 외' : ''}) — 해지·중단인지 확인하세요</span>
-              </>
+            전월({prevMonthOf(ym)}) 대비 — 🆕신규·⚠️금액변동 <b>{diff.mark.size}</b>건
+            {diff.dropped.length > 0 && <> · ❌전월에 있었는데 이번 달 없음 <b style={{ color: '#c33' }}>{diff.dropped.length}</b>건</>}
+            <button className="btn-sm" style={{ marginLeft: 6 }} onClick={() => setShowDiff((v) => !v)}>
+              {showDiff ? '▾ 상세 닫기' : `▸ 차이 상세 (${diff.rows.length}건)`}
+            </button>
+            {showDiff && (
+              <div style={{ marginTop: 6, background: '#fff', border: '1px solid #e6ddc8', borderRadius: 5, padding: 6 }}>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>
+                  전월 요청과 이번 달을 <b>계약 단위로</b> 맞춰 본 것입니다.
+                  <b> 없어짐</b>은 해지·중단인지 확인하고, <b>변동</b>은 계약금액이 바뀐 게 맞는지 봅니다.
+                </div>
+                <div style={{ maxHeight: 220, overflow: 'auto' }}>
+                  <table className="tbl" style={{ fontSize: 11.5 }}>
+                    <thead>
+                      <tr><th>구분</th><th>거래처</th><th>사업장</th>
+                        <th className="r">전월</th><th className="r">이번 달</th><th className="r">차이</th></tr>
+                    </thead>
+                    <tbody>
+                      {diff.rows.map((d, i) => (
+                        <tr key={i}>
+                          <td style={{ whiteSpace: 'nowrap', fontWeight: 700, color: d.kind === '없어짐' ? '#c33' : d.kind === '신규' ? '#1E3A8A' : '#92400E' }}>
+                            {d.kind === '없어짐' ? '❌ 없어짐' : d.kind === '신규' ? '🆕 신규' : '⚠️ 변동'}
+                          </td>
+                          <td style={{ fontWeight: 700, color: '#1A2B52' }}>{d.company}</td>
+                          <td>{d.place}</td>
+                          <td className="r" style={{ color: '#888' }}>{d.prev ? won(d.prev) : dash}</td>
+                          <td className="r" style={{ fontWeight: 700 }}>{d.now ? won(d.now) : dash}</td>
+                          <td className="r" style={{ color: d.now - d.prev >= 0 ? '#2a7' : '#c33', fontWeight: 700 }}>
+                            {d.now - d.prev > 0 ? '+' : ''}{won(d.now - d.prev)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
         )}
       </div>
 
       <div className="alert-i" style={{ fontSize: 11 }}>
-        매출계약의 청구주기·분할회차에서 그 달 청구분을 펼쳐 보여줍니다. 체크해서 <b>발행요청</b>으로 등록하고,
+        <b>① 청구예정</b>은 저장된 자료가 아니라 <b>매출계약에서 그때그때 계산한 예상</b>입니다 —
+        그래서 아직 손대지 않은 달도, 앞으로 올 달도 계약이 있으면 그대로 보입니다.
+        여기서 체크해 <b>② 발행요청</b>으로 등록하면 그 건은 ①에서 빠지고, 그 달을 다 등록하면 ①이 0건이 됩니다. 체크해서 <b>발행요청</b>으로 등록하고,
         실제로 발행하면 <b>발행완료</b>로 바꿔 승인번호와 발행일을 남깁니다. 금액은 요청한 시점 기준으로 저장되어,
         나중에 계약금액이 바뀌어도 이미 나간 요청은 그대로 남습니다.
+        <br />표의 <b>제목행을 누르면 정렬</b>, 그 아래 칸에 값을 넣으면 <b>그 열만 걸러</b> 봅니다.
+        머리글 오른쪽 끝을 끌면 <b>너비</b>가 바뀌고, 더블클릭하면 내용에 맞춰집니다. <b>⚙️ 열 설정</b>에서 숨김·순서를 정해 저장하면 다음에도 그대로 열립니다.
         <br />연 1회 계약(세무조정 등)은 <b>요청한 달이 곧 그 계약의 청구월</b>이 됩니다 — 계약에 적힌 청구월은
         지난 실적에서 잡은 예상치라, 실제로 요청하면 그 달로 맞춰집니다.
       </div>
 
       <div className="sbar">
         <input placeholder="🔍 거래처·사업장·계약코드·담당·승인번호" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as InvoiceStatus | '')}>
-          <option value="">요청목록: 전체</option>
-          <option value="요청">요청</option>
-          <option value="발행완료">발행완료</option>
-          <option value="취소">취소</option>
-        </select>
       </div>
 
       {/* ── 청구예정 → 발행요청 ── */}
       <div style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 12.5, color: '#1A2B52' }}>① {ym} 청구예정 ({candView.length}건 · 공급가액 {won(candView.reduce((s, c) => s + c.supplyAmount, 0))})</b>
+          {ym > thisMonth() && (
+            <span title="아직 오지 않은 달입니다. 계약에서 계산한 예상일 뿐, 등록된 것은 없습니다."
+              style={{ fontSize: 10.5, fontWeight: 700, color: '#5B21B6', background: '#EDE9FE', border: '1px solid #C4B5FD', padding: '1px 6px', borderRadius: 9 }}>
+              미리보기 — 아직 오지 않은 달
+            </span>
+          )}
           {canWrite && (
             <>
               <button className="btn-sm" onClick={() => setPick(new Set(candView.map((c) => c.key)))}>보이는 건 전체선택</button>
@@ -353,55 +477,19 @@ export default function InvoiceRequestTab() {
               </button>
             </>
           )}
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            {candGrid.filterCount > 0 && <button className="btn-sm" onClick={candGrid.clearFilters}>필터 초기화 ({candGrid.filterCount})</button>}
+            <ColumnSettings cols={candGrid.ordered} view={candGrid.view} onMessage={flash} />
+          </span>
         </div>
-        <div className="tbl-scroll" style={{ maxHeight: 300 }}>
-          <table className="tbl" style={{ fontSize: 11.5 }}>
-            <thead>
-              <tr>
-                {canWrite && <th style={{ width: 32 }}></th>}
-                <th>거래처</th><th>사업장</th><th>매출유형</th><th>계약코드</th><th>회차</th>
-                <th className="r">공급가액</th><th className="r">부가세</th><th className="r">합계</th><th>담당회계사</th><th>담당직원</th>
-              </tr>
-            </thead>
-            <tbody>
-              {candView.length === 0 && (
-                <tr><td colSpan={canWrite ? 11 : 10} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
-                  {ym}에 청구예정인 계약이 없습니다.
-                </td></tr>
-              )}
-              {candView.map((c) => {
-                const vat = Math.round(c.supplyAmount * 0.1);
-                return (
-                  <tr key={c.key}>
-                    {canWrite && (
-                      <td>
-                        <input type="checkbox" checked={pick.has(c.key)} onChange={() => setPick((p) => {
-                          const n = new Set(p); if (n.has(c.key)) n.delete(c.key); else n.add(c.key); return n;
-                        })} />
-                      </td>
-                    )}
-                    <td style={{ fontWeight: 700, color: '#1A2B52' }}>
-                      {c.companyName}
-                      {!c.confirmed && <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>미계약</span>}
-                      <DiffBadge d={diff.mark.get(c.contractId)} amount={c.supplyAmount} />
-                    </td>
-                    <td>{c.placeName}</td>
-                    <td style={{ fontSize: 11 }}>{pathLabel(c.typeLabel)}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{c.contractCode}</td>
-                    <td>{c.label}</td>
-                    <td className="r">{won(c.supplyAmount)}</td>
-                    <td className="r" style={{ color: '#888' }}>{won(vat)}</td>
-                    <td className="r" style={{ fontWeight: 700 }}>{won(c.supplyAmount + vat)}</td>
-                    <td style={{ fontSize: 11 }}>{c.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
-                    <td style={{ fontSize: 11, fontWeight: 600, color: '#1A2B52' }}>
-                      {c.staff || <span style={{ color: '#CCC', fontWeight: 400 }}>—</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <Grid grid={candGrid} rowKey={(c) => c.key} maxHeight={320}
+          empty={`${ym}에 청구예정인 계약이 없습니다.`}
+          footerLabel={`합계 ${candView.length}건`}
+          select={canWrite ? {
+            picked: pick, toggle: (k) => setPick((p) => { const n = new Set(p); if (n.has(k)) n.delete(k); else n.add(k); return n; }),
+            selectableKeys: candView.map((c) => c.key),
+            setAll: (keys) => setPick(new Set(keys ?? [])),
+          } : undefined} />
       </div>
 
       {/* ── 요청 목록 → 발행처리 ── */}
@@ -429,94 +517,21 @@ export default function InvoiceRequestTab() {
               <button className="btn-sm btn-sm-del" disabled={busy || !pickedReqs.length} onClick={() => void doCancel()}>취소</button>
             </>
           )}
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            {reqGrid.filterCount > 0 && <button className="btn-sm" onClick={reqGrid.clearFilters}>필터 초기화 ({reqGrid.filterCount})</button>}
+            <ColumnSettings cols={reqGrid.ordered} view={reqGrid.view} onMessage={flash} />
+          </span>
         </div>
-        <div className="tbl-scroll" style={{ maxHeight: 340 }}>
-          <table className="tbl" style={{ fontSize: 11.5 }}>
-            <thead>
-              <tr>
-                {canWrite && (() => {
-                  const ids = issuable(reqView).map((r) => r.id);
-                  const all = ids.length > 0 && ids.every((id) => pickReq.has(id));
-                  return (
-                    <th style={{ width: 32 }}>
-                      <input type="checkbox" checked={all} title="요청 상태인 건 전체선택"
-                        onChange={() => setPickReq(all ? new Set() : new Set(ids))} />
-                    </th>
-                  );
-                })()}
-                <th>상태</th><th>팀</th><th>거래처</th><th>사업장</th><th>매출계정</th><th>계약코드</th>
-                <th>담당회계사</th><th>담당직원</th><th>비고</th>
-                <th className="r">공급가액</th><th className="r">VAT</th><th className="r">합계</th>
-                <th>승인번호</th><th>발행일</th><th>처리자</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reqView.length === 0 && (
-                <tr><td colSpan={canWrite ? 16 : 15} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
-                  발행요청이 없습니다. 위에서 청구예정을 골라 등록하세요.
-                </td></tr>
-              )}
-              {reqView.map((r) => {
-                const c = r.status === '발행완료' ? { bg: '#D1FAE5', fg: '#065F46' }
-                  : r.status === '취소' ? { bg: '#F3F4F6', fg: '#6B7280' } : { bg: '#DBEAFE', fg: '#1E3A8A' };
-                return (
-                  <tr key={r.id} style={{ opacity: r.status === '취소' ? 0.55 : 1 }}>
-                    {canWrite && (
-                      <td>
-                        <input type="checkbox" checked={pickReq.has(r.id)} onChange={() => setPickReq((p) => {
-                          const n = new Set(p); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n;
-                        })} />
-                      </td>
-                    )}
-                    <td>
-                      <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.status}</span>
-                    </td>
-                    <td style={{ fontSize: 10.5, color: '#667' }}>{r.team === 'taxteam' ? 'tax' : '감사'}</td>
-                    <td style={{ fontWeight: 700, color: '#1A2B52' }}>
-                      {r.companyName}
-                      <DiffBadge d={diff.mark.get(r.contractId ?? '')} amount={r.supplyAmount} />
-                    </td>
-                    <td>{r.placeName}</td>
-                    <td style={{ fontSize: 11, color: '#666' }}>{r.erpAccount || <span style={{ color: '#CCC' }}>—</span>}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.contractCode}</td>
-                    <td style={{ fontSize: 11 }}>{r.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
-                    <td style={{ fontSize: 11, fontWeight: 600, color: '#1A2B52' }}>
-                      {canWrite ? (
-                        <button className="btn-sm" style={{ fontWeight: 600 }} onClick={() => setEditShare(r)}
-                          title="이 청구의 실적을 누구에게 얼마나 돌릴지 정합니다">
-                          {shareLabel(shares.get(r.id), r.staff || '지정')}
-                        </button>
-                      ) : (shareLabel(shares.get(r.id), r.staff) || <span style={{ color: '#CCC', fontWeight: 400 }}>—</span>)}
-                    </td>
-                    <td style={{ fontSize: 11, color: '#666' }}>{r.summary || r.note}</td>
-                    <td className="r">{won(r.supplyAmount)}</td>
-                    <td className="r" style={{ color: '#888' }}>{won(r.vat)}</td>
-                    <td className="r" style={{ fontWeight: 700 }}>{won(r.total)}</td>
-                    <td>
-                      {r.invoiceNo || <span style={{ color: '#CCC' }}>—</span>}
-                      {canWrite && r.status === '발행완료' && (
-                        <button className="btn-sm" style={{ marginLeft: 4 }} onClick={() => void editNo(r)}>✏️</button>
-                      )}
-                    </td>
-                    <td style={{ fontSize: 11 }}>{r.issuedDate ?? <span style={{ color: '#CCC' }}>—</span>}</td>
-                    <td style={{ fontSize: 11, color: r.issuedByName === FINAL_APPROVER ? '#666' : '#a15', fontWeight: r.issuedByName && r.issuedByName !== FINAL_APPROVER ? 700 : 400 }}>
-                      {r.issuedByName || <span style={{ color: '#CCC' }}>—</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
-                <td colSpan={canWrite ? 10 : 9}>합계 {live(reqView).length}건 (취소 제외)</td>
-                <td className="r">{won(sumSupply(reqView))}</td>
-                <td className="r">{won(sumVat(reqView))}</td>
-                <td className="r">{won(sum(reqView))}</td>
-                <td colSpan={3}></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <Grid grid={reqGrid} rowKey={(r) => r.id} maxHeight={380}
+          empty="발행요청이 없습니다. 위에서 청구예정을 골라 등록하세요."
+          footerLabel={`합계 ${live(reqView).length}건 (취소 제외)`}
+          rowStyle={(r) => ({ opacity: r.status === '취소' ? 0.55 : 1 })}
+          select={canWrite ? {
+            picked: pickReq, toggle: (k) => setPickReq((p) => { const n = new Set(p); if (n.has(k)) n.delete(k); else n.add(k); return n; }),
+            selectableKeys: reqView.map((r) => r.id),
+            headerKeys: issuable(reqView).map((r) => r.id),
+            setAll: (keys) => setPickReq(new Set(keys ?? [])),
+          } : undefined} />
       </div>
       {editShare && (
         <StaffShareEditor
