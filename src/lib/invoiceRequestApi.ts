@@ -133,8 +133,13 @@ function pickDocEmail(contacts: BizContact[], placeId: string | null): string {
 /**
  * 그 달에 청구할 계약 항목을 펼쳐 발행요청 후보로 만든다.
  * 이미 요청된 건(취소 제외)은 빼고 돌려준다.
+ *
+ * team 을 주면 그 팀 계약만 본다. **화면이 감사팀/taxteam 으로 갈리므로 반드시 지정한다** —
+ * 안 주면 감사 계약(회계감사 중도금 같은 큰 금액)이 taxteam 목록에 섞여 들어온다.
  */
-export async function listInvoiceCandidates(ym: string, entities: BizEntityFull[]): Promise<InvoiceCandidate[]> {
+export async function listInvoiceCandidates(
+  ym: string, entities: BizEntityFull[], team?: string,
+): Promise<InvoiceCandidate[]> {
   const [contracts, existing, contacts] = await Promise.all([
     listSalesContracts(), listInvoiceRequests(ym), listBizContacts(),
   ]);
@@ -150,6 +155,7 @@ export async function listInvoiceCandidates(ym: string, entities: BizEntityFull[
 
   const out: InvoiceCandidate[] = [];
   for (const c of contracts) {
+    if (team && c.team !== team) continue;
     const items = billingItemsForMonth(c, ym);
     if (!items.length) continue;
     const e = entMap.get(c.entityId);

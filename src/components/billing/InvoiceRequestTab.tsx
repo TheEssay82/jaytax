@@ -57,7 +57,7 @@ export default function InvoiceRequestTab() {
       const ents = entities.length ? entities : await listBizEntities();
       if (!entities.length) setEntities(ents);
       const [c, r, p, mst] = await Promise.all([
-        listInvoiceCandidates(ym, ents),
+        listInvoiceCandidates(ym, ents, 'taxteam'),
         listInvoiceRequests(ym, 'taxteam'),
         listInvoiceRequests(prevMonthOf(ym), 'taxteam'),
         getMonthState(ym),
