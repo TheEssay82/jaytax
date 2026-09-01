@@ -18,7 +18,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: '2.8.0',
+    version: '2.8.1',
     date: '2026-09-01',
     title: '표 화면을 내 마음대로 — 열 숨김·너비를 개인 설정으로 저장',
     highlights: [
