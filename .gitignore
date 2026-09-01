@@ -30,3 +30,6 @@ supabase/.temp/
 테스트계정및비번.txt
 새 텍스트 문서.txt
 scripts/erp/_explore.json
+
+# Claude Code 로컬 설정 — 세션마다 허용규칙이 쌓이고 거기에 토큰이 섞여 들어간 적이 있다.
+.claude/settings.local.json
