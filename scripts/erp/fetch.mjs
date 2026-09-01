@@ -106,13 +106,25 @@ async function waitLogin(page) {
   throw new Error('로그인 대기 시간 초과');
 }
 
+/**
+ * ERP 가 띄우는 확인창은 **받는다**.
+ * 엑셀 버튼이 "받으시겠습니까?" 같은 confirm 을 띄우는 화면이 있어, 닫아버리면
+ * 다운로드가 시작되지 않는다. 조회 전용 화면이라 확인을 눌러도 저장·수정은 없다.
+ * 무슨 창이 떴는지는 화면에 찍어 둔다(조회 조건이 틀렸을 때 여기로 드러난다).
+ */
+const handleDialogs = (p) => p.on('dialog', async (d) => {
+  console.log(`    · ERP 알림: ${d.message().replace(/\s+/g, ' ').slice(0, 120)}`);
+  await d.accept().catch(() => d.dismiss().catch(() => {}));
+});
+
 /** 브라우저 하나 · 탭 하나를 들고 있다가, 죽으면 다시 띄운다. */
 class Session {
   constructor() { this.ctx = null; this.page = null; }
   async open() {
     this.ctx = await launch();
+    this.ctx.on('page', handleDialogs);          // 팝업 창에서 뜨는 확인창까지
     this.page = this.ctx.pages()[0] || await this.ctx.newPage();
-    this.page.on('dialog', (d) => d.dismiss().catch(() => {}));
+    handleDialogs(this.page);
     await this.page.goto(`${ERP}/`, { waitUntil: 'domcontentloaded', timeout: 120000 });
     await waitLogin(this.page);
     return this.page;
@@ -160,6 +172,30 @@ async function submitAndWait(page, fn) {
   await page.waitForLoadState('load', { timeout: NAV_MS }).catch(() => {});
   await ready(page);
   await page.waitForTimeout(1500);
+  // 조회가 실제로 자료를 물어왔는지 눈으로 확인할 수 있게 행 수를 찍는다.
+  const rows = await page.evaluate(() => document.querySelectorAll('tr').length).catch(() => -1);
+  console.log(`    · 조회 완료 — 표 ${rows}행`);
+}
+
+/**
+ * 엑셀은 현재 탭이 아니라 **새 창으로 떨어지는 화면**이 있다.
+ * 그래서 이 브라우저의 모든 탭(앞으로 열릴 탭 포함)에서 다운로드를 기다린다.
+ */
+function waitDownloadAnywhere(ctx, ms) {
+  return new Promise((resolve, reject) => {
+    const seen = new Set();
+    const onDownload = (d) => { cleanup(); resolve(d); };
+    const attach = (p) => { if (!seen.has(p)) { seen.add(p); p.on('download', onDownload); } };
+    const onPage = (p) => attach(p);
+    const timer = setTimeout(() => { cleanup(); reject(new Error(`다운로드가 시작되지 않았습니다(${ms / 1000}초 대기)`)); }, ms);
+    function cleanup() {
+      clearTimeout(timer);
+      ctx.off('page', onPage);
+      for (const p of seen) p.off('download', onDownload);
+    }
+    ctx.on('page', onPage);
+    ctx.pages().forEach(attach);
+  });
 }
 
 /**
@@ -167,15 +203,15 @@ async function submitAndWait(page, fn) {
  * clicks 를 순서대로 시도한다 — 인자 형태가 화면마다 달라 첫 시도가 빗나갈 수 있다.
  */
 async function grab(page, clicks, filename) {
+  const ctx = page.context();
   const list = Array.isArray(clicks) ? clicks : [clicks];
   let lastErr = null;
   for (let i = 0; i < list.length; i++) {
     const last = i === list.length - 1;
     try {
-      const [dl] = await Promise.all([
-        page.waitForEvent('download', { timeout: last ? DL_MS : 60000 }),
-        page.evaluate(list[i]).catch(() => {}),
-      ]);
+      const wait = waitDownloadAnywhere(ctx, last ? DL_MS : 45000);
+      await page.evaluate(list[i]).catch(() => {});   // 제출로 컨텍스트가 날아가는 건 정상
+      const dl = await wait;
       const dest = path.join(OUT_DIR, filename);
       await dl.saveAs(dest);
       console.log(`  ✓ ${filename}  (${(fs.statSync(dest).size / 1024).toFixed(0)} KB)`);
@@ -185,7 +221,27 @@ async function grab(page, clicks, filename) {
       if (!last) console.log('    · 엑셀 호출 재시도…');
     }
   }
+  await dumpExcelHints(page);
   throw lastErr;
+}
+
+/** 다운로드가 끝내 안 되면, 그 화면의 엑셀 버튼이 실제로 뭘 하는지 찍어 둔다. */
+async function dumpExcelHints(page) {
+  const info = await page.evaluate(() => {
+    const txt = (b) => (b.value || b.textContent || b.alt || '').replace(/\s+/g, ' ').trim().slice(0, 20);
+    return {
+      url: location.href,
+      fn: typeof window.xls_click === 'function'
+        ? String(window.xls_click).replace(/\s+/g, ' ').slice(0, 500) : '(xls_click 없음)',
+      btns: Array.from(document.querySelectorAll('input[type=button],input[type=image],button,a'))
+        .map((b) => `${txt(b)} :: ${(b.getAttribute('onclick') || '').replace(/\s+/g, ' ').slice(0, 140)}`)
+        .filter((s) => /xls|excel|엑셀/i.test(s)).slice(0, 6),
+    };
+  }).catch(() => null);
+  if (!info) return;
+  console.log(`    ▸ 화면 ${info.url.replace(ERP, '')}`);
+  console.log(`    ▸ xls_click = ${info.fn}`);
+  for (const b of info.btns) console.log(`    ▸ 버튼 ${b}`);
 }
 
 /** 화면에 있는 엑셀 버튼을 직접 누르는 마지막 수단. */
@@ -252,7 +308,6 @@ async function fetchLedger(page, r) {
 
   const win = await popup;                     // 결과가 팝업으로 뜨면 그쪽에서, 아니면 같은 탭에서
   const target = win || page;
-  if (win) win.on('dialog', (d) => d.dismiss().catch(() => {}));
   await target.waitForLoadState('load', { timeout: NAV_MS }).catch(() => {});
   await ready(target);
   await target.waitForTimeout(1500);
