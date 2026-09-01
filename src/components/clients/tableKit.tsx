@@ -27,10 +27,52 @@ export function useColWidths() {
   return { widthOf, startResize };
 }
 
-/** 헤더 셀 우측 너비조절 핸들. th 는 position:relative 여야 한다. */
-export function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
+/**
+ * 그 열의 내용이 잘리지 않는 최소 폭을 잰다(엑셀의 열 너비 자동맞춤).
+ *
+ * 셀은 overflow:hidden 이라 scrollWidth 로는 '넓힐 때'만 알 수 있고 줄일 때를 못 잰다.
+ * 그래서 캔버스로 글자 폭을 직접 재고 좌우 여백을 더한다. 버튼이 든 셀만 scrollWidth 로 보정.
+ * 필터 입력 행은 폭이 내용과 무관하므로 건너뛴다.
+ */
+function autoFitWidth(th: HTMLTableCellElement): number | null {
+  const table = th.closest('table');
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!table || !ctx) return null;
+  const idx = th.cellIndex;
+  let max = 0;
+  for (const tr of Array.from(table.rows)) {
+    const cell = tr.cells[idx];
+    if (!cell || cell.querySelector('input, select, textarea')) continue;
+    const cs = getComputedStyle(cell);
+    ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
+    let w = text ? ctx.measureText(text).width : 0;
+    if (cell.querySelector('button')) w = Math.max(w, cell.scrollWidth - 8);
+    max = Math.max(max, w);
+  }
+  const cs = getComputedStyle(th);
+  const pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  return Math.min(600, Math.max(40, Math.ceil(max + pad + 12)));   // 12 = 핸들·여유
+}
+
+/**
+ * 헤더 셀 우측 너비조절 핸들. th 는 position:relative 여야 한다.
+ * 끌면 너비 조절, **더블클릭하면 내용 길이에 맞춰 자동조절**(엑셀과 같은 동작).
+ */
+export function ResizeHandle({ onMouseDown, onAutoFit }: {
+  onMouseDown: (e: React.MouseEvent) => void;
+  onAutoFit?: (px: number) => void;
+}) {
+  const fit = (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!onAutoFit) return;
+    const th = (e.currentTarget as HTMLElement).closest('th');
+    const px = th ? autoFitWidth(th as HTMLTableCellElement) : null;
+    if (px) onAutoFit(px);
+  };
   return (
-    <span onMouseDown={onMouseDown} onClick={(e) => e.stopPropagation()} title="드래그로 너비 조절"
+    <span onMouseDown={onMouseDown} onClick={(e) => e.stopPropagation()} onDoubleClick={fit}
+      title={onAutoFit ? '드래그: 너비 조절 · 더블클릭: 내용에 맞춤' : '드래그로 너비 조절'}
       style={{ position: 'absolute', top: 0, right: 0, width: 7, height: '100%', cursor: 'col-resize', userSelect: 'none' }} />
   );
 }
@@ -89,6 +131,8 @@ export function useTableView(viewKey: string) {
   }, [viewKey]);
 
   const widthOf = (key: string, fallback = 90) => widths[key] ?? fallback;
+  /** 더블클릭 자동맞춤 — 잰 폭을 그대로 반영한다(저장은 '설정 저장'을 눌러야 남는다). */
+  const setWidth = (key: string, px: number) => setWidths((w) => ({ ...w, [key]: px }));
   const isHidden = (key: string) => hidden.has(key);
   const toggleHidden = (key: string) =>
     setHidden((p) => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -118,7 +162,7 @@ export function useTableView(viewKey: string) {
     setWidths({}); setHidden(new Set()); setSaved(EMPTY_VIEW);
   };
 
-  return { widthOf, startResize, isHidden, toggleHidden, showAll, hiddenCount: hidden.size, dirty, save, reset, loaded };
+  return { widthOf, setWidth, startResize, isHidden, toggleHidden, showAll, hiddenCount: hidden.size, dirty, save, reset, loaded };
 }
 
 /**

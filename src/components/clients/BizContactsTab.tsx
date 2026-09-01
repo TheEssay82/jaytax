@@ -149,7 +149,7 @@ export default function BizContactsTab() {
                 {shownCols.map((col) => (
                   <th key={col.key} style={{ ...thc, ...clip, height: 26, cursor: 'pointer', userSelect: 'none', ...stickyTop(0, '#f4efe4') }} onClick={() => toggleSort(col.key)} title="클릭: 정렬 · 우측 끝 드래그: 너비 조절">
                     {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
-                    <ResizeHandle onMouseDown={startResize(col.key, widthOf(col.key, col.w))} />
+                    <ResizeHandle onMouseDown={startResize(col.key, widthOf(col.key, col.w))} onAutoFit={(px) => tv.setWidth(col.key, px)} />
                   </th>
                 ))}
                 {canWrite && <th style={{ ...thc, ...stickyTop(0, '#f4efe4') }}></th>}

@@ -553,7 +553,7 @@ export default function BizRegistryTab() {
                 {shownCols.map((col) => (
                   <th key={col.key} style={{ ...thc, ...clip, height: 26, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 0, zIndex: 2, background: '#f4efe4' }} onClick={() => toggleSort(col.key)} title="클릭: 정렬 · 우측 끝 드래그: 너비 조절">
                     {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
-                    <ResizeHandle onMouseDown={startResize(col.key, widthOf(col.key, col.w))} />
+                    <ResizeHandle onMouseDown={startResize(col.key, widthOf(col.key, col.w))} onAutoFit={(px) => tv.setWidth(col.key, px)} />
                   </th>
                 ))}
                 {canWrite && <th style={{ ...thc, position: 'sticky', top: 0, zIndex: 2, background: '#f4efe4' }}></th>}
