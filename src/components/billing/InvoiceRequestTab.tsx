@@ -18,7 +18,7 @@ import { VIEW_KEYS } from '../../lib/tableViewApi';
 import { StaffShareEditor, shareLabel } from './StaffShareEditor';
 import { listInternalStaff } from '../../lib/bizRegistryApi';
 import {
-  getMonthState, openMonth, notifyCheckers, markMyCheck, clearMyCheck, setFinalConfirm,
+  getMonthState, openMonth, resetMonth, notifyCheckers, markMyCheck, clearMyCheck, setFinalConfirm,
   issueDateOf, pastIssueDay, CHECKERS, FINAL_APPROVER, type MonthState,
 } from '../../lib/invoiceMonthApi';
 
@@ -166,6 +166,35 @@ export default function InvoiceRequestTab() {
       await load();
       flash(`✓ ${ym} 전개 완료 — 요청 ${n}건 · 알림 ${sent}명`);
     } catch (e) { alert('전개 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
+  /** 이 달을 되돌린다 — 잘못 열었거나 시험 삼아 연 달을 치운다. */
+  async function doResetMonth() {
+    const n = reqs.length;
+    const done = reqs.filter((r) => r.status === '발행완료' || r.status === '수정발행').length;
+    if (done) {
+      alert(`이미 발행완료된 건이 ${done}건 있어 초기화할 수 없습니다.
+
+`
+        + `그 건을 먼저 ‘요청으로 되돌리기’ 하거나 취소한 뒤 다시 시도하세요.`);
+      return;
+    }
+    if (!confirm(`${ym} 을 처음 상태로 되돌립니다.
+
+· 발행요청 ${n}건을 지웁니다(실적 배분도 함께)
+· 전개 기록과 ${CHECKERS.join('·')} 확인 표시를 지웁니다
+
+지운 것은 되살릴 수 없습니다. 다만 청구예정은 매출계약에서 다시 계산되므로,
+‘당월 전개’를 누르면 처음부터 다시 시작할 수 있습니다.
+
+진행할까요?`)) return;
+    if (n > 0 && !confirm(`정말 ${ym} 발행요청 ${n}건을 지울까요? 마지막 확인입니다.`)) return;
+    setBusy(true);
+    try {
+      const { deleted } = await resetMonth(ym, 'taxteam');
+      await load();
+      flash(`✓ ${ym} 초기화 — 요청 ${deleted}건 삭제`);
+    } catch (e) { alert('초기화 실패: ' + (e instanceof Error ? e.message : e)); }
     finally { setBusy(false); }
   }
   async function doCheck() {
@@ -356,6 +385,12 @@ export default function InvoiceRequestTab() {
                   📂 당월 전개 + 확인요청
                 </button>
               )}
+              {isApprover && reqs.length > 0 && (
+                <button className="btn-sm btn-sm-del" disabled={busy} onClick={() => void doResetMonth()}
+                  title="전개 기록은 없는데 발행요청만 남아 있습니다 — 이 달을 처음 상태로 되돌립니다.">
+                  ↺ 이 달 초기화 ({reqs.length}건)
+                </button>
+              )}
             </>
           ) : (
             <>
@@ -394,6 +429,13 @@ export default function InvoiceRequestTab() {
               )}
               {month.finalConfirmedAt && isApprover && (
                 <button className="btn-sm" disabled={busy} onClick={() => void doFinal()}>해제</button>
+              )}
+              {isApprover && (
+                <button className="btn-sm btn-sm-del" style={{ marginLeft: 'auto' }} disabled={busy}
+                  onClick={() => void doResetMonth()}
+                  title="이 달을 처음 상태로 되돌립니다 — 발행요청·전개기록·확인표시를 지웁니다. 발행완료 건이 있으면 막힙니다.">
+                  ↺ 이 달 초기화
+                </button>
               )}
             </>
           )}

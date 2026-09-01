@@ -70,6 +70,43 @@ export async function openMonth(ym: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * 그 달을 **되돌린다** — 전개 기록·확인 표시·그 팀의 발행요청을 모두 지운다.
+ *
+ * '전개'는 한 번 누르면 그만이라 잘못 열거나 시험 삼아 연 달을 치울 방법이 없었다.
+ * 다만 **이미 발행완료된 건이 하나라도 있으면 막는다** — 실제로 나간 세금계산서 기록을
+ * 지우는 일이기 때문이다. 그 건은 먼저 '요청으로 되돌리기'나 '취소'로 처리해야 한다.
+ * 지운 것은 복구되지 않지만, 청구예정은 매출계약에서 다시 계산되므로 전개를 다시 누르면 된다.
+ */
+export async function resetMonth(ym: string, team: string): Promise<{ deleted: number }> {
+  const issued = await supabase.from('biz_invoice_request')
+    .select('id').eq('ym', ym).eq('team', team).in('status', ['발행완료', '수정발행']);
+  if (issued.error) throw new Error(issued.error.message);
+  const n = (issued.data ?? []).length;
+  if (n) {
+    throw new Error(
+      `이미 발행완료된 건이 ${n}건 있어 초기화할 수 없습니다.
+`
+      + `그 건을 먼저 '요청으로 되돌리기' 하거나 취소한 뒤 다시 시도하세요.`,
+    );
+  }
+  const rows = await supabase.from('biz_invoice_request').select('id').eq('ym', ym).eq('team', team);
+  if (rows.error) throw new Error(rows.error.message);
+  const ids = ((rows.data as { id: string }[]) ?? []).map((r) => r.id);
+  if (ids.length) {
+    // 실적 배분이 먼저 — 요청이 사라지면 매달 수 없다.
+    const s1 = await supabase.from('biz_invoice_staff').delete().in('request_id', ids);
+    if (s1.error) throw new Error(s1.error.message);
+    const s2 = await supabase.from('biz_invoice_request').delete().in('id', ids);
+    if (s2.error) throw new Error(s2.error.message);
+  }
+  const c = await supabase.from('biz_invoice_check').delete().eq('ym', ym);
+  if (c.error) throw new Error(c.error.message);
+  const m = await supabase.from('biz_invoice_month').delete().eq('ym', ym);
+  if (m.error) throw new Error(m.error.message);
+  return { deleted: ids.length };
+}
+
 /** 담당자 3인에게 확인 요청 알림. 반환 = 보낸 사람 수(자기 자신은 제외된다). */
 export async function notifyCheckers(ym: string): Promise<number> {
   const { data, error } = await supabase.rpc('biz_invoice_notify_check', { p_ym: ym });
