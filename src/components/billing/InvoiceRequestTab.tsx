@@ -1,10 +1,16 @@
-// 기장등청구관리 › 세금계산서 발행요청
-// 왼쪽: 그 달 청구예정(매출계약에서 전개) → 체크해서 발행요청 생성
-// 오른쪽: 그 달 요청 목록 → 발행완료(세계번호·발행일) / 취소 / 되돌리기
-import { useCallback, useEffect, useMemo, useState } from 'react';
+// 기장등청구관리 › 세금계산서 발행요청 (taxteam)
+//
+// 업무 순서가 화면 순서다.
+//   ① 김민섭이 [당월 전개] → **전월 세금계산서가 그대로 복사**되어 청구예정 초안이 된다 + 3인에게 알림
+//   ② 담당자가 각자 맡은 곳을 고치고 지우고 더한다. [매출계약 대사]로 계약과 맞춰 본다(참고자료)
+//   ③ 김민섭이 확인하고 초안을 발행요청으로 등록한다 — 초안은 그때 사라진다
+//   ④ ERP 발행내역 대사 → ⑤ 발행완료 처리
+//
+// 매출계약을 그때그때 전개하던 것이 예전 방식이다. 계약은 이제 **대사용 참고자료**다 —
+// 실무는 전월을 복사해 고치는 것이고, 계약이 늘 최신인 것도 아니기 때문이다.
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, CPA_OPTIONS, type BizEntityFull } from '../../lib/bizRegistryApi';
-import { pathLabel } from '../../lib/salesContractTaxonomy';
 import { todayYmd } from '../../lib/format';
 import {
   listInvoiceCandidates, listInvoiceRequests, createInvoiceRequests,
@@ -12,6 +18,11 @@ import {
   type InvoiceCandidate, type InvoiceRequest,
 } from '../../lib/invoiceRequestApi';
 import { listInvoiceStaff, type InvoiceStaffShare } from '../../lib/invoiceStaffApi';
+import {
+  listDrafts, openDrafts, addDrafts, updateDraft, deleteDrafts, clearDrafts,
+  candidateFromDraft, draftFromCandidate, reconcileDrafts,
+  type InvoiceDraft, type ReconcileRow,
+} from '../../lib/invoiceDraftApi';
 import { Grid, useGrid, type GridCol } from './grid';
 import { ColumnSettings } from '../clients/tableKit';
 import { VIEW_KEYS } from '../../lib/tableViewApi';
@@ -24,6 +35,129 @@ import {
 
 const won = (n: number) => n.toLocaleString('ko-KR');
 const dash = <span style={{ color: '#CCC' }}>—</span>;
+/**
+ * 매출계약 대사 창 — 청구예정(초안)과 매출계약 전개분을 맞춰 본다.
+ *
+ * 계약은 **참고자료**다. 그래서 이 창은 "계약대로 고쳐라"가 아니라
+ * "이만큼 다른데 어느 쪽이 맞나"를 보여 주고, 맞다고 판단한 쪽으로 반영하게 한다.
+ */
+function ReconcileModal({ rows, ym, busy, canWrite, onClose, onAdd, onDelete, onApplyAmount }: {
+  rows: ReconcileRow[];
+  ym: string;
+  busy: boolean;
+  canWrite: boolean;
+  onClose: () => void;
+  onAdd: (cands: InvoiceCandidate[]) => Promise<void>;
+  onDelete: (draftIds: string[]) => Promise<void>;
+  onApplyAmount: (pairs: [string, number][]) => Promise<void>;
+}) {
+  const [sel, setSel] = useState<Set<number>>(new Set());
+  const toggle = (i: number) => setSel((p) => { const n = new Set(p); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  const pickKind = (kind: ReconcileRow['kind']) =>
+    setSel(new Set(rows.map((r, i) => (r.kind === kind ? i : -1)).filter((i) => i >= 0)));
+  const chosen = [...sel].map((i) => rows[i]).filter(Boolean);
+  const addable = chosen.filter((r) => r.kind === '계약에만' && r.cand).map((r) => r.cand!);
+  const delible = chosen.filter((r) => r.kind === '초안에만' && r.draftId).map((r) => r.draftId!);
+  const amtable = chosen.filter((r) => r.kind === '금액다름' && r.draftId)
+    .map((r) => [r.draftId!, r.candAmount] as [string, number]);
+  const count = (k: ReconcileRow['kind']) => rows.filter((r) => r.kind === k).length;
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 60,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    }}>
+      <div className="card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 940, width: '100%' }}>
+        <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          🔍 매출계약 대사 · {ym}
+          <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
+            청구예정 ↔ 매출계약등록
+          </span>
+          <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="alert-i" style={{ fontSize: 12 }}>
+            ✓ 청구예정과 매출계약이 <b>모두 일치</b>합니다. 고칠 것이 없습니다.
+          </div>
+        ) : (
+          <>
+            <div className="alert-i" style={{ fontSize: 11 }}>
+              <b>매출계약은 참고자료</b>입니다 — 청구의 기준은 청구예정입니다.
+              그러니 계약이 맞을 때만 반영하세요.
+              <br />· <b>계약에만</b> ({count('계약에만')}) — 계약엔 있는데 청구예정에 없습니다. 새로 시작한 곳이면 <b>추가</b>합니다.
+              <br />· <b>초안에만</b> ({count('초안에만')}) — 청구예정엔 있는데 계약이 없거나 끝났습니다. 해지면 <b>삭제</b>, 계속이면 매출계약을 등록·연장하세요.
+              <br />· <b>금액다름</b> ({count('금액다름')}) — 계약금액이 바뀌었습니다. 계약이 맞으면 <b>계약금액으로 맞춤</b>, 이번 달만 다른 것이면 표에서 직접 고치세요.
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+              <span style={{ fontSize: 11.5, color: '#666' }}>골라서:</span>
+              <button className="btn-sm" onClick={() => pickKind('계약에만')}>계약에만 전체</button>
+              <button className="btn-sm" onClick={() => pickKind('초안에만')}>초안에만 전체</button>
+              <button className="btn-sm" onClick={() => pickKind('금액다름')}>금액다름 전체</button>
+              <button className="btn-sm" onClick={() => setSel(new Set())}>선택해제</button>
+              <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{chosen.length}</b>건</span>
+              {canWrite && (
+                <>
+                  <button className="btn-p" disabled={busy || !addable.length} onClick={() => void onAdd(addable)}>
+                    ＋ 청구예정에 추가 ({addable.length})
+                  </button>
+                  <button className="btn-p" disabled={busy || !amtable.length} onClick={() => void onApplyAmount(amtable)}>
+                    계약금액으로 맞춤 ({amtable.length})
+                  </button>
+                  <button className="btn-sm btn-sm-del" disabled={busy || !delible.length} onClick={() => void onDelete(delible)}>
+                    청구예정에서 삭제 ({delible.length})
+                  </button>
+                </>
+              )}
+            </div>
+            <div style={{ maxHeight: '52vh', overflow: 'auto' }}>
+              <table className="tbl" style={{ fontSize: 11.5 }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 28 }}></th>
+                    <th style={{ width: 84 }}>구분</th><th>거래처</th><th>사업장</th><th>계약코드</th>
+                    <th className="r">청구예정</th><th className="r">매출계약</th><th className="r">차이</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => {
+                    const c = r.kind === '계약에만' ? { bg: '#DBEAFE', fg: '#1E3A8A' }
+                      : r.kind === '초안에만' ? { bg: '#FEE2E2', fg: '#991B1B' } : { bg: '#FEF3C7', fg: '#92400E' };
+                    return (
+                      <tr key={i}>
+                        <td><input type="checkbox" checked={sel.has(i)} onChange={() => toggle(i)} /></td>
+                        <td><span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.kind}</span></td>
+                        <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.company}</td>
+                        <td>{r.place}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.contractCode}</td>
+                        <td className="r">{r.draftAmount ? won(r.draftAmount) : dash}</td>
+                        <td className="r">{r.candAmount ? won(r.candAmount) : dash}</td>
+                        <td className="r" style={{ fontWeight: 700, color: r.candAmount - r.draftAmount >= 0 ? '#2a7' : '#c33' }}>
+                          {r.candAmount - r.draftAmount > 0 ? '+' : ''}{won(r.candAmount - r.draftAmount)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 작은 딱지. */
+function Tag({ children, bg, fg, bd }: { children: React.ReactNode; bg: string; fg: string; bd: string }) {
+  return (
+    <span style={{
+      marginLeft: 4, fontSize: 10, fontWeight: 700, padding: '0 4px', borderRadius: 3,
+      color: fg, background: bg, border: `1px solid ${bd}`, whiteSpace: 'nowrap',
+    }}>{children}</span>
+  );
+}
+
 /** 전월 대비 차이 한 줄. */
 interface DiffRow { kind: '신규' | '변동' | '없어짐'; company: string; place: string; prev: number; now: number }
 const KIND_ORDER: Record<DiffRow['kind'], number> = { 없어짐: 0, 변동: 1, 신규: 2 };
@@ -61,6 +195,8 @@ export default function InvoiceRequestTab() {
   const [editShare, setEditShare] = useState<InvoiceRequest | null>(null);
   const [q, setQ] = useState('');
   const [showDiff, setShowDiff] = useState(false);
+  const [drafts, setDrafts] = useState<InvoiceDraft[]>([]);
+  const [recon, setRecon] = useState(false);          // 매출계약 대사 창
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3000); };
 
@@ -70,13 +206,14 @@ export default function InvoiceRequestTab() {
       setErr(null);
       const ents = entities.length ? entities : await listBizEntities();
       if (!entities.length) setEntities(ents);
-      const [c, r, p, mst] = await Promise.all([
-        listInvoiceCandidates(ym, ents, 'taxteam'),
+      const [c, d, r, p, mst] = await Promise.all([
+        listInvoiceCandidates(ym, ents, 'taxteam'),   // 대사용 참고자료
+        listDrafts(ym, 'taxteam'),
         listInvoiceRequests(ym, 'taxteam'),
         listInvoiceRequests(prevMonthOf(ym), 'taxteam'),
         getMonthState(ym),
       ]);
-      setCands(c); setReqs(r); setPrev(p); setMonth(mst);
+      setCands(c); setDrafts(d); setReqs(r); setPrev(p); setMonth(mst);
       setShares(await listInvoiceStaff(r.map((x) => x.id)));
       if (!staffOpts.length) setStaffOpts((await listInternalStaff()).map((x) => x.name));
       setPick(new Set()); setPickReq(new Set());
@@ -86,19 +223,21 @@ export default function InvoiceRequestTab() {
   }, [ym, entities, staffOpts.length]);
   useEffect(() => { void load(); }, [load]);
 
-  const candSearched = useMemo(() => {
-    if (!q.trim()) return cands;
+  const draftSearched = useMemo(() => {
+    if (!q.trim()) return drafts;
     const k = q.trim().toLowerCase();
-    return cands.filter((c) => (c.companyName + c.placeName + c.contractCode + c.cpa + c.staff).toLowerCase().includes(k));
-  }, [cands, q]);
+    return drafts.filter((d) => (d.companyName + d.placeName + d.contractCode + d.cpa + d.staff).toLowerCase().includes(k));
+  }, [drafts, q]);
   const reqSearched = useMemo(() => {
     if (!q.trim()) return reqs;
     const k = q.trim().toLowerCase();
     return reqs.filter((r) => (r.companyName + r.placeName + r.contractCode + r.invoiceNo + r.cpa + r.staff).toLowerCase().includes(k));
   }, [reqs, q]);
 
-  const picked = cands.filter((c) => pick.has(c.key));
-  const pickedSupply = picked.reduce((s, c) => s + c.supplyAmount, 0);
+  const picked = drafts.filter((d) => pick.has(d.id));
+  const pickedSupply = picked.reduce((s, d) => s + d.supplyAmount, 0);
+  /** 계약 대사 결과 — 초안과 매출계약을 맞춰 본 차이. */
+  const reconRows = useMemo(() => reconcileDrafts(drafts, cands), [drafts, cands]);
   const pickedReqs = reqs.filter((r) => pickReq.has(r.id));
 
   // 합계는 **취소를 뺀** 살아있는 건만 더한다 — 취소분이 섞이면 엑셀·ERP 대조가 그대로 어긋난다.
@@ -136,41 +275,48 @@ export default function InvoiceRequestTab() {
         rows.push({ kind: '변동', company, place, prev: p.supplyAmount, now: amount });
       }
     };
-    for (const c of cands) put(c.contractId, c.companyName, c.placeName, c.supplyAmount);
+    for (const d of drafts) put(d.contractId, d.companyName, d.placeName, d.supplyAmount);
     for (const r of reqs) if (r.status !== '취소') put(r.contractId, r.companyName, r.placeName, r.supplyAmount);
     // 전월엔 있었는데 이번 달엔 없는 것 = 해지 의심(엑셀의 'X')
     const dropped = [...prevBy.values()].filter((p) => !nowIds.has(p.contractId!));
     for (const d of dropped) rows.push({ kind: '없어짐', company: d.companyName, place: d.placeName, prev: d.supplyAmount, now: 0 });
     rows.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.company.localeCompare(b.company, 'ko'));
     return { mark, dropped, rows };
-  }, [prev, cands, reqs]);
+  }, [prev, drafts, reqs]);
 
   const checkedNames = new Set((month?.checks ?? []).map((c) => c.name));
   const allChecked = CHECKERS.every((n) => checkedNames.has(n));
   const iChecked = checkedNames.has(profileName);
 
-  /** 당월 전개 — 청구예정을 전부 요청으로 등록하고 담당자에게 확인 알림을 보낸다. */
+  /**
+   * 당월 전개 — **전월 세금계산서를 그대로 복사**해 청구예정 초안을 만들고 확인 알림을 보낸다.
+   * 엑셀에서 전월 열을 복사해 붙이던 그 일이다. 전월이 비어 있으면(첫 달) 매출계약에서 채운다.
+   */
   async function doOpenMonth() {
-    const n = cands.length;
+    const pm = prevMonthOf(ym);
+    const base = prev.filter((r) => r.status !== '취소').length;
     if (!confirm(`${ym} 을 엽니다.
 
-· 청구예정 ${n}건을 발행요청으로 등록합니다(작성일 ${issueDateOf(ym)})
+· ${base ? `전월(${pm}) 세금계산서 ${base}건을 그대로 복사해` : `전월(${pm})이 비어 있어 매출계약 ${cands.length}건으로`} 청구예정을 만듭니다
 · ${CHECKERS.join('·')} 에게 확인 요청 알림을 보냅니다
+
+담당자가 청구예정을 고치고 확인하면, 그 뒤에 발행요청으로 등록합니다.
 
 진행할까요?`)) return;
     setBusy(true);
     try {
       await openMonth(ym);
-      if (n) await createInvoiceRequests(ym, cands, { team: 'taxteam', issueDate: issueDateOf(ym) });
+      const { created, from } = await openDrafts(ym, pm, cands, 'taxteam');
       const sent = await notifyCheckers(ym);
       await load();
-      flash(`✓ ${ym} 전개 완료 — 요청 ${n}건 · 알림 ${sent}명`);
+      flash(`✓ ${ym} 전개 완료 — ${from} ${created}건 · 알림 ${sent}명`);
     } catch (e) { alert('전개 실패: ' + (e instanceof Error ? e.message : e)); }
     finally { setBusy(false); }
   }
   /** 이 달을 되돌린다 — 잘못 열었거나 시험 삼아 연 달을 치운다. */
   async function doResetMonth() {
     const n = reqs.length;
+    const dn = drafts.length;
     const done = reqs.filter((r) => r.status === '발행완료' || r.status === '수정발행').length;
     if (done) {
       alert(`이미 발행완료된 건이 ${done}건 있어 초기화할 수 없습니다.
@@ -181,6 +327,7 @@ export default function InvoiceRequestTab() {
     }
     if (!confirm(`${ym} 을 처음 상태로 되돌립니다.
 
+· 청구예정 초안 ${dn}건을 지웁니다
 · 발행요청 ${n}건을 지웁니다(실적 배분도 함께)
 · 전개 기록과 ${CHECKERS.join('·')} 확인 표시를 지웁니다
 
@@ -188,12 +335,13 @@ export default function InvoiceRequestTab() {
 ‘당월 전개’를 누르면 처음부터 다시 시작할 수 있습니다.
 
 진행할까요?`)) return;
-    if (n > 0 && !confirm(`정말 ${ym} 발행요청 ${n}건을 지울까요? 마지막 확인입니다.`)) return;
+    if ((n > 0 || dn > 0) && !confirm(`정말 ${ym} 청구예정 ${dn}건과 발행요청 ${n}건을 지울까요? 마지막 확인입니다.`)) return;
     setBusy(true);
     try {
       const { deleted } = await resetMonth(ym, 'taxteam');
+      await clearDrafts(ym, 'taxteam');
       await load();
-      flash(`✓ ${ym} 초기화 — 요청 ${deleted}건 삭제`);
+      flash(`✓ ${ym} 초기화 — 초안 ${dn}건 · 요청 ${deleted}건 삭제`);
     } catch (e) { alert('초기화 실패: ' + (e instanceof Error ? e.message : e)); }
     finally { setBusy(false); }
   }
@@ -219,12 +367,37 @@ export default function InvoiceRequestTab() {
     finally { setBusy(false); }
   }
 
+  /** 초안을 발행요청으로 옮긴다 — 옮긴 초안은 지운다(같은 건이 두 곳에 있으면 안 된다). */
   async function doRequest() {
     if (!picked.length) return;
-    if (!confirm(`${picked.length}건을 ${ym} 발행요청으로 등록합니다. 진행할까요?`)) return;
+    const noContract = picked.filter((d) => !d.contractId).length;
+    if (!confirm(`${picked.length}건을 ${ym} 발행요청으로 등록합니다(작성일 ${issueDateOf(ym)}).
+${noContract ? `
+※ 매출계약이 연결되지 않은 건이 ${noContract}건 있습니다 — 등록은 되지만 나중에 계약을 등록해 주세요.
+` : ''}
+등록한 건은 청구예정에서 사라집니다. 진행할까요?`)) return;
     setBusy(true);
-    try { const n = await createInvoiceRequests(ym, picked); await load(); flash(`✓ ${n}건 발행요청 등록`); }
-    catch (e) { alert('등록 실패: ' + (e instanceof Error ? e.message : e)); }
+    try {
+      const n = await createInvoiceRequests(ym, picked.map(candidateFromDraft),
+        { team: 'taxteam', issueDate: issueDateOf(ym) });
+      await deleteDrafts(picked.map((d) => d.id));
+      await load();
+      flash(`✓ ${n}건 발행요청 등록`);
+    } catch (e) { alert('등록 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
+
+  /** 초안 한 줄 고치기 — 금액·담당직원·적요는 담당자가 그 자리에서 바꾼다. */
+  async function saveDraft(id: string, patch: Partial<InvoiceDraft>) {
+    try { await updateDraft(id, patch); await load(); }
+    catch (e) { alert('저장 실패: ' + (e instanceof Error ? e.message : e)); }
+  }
+  async function removeDrafts(ids: string[]) {
+    if (!ids.length) return;
+    if (!confirm(`청구예정에서 ${ids.length}건을 지웁니다. (계약이나 지난 실적은 그대로입니다)`)) return;
+    setBusy(true);
+    try { await deleteDrafts(ids); await load(); flash(`✓ ${ids.length}건 삭제`); }
+    catch (e) { alert('삭제 실패: ' + (e instanceof Error ? e.message : e)); }
     finally { setBusy(false); }
   }
   async function doIssue() {
@@ -266,30 +439,59 @@ export default function InvoiceRequestTab() {
 
   // ── 표 열 정의 ────────────────────────────────────────
   // 제목행을 누르면 정렬, 아래 칸에 값을 넣으면 그 열만 걸러진다. 너비는 끝을 끌어 조절(더블클릭=내용맞춤).
-  const candCols: GridCol<InvoiceCandidate>[] = [
-    { key: 'company', label: '거래처', width: 150, value: (c) => c.companyName,
+  const draftCols: GridCol<InvoiceDraft>[] = [
+    { key: 'company', label: '거래처', width: 150, value: (d) => d.companyName,
       style: { fontWeight: 700, color: '#1A2B52' },
-      cell: (c) => (
+      cell: (d) => (
         <>
-          {c.companyName}
-          {!c.confirmed && <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>미계약</span>}
-          <DiffBadge d={diff.mark.get(c.contractId)} amount={c.supplyAmount} />
+          {d.companyName}
+          {d.source === '수동추가' && <Tag bg="#EDE9FE" fg="#5B21B6" bd="#C4B5FD">직접</Tag>}
+          {!d.contractId && <Tag bg="#FEF3C7" fg="#92400E" bd="#FCD34D">계약없음</Tag>}
+          <DiffBadge d={diff.mark.get(d.contractId ?? '')} amount={d.supplyAmount} />
         </>
       ) },
-    { key: 'place', label: '사업장', width: 110, value: (c) => c.placeName },
-    { key: 'type', label: '매출유형', width: 130, value: (c) => pathLabel(c.typeLabel) },
-    { key: 'code', label: '계약코드', width: 100, value: (c) => c.contractCode, style: { fontFamily: 'monospace', fontSize: 10.5 } },
-    { key: 'round', label: '회차', width: 64, value: (c) => c.label },
-    { key: 'supply', label: '공급가액', width: 96, num: true, value: (c) => c.supplyAmount,
-      cell: (c) => won(c.supplyAmount), sum: (c) => c.supplyAmount },
-    { key: 'vat', label: '부가세', width: 84, num: true, value: (c) => Math.round(c.supplyAmount * 0.1),
-      cell: (c) => won(Math.round(c.supplyAmount * 0.1)), sum: (c) => Math.round(c.supplyAmount * 0.1), style: { color: '#888' } },
-    { key: 'total', label: '합계', width: 96, num: true, value: (c) => c.supplyAmount + Math.round(c.supplyAmount * 0.1),
-      cell: (c) => won(c.supplyAmount + Math.round(c.supplyAmount * 0.1)),
-      sum: (c) => c.supplyAmount + Math.round(c.supplyAmount * 0.1), style: { fontWeight: 700 } },
-    { key: 'cpa', label: '담당회계사', width: 80, value: (c) => c.cpa, opts: cpaOpts, cell: (c) => c.cpa || dash },
-    { key: 'staff', label: '담당직원', width: 84, value: (c) => c.staff, opts: staffOpts,
-      style: { fontWeight: 600, color: '#1A2B52' }, cell: (c) => c.staff || dash },
+    { key: 'place', label: '사업장', width: 110, value: (d) => d.placeName },
+    { key: 'erp', label: '매출계정', width: 118, value: (d) => d.erpAccount, cell: (d) => d.erpAccount || dash, style: { color: '#666' } },
+    { key: 'code', label: '계약코드', width: 100, value: (d) => d.contractCode, style: { fontFamily: 'monospace', fontSize: 10.5 } },
+    { key: 'round', label: '회차', width: 64, value: (d) => d.label },
+    { key: 'supply', label: '공급가액', width: 104, num: true, value: (d) => d.supplyAmount,
+      sum: (d) => d.supplyAmount,
+      cell: (d) => (canWrite ? (
+        <input defaultValue={String(Math.round(d.supplyAmount))} key={`${d.id}:${d.supplyAmount}`}
+          onBlur={(e) => {
+            const v = Number(e.target.value.replace(/[^\d-]/g, '')) || 0;
+            if (v !== Math.round(d.supplyAmount)) void saveDraft(d.id, { supplyAmount: v });
+          }}
+          style={{ width: '100%', textAlign: 'right', fontSize: 11.5, padding: '1px 3px', boxSizing: 'border-box' }} />
+      ) : won(d.supplyAmount)) },
+    { key: 'vat', label: '부가세', width: 84, num: true, value: (d) => Math.round(d.supplyAmount * 0.1),
+      cell: (d) => won(Math.round(d.supplyAmount * 0.1)), sum: (d) => Math.round(d.supplyAmount * 0.1), style: { color: '#888' } },
+    { key: 'total', label: '합계', width: 96, num: true, value: (d) => d.supplyAmount + Math.round(d.supplyAmount * 0.1),
+      cell: (d) => won(d.supplyAmount + Math.round(d.supplyAmount * 0.1)),
+      sum: (d) => d.supplyAmount + Math.round(d.supplyAmount * 0.1), style: { fontWeight: 700 } },
+    { key: 'cpa', label: '담당회계사', width: 80, value: (d) => d.cpa, opts: cpaOpts, cell: (d) => d.cpa || dash },
+    { key: 'staff', label: '담당직원', width: 96, value: (d) => d.staff, opts: staffOpts,
+      style: { fontWeight: 600, color: '#1A2B52' },
+      cell: (d) => (canWrite ? (
+        <select value={d.staff} onChange={(e) => void saveDraft(d.id, { staff: e.target.value })}
+          style={{ width: '100%', fontSize: 11, padding: '1px 2px', boxSizing: 'border-box' }}>
+          <option value="">(미지정)</option>
+          {[...new Set([...staffOpts, ...(d.staff ? [d.staff] : [])])].map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+      ) : (d.staff || dash)) },
+    { key: 'summary', label: '적요', width: 130, value: (d) => d.summary,
+      cell: (d) => (canWrite ? (
+        <input defaultValue={d.summary} key={`${d.id}:s:${d.summary}`}
+          onBlur={(e) => { if (e.target.value !== d.summary) void saveDraft(d.id, { summary: e.target.value }); }}
+          style={{ width: '100%', fontSize: 11, padding: '1px 3px', boxSizing: 'border-box' }} />
+      ) : d.summary) },
+    { key: 'source', label: '출처', width: 70, value: (d) => d.source, opts: ['전월복사', '계약추가', '수동추가'],
+      style: { color: '#888', fontSize: 10.5 } },
+    { key: 'del', label: '삭제', width: 48, value: () => '',
+      cell: (d) => (canWrite ? (
+        <button className="btn-sm btn-sm-del" title="이 건을 청구예정에서 뺍니다"
+          onClick={() => void removeDrafts([d.id])}>−</button>
+      ) : null) },
   ];
 
   const reqCols: GridCol<InvoiceRequest>[] = [
@@ -336,7 +538,7 @@ export default function InvoiceRequestTab() {
       style: { color: '#666' } },
   ];
 
-  const candGrid = useGrid(VIEW_KEYS.invoiceCandidate, candCols, candSearched, { key: 'company', dir: 'asc' });
+  const candGrid = useGrid(VIEW_KEYS.invoiceCandidate, draftCols, draftSearched, { key: 'company', dir: 'asc' });
   const reqGrid = useGrid(VIEW_KEYS.invoiceRequest, reqCols, reqSearched, { key: 'company', dir: 'asc' });
   const candView = candGrid.rowsView;
   const reqView = reqGrid.rowsView;
@@ -360,7 +562,7 @@ export default function InvoiceRequestTab() {
           {monthOpts.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
         <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
-          청구예정 {cands.length} · 요청 {stat.요청.length} · 발행완료 {stat.발행완료.length}
+          청구예정 {drafts.length} · 요청 {stat.요청.length} · 발행완료 {stat.발행완료.length}
           {stat.취소.length > 0 && ` · 취소 ${stat.취소.length}`}
         </span>
         {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
@@ -484,9 +686,11 @@ export default function InvoiceRequestTab() {
       </div>
 
       <div className="alert-i" style={{ fontSize: 11 }}>
-        <b>① 청구예정</b>은 저장된 자료가 아니라 <b>매출계약에서 그때그때 계산한 예상</b>입니다 —
-        그래서 아직 손대지 않은 달도, 앞으로 올 달도 계약이 있으면 그대로 보입니다.
-        여기서 체크해 <b>② 발행요청</b>으로 등록하면 그 건은 ①에서 빠지고, 그 달을 다 등록하면 ①이 0건이 됩니다. 체크해서 <b>발행요청</b>으로 등록하고,
+<b>업무 순서</b> — ① 김민섭이 <b>당월 전개</b>를 누르면 <b>전월 세금계산서가 그대로 복사</b>되어 청구예정이 됩니다(엑셀에서 전월 열을 복사하던 그 일).
+        ② 담당자 3인이 각자 맡은 곳을 고치고 지우고 더한 뒤 <b>확인</b>을 누릅니다 — 이때 <b>🔍 매출계약 대사</b>로 계약과 맞춰 봅니다.
+        ③ 김민섭이 확인하고 <b>발행요청 등록</b>을 누르면 그 건은 ①에서 ②로 넘어갑니다.
+        ④ ERP 발행내역 대사 → ⑤ <b>발행완료</b> 처리.
+        <br />금액·담당직원·적요는 ① 표에서 그 자리에서 고칩니다. <b>매출계약은 참고자료</b>이고, 청구의 기준은 이 청구예정입니다. 체크해서 <b>발행요청</b>으로 등록하고,
         실제로 발행하면 <b>발행완료</b>로 바꿔 승인번호와 발행일을 남깁니다. 금액은 요청한 시점 기준으로 저장되어,
         나중에 계약금액이 바뀌어도 이미 나간 요청은 그대로 남습니다.
         <br />표의 <b>제목행을 누르면 정렬</b>, 그 아래 칸에 값을 넣으면 <b>그 열만 걸러</b> 봅니다.
@@ -502,7 +706,11 @@ export default function InvoiceRequestTab() {
       {/* ── 청구예정 → 발행요청 ── */}
       <div style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>① {ym} 청구예정 ({candView.length}건 · 공급가액 {won(candView.reduce((s, c) => s + c.supplyAmount, 0))})</b>
+          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>① {ym} 청구예정 ({candView.length}건 · 공급가액 {won(candView.reduce((s, d) => s + d.supplyAmount, 0))})</b>
+          <button className="btn-sm btn-sm-blue" onClick={() => setRecon(true)}
+            title="청구예정을 매출계약과 맞춰 봅니다 — 계약에만 있는 것, 초안에만 있는 것, 금액이 다른 것">
+            🔍 매출계약 대사{reconRows.length ? ` (${reconRows.length})` : ' ✓'}
+          </button>
           {ym > thisMonth() && (
             <span title="아직 오지 않은 달입니다. 계약에서 계산한 예상일 뿐, 등록된 것은 없습니다."
               style={{ fontSize: 10.5, fontWeight: 700, color: '#5B21B6', background: '#EDE9FE', border: '1px solid #C4B5FD', padding: '1px 6px', borderRadius: 9 }}>
@@ -511,10 +719,13 @@ export default function InvoiceRequestTab() {
           )}
           {canWrite && (
             <>
-              <button className="btn-sm" onClick={() => setPick(new Set(candView.map((c) => c.key)))}>보이는 건 전체선택</button>
+              <button className="btn-sm" onClick={() => setPick(new Set(candView.map((d) => d.id)))}>보이는 건 전체선택</button>
               <button className="btn-sm" onClick={() => setPick(new Set())}>선택해제</button>
               <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{picked.length}</b>건 · 공급가액 {won(pickedSupply)}</span>
-              <button className="btn-p" disabled={busy || !picked.length} onClick={() => void doRequest()}>
+              <button className="btn-sm btn-sm-del" disabled={busy || !picked.length}
+                onClick={() => void removeDrafts(picked.map((d) => d.id))}>선택 삭제</button>
+              <button className="btn-p" disabled={busy || !picked.length || !isApprover} onClick={() => void doRequest()}
+                title={isApprover ? '' : `발행요청 등록은 ${FINAL_APPROVER}(부재 시 기장팀장·최고관리자)가 담당자 확인을 본 뒤 누릅니다`}>
                 {busy ? '처리 중…' : '발행요청 등록'}
               </button>
             </>
@@ -524,12 +735,13 @@ export default function InvoiceRequestTab() {
             <ColumnSettings cols={candGrid.ordered} view={candGrid.view} onMessage={flash} />
           </span>
         </div>
-        <Grid grid={candGrid} rowKey={(c) => c.key} maxHeight={320}
-          empty={`${ym}에 청구예정인 계약이 없습니다.`}
+        <Grid grid={candGrid} rowKey={(d) => d.id} maxHeight={340}
+          empty={month?.opened ? '청구예정이 비어 있습니다. 🔍 매출계약 대사에서 채울 수 있습니다.'
+            : `아직 ${ym}을 열지 않았습니다. 위 [📂 당월 전개]를 누르면 전월 세금계산서가 복사됩니다.`}
           footerLabel={`합계 ${candView.length}건`}
           select={canWrite ? {
             picked: pick, toggle: (k) => setPick((p) => { const n = new Set(p); if (n.has(k)) n.delete(k); else n.add(k); return n; }),
-            selectableKeys: candView.map((c) => c.key),
+            selectableKeys: candView.map((d) => d.id),
             setAll: (keys) => setPick(new Set(keys ?? [])),
           } : undefined} />
       </div>
@@ -564,6 +776,10 @@ export default function InvoiceRequestTab() {
             <ColumnSettings cols={reqGrid.ordered} view={reqGrid.view} onMessage={flash} />
           </span>
         </div>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
+          다음 단계 — 여기 등록된 대로 ERP에서 발행한 뒤, <b>ERP 발행내역 대사</b> 메뉴에서 거래전표와 맞춰 봅니다.
+          맞으면 이 목록에서 <b>발행완료 처리</b>를 누릅니다(승인번호·발행일이 남습니다).
+        </div>
         <Grid grid={reqGrid} rowKey={(r) => r.id} maxHeight={380}
           empty="발행요청이 없습니다. 위에서 청구예정을 골라 등록하세요."
           footerLabel={`합계 ${live(reqView).length}건 (취소 제외)`}
@@ -575,6 +791,31 @@ export default function InvoiceRequestTab() {
             setAll: (keys) => setPickReq(new Set(keys ?? [])),
           } : undefined} />
       </div>
+      {recon && (
+        <ReconcileModal rows={reconRows} ym={ym} busy={busy}
+          canWrite={canWrite}
+          onClose={() => setRecon(false)}
+          onAdd={async (cs) => {
+            setBusy(true);
+            try { await addDrafts(ym, cs.map((c) => draftFromCandidate(c)), 'taxteam'); await load(); flash(`✓ ${cs.length}건 추가`); }
+            catch (e) { alert('추가 실패: ' + (e instanceof Error ? e.message : e)); }
+            finally { setBusy(false); }
+          }}
+          onDelete={async (ids) => {
+            setBusy(true);
+            try { await deleteDrafts(ids); await load(); flash(`✓ ${ids.length}건 삭제`); }
+            catch (e) { alert('삭제 실패: ' + (e instanceof Error ? e.message : e)); }
+            finally { setBusy(false); }
+          }}
+          onApplyAmount={async (pairs) => {
+            setBusy(true);
+            try {
+              for (const [id, amt] of pairs) await updateDraft(id, { supplyAmount: amt });
+              await load(); flash(`✓ ${pairs.length}건 금액을 계약에 맞췄습니다`);
+            } catch (e) { alert('반영 실패: ' + (e instanceof Error ? e.message : e)); }
+            finally { setBusy(false); }
+          }} />
+      )}
       {editShare && (
         <StaffShareEditor
           requestId={editShare.id} amount={editShare.supplyAmount}
