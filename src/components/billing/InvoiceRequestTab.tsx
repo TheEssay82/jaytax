@@ -11,6 +11,9 @@ import {
   markIssued, cancelRequests, revertToRequested, updateInvoiceRequest,
   type InvoiceCandidate, type InvoiceRequest, type InvoiceStatus,
 } from '../../lib/invoiceRequestApi';
+import { listInvoiceStaff, type InvoiceStaffShare } from '../../lib/invoiceStaffApi';
+import { StaffShareEditor, shareLabel } from './StaffShareEditor';
+import { listInternalStaff } from '../../lib/bizRegistryApi';
 import {
   getMonthState, openMonth, notifyCheckers, markMyCheck, clearMyCheck, setFinalConfirm,
   issueDateOf, pastIssueDay, CHECKERS, FINAL_APPROVER, type MonthState,
@@ -46,6 +49,9 @@ export default function InvoiceRequestTab() {
   const [pickReq, setPickReq] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | ''>('');
   const [issuedDate, setIssuedDate] = useState(todayYmd);
+  const [shares, setShares] = useState<Map<string, InvoiceStaffShare[]>>(new Map());
+  const [staffOpts, setStaffOpts] = useState<string[]>([]);
+  const [editShare, setEditShare] = useState<InvoiceRequest | null>(null);
   const [q, setQ] = useState('');
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3000); };
@@ -63,11 +69,13 @@ export default function InvoiceRequestTab() {
         getMonthState(ym),
       ]);
       setCands(c); setReqs(r); setPrev(p); setMonth(mst);
+      setShares(await listInvoiceStaff(r.map((x) => x.id)));
+      if (!staffOpts.length) setStaffOpts((await listInternalStaff()).map((x) => x.name));
       setPick(new Set()); setPickReq(new Set());
     } catch (e) {
       setErr(e instanceof Error ? e.message : '불러오지 못했습니다.');
     } finally { setLoading(false); }
-  }, [ym, entities]);
+  }, [ym, entities, staffOpts.length]);
   useEffect(() => { void load(); }, [load]);
 
   const candView = useMemo(() => {
@@ -469,7 +477,14 @@ export default function InvoiceRequestTab() {
                     <td style={{ fontSize: 11, color: '#666' }}>{r.erpAccount || <span style={{ color: '#CCC' }}>—</span>}</td>
                     <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.contractCode}</td>
                     <td style={{ fontSize: 11 }}>{r.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
-                    <td style={{ fontSize: 11, fontWeight: 600, color: '#1A2B52' }}>{r.staff || <span style={{ color: '#CCC', fontWeight: 400 }}>—</span>}</td>
+                    <td style={{ fontSize: 11, fontWeight: 600, color: '#1A2B52' }}>
+                      {canWrite ? (
+                        <button className="btn-sm" style={{ fontWeight: 600 }} onClick={() => setEditShare(r)}
+                          title="이 청구의 실적을 누구에게 얼마나 돌릴지 정합니다">
+                          {shareLabel(shares.get(r.id), r.staff || '지정')}
+                        </button>
+                      ) : (shareLabel(shares.get(r.id), r.staff) || <span style={{ color: '#CCC', fontWeight: 400 }}>—</span>)}
+                    </td>
                     <td style={{ fontSize: 11, color: '#666' }}>{r.summary || r.note}</td>
                     <td className="r">{won(r.supplyAmount)}</td>
                     <td className="r" style={{ color: '#888' }}>{won(r.vat)}</td>
@@ -500,6 +515,16 @@ export default function InvoiceRequestTab() {
           </table>
         </div>
       </div>
+      {editShare && (
+        <StaffShareEditor
+          requestId={editShare.id} amount={editShare.supplyAmount}
+          current={shares.get(editShare.id) ?? (editShare.staff
+            ? editShare.staff.split(',').map((n, i) => ({ staffName: n.trim(), share: i === 0 ? 100 : 0, seq: i + 1 }))
+            : [])}
+          staffOptions={staffOpts}
+          onClose={() => setEditShare(null)}
+          onSaved={() => void load()} />
+      )}
     </div>
   );
 }

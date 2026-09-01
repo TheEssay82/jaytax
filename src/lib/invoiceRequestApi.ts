@@ -7,6 +7,7 @@ import { billingItemsForMonth } from './billingSchedule';
 import { listSalesContracts, type SalesContract } from './salesContractApi';
 import { corpDisplayName, type BizEntityFull } from './bizRegistryApi';
 import { listBizContacts, type BizContact } from './bizContactApi';
+import { seedInvoiceStaff } from './invoiceStaffApi';
 
 export const VAT_RATE = 0.1;
 
@@ -241,6 +242,9 @@ export async function createInvoiceRequests(
   });
   const { data, error } = await supabase.from('biz_invoice_request').insert(payload).select('id');
   if (error) throw new Error(error.message);
+  // 실적 배분을 주담당 100% 로 깔아 둔다 — 청구 시점에 정해지는 값이라 여기서 굳힌다.
+  const ids = ((data as { id: string }[]) ?? []).map((d) => d.id);
+  await seedInvoiceStaff(ids, new Map(ids.map((id, i) => [id, rows[i]?.staff ?? ''])));
   await syncContractBillingMonth(ym, rows);
   return data?.length ?? 0;
 }
@@ -300,7 +304,9 @@ export async function createManualInvoiceRequest(input: ManualInvoiceInput): Pro
     requested_by: u.user?.id ?? null,
   }).select('id').single();
   if (error) throw new Error(error.message);
-  return (data as { id: string }).id;
+  const id = (data as { id: string }).id;
+  if (input.staff) await seedInvoiceStaff([id], new Map([[id, input.staff]]));
+  return id;
 }
 
 export async function markIssued(ids: string[], invoiceNo: string | null, issuedDate: string): Promise<void> {
