@@ -26,8 +26,8 @@ test('월(index) 산술 왕복', () => {
 });
 
 test('순액 환산: 부가세 포함 /1.1', () => {
-  assert.equal(toNet(1_100_000, true), 1_000_000);
-  assert.equal(toNet(1_000_000, false), 1_000_000);
+  assert.equal(toNet(1_100_000), 1_100_000);
+  assert.equal(toNet(1_000_000), 1_000_000);
 });
 
 test('월 계약(기장·계속): 청구=발생 동일, 창구 안 매월 이벤트', () => {
@@ -91,11 +91,13 @@ test('회계감사(AUD.AUDIT): 매출은 회계연도(fy-07~fy+1-06) 월할, 청
   assert.deepEqual(monthlyRevenue(c, 'billing', '2026-01', '2027-06'), [{ month: '2026-01', net: 12_000_000 }]);
 });
 
-test('부가세 포함 계약: 월별 순액 환산', () => {
-  const c = mk({ billingCycle: '월', amount: 1_100_000, includesVat: true, startDate: '2026-07', endDate: '2026-09' });
+// includesVat/includesWht 는 '기장에 부가세·원천세 신고업무가 포함되는가'라는 업무 범위 표시다.
+// 금액과는 무관하다 — 계약금액은 언제나 공급가액이므로 그대로 나와야 한다.
+test('기장 포함(부가세·원천세) 표시는 금액을 바꾸지 않는다', () => {
+  const c = mk({ billingCycle: '월', amount: 1_100_000, includesVat: true, includesWht: true, startDate: '2026-07', endDate: '2026-09' });
   const rows = monthlyRevenue(c, 'billing', '2026-01', '2026-12');
   assert.equal(rows.length, 3);
-  assert.ok(rows.every((r) => r.net === 1_000_000));
+  assert.ok(rows.every((r) => r.net === 1_100_000));
 });
 
 test('무료 구간은 0, 할인율은 감액', () => {

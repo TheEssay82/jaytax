@@ -15,7 +15,7 @@ const TEAMS: Team[] = ['감사team', 'taxteam'];
 const CYCLE_ANN: Record<BillingCycle, number> = { 월: 12, 분기: 4, 반기: 2, 연: 1, 발생시: 1, 건: 1 };
 const isOngoing = (c: SalesContract) => !c.endDate && c.fiscalYear == null;
 /** 계약의 연간 순매출(공급가액) — 갱신 예산 기본값. */
-const annualNet = (c: SalesContract) => toNet(c.amount * (CYCLE_ANN[c.billingCycle] ?? 1), c.includesVat);
+const annualNet = (c: SalesContract) => toNet(c.amount * (CYCLE_ANN[c.billingCycle] ?? 1));
 
 interface Row {
   c: SalesContract; entityId: string; label: string; team: Team; priorNet: number;

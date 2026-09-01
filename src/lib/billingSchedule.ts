@@ -8,7 +8,6 @@ export type Basis = 'billing' | 'accrual';
 /** 월별 순매출(공급가액). month = 'YYYY-MM'. */
 export interface MonthNet { month: string; net: number }
 
-const VAT_RATE = 0.1; // 부가세 10%
 // 연환산 계수(주기→연 청구횟수). 발생주의 균등배분에 사용.
 const CYCLE_ANN: Record<BillingCycle, number> = { 월: 12, 분기: 4, 반기: 2, 연: 1, 발생시: 1, 건: 1 };
 // 주기 → 청구 간격(개월). 청구주의 정기 이벤트 생성에 사용.
@@ -28,9 +27,16 @@ export function indexToMonth(i: number): string {
   return `${y}-${String(m).padStart(2, '0')}`;
 }
 
-/** 공급가액(순액) 환산 — 부가세 포함 계약은 /1.1, 아니면 그대로. 원 단위 반올림. */
-export function toNet(gross: number, includesVat: boolean): number {
-  return Math.round(includesVat ? gross / (1 + VAT_RATE) : gross);
+/**
+ * 계약금액은 **언제나 공급가액(부가세 별도)** 이다. 원 단위로만 맞춘다.
+ *
+ * ※ 계약의 `includesVat`/`includesWht` 는 금액과 아무 상관이 없다.
+ *   '기장 계약에 부가세·원천세 신고업무가 포함되는가'라는 **업무 범위** 표시다
+ *   (화면 라벨도 「기장 포함: 부가가치세 / 원천세」). 한때 이 값을 '금액에 부가세 포함'으로
+ *   잘못 읽어 /1.1 로 깎았고, 그 탓에 해당 계약의 공급가액이 9% 적게 잡혔다.
+ */
+export function toNet(gross: number): number {
+  return Math.round(gross);
 }
 
 /** 특정 월(index)에 적용될 총액 = 정가에서 무료·할인 반영(총액 기준). */
@@ -92,7 +98,7 @@ export function monthlyRevenue(c: SalesContract, basis: Basis, fromMonth: string
   const from = monthIndex(fromMonth), to = monthIndex(toMonth);
   if (from == null || to == null || to < from) return [];
   const inWin = (mi: number) => mi >= from && mi <= to;
-  const net = (mi: number, gross: number) => toNet(applyDiscounts(c, gross, mi), c.includesVat);
+  const net = (mi: number, gross: number) => toNet(applyDiscounts(c, gross, mi));
 
   const out: MonthNet[] = [];
   const hasInstallments = c.installments.length > 0;
@@ -162,7 +168,7 @@ export interface BillingItem {
 export function billingItemsForMonth(c: SalesContract, ym: string): BillingItem[] {
   const mi = monthIndex(ym);
   if (mi == null) return [];
-  const net = (gross: number) => toNet(applyDiscounts(c, gross, mi), c.includesVat);
+  const net = (gross: number) => toNet(applyDiscounts(c, gross, mi));
 
   if (c.installments.length > 0) {
     return c.installments
