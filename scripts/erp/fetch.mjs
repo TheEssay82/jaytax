@@ -113,7 +113,7 @@ class Session {
     this.ctx = await launch();
     this.page = this.ctx.pages()[0] || await this.ctx.newPage();
     this.page.on('dialog', (d) => d.dismiss().catch(() => {}));
-    await this.page.goto(`${ERP}/`, { waitUntil: 'domcontentloaded' });
+    await this.page.goto(`${ERP}/`, { waitUntil: 'domcontentloaded', timeout: 120000 });
     await waitLogin(this.page);
     return this.page;
   }
@@ -139,61 +139,98 @@ const setFields = (page, values) => page.evaluate((vals) => {
   }
 }, values);
 
-/** 엑셀 버튼을 눌러 내려받고 저장한다. */
-async function grab(page, click, filename) {
-  const [dl] = await Promise.all([
-    page.waitForEvent('download', { timeout: 120000 }),
-    // 제출 순간 실행 컨텍스트가 날아가며 나는 오류는 무시한다(다운로드는 이미 시작됨)
-    page.evaluate(click).catch(() => {}),
-  ]);
-  const dest = path.join(OUT_DIR, filename);
-  await dl.saveAs(dest);
-  console.log(`  ✓ ${filename}  (${(fs.statSync(dest).size / 1024).toFixed(0)} KB)`);
-  return dest;
+// ERP 화면은 열 때부터 질의를 돌려 응답이 느리다(30초를 넘기는 화면이 있다).
+// 그래서 어디서나 넉넉히 기다리고, "폼과 엑셀 함수가 준비됐는지"로 완료를 판단한다.
+const NAV_MS = 180000;   // 화면 열기·조회
+const DL_MS = 180000;    // 엑셀 생성·다운로드
+
+/** 응답 헤더만 받고 넘어간다(본문 생성이 느려도 멈추지 않게). */
+const open = (page, url) => page.goto(url, { waitUntil: 'commit', timeout: NAV_MS });
+
+/** myform 과 xls_click 이 만들어질 때까지 기다린다. */
+const ready = (page, ms = NAV_MS) => page.waitForFunction(
+  () => !!document.forms['myform'] && typeof window.xls_click === 'function',
+  undefined, { timeout: ms },
+);
+
+/** 조회 버튼을 누르고, 결과 화면이 다 뜰 때까지 기다린다. */
+async function submitAndWait(page, fn) {
+  await page.evaluate(fn).catch(() => {});   // 제출 순간 컨텍스트가 날아가는 건 정상
+  await page.waitForTimeout(1500);
+  await page.waitForLoadState('load', { timeout: NAV_MS }).catch(() => {});
+  await ready(page);
+  await page.waitForTimeout(1500);
 }
 
-const settle = async (p, ms = 2500) => {
-  await p.waitForLoadState('domcontentloaded').catch(() => {});
-  await p.waitForTimeout(ms);
+/**
+ * 엑셀 버튼을 눌러 내려받고 저장한다.
+ * clicks 를 순서대로 시도한다 — 인자 형태가 화면마다 달라 첫 시도가 빗나갈 수 있다.
+ */
+async function grab(page, clicks, filename) {
+  const list = Array.isArray(clicks) ? clicks : [clicks];
+  let lastErr = null;
+  for (let i = 0; i < list.length; i++) {
+    const last = i === list.length - 1;
+    try {
+      const [dl] = await Promise.all([
+        page.waitForEvent('download', { timeout: last ? DL_MS : 60000 }),
+        page.evaluate(list[i]).catch(() => {}),
+      ]);
+      const dest = path.join(OUT_DIR, filename);
+      await dl.saveAs(dest);
+      console.log(`  ✓ ${filename}  (${(fs.statSync(dest).size / 1024).toFixed(0)} KB)`);
+      return dest;
+    } catch (e) {
+      lastErr = e;
+      if (!last) console.log('    · 엑셀 호출 재시도…');
+    }
+  }
+  throw lastErr;
+}
+
+/** 화면에 있는 엑셀 버튼을 직접 누르는 마지막 수단. */
+const clickExcelButton = () => {
+  const btns = Array.from(document.querySelectorAll('input[type=button],input[type=image],button,a'));
+  const b = btns.find((x) => /xls_click|excel/i.test(x.getAttribute('onclick') || ''));
+  if (b) b.click();
 };
 
 // ── 리포트별 수집 (모두 같은 탭을 재사용한다) ──────────────
 async function fetchSlip(page, r) {
-  await page.goto(`${ERP}/apps/invjunpyo/invjunpyonolist.jsp?PageAction=OrderByNo`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1000);
+  await open(page, `${ERP}/apps/invjunpyo/invjunpyonolist.jsp?PageAction=OrderByNo`);
+  await ready(page);
   await setFields(page, {
     FromDate: r.from, ToDate: r.to, MonthSelect: 'all', QuarterSelect: 'all',
     Search_BuCode: buCode, SearchBuCode: buCode,
   });
-  await page.evaluate(() => window.search('search'));
-  await settle(page);
-  return grab(page, () => window.xls_click(), `${tag}_${dept}_거래전표.xls`);
+  await submitAndWait(page, () => window.search('search'));
+  return grab(page, [() => window.xls_click(), clickExcelButton], `${tag}_${dept}_거래전표.xls`);
 }
 
 async function fetchUnpaid(page, r) {
-  await page.goto(`${ERP}/apps/sales/accfirm/arlistbybucode.jsp?menu=BCC&ReadBU=1`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1000);
+  await open(page, `${ERP}/apps/sales/accfirm/arlistbybucode.jsp?menu=BCC&ReadBU=1`);
+  await ready(page);
   await setFields(page, { reportDate: r.to, SearchReportDate: r.to, BuCode: buCode, SearchBuCode: buCode });
-  await page.evaluate(() => window.doSubmit());
-  await settle(page);
-  return grab(page, () => window.xls_click(), `${tag}_${dept}_미수금현황.xls`);
+  await submitAndWait(page, () => window.doSubmit());
+  return grab(page, [() => window.xls_click(), clickExcelButton], `${tag}_${dept}_미수금현황.xls`);
 }
 
 async function fetchFlow(page, r) {
-  await page.goto(`${ERP}/apps/sales/accfirm/arlistbybucode_flow.jsp?menu=BCC&ReadBU=1`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1000);
+  await open(page, `${ERP}/apps/sales/accfirm/arlistbybucode_flow.jsp?menu=BCC&ReadBU=1`);
+  await ready(page);
   await setFields(page, {
     FromDate: r.from, ToDate: r.to, SearchFromDate: r.from, SearchToDate: r.to,
     Bucode: buCode, SearchBuCode: buCode,
   });
-  await page.evaluate(() => window.doSubmit());
-  await settle(page);
-  return grab(page, () => window.xls_click('1'), `${tag}_${dept}_미수금대장.xls`);
+  await submitAndWait(page, () => window.doSubmit());
+  // gubun=1 이 기본 양식. 인자 형태가 다를 수 있어 세 가지를 차례로 시도한다.
+  return grab(page, [() => window.xls_click('1'), () => window.xls_click(), clickExcelButton],
+    `${tag}_${dept}_미수금대장.xls`);
 }
 
 async function fetchLedger(page, r) {
-  await page.goto(`${ERP}/apps/common/buperiodselect.jsp`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(900);
+  await open(page, `${ERP}/apps/common/buperiodselect.jsp`);
+  await page.waitForFunction(() => !!document.forms['myform'], undefined, { timeout: NAV_MS });
   // 회계기수는 정산기간 7/1~익6/30 — 7~12월이면 그 해, 1~6월이면 전년이 시작연도
   await page.evaluate((startY) => {
     const g = document.forms['myform'].elements['Gisu'];
@@ -216,9 +253,11 @@ async function fetchLedger(page, r) {
   const win = await popup;                     // 결과가 팝업으로 뜨면 그쪽에서, 아니면 같은 탭에서
   const target = win || page;
   if (win) win.on('dialog', (d) => d.dismiss().catch(() => {}));
-  await settle(target);
+  await target.waitForLoadState('load', { timeout: NAV_MS }).catch(() => {});
+  await ready(target);
+  await target.waitForTimeout(1500);
   try {
-    return await grab(target, () => window.xls_click(), `${tag}_${dept}_원장.xls`);
+    return await grab(target, [() => window.xls_click(), clickExcelButton], `${tag}_${dept}_원장.xls`);
   } finally {
     if (win) await win.close().catch(() => {});  // 팝업만 닫는다(본 탭은 그대로 둔다)
   }
