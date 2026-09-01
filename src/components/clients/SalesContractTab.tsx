@@ -8,7 +8,8 @@ import {
 } from '../../lib/salesContractTaxonomy';
 import { TAX_ADJ_CPA } from '../../lib/taxContractSync';
 import { todayYmd } from '../../lib/format';
-import { ColFilter, scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
+import { ColFilter, scrollBox, stickyTop, useTableView, ColumnSettings, ResizeHandle, clip } from './tableKit';
+import { VIEW_KEYS } from '../../lib/tableViewApi';
 import { exportContractTemplate, parseContractExcelFile, applyContractExcel, type ContractExcelResult } from '../../lib/bizContractExcel';
 import { periodRevenue, defaultWindow, monthIndex } from '../../lib/billingSchedule';
 import {
@@ -112,7 +113,8 @@ export default function SalesContractTab() {
   const [showCodeHelp, setShowCodeHelp] = useState(false);
   const [codeFixing, setCodeFixing] = useState(false);
   const [showRenew, setShowRenew] = useState(false);
-  const { widthOf, startResize } = useColWidths();
+  const tv = useTableView(VIEW_KEYS.salesContract);
+  const { widthOf, startResize } = tv;
   const [colF, setColF] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const [groupBy, setGroupBy] = useState<string>('');   // 피봇 행 기준
@@ -190,7 +192,9 @@ export default function SalesContractTab() {
     { key: 'cdate', label: '계약일', val: (c) => c.contractDate ?? '', w: 90 },
     { key: 'note', label: '비고', val: (c) => c.note, w: 120 },
   ];
-  const tableW = COLUMNS.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 96 : 0);
+  // 숨긴 열은 표에서만 뺀다 — 필터·정렬·합계 계산은 전체 COLUMNS 기준 그대로다.
+  const shownCols = COLUMNS.filter((c) => !tv.isHidden(c.key));
+  const tableW = shownCols.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 96 : 0);
   const tableRows = useMemo(() => contracts.filter((c) => COLUMNS.every((col) => {
     const fv = (colF[col.key] || '').trim().toLowerCase();
     if (!fv) return true;
@@ -547,6 +551,7 @@ export default function SalesContractTab() {
           </span>
         )}
         {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
+        {viewMode === 'table' && <ColumnSettings cols={COLUMNS} view={tv} onMessage={flash} />}
         {canWrite && <button className="btn-p" onClick={() => { setShowAdd((s) => !s); setEditId(null); }}>{showAdd ? '닫기' : '＋ 신규 매출계약'}</button>}
       </div>
 
@@ -716,12 +721,12 @@ export default function SalesContractTab() {
         <div style={scrollBox()}>
           <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5 }}>
             <colgroup>
-              {COLUMNS.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}
+              {shownCols.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}
               {canWrite && <col style={{ width: 96 }} />}
             </colgroup>
             <thead>
               <tr>
-                {COLUMNS.map((col) => (
+                {shownCols.map((col) => (
                   <th key={col.key} style={{ ...thc, ...clip, height: 26, cursor: 'pointer', userSelect: 'none', ...stickyTop(0, '#f4efe4') }} onClick={() => toggleSort(col.key)} title="클릭: 정렬 · 우측 끝 드래그: 너비 조절">
                     {col.label}{sort?.key === col.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
                     <ResizeHandle onMouseDown={startResize(col.key, widthOf(col.key, col.w))} />
@@ -730,7 +735,7 @@ export default function SalesContractTab() {
                 {canWrite && <th style={{ ...thc, ...stickyTop(0, '#f4efe4') }}></th>}
               </tr>
               <tr>
-                {COLUMNS.map((col) => (
+                {shownCols.map((col) => (
                   <th key={col.key} style={{ padding: 2, ...stickyTop(26, '#faf7f0') }}>
                     <ColFilter opts={col.opts} value={colF[col.key] || ''} onChange={(v) => setColF((p) => ({ ...p, [col.key]: v }))} />
                   </th>
@@ -739,10 +744,10 @@ export default function SalesContractTab() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length === 0 && <tr><td colSpan={COLUMNS.length + 1} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 매출계약이 없습니다.</td></tr>}
+              {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + 1} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 매출계약이 없습니다.</td></tr>}
               {sortedRows.map((c) => (
                 <tr key={c.id}>
-                  {COLUMNS.map((col) => <td key={col.key} style={{ ...tdc, ...clip, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }} title={col.val(c)}>{col.val(c)}</td>)}
+                  {shownCols.map((col) => <td key={col.key} style={{ ...tdc, ...clip, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }} title={col.val(c)}>{col.val(c)}</td>)}
                   {canWrite && (
                     <td style={{ ...tdc, borderTop: '1px solid #eee' }}>
                       <span style={{ display: 'flex', gap: 3 }}>
@@ -756,12 +761,15 @@ export default function SalesContractTab() {
             </tbody>
             <tfoot>
               <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
-                {COLUMNS.map((col) => {
+                {shownCols.map((col) => {
                   const st: React.CSSProperties = { ...tdc, borderTop: '2px solid #c9a54a' };
-                  if (col.key === 'code') return <td key={col.key} style={{ ...st, whiteSpace: 'nowrap' }}>합계 {summary.cnt}건</td>;
-                  if (col.key === 'name') return <td key={col.key} style={st}>월환산 {won(summary.mon)} · 연환산 {won(summary.ann)}</td>;
-                  if (col.key === 'amount') return <td key={col.key} style={{ ...st, textAlign: 'right' }}>{won(summary.amt)}</td>;
-                  return <td key={col.key} style={st}></td>;
+                  // 건수는 보이는 첫 열에 붙인다 — 코드 열을 숨겨도 합계가 사라지지 않게.
+                  const head = col.key === shownCols[0]?.key ? `합계 ${summary.cnt}건` : '';
+                  if (col.key === 'amount') return <td key={col.key} style={{ ...st, textAlign: 'right' }}>{head || won(summary.amt)}</td>;
+                  const body = col.key === 'name' ? `월환산 ${won(summary.mon)} · 연환산 ${won(summary.ann)}` : '';
+                  return <td key={col.key} style={{ ...st, whiteSpace: head && !body ? 'nowrap' : undefined }}>
+                    {[head, body].filter(Boolean).join(' · ')}
+                  </td>;
                 })}
                 {canWrite && <td style={{ ...tdc, borderTop: '2px solid #c9a54a' }}></td>}
               </tr>

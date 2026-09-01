@@ -13,6 +13,7 @@ export const EMPTY_VIEW: TableViewSettings = { widths: {}, hidden: [] };
 /** 화면 식별자 — 표 하나당 하나. 값이 바뀌면 저장해 둔 설정과 끊어지니 함부로 고치지 말 것. */
 export const VIEW_KEYS = {
   bizRegistry: 'biz_registry',
+  salesContract: 'sales_contract',
 } as const;
 
 export async function loadTableView(viewKey: string): Promise<TableViewSettings | null> {
