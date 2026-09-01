@@ -64,6 +64,8 @@ export interface BizPlace {
   note: string;
   /** 담당직원 상태(실제 직원 없을 때 표시): 배정예정/N/A, 없으면 null. */
   staffStatus: StaffStatus | null;
+  /** ERP(IBCENTER) 거래처코드 5자리 — 원장 대사(입금)의 유일한 키. 원장에는 사업자번호가 없다. */
+  erpClientCode: string;
   staff: BizStaff[];
   createdAt?: string;
   updatedAt?: string;
@@ -204,6 +206,7 @@ const toPlace = (r: any): BizPlace => ({
   hasHometaxPw: r.hometax_pw_enc != null,
   note: r.note || '',
   staffStatus: r.staff_status ?? null,
+  erpClientCode: r.erp_client_code || '',
   staff: [],
   createdAt: r.created_at,
   updatedAt: r.updated_at,
