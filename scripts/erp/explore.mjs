@@ -110,20 +110,45 @@ await waitLogin(page);
 
 console.log('  화면 구조를 수집합니다(조회는 하지 않습니다)…');
 const pages = [];
-pages.push(await visit(ctx, `${ERP}/apps/menu/tab_browse/tab_browse_dispatch.jsp?top_menu_id=FI`, '회계관리 메뉴'));
-pages.push(await visit(ctx, `${ERP}/apps/common/buperiodselect.jsp`, '부서별원장-조건선택'));
-pages.push(await visit(ctx, `${ERP}/apps/invjunpyo/ti/vat_ti_menu_bu.jsp`, '전자세금계산서 관리'));
+// 1차 탐색에서 확인된 화면들 — 필요한 것만 콕 집어 본다.
+const TARGETS = [
+  ['/apps/menu/tab_browse/tab_browse_dispatch.jsp?top_menu_id=FI', '회계관리 메뉴'],
+  ['/apps/invjunpyo/invjunpyonolist.jsp?PageAction=OrderByNo', '거래전표 리스트'],
+  ['/apps/sales/accfirm/arlistbybucode.jsp?menu=BCC&ReadBU=1', '기준일자 미수금현황'],
+  ['/apps/sales/accfirm/arlistbybucode_flow.jsp?menu=BCC&ReadBU=1', '기간 미수금대장'],
+  ['/apps/common/buperiodselect.jsp', '부서별원장-조건선택'],
+];
+for (const [rel, label] of TARGETS) pages.push(await visit(ctx, ERP + rel, label));
 
-// 메뉴에서 찾은 .jsp 경로를 추가로 훑는다(중복 제외, 최대 12개)
-const seen = new Set(pages.map((p) => p.url));
-const found = (pages[0].menus || [])
-  .map((m) => (m.onclick.match(/'(\/[^']+\.jsp[^']*)'/) || [])[1])
-  .filter(Boolean);
-for (const rel of [...new Set(found)].slice(0, 12)) {
-  const url = ERP + rel;
-  if (seen.has(url)) continue;
-  seen.add(url);
-  pages.push(await visit(ctx, url, rel));
+// 부서별원장은 조건 → 결과 화면으로 넘어가야 엑셀 버튼이 보인다.
+// 아래는 **조회(읽기)만** 수행한다. 저장·수정은 하지 않는다.
+{
+  const pg = await ctx.newPage();
+  pg.on('dialog', (d) => d.dismiss().catch(() => {}));
+  try {
+    await pg.goto(`${ERP}/apps/common/buperiodselect.jsp`, { waitUntil: 'domcontentloaded' });
+    await pg.waitForTimeout(800);
+    await pg.evaluate(() => {
+      const f = document.forms['myform'];
+      const g = f.elements['Gisu']; if (g) { g.value = '31'; g.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+    await pg.waitForTimeout(800);
+    await pg.evaluate(() => {
+      const f = document.forms['myform'];
+      const set = (n, v) => { const e = f.elements[n]; if (e) e.value = v; };
+      set('JunpyoDateYear1', '2026'); set('JunpyoDateMonth1', '7'); set('JunpyoDateDay1', '1');
+      set('JunpyoDateYear2', '2026'); set('JunpyoDateMonth2', '7'); set('JunpyoDateDay2', '31');
+      window.buttonPeriod_onclick();
+    });
+    await pg.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+    await pg.waitForTimeout(2500);
+    const snap = await snapshot(pg);
+    console.log(`  · 부서별원장-조회결과 — ${snap.url.replace(ERP, '')} 버튼 ${snap.buttons.length} 함수 ${Object.keys(snap.fns).length}`);
+    pages.push({ label: '부서별원장-조회결과(2026-07)', ...snap });
+  } catch (e) {
+    console.log('  · 부서별원장-조회결과 — 실패: ' + String(e.message).split(String.fromCharCode(10))[0]);
+
+  } finally { await pg.close(); }
 }
 
 fs.writeFileSync(OUT, JSON.stringify({ collectedAt: new Date().toISOString(), pages }, null, 1), 'utf8');
