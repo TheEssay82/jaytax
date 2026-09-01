@@ -13,6 +13,12 @@
  *  · 설치된 크롬을 그대로 쓴다(playwright-core). 브라우저 내려받기 없음.
  *  · **조회와 내려받기만 한다.** 저장·수정·전기 같은 쓰기 동작은 하지 않는다.
  *
+ * 탭 하나만 쓴다
+ *  엑셀을 한 번 받고 나면 크롬이 새 탭을 못 여는 상태가 되는 일이 있다
+ *  (Target.createTarget: Failed to open a new tab). 그래서 리포트마다 탭을
+ *  새로 열지 않고 **같은 탭을 계속 이동**시킨다. 그래도 세션이 죽으면
+ *  브라우저를 다시 띄워 그 리포트만 재시도한다(프로필이 남아 보통 재로그인 불필요).
+ *
  * 화면 구조(2026-09-01 탐색으로 확인)
  *  · 거래전표 리스트    /apps/invjunpyo/invjunpyonolist.jsp   엑셀 = xls_click()
  *  · 기준일자 미수금현황 /apps/sales/accfirm/arlistbybucode.jsp
@@ -61,12 +67,18 @@ const CHROME_PATHS = [
 ].filter(Boolean);
 
 const first = (m) => String(m).split(NL)[0];
+/** 브라우저·탭이 통째로 죽어버린 종류의 오류인가 */
+const isDead = (e) => /closed|crash|createTarget|Protocol error|disconnected/i.test(String(e && e.message));
 
 async function launch() {
   const base = {
     headless: false,
     acceptDownloads: true,
-    args: ['--no-first-run', '--no-default-browser-check', '--start-maximized'],
+    args: [
+      '--no-first-run', '--no-default-browser-check', '--start-maximized',
+      // 다운로드 말풍선이 뜨면서 이후 탭 생성이 막히는 사례가 있어 꺼 둔다
+      '--disable-features=DownloadBubble,DownloadBubbleV2',
+    ],
   };
   const errs = [];
   try { return await chromium.launchPersistentContext(PROFILE_DIR, { ...base, channel: 'chrome' }); }
@@ -94,6 +106,29 @@ async function waitLogin(page) {
   throw new Error('로그인 대기 시간 초과');
 }
 
+/** 브라우저 하나 · 탭 하나를 들고 있다가, 죽으면 다시 띄운다. */
+class Session {
+  constructor() { this.ctx = null; this.page = null; }
+  async open() {
+    this.ctx = await launch();
+    this.page = this.ctx.pages()[0] || await this.ctx.newPage();
+    this.page.on('dialog', (d) => d.dismiss().catch(() => {}));
+    await this.page.goto(`${ERP}/`, { waitUntil: 'domcontentloaded' });
+    await waitLogin(this.page);
+    return this.page;
+  }
+  alive() { return !!this.page && !this.page.isClosed(); }
+  async reopen() {
+    console.log('  ↻ 브라우저 세션이 끊겨 다시 띄웁니다…');
+    await this.close();
+    return this.open();
+  }
+  async close() {
+    try { if (this.ctx) await this.ctx.close(); } catch { /* 이미 죽었으면 무시 */ }
+    this.ctx = null; this.page = null;
+  }
+}
+
 /** myform 의 필드를 채운다(select·input 공통). 없는 필드는 조용히 건너뛴다. */
 const setFields = (page, values) => page.evaluate((vals) => {
   const f = document.forms['myform'];
@@ -108,7 +143,8 @@ const setFields = (page, values) => page.evaluate((vals) => {
 async function grab(page, click, filename) {
   const [dl] = await Promise.all([
     page.waitForEvent('download', { timeout: 120000 }),
-    page.evaluate(click),
+    // 제출 순간 실행 컨텍스트가 날아가며 나는 오류는 무시한다(다운로드는 이미 시작됨)
+    page.evaluate(click).catch(() => {}),
   ]);
   const dest = path.join(OUT_DIR, filename);
   await dl.saveAs(dest);
@@ -121,82 +157,71 @@ const settle = async (p, ms = 2500) => {
   await p.waitForTimeout(ms);
 };
 
-// ── 리포트별 수집 ─────────────────────────────────────────
-async function fetchSlip(ctx, r) {
-  const page = await ctx.newPage();
-  page.on('dialog', (d) => d.dismiss().catch(() => {}));
-  try {
-    await page.goto(`${ERP}/apps/invjunpyo/invjunpyonolist.jsp?PageAction=OrderByNo`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1000);
-    await setFields(page, {
-      FromDate: r.from, ToDate: r.to, MonthSelect: 'all', QuarterSelect: 'all',
-      Search_BuCode: buCode, SearchBuCode: buCode,
-    });
-    await page.evaluate(() => window.search('search'));
-    await settle(page);
-    return await grab(page, () => window.xls_click(), `${tag}_${dept}_거래전표.xls`);
-  } finally { await page.close().catch(() => {}); }
+// ── 리포트별 수집 (모두 같은 탭을 재사용한다) ──────────────
+async function fetchSlip(page, r) {
+  await page.goto(`${ERP}/apps/invjunpyo/invjunpyonolist.jsp?PageAction=OrderByNo`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1000);
+  await setFields(page, {
+    FromDate: r.from, ToDate: r.to, MonthSelect: 'all', QuarterSelect: 'all',
+    Search_BuCode: buCode, SearchBuCode: buCode,
+  });
+  await page.evaluate(() => window.search('search'));
+  await settle(page);
+  return grab(page, () => window.xls_click(), `${tag}_${dept}_거래전표.xls`);
 }
 
-async function fetchUnpaid(ctx, r) {
-  const page = await ctx.newPage();
-  page.on('dialog', (d) => d.dismiss().catch(() => {}));
-  try {
-    await page.goto(`${ERP}/apps/sales/accfirm/arlistbybucode.jsp?menu=BCC&ReadBU=1`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1000);
-    await setFields(page, { reportDate: r.to, SearchReportDate: r.to, BuCode: buCode, SearchBuCode: buCode });
-    await page.evaluate(() => window.doSubmit());
-    await settle(page);
-    return await grab(page, () => window.xls_click(), `${tag}_${dept}_미수금현황.xls`);
-  } finally { await page.close().catch(() => {}); }
+async function fetchUnpaid(page, r) {
+  await page.goto(`${ERP}/apps/sales/accfirm/arlistbybucode.jsp?menu=BCC&ReadBU=1`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1000);
+  await setFields(page, { reportDate: r.to, SearchReportDate: r.to, BuCode: buCode, SearchBuCode: buCode });
+  await page.evaluate(() => window.doSubmit());
+  await settle(page);
+  return grab(page, () => window.xls_click(), `${tag}_${dept}_미수금현황.xls`);
 }
 
-async function fetchFlow(ctx, r) {
-  const page = await ctx.newPage();
-  page.on('dialog', (d) => d.dismiss().catch(() => {}));
-  try {
-    await page.goto(`${ERP}/apps/sales/accfirm/arlistbybucode_flow.jsp?menu=BCC&ReadBU=1`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1000);
-    await setFields(page, {
-      FromDate: r.from, ToDate: r.to, SearchFromDate: r.from, SearchToDate: r.to,
-      Bucode: buCode, SearchBuCode: buCode,
-    });
-    await page.evaluate(() => window.doSubmit());
-    await settle(page);
-    return await grab(page, () => window.xls_click('1'), `${tag}_${dept}_미수금대장.xls`);
-  } finally { await page.close().catch(() => {}); }
+async function fetchFlow(page, r) {
+  await page.goto(`${ERP}/apps/sales/accfirm/arlistbybucode_flow.jsp?menu=BCC&ReadBU=1`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1000);
+  await setFields(page, {
+    FromDate: r.from, ToDate: r.to, SearchFromDate: r.from, SearchToDate: r.to,
+    Bucode: buCode, SearchBuCode: buCode,
+  });
+  await page.evaluate(() => window.doSubmit());
+  await settle(page);
+  return grab(page, () => window.xls_click('1'), `${tag}_${dept}_미수금대장.xls`);
 }
 
-async function fetchLedger(ctx, r) {
-  const page = await ctx.newPage();
-  page.on('dialog', (d) => d.dismiss().catch(() => {}));
+async function fetchLedger(page, r) {
+  await page.goto(`${ERP}/apps/common/buperiodselect.jsp`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(900);
+  // 회계기수는 정산기간 7/1~익6/30 — 7~12월이면 그 해, 1~6월이면 전년이 시작연도
+  await page.evaluate((startY) => {
+    const g = document.forms['myform'].elements['Gisu'];
+    if (!g) return;
+    for (const o of g.options) if (o.text.includes(`${startY}-07-01`)) { g.value = o.value; break; }
+    g.dispatchEvent(new Event('change', { bubbles: true }));
+  }, r.m >= 7 ? r.y : r.y - 1);
+  await page.waitForTimeout(900);
+
+  const popup = page.waitForEvent('popup', { timeout: 15000 }).catch(() => null);
+  await page.evaluate(({ y, m, last, bu }) => {
+    const f = document.forms['myform'];
+    const set = (n, v) => { const e = f.elements[n]; if (e) e.value = v; };
+    set('JunpyoDateYear1', String(y)); set('JunpyoDateMonth1', String(m)); set('JunpyoDateDay1', '1');
+    set('JunpyoDateYear2', String(y)); set('JunpyoDateMonth2', String(m)); set('JunpyoDateDay2', String(last));
+    set('BuCode', bu);
+    window.buttonPeriod_onclick();
+  }, { y: r.y, m: r.m, last: r.last, bu: buCode });
+
+  const win = await popup;                     // 결과가 팝업으로 뜨면 그쪽에서, 아니면 같은 탭에서
+  const target = win || page;
+  if (win) win.on('dialog', (d) => d.dismiss().catch(() => {}));
+  await settle(target);
   try {
-    await page.goto(`${ERP}/apps/common/buperiodselect.jsp`, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(900);
-    // 회계기수는 정산기간 7/1~익6/30 — 7~12월이면 그 해, 1~6월이면 전년이 시작연도
-    await page.evaluate((startY) => {
-      const g = document.forms['myform'].elements['Gisu'];
-      if (!g) return;
-      for (const o of g.options) if (o.text.includes(`${startY}-07-01`)) { g.value = o.value; break; }
-      g.dispatchEvent(new Event('change', { bubbles: true }));
-    }, r.m >= 7 ? r.y : r.y - 1);
-    await page.waitForTimeout(900);
-
-    const popup = page.waitForEvent('popup', { timeout: 15000 }).catch(() => null);
-    await page.evaluate(({ y, m, last, bu }) => {
-      const f = document.forms['myform'];
-      const set = (n, v) => { const e = f.elements[n]; if (e) e.value = v; };
-      set('JunpyoDateYear1', String(y)); set('JunpyoDateMonth1', String(m)); set('JunpyoDateDay1', '1');
-      set('JunpyoDateYear2', String(y)); set('JunpyoDateMonth2', String(m)); set('JunpyoDateDay2', String(last));
-      set('BuCode', bu);
-      window.buttonPeriod_onclick();
-    }, { y: r.y, m: r.m, last: r.last, bu: buCode });
-
-    const target = (await popup) || page;      // 결과가 팝업으로 뜨면 그쪽에서, 아니면 같은 창에서
-    target.on('dialog', (d) => d.dismiss().catch(() => {}));
-    await settle(target);
     return await grab(target, () => window.xls_click(), `${tag}_${dept}_원장.xls`);
-  } finally { await page.close().catch(() => {}); }
+  } finally {
+    if (win) await win.close().catch(() => {});  // 팝업만 닫는다(본 탭은 그대로 둔다)
+  }
 }
 
 const REPORTS = {
@@ -226,28 +251,32 @@ async function main() {
   console.log(`인덕 ERP 수집 — ${month} (${r.from} ~ ${r.to}) · ${dept}[${buCode}]`);
   console.log(`  저장 ${OUT_DIR}`);
 
-  const ctx = await launch();
-  const page = ctx.pages()[0] || await ctx.newPage();
-  page.on('dialog', (d) => d.dismiss().catch(() => {}));
+  const s = new Session();
   const done = [], failed = [];
   try {
-    await page.goto(`${ERP}/`, { waitUntil: 'domcontentloaded' });
-    await waitLogin(page);
+    await s.open();
     console.log('');
     for (const [key, [label, fn]] of Object.entries(REPORTS)) {
       if (only.length && !only.includes(key)) continue;
       console.log(`  ${label} …`);
-      try { done.push(await fn(ctx, r)); }
-      catch (e) {
-        const msg = first(e.message);
-        failed.push([label, msg]);
-        console.log(`  ✗ ${label} — ${msg}`);
+      if (!s.alive()) await s.reopen();
+      try {
+        done.push(await fn(s.page, r));
+      } catch (e) {
+        if (!isDead(e)) { failed.push(key); console.log(`  ✗ ${label} — ${first(e.message)}`); continue; }
+        // 브라우저가 죽은 경우만 한 번 다시 띄워 재시도한다
+        try {
+          await s.reopen();
+          done.push(await fn(s.page, r));
+        } catch (e2) { failed.push(key); console.log(`  ✗ ${label} — ${first(e2.message)}`); }
       }
     }
-  } finally { await ctx.close().catch(() => {}); }
+  } finally { await s.close(); }
 
+  const names = failed.map((k) => REPORTS[k][0]);
   console.log('');
-  console.log(`  받은 파일 ${done.length}개${failed.length ? ` · 실패 ${failed.length}개` : ''}`);
+  console.log(`  받은 파일 ${done.length}개${failed.length ? ` · 실패 ${failed.length}개 (${names.join(', ')})` : ''}`);
+  if (failed.length) console.log(`  실패분만 다시: node scripts/erp/fetch.mjs --month ${month} --only ${failed.join(',')}`);
   console.log('  jaytax 기장등청구관리에서 업로드하세요.');
   console.log('');
 }
