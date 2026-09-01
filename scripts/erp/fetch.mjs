@@ -5,6 +5,9 @@
  *   node scripts/erp/fetch.mjs --month 2026-07
  *   node scripts/erp/fetch.mjs --bu 1024 --dept 기장24팀
  *   node scripts/erp/fetch.mjs --only slip,ledger  일부만
+ *   node scripts/erp/fetch.mjs --depts            이 계정이 볼 수 있는 부서·코드 확인
+ *   node scripts/erp/fetch.mjs --profile audit --bu 2050 --dept 감사팀 --month 2026-07
+ *   (--out 으로 저장 폴더를 바꿀 수 있습니다)
  *   node scripts/erp/fetch.mjs --inspect unpaid   조회 조건 배우기(사람이 한 번 조회)
  *   node scripts/erp/fetch.mjs --doctor            환경 점검(크롬 안 띄움)
  *
@@ -37,14 +40,25 @@ import os from 'node:os';
 import { chromium } from 'playwright-core';
 
 const ERP = 'http://induk.ibcenter.kr';
-const PROFILE_DIR = path.join(process.env.LOCALAPPDATA || os.tmpdir(), 'jaytax-erp-profile');
-const OUT_DIR = process.env.ERP_OUT_DIR
-  || 'D:/Dropbox/4.영업관리/5520_기장사업부관리/기장24팀ERP데이터';
 const NL = String.fromCharCode(10);
 
 const argv = process.argv.slice(2);
 const arg = (k, d = null) => { const i = argv.indexOf(`--${k}`); return i >= 0 ? argv[i + 1] : d; };
 const has = (k) => argv.includes(`--${k}`);
+
+/**
+ * 계정별 크롬 프로필 — taxteam 은 정남지, 감사팀은 정우철 계정이라 세션을 나눠 둔다.
+ * 하나로 쓰면 팀을 바꿀 때마다 로그아웃했다 다시 들어가야 한다.
+ *   --profile tax(기본) | audit | 아무 이름
+ */
+const profile = arg('profile', 'tax');
+const BASE = process.env.LOCALAPPDATA || os.tmpdir();
+// 예전에 쓰던 단일 프로필이 남아 있으면 tax 는 그걸 그대로 쓴다(다시 로그인하지 않게).
+const LEGACY = path.join(BASE, 'jaytax-erp-profile');
+const PROFILE_DIR = (profile === 'tax' && fs.existsSync(LEGACY))
+  ? LEGACY : path.join(BASE, `jaytax-erp-${profile}`);
+const OUT_DIR = arg('out') || process.env.ERP_OUT_DIR
+  || 'D:/Dropbox/4.영업관리/5520_기장사업부관리/기장24팀ERP데이터';
 
 const month = arg('month') || prevMonth();
 const dept = arg('dept', '기장24팀');
@@ -101,8 +115,9 @@ async function waitLogin(page) {
   const done = async () => (await page.locator('input[type="password"]').count().catch(() => 0)) === 0;
   if (await done()) return;
   console.log('');
-  console.log('  🔐 열린 크롬에서 직접 로그인해 주세요. 최대 5분 대기.');
-  console.log('     (taxteam = 정남지 계정 · 감사팀 = 정우철 계정)');
+  console.log(`  🔐 열린 크롬에서 직접 로그인해 주세요. 최대 5분 대기. [프로필 ${profile}]`);
+  console.log('     taxteam = 정남지 계정 · 감사팀 = 정우철 계정');
+  console.log('     프로필이 계정별로 나뉘어 있어 한 번 로그인하면 다음부터는 생략됩니다.');
   console.log('');
   for (let i = 0; i < 200; i++) {
     await page.waitForTimeout(1500);
@@ -330,6 +345,27 @@ async function fetchClients(page) {
   return grab(page, [() => window.xls_click(), clickExcelButton], `${tag}_ERP거래처마스터.xls`);
 }
 
+/**
+ * 부서 목록 — 로그인한 계정이 볼 수 있는 부서와 그 코드를 찍는다.
+ * 감사팀 부서코드를 몰라서 자료를 못 받던 문제를 이걸로 푼다(기장24팀=1024 만 알고 있었다).
+ */
+async function listDepts(page) {
+  await open(page, `${ERP}/apps/sales/accfirm/arlistbybucode.jsp?menu=BCC&ReadBU=1`);
+  await ready(page);
+  const opts = await page.evaluate(() => {
+    const sel = document.forms['myform']?.elements['SearchBuCode'];
+    if (!sel || !sel.options) return [];
+    return Array.from(sel.options).map((o) => ({ v: String(o.value), t: o.text.trim() }));
+  });
+  console.log('');
+  console.log(`  이 계정이 볼 수 있는 부서 ${opts.length}개:`);
+  for (const o of opts) console.log(`    ${String(o.v).padEnd(8)} ${o.t}`);
+  console.log('');
+  console.log('  받을 때는 이렇게 씁니다:');
+  console.log(`    node scripts/erp/fetch.mjs --profile ${profile} --bu <코드> --dept <폴더에 쓸 이름> --month ${month}`);
+  console.log('');
+}
+
 const REPORTS = {
   slip: ['거래전표 리스트', fetchSlip],
   unpaid: ['기준일자 미수금현황', fetchUnpaid],
@@ -417,13 +453,19 @@ async function main() {
     console.log('[ERP 수집기 환경 점검]');
     console.log('  node           ', process.version);
     console.log('  playwright-core', pkg.devDependencies?.['playwright-core'] ?? '(설치 안 됨)');
-    console.log('  프로필 경로    ', PROFILE_DIR, fs.existsSync(PROFILE_DIR) ? '(있음 — 세션이 남아있을 수 있음)' : '(없음)');
+    console.log('  프로필         ', profile, '→', PROFILE_DIR, fs.existsSync(PROFILE_DIR) ? '(있음 — 세션이 남아있을 수 있음)' : '(없음)');
     console.log('  저장 폴더      ', OUT_DIR, fs.existsSync(OUT_DIR) ? '(있음)' : '(없음 — 실행 시 생성)');
     console.log('  크롬 후보:');
     for (const exe of CHROME_PATHS) console.log(`    ${fs.existsSync(exe) ? '✓' : '✗'} ${exe}`);
     return;
   }
 
+  if (has('depts')) {
+    const s = new Session();
+    try { await s.open(); await listDepts(s.page); }
+    finally { await s.close(); }
+    return;
+  }
   if (has('inspect')) return inspect(arg('inspect'));
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
