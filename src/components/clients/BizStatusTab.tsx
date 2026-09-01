@@ -12,6 +12,9 @@ import { findNode } from '../../lib/salesContractTaxonomy';
 import { scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
 import { monthlyTotals, monthIndex, indexToMonth, type Basis } from '../../lib/billingSchedule';
 import BudgetPanel from './BudgetPanel';
+import { ChurnRiskPanel, InflowPanel } from './RiskPanel';
+import { listInvoiceRequests } from '../../lib/invoiceRequestApi';
+import { todayYmd } from '../../lib/format';
 import { listActualsForYear, type MonthlyActual } from '../../lib/revenueActualApi';
 
 const TEAMS = ['감사team', 'taxteam'] as const;
@@ -40,12 +43,25 @@ export default function BizStatusTab() {
   const [trendYear, setTrendYear] = useState<number>(0);          // 0 = 미설정 → curSettlementYear 사용
   const [trendBasis, setTrendBasis] = useState<Basis>('accrual'); // 매출(발생) 기본
   const [actuals, setActuals] = useState<MonthlyActual[]>([]);    // 선택 정산연도 월별 실적
+  // 계약별 마지막 청구월 — '청구 끊김'을 판단하는 근거.
+  const [lastBilled, setLastBilled] = useState<Map<string, string>>(new Map());
+  /** 추이 창을 사업연도로 볼지, 오늘부터 앞으로 12개월로 볼지. */
+  const [rolling, setRolling] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [e, c, ct] = await Promise.all([listBizEntities(), listSalesContracts(), listBizContacts()]);
+        const [e, c, ct, reqs] = await Promise.all([
+          listBizEntities(), listSalesContracts(), listBizContacts(), listInvoiceRequests(),
+        ]);
         setEntities(e); setContracts(c); setContacts(ct);
+        const lb = new Map<string, string>();
+        for (const r of reqs) {
+          if (r.status === '취소' || !r.contractId) continue;
+          const cur = lb.get(r.contractId);
+          if (!cur || r.ym > cur) lb.set(r.contractId, r.ym);
+        }
+        setLastBilled(lb);
       } catch (er) { setError(er instanceof Error ? er.message : '불러오지 못했습니다.'); }
       finally { setLoading(false); }
     })();
@@ -110,7 +126,9 @@ export default function BizStatusTab() {
   // 월별 매출추이 — 정산연도(Y-07~Y+1-06) 12개월 × 팀, 엔진(발생/청구·감사 회계연도 인식) 기반 공급가액(순액)
   const trend = useMemo(() => {
     const year = trendYear || curSettlementYear;
-    const base = monthIndex(`${year}-07`)!;
+    // 롤링 = 이번 달부터 열두 달. 사업연도 창은 지난 달을 함께 보지만, 예산을 짤 때는
+    // '앞으로 열두 달'이 더 쓸모 있다.
+    const base = rolling ? monthIndex(todayYmd().slice(0, 7))! : monthIndex(`${year}-07`)!;
     const months = Array.from({ length: 12 }, (_, i) => indexToMonth(base + i));
     const from = months[0], to = months[11];
     const byTeam = new Map<string, Map<string, number>>();
@@ -122,7 +140,7 @@ export default function BizStatusTab() {
     const peak = Math.max(1, ...totals);
     let cum = 0; const cumTotals = totals.map((v) => (cum += v));
     return { year, months, byTeam, teamTotal, totals, cumTotals, grand, peak };
-  }, [contracts, trendYear, trendBasis, curSettlementYear]);
+  }, [contracts, trendYear, trendBasis, curSettlementYear, rolling]);
 
   // 선택 정산연도의 월별 실적 로드(biz_revenue_actual)
   useEffect(() => { (async () => {
@@ -186,6 +204,11 @@ export default function BizStatusTab() {
             <button className={trendBasis === 'accrual' ? 'btn-p' : 'btn-sm'} onClick={() => setTrendBasis('accrual')}>매출(발생)</button>
             <button className={trendBasis === 'billing' ? 'btn-p' : 'btn-sm'} onClick={() => setTrendBasis('billing')}>청구</button>
           </span>
+          <label style={{ fontSize: 11.5, cursor: 'pointer' }}
+            title="사업연도(7월~익6월) 대신 이번 달부터 열두 달을 봅니다 — 예산을 짤 때 쓰는 창입니다">
+            <input type="checkbox" checked={rolling} onChange={(e) => setRolling(e.target.checked)} />
+            {' '}앞으로 12개월
+          </label>
           <span style={{ fontSize: 10.5, color: '#a98' }}>공급가액(순액) · 회계감사 매출은 회계연도 월할 · 옅은 월 = 미경과(예정)</span>
         </div>
         <div style={{ overflowX: 'auto' }}>
@@ -228,12 +251,32 @@ export default function BizStatusTab() {
                   {trend.months.map((m, i) => <td key={m} style={{ ...tdc, textAlign: 'right' }}>{won(actualTrend.cumTotals[i])}</td>)}
                   <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}></td>
                 </tr>
+                <tr style={{ borderTop: '1px solid #d4e4d4', fontWeight: 700 }}>
+                  <td style={{ ...tdc, position: 'sticky', left: 0, background: '#fbf8ef' }}
+                    title="실적 − 계획. (+)는 계획보다 더 나온 달, (−)는 덜 나온 달입니다.">차이(실적−계획)</td>
+                  {trend.months.map((m, i) => {
+                    const d = actualTrend.totals[i] - trend.totals[i];
+                    const future = m > todayMonth;
+                    return (
+                      <td key={m} style={{ ...tdc, textAlign: 'right', color: future ? '#ccc' : d > 0 ? '#274' : d < 0 ? '#c33' : '#bbb' }}>
+                        {future || !d ? '·' : `${d > 0 ? '+' : ''}${won(d)}`}
+                      </td>
+                    );
+                  })}
+                  <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a', color: actualTrend.grand - trend.grand >= 0 ? '#274' : '#c33' }}>
+                    {actualTrend.grand - trend.grand >= 0 ? '+' : ''}{won(actualTrend.grand - trend.grand)}
+                  </td>
+                </tr>
               </>)}
             </tbody>
           </table>
         </div>
         {actualTrend.has && <div style={{ fontSize: 10.5, color: '#798', marginTop: 4 }}>※ 위 3행(팀별·합계·누계)=계약 기준 {trendBasis === 'accrual' ? '매출(발생)' : '청구'} projection · 아래 <b style={{ color: '#274' }}>실적(청구)</b>=실제 청구실적(biz_revenue_actual). 계약 vs 실적 비교.</div>}
       </div>
+
+      {/* 이탈 위험 · 신규 유입 — 예산의 가정이 흔들리는 곳 */}
+      <ChurnRiskPanel contracts={contracts} entMap={entMap} lastBilled={lastBilled} today={todayYmd()} />
+      <InflowPanel contracts={contracts} today={todayYmd()} />
 
       {/* 예산 */}
       <BudgetPanel contracts={contracts} entMap={entMap} />

@@ -16,6 +16,8 @@ import {
   assignReceipt, excludeReceipts, rematchReceipts,
   type Receipt, type LedgerRead, type UploadState,
 } from '../../lib/receiptApi';
+import { agingReport, notifyOverdue, type AgingRow } from '../../lib/agingApi';
+import { AgingPanel, AgingDetail } from './AgingPanel';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 const dash = <span style={{ color: '#CCC' }}>—</span>;
@@ -43,7 +45,8 @@ const prevMonth = () => {
 };
 
 interface Row {
-  placeId: string; code: string; name: string; placeName: string; cpa: string; teams: string[];
+  placeId: string; code: string; name: string; placeName: string;
+  cpa: string; staff: string; teams: string[];
   opening: number; issued: number; paid: number; balance: number;
 }
 
@@ -67,6 +70,11 @@ export default function ReceivableTab() {
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [showUploads, setShowUploads] = useState(false);
   const [showUnmatched, setShowUnmatched] = useState(false);
+  const [tab, setTab] = useState<'balance' | 'aging'>('balance');
+  const [aging, setAging] = useState<AgingRow[]>([]);
+  const [agingBusy, setAgingBusy] = useState(false);
+  const [detail, setDetail] = useState<AgingRow | null>(null);
+  const [overdueOnly, setOverdueOnly] = useState(false);
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3500); };
 
@@ -93,7 +101,8 @@ export default function ReceivableTab() {
         byPlace.set(p.id, {
           placeId: p.id, code: `${e.code}-${String(p.placeNo).padStart(2, '0')}`,
           name: corpDisplayName(e.name, e.corpForm, e.corpFormPosition), placeName: p.placeName,
-          cpa: p.cpa || '', teams: p.salesTeams ?? [],
+          cpa: p.cpa || '', staff: (p.staff ?? []).map((x) => x.staffName).join(','),
+          teams: p.salesTeams ?? [],
           opening: 0, issued: 0, paid: 0, balance: 0,
         });
       }
@@ -129,6 +138,42 @@ export default function ReceivableTab() {
   }, [rows, q, onlyOpen]);
 
   const sum = (f: (r: Row) => number) => view.reduce((s, r) => s + f(r), 0);
+
+  /** 나이 분석의 기준일 = 고른 달의 말일. 오늘이 그 달 안이면 오늘로 본다. */
+  const asOf = useMemo(() => {
+    const [y, m] = ym.split('-').map(Number);
+    const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+    const today = todayYmd();
+    return today < end ? today : end;
+  }, [ym]);
+
+  const placeInfos = useMemo(() => rows.map((r) => ({
+    placeId: r.placeId, code: r.code, company: r.name, place: r.placeName,
+    cpa: r.cpa, staff: r.staff, team: (r.teams ?? []).join(','),
+  })), [rows]);
+
+  useEffect(() => {
+    if (tab !== 'aging') return;
+    let alive = true;
+    setAgingBusy(true);
+    void agingReport(asOf, placeInfos, team || undefined)
+      .then((a) => { if (alive) setAging(a); })
+      .catch(() => { if (alive) setAging([]); })
+      .finally(() => { if (alive) setAgingBusy(false); });
+    return () => { alive = false; };
+  }, [tab, asOf, placeInfos, team]);
+
+  const agingView = useMemo(() => {
+    let l = aging;
+    if (overdueOnly) l = l.filter((r) => r.overdue > 0);
+    if (q.trim()) {
+      const k = q.trim().toLowerCase();
+      l = l.filter((r) => (r.code + r.company + r.place + r.cpa + r.staff).toLowerCase().includes(k));
+    }
+    return l;
+  }, [aging, overdueOnly, q]);
+  const overdueRows = aging.filter((r) => r.overdue > 0);
+  const freshOverdue = overdueRows.filter((r) => !r.notified);
   const unmatched = receipts.filter((c) => c.ym <= ym && !c.placeId && !c.excluded);
   const excluded = receipts.filter((c) => c.ym <= ym && !c.placeId && c.excluded);
   /** 사업장 고르기 후보 — 코드·상호·사업장명으로 찾는다. */
@@ -341,6 +386,30 @@ export default function ReceivableTab() {
           onExclude={(ids, on) => run(() => excludeReceipts(ids, on), on ? '✓ 제외했습니다' : '✓ 되돌렸습니다')} />
       )}
 
+      <div style={{ display: 'flex', gap: 4, margin: '12px 0 8px' }}>
+        <button className={tab === 'balance' ? 'btn-p' : 'btn-sm'} onClick={() => setTab('balance')}>
+          거래처별 잔액
+        </button>
+        <button className={tab === 'aging' ? 'btn-p' : 'btn-sm'} onClick={() => setTab('aging')}>
+          🕰️ 미수금 나이(aging){overdueRows.length > 0 ? ` · 6개월↑ ${overdueRows.length}곳` : ''}
+        </button>
+      </div>
+
+      {tab === 'aging' && (
+        <AgingPanel
+          rows={agingView} asOf={asOf} busy={agingBusy || busy}
+          q={q} setQ={setQ} overdueOnly={overdueOnly} setOverdueOnly={setOverdueOnly}
+          canWrite={canWrite} freshOverdue={freshOverdue.length}
+          onDetail={setDetail}
+          onNotify={() => void run(async () => {
+            const { sent, people, places } = await notifyOverdue(freshOverdue, asOf);
+            if (!sent) throw new Error('보낼 대상을 찾지 못했습니다. 담당 회계사·담당직원이 지정되어 있는지 확인해 주세요.');
+            flash(`✓ ${people.join('·')} 에게 ${places}곳 알림을 보냈습니다`);
+          }, '')} />
+      )}
+      {detail && <AgingDetail row={detail} asOf={asOf} onClose={() => setDetail(null)} />}
+
+      {tab === 'balance' && (<>
       <div className="sbar">
         <input placeholder="🔍 거래처·사업장·코드·담당CPA" value={q} onChange={(e) => setQ(e.target.value)} />
         <label style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
@@ -390,6 +459,7 @@ export default function ReceivableTab() {
           </tfoot>
         </table>
       </div>
+      </>)}
     </div>
   );
 }
