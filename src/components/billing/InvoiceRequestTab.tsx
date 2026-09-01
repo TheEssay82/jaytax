@@ -89,8 +89,10 @@ export default function InvoiceRequestTab() {
   const pickedSupply = picked.reduce((s, c) => s + c.supplyAmount, 0);
   const pickedReqs = reqs.filter((r) => pickReq.has(r.id));
 
-  const sum = (list: InvoiceRequest[]) => list.reduce((s, r) => s + r.total, 0);
-  const sumSupply = (list: InvoiceRequest[]) => list.reduce((s, r) => s + r.supplyAmount, 0);
+  // 합계는 **취소를 뺀** 살아있는 건만 더한다 — 취소분이 섞이면 엑셀·ERP 대조가 그대로 어긋난다.
+  const live = (list: InvoiceRequest[]) => list.filter((r) => r.status !== '취소');
+  const sum = (list: InvoiceRequest[]) => live(list).reduce((s, r) => s + r.total, 0);
+  const sumSupply = (list: InvoiceRequest[]) => live(list).reduce((s, r) => s + r.supplyAmount, 0);
   const stat = useMemo(() => ({
     요청: reqs.filter((r) => r.status === '요청'),
     발행완료: reqs.filter((r) => r.status === '발행완료'),
@@ -392,7 +394,7 @@ export default function InvoiceRequestTab() {
       <div style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
-            ② 발행요청 목록 ({reqView.length}건 · <span title="부가세 별도 — 엑셀·ERP의 공급가액과 맞춰 보는 기준">공급가액 {won(sumSupply(reqView))}</span>
+            ② 발행요청 목록 ({live(reqView).length}건{reqView.length !== live(reqView).length && <span style={{ fontWeight: 400, color: '#999' }}> (+취소 {reqView.length - live(reqView).length})</span>} · <span title="부가세 별도 — 엑셀·ERP의 공급가액과 맞춰 보는 기준. 취소분은 빠집니다">공급가액 {won(sumSupply(reqView))}</span>
             {' · '}<span style={{ fontWeight: 400, color: '#666' }}>합계(VAT포함) {won(sum(reqView))}</span>)
           </b>
           {canWrite && (
