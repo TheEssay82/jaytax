@@ -1,5 +1,9 @@
-// 거래처관리 › 거래처현황조회 (거래처관리 2.0.0 · step 4)
-// 거래처·사업장·매출계약·담당자를 통합해 현황 목록 + 통계(팀별·CPA별·유형별 연환산 매출 집계).
+// 거래처관리 › 현황및예산조회
+//
+// **앞을 보는 화면**이다 — 계약이 지금 이대로 굴러가면 얼마가 되는지(연환산),
+// 앞으로 열두 달 어떻게 들어오는지(추이), 예산과 견주면 어떤지를 본다.
+// 실제로 청구한 금액은 여기서 세지 않는다 — 그것은 기장등청구관리 › **매출통계**의 몫이다.
+// 두 화면이 다른 숫자를 내놓는 것은 정상이다(이쪽은 계약, 저쪽은 청구 기록).
 import { useEffect, useMemo, useState } from 'react';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import { listSalesContracts, type SalesContract, type BillingCycle } from '../../lib/salesContractApi';
@@ -140,7 +144,13 @@ export default function BizStatusTab() {
 
   return (
     <div className="card">
-      <div className="chdr">📊 거래처현황조회</div>
+      <div className="chdr">📈 현황및예산조회</div>
+      <div className="alert-i" style={{ fontSize: 11 }}>
+        <b>앞을 보는 화면</b>입니다 — 계약이 이대로 굴러갈 때의 <b>연환산 매출</b>,
+        앞으로의 <b>월별 추이</b>, <b>예산</b>과의 비교를 봅니다.
+        <br />실제로 청구·발행한 금액은 기장등청구관리 › <b>매출통계</b>에서 봅니다.
+        이쪽은 <b>계약</b>에서, 저쪽은 <b>청구 기록</b>에서 나오므로 두 숫자가 다른 것이 정상입니다.
+      </div>
       {error && <div style={{ color: '#c33', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
       {/* 요약 카드 */}

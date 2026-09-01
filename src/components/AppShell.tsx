@@ -50,7 +50,13 @@ import DevNotesModal from './common/DevNotesModal';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
 // children: 중분류가 하위 소분류를 가지면 클릭·호버 시 플라이아웃 서브메뉴로 펼친다(컨테이너 자체는 페이지 없음).
-type MenuItem = { id: string; label: string; cap?: Capability; children?: MenuItem[] };
+type MenuItem = {
+  id: string; label: string; cap?: Capability; children?: MenuItem[];
+  /** 이 사람들에게는 내놓지 않는다(권한이 아니라 '볼 일이 없다'는 뜻의 가림). */
+  hideFor?: readonly string[];
+  /** 이 사람에게만 내놓는다. */
+  onlyFor?: readonly string[];
+};
 type MenuGroup = { id: string; label: string; items: MenuItem[] };
 
 export const MENU_GROUPS: MenuGroup[] = [
@@ -61,7 +67,7 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'biz-register', label: '🏢 거래처등록' },
       { id: 'biz-contract', label: '📄 매출계약등록' },
       { id: 'biz-contacts', label: '👤 거래처담당자등록' },
-      { id: 'biz-status', label: '📊 거래처현황조회' },
+      { id: 'biz-status', label: '📈 현황및예산조회' },
     ],
   },
   {
@@ -72,8 +78,10 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'audit-invoice', label: '🧾 발행요청 · 감사팀' },
       { id: 'erp-reconcile', label: '📥 ERP 발행내역 대사' },
       { id: 'receivable', label: '💰 수금·미수금' },
-      { id: 'staff-revenue', label: '📊 담당별 매출' },
-      { id: 'receivable-opening', label: '⚙️ 기초 미수금 입력' },
+      // 매출통계는 회계사·관리자가 보는 자리다. 실무 담당자에게는 굳이 내놓지 않는다.
+      { id: 'staff-revenue', label: '📊 매출통계', hideFor: ['김민섭', '김동주'] },
+      // 기초미수금은 2026-07-01 시점에 한 번 넣은 값이다. 다음 사업연도 이월 때만 다시 쓴다.
+      { id: 'receivable-opening', label: '⚙️ 기초 미수금 입력', onlyFor: ['정우철'] },
     ],
   },
   {
@@ -146,7 +154,7 @@ export default function AppShell() {
 }
 
 function Shell() {
-  const { user, signOut, role, readonly } = useAuth();
+  const { user, signOut, role, readonly, profileName } = useAuth();
   const { resetNew } = useWizard();
   const [curTab, setCurTab] = useState('home');
   const [reloadKey, setReloadKey] = useState(0);
@@ -166,6 +174,9 @@ function Shell() {
   const allowed = (it: MenuItem) => {
     if (isExternal) return EXTERNAL_ALLOWED_TABS.has(it.id);
     if (isPerHead && PER_HEAD_HIDDEN_TABS.has(it.id)) return false;
+    if (it.hideFor?.includes(profileName)) return false;
+    // 이름이 다르게 저장돼 있어 관리자가 자기 메뉴를 못 찾는 일은 없어야 한다.
+    if (it.onlyFor && !it.onlyFor.includes(profileName) && role !== 'superuser') return false;
     return !it.cap || can(role, it.cap);
   };
   const visibleGroups = MENU_GROUPS
