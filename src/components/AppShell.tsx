@@ -23,6 +23,7 @@ import RequestsTab from './requests/RequestsTab';
 import TargetSelectionTab from './targets/TargetSelectionTab';
 import InvoiceRequestTab from './billing/InvoiceRequestTab';
 import ErpReconcileTab from './billing/ErpReconcileTab';
+import AuditInvoiceTab from './billing/AuditInvoiceTab';
 import ReceivableOpeningTab from './billing/ReceivableOpeningTab';
 import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
@@ -65,7 +66,8 @@ export const MENU_GROUPS: MenuGroup[] = [
     id: 'billing-req',
     label: '기장등청구관리',
     items: [
-      { id: 'invoice-request', label: '🧾 세금계산서 발행요청' },
+      { id: 'invoice-request', label: '🧾 발행요청 · taxteam' },
+      { id: 'audit-invoice', label: '🧾 발행요청 · 감사팀' },
       { id: 'erp-reconcile', label: '📥 ERP 발행내역 대사' },
       { id: 'receivable-opening', label: '💰 기초 미수금' },
     ],
@@ -434,6 +436,8 @@ function TabContent({
       return <BizStatusTab />;
     case 'invoice-request':
       return <InvoiceRequestTab />;
+    case 'audit-invoice':
+      return <AuditInvoiceTab />;
     case 'erp-reconcile':
       return <ErpReconcileTab />;
     case 'receivable-opening':

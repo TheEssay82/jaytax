@@ -63,6 +63,9 @@ export interface InvoiceRequest {
   docEmail: string;
   issueDate: string | null;
   issuedByName: string;         // 발행완료를 누른 사람(누가 처리했는지 화면에 보인다)
+  requestedByName: string;      // 요청한 사람(감사팀 건별에서 '발행요청자')
+  phase: string;                // 계약금·중도금·잔금·총액 (감사팀 건별)
+  summary: string;              // 발행 시 적요
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -75,6 +78,8 @@ const toReq = (r: any): InvoiceRequest => ({
   team: r.team || 'taxteam', erpAccount: r.erp_account || '', docEmail: r.doc_email || '',
   issueDate: r.issue_date ?? null,
   issuedByName: r.issued_by_name || '',
+  requestedByName: r.requested_by_name || '',
+  phase: r.phase || '', summary: r.summary || '',
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -90,13 +95,17 @@ export async function listInvoiceRequests(ym?: string, team?: string): Promise<I
   if (error) throw new Error(error.message);
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const rows = (data as any[]) ?? [];
-  const ids = [...new Set(rows.map((r) => r.issued_by).filter(Boolean))];
+  const ids = [...new Set(rows.flatMap((r) => [r.issued_by, r.requested_by]).filter(Boolean))];
   let names = new Map<string, string>();
   if (ids.length) {
     const { data: p } = await supabase.from('profiles').select('id, name').in('id', ids);
     names = new Map((p as any[] ?? []).map((x) => [x.id as string, ((x.name as string) || '').trim()]));
   }
-  return rows.map((r) => toReq({ ...r, issued_by_name: names.get(r.issued_by) ?? '' }));
+  return rows.map((r) => toReq({
+    ...r,
+    issued_by_name: names.get(r.issued_by) ?? '',
+    requested_by_name: names.get(r.requested_by) ?? '',
+  }));
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
@@ -249,6 +258,42 @@ async function syncContractBillingMonth(ym: string, rows: InvoiceCandidate[]): P
 }
 
 /** 발행완료 처리 — 세금계산서 번호·발행일 기록 */
+/** 감사팀 건별 발행요청 — 계약 없이도 등록된다(계약금/중도금/잔금이 건별로 생기므로). */
+export interface ManualInvoiceInput {
+  ym: string;
+  team: string;
+  entityId: string;
+  placeId: string | null;
+  contractId?: string | null;
+  supplyAmount: number;
+  erpAccount: string;
+  phase: string;
+  summary: string;
+  issueDate: string;
+  docEmail: string;
+  companyName: string;
+  placeName: string;
+  contractCode?: string;
+  note?: string;
+}
+export async function createManualInvoiceRequest(input: ManualInvoiceInput): Promise<string> {
+  const { data: u } = await supabase.auth.getUser();
+  const vat = Math.round(input.supplyAmount * VAT_RATE);
+  const { data, error } = await supabase.from('biz_invoice_request').insert({
+    ym: input.ym, team: input.team, entity_id: input.entityId, place_id: input.placeId,
+    contract_id: input.contractId ?? null,
+    supply_amount: input.supplyAmount, vat, total: input.supplyAmount + vat,
+    status: '요청', erp_account: input.erpAccount || null, phase: input.phase || null,
+    summary: input.summary || null, issue_date: input.issueDate || null,
+    doc_email: input.docEmail || null,
+    company_name: input.companyName, place_name: input.placeName,
+    contract_code: input.contractCode ?? '', note: input.note ?? null,
+    requested_by: u.user?.id ?? null,
+  }).select('id').single();
+  if (error) throw new Error(error.message);
+  return (data as { id: string }).id;
+}
+
 export async function markIssued(ids: string[], invoiceNo: string | null, issuedDate: string): Promise<void> {
   if (!ids.length) return;
   const { data: u } = await supabase.auth.getUser();
