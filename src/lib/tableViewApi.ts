@@ -14,6 +14,7 @@ export const EMPTY_VIEW: TableViewSettings = { widths: {}, hidden: [] };
 export const VIEW_KEYS = {
   bizRegistry: 'biz_registry',
   salesContract: 'sales_contract',
+  bizContacts: 'biz_contacts',
 } as const;
 
 export async function loadTableView(viewKey: string): Promise<TableViewSettings | null> {
