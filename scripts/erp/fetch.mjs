@@ -338,6 +338,11 @@ const REPORTS = {
   clients: ['거래처 마스터', fetchClients],
 };
 
+// 매달 받을 필요가 없는 것 — `--only clients` 로 부를 때만 받는다.
+// 거래처 마스터는 전사 7만 건·90MB 라서 월마다 쌓으면 드롭박스만 무거워진다.
+// 새 거래처의 ERP 코드를 붙일 때만 한 번씩 받으면 된다.
+const OPT_IN = new Set(['clients']);
+
 const URLS = {
   slip: `${ERP}/apps/invjunpyo/invjunpyonolist.jsp?PageAction=OrderByNo`,
   unpaid: `${ERP}/apps/sales/accfirm/arlistbybucode.jsp?menu=BCC&ReadBU=1`,
@@ -433,7 +438,7 @@ async function main() {
     await s.open();
     console.log('');
     for (const [key, [label, fn]] of Object.entries(REPORTS)) {
-      if (only.length && !only.includes(key)) continue;
+      if (only.length ? !only.includes(key) : OPT_IN.has(key)) continue;
       console.log(`  ${label} …`);
       if (!s.alive()) await s.reopen();
       try {
