@@ -4,16 +4,18 @@
 // 회계 실무의 통상대로 **오래된 것부터 갚은 것으로 본다(FIFO)**. 그 가정을 화면에 적어 둔다 —
 // 숫자만 보고 사실인 줄 알면 안 되기 때문이다.
 import { useState } from 'react';
-import { BUCKETS, OVERDUE_DAYS, type AgingRow } from '../../lib/agingApi';
+import { BUCKETS, OVERDUE_DAYS, type AgingRow, type AgingSource } from '../../lib/agingApi';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 
 export function AgingPanel({
-  rows, asOf, busy, q, setQ, overdueOnly, setOverdueOnly, canWrite, freshOverdue, onDetail, onNotify,
+  rows, asOf, busy, source, q, setQ, overdueOnly, setOverdueOnly, canWrite, freshOverdue, onDetail, onNotify,
 }: {
   rows: AgingRow[];
   asOf: string;
   busy: boolean;
+  /** 나이를 무엇으로 쟀는가 — 대장이면 실제 발행일, 아니면 추정. */
+  source: AgingSource;
   q: string;
   setQ: (v: string) => void;
   overdueOnly: boolean;
@@ -37,12 +39,19 @@ export function AgingPanel({
   return (
     <div style={{ marginBottom: 12 }}>
       <div className="alert-i" style={{ fontSize: 11 }}>
-        <b>{asOf}</b> 기준으로 남아 있는 채권을 <b>나이별</b>로 나눈 것입니다. 나이는 <b>발행일부터 오늘까지</b>입니다.
-        <br />ERP 는 입금을 청구건에 연결하지 않으므로(입금 전표에 거래#가 없습니다),
-        <b> 오래된 것부터 갚은 것으로 봅니다(FIFO)</b>. 실제로 어느 건을 지정해 입금했다면 실제와 다를 수 있습니다.
-        <br />채권은 <b>기초미수금 + 발행완료된 청구</b>(VAT 포함)입니다 — 아직 <b>요청</b> 상태인 건은 채권이 아닙니다.
-        <br />⚠️ <b>기초미수금은 2026-07-01 에 발행된 것으로 봅니다</b> — ERP 기초잔액에는 원래 발행일이 없기 때문입니다.
-        실제로는 그보다 오래 묵은 채권일 수 있으니, 기초분의 나이는 <b>최소치</b>로 보세요.
+        <b>{asOf}</b> 기준으로 남아 있는 채권을 <b>나이별</b>로 나눈 것입니다. 나이는 <b>발행일부터 기준일까지</b>입니다.
+        {source === '미수금대장' ? (
+          <>
+            <br />근거: <b style={{ color: '#2a7' }}>ERP 미수금대장</b> — 건별 invoiceNo(거래전표번호)의 전표일이 곧 발행일이고,
+            잔금은 ERP 가 건별로 맞춰 둔 값입니다. <b>추정이 들어가지 않습니다.</b>
+          </>
+        ) : (
+          <>
+            <br />근거: <b style={{ color: '#a15' }}>추정</b> — 이 달 미수금대장이 아직 올라오지 않았습니다.
+            기초미수금(2026-07-01)과 발행완료 청구를 <b>오래된 것부터 갚은 것으로</b> 상계해(FIFO) 나이를 잽니다.
+            <b> 미수금대장을 올리면 실제 발행일로 바뀝니다.</b>
+          </>
+        )}
       </div>
 
       <div className="sbar">

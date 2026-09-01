@@ -6,6 +6,7 @@
 // 이 가정이 곧 이 화면의 전부이므로, 화면에도 그대로 적어 둔다.
 import { supabase } from './supabase';
 import { OPENING_AS_OF } from './invoiceRequestApi';
+import { listArItems } from './arLedgerApi';
 
 /** 나이 구간 — 경계는 '기준일 − 발행일'의 날수. */
 export const BUCKETS = [
@@ -19,6 +20,9 @@ export type BucketKey = (typeof BUCKETS)[number]['key'];
 
 /** 6개월 = 180일. 이 선을 넘은 잔액이 알림 대상이다. */
 export const OVERDUE_DAYS = 180;
+
+/** 이 나이 분석이 무엇에 근거했는가 — 화면이 그대로 밝혀야 한다. */
+export type AgingSource = '미수금대장' | '추정(FIFO)';
 
 export interface AgingRow {
   placeId: string;
@@ -41,8 +45,84 @@ export interface AgingRow {
   items: { date: string; label: string; amount: number; days: number }[];
 }
 
-interface PlaceInfo {
-  placeId: string; code: string; company: string; place: string;
+/**
+ * ERP 미수금대장이 올라와 있으면 **그것으로** 나이를 잰다.
+ *
+ * 대장은 건별로 invoiceNo(= 거래전표번호, 26-0225-0099 → 2026-02-25)와 잔금을 들고 있다.
+ * 즉 "무엇이 언제 발행되어 얼마가 남았나"를 ERP 가 이미 맞춰 두었다 — 추정할 이유가 없다.
+ * 대장이 없는 달만 아래 estimate 로 떨어진다.
+ */
+async function fromLedger(
+  asOf: string, places: PlaceInfo[], team: string | undefined, ym: string,
+): Promise<AgingRow[] | null> {
+  const items = (await listArItems(ym, team)).filter((r) => !r.excluded && Math.round(r.balance) !== 0);
+  if (!items.length) return null;
+
+  const byEntity = new Map<string, PlaceInfo>();
+  const byPlace = new Map<string, PlaceInfo>();
+  for (const p of places) {
+    byPlace.set(p.placeId, p);
+    if (p.entityId && !byEntity.has(p.entityId)) byEntity.set(p.entityId, p);
+  }
+  const ymOfAsOf = asOf.slice(0, 7);
+  const { data: nt } = await supabase.from('biz_receivable_notice').select('place_id').eq('ym', ymOfAsOf);
+  const notified = new Set(((nt as { place_id: string }[]) ?? []).map((r) => r.place_id));
+
+  // 대장은 거래처 단위다 — 사업장이 정해진 줄은 그 사업장으로, 아니면 거래처 대표로 묶는다.
+  const groups = new Map<string, { info: PlaceInfo; items: AgingRow['items'] }>();
+  for (const it of items) {
+    const info = (it.placeId && byPlace.get(it.placeId))
+      || (it.entityId && byEntity.get(it.entityId))
+      || null;
+    if (!info) continue;                       // 거래처를 못 붙인 줄은 아래에서 따로 알린다
+    const date = it.issuedDate ?? OPENING_AS_OF;
+    const g = groups.get(info.placeId) ?? { info, items: [] };
+    g.items.push({
+      date,
+      label: `${it.invoiceNo}${it.kind ? ` · ${it.kind}` : ''}${it.phase ? ` ${it.phase}` : ''}`,
+      amount: it.balance,
+      days: days(date, asOf),
+    });
+    groups.set(info.placeId, g);
+  }
+
+  const out: AgingRow[] = [];
+  for (const g of groups.values()) {
+    const left = g.items.sort((a, b) => a.date.localeCompare(b.date));
+    const buckets = Object.fromEntries(BUCKETS.map((b) => [b.key, 0])) as Record<BucketKey, number>;
+    for (const x of left) {
+      const b = BUCKETS.find((k) => x.days >= k.min && x.days <= k.max) ?? BUCKETS[BUCKETS.length - 1];
+      buckets[b.key] += x.amount;
+    }
+    out.push({
+      ...g.info,
+      total: left.reduce((s, x) => s + x.amount, 0),
+      buckets,
+      overdue: left.filter((x) => x.days > OVERDUE_DAYS).reduce((s, x) => s + x.amount, 0),
+      oldestDate: left[0]?.date ?? null,
+      oldestDays: left[0]?.days ?? 0,
+      notified: notified.has(g.info.placeId),
+      items: left,
+    });
+  }
+  return out.sort((a, b) => b.overdue - a.overdue || b.total - a.total);
+}
+
+/** 대장에 있는데 거래처를 못 붙인 줄 — 화면에서 손으로 붙이거나 접을 대상. */
+export async function listArUnmatched(ym: string, team?: string) {
+  const items = (await listArItems(ym, team)).filter((r) => Math.round(r.balance) !== 0);
+  const by = new Map<string, { clientName: string; cpa: string; count: number; balance: number; excluded: boolean }>();
+  for (const it of items) {
+    if (it.entityId || it.placeId) continue;
+    const g = by.get(it.clientName) ?? { clientName: it.clientName, cpa: it.cpa, count: 0, balance: 0, excluded: !!it.excluded };
+    g.count += 1; g.balance += it.balance;
+    by.set(it.clientName, g);
+  }
+  return [...by.values()].sort((a, b) => b.balance - a.balance);
+}
+
+export interface PlaceInfo {
+  placeId: string; entityId?: string; code: string; company: string; place: string;
   cpa: string; staff: string; team: string;
 }
 
@@ -57,6 +137,15 @@ const days = (from: string, to: string) =>
  * · 날짜는 발행일 → 없으면 작성일 → 없으면 귀속월 말일 순으로 본다.
  */
 export async function agingReport(
+  asOf: string, places: PlaceInfo[], team?: string,
+): Promise<{ rows: AgingRow[]; source: AgingSource }> {
+  const ledger = await fromLedger(asOf, places, team, asOf.slice(0, 7));
+  if (ledger) return { rows: ledger, source: '미수금대장' };
+  return { rows: await estimate(asOf, places, team), source: '추정(FIFO)' };
+}
+
+/** 대장이 없는 달의 대비책 — 기초미수금 + 발행완료 청구를 FIFO 로 상계해 나이를 추정한다. */
+async function estimate(
   asOf: string, places: PlaceInfo[], team?: string,
 ): Promise<AgingRow[]> {
   const ymOfAsOf = asOf.slice(0, 7);

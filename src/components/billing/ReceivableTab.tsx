@@ -16,8 +16,15 @@ import {
   assignReceipt, excludeReceipts, rematchReceipts,
   type Receipt, type LedgerRead, type UploadState,
 } from '../../lib/receiptApi';
-import { agingReport, notifyOverdue, type AgingRow } from '../../lib/agingApi';
+import {
+  agingReport, notifyOverdue, listArUnmatched, type AgingRow, type AgingSource,
+} from '../../lib/agingApi';
+import {
+  parseArLedger, attachEntities, saveArItems, listArUploads, assignArClient, excludeArClient,
+  type ArRead, type ArUpload,
+} from '../../lib/arLedgerApi';
 import { AgingPanel, AgingDetail } from './AgingPanel';
+import { AgingLedgerBox } from './AgingLedgerBox';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 const dash = <span style={{ color: '#CCC' }}>—</span>;
@@ -45,7 +52,7 @@ const prevMonth = () => {
 };
 
 interface Row {
-  placeId: string; code: string; name: string; placeName: string;
+  placeId: string; entityId: string; code: string; name: string; placeName: string;
   cpa: string; staff: string; teams: string[];
   opening: number; issued: number; paid: number; balance: number;
 }
@@ -75,6 +82,10 @@ export default function ReceivableTab() {
   const [agingBusy, setAgingBusy] = useState(false);
   const [detail, setDetail] = useState<AgingRow | null>(null);
   const [overdueOnly, setOverdueOnly] = useState(false);
+  const [agingSource, setAgingSource] = useState<AgingSource>('추정(FIFO)');
+  const [arUploads, setArUploads] = useState<ArUpload[]>([]);
+  const [arPreview, setArPreview] = useState<(ArRead & { fileName: string }) | null>(null);
+  const [arUnmatched, setArUnmatched] = useState<Awaited<ReturnType<typeof listArUnmatched>>>([]);
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3500); };
 
@@ -88,6 +99,8 @@ export default function ReceivableTab() {
         listReceivableOpenings(), listInvoiceRequests(), listReceipts(), listUploads(),
       ]);
       setOpenings(o); setReqs(r); setReceipts(rc); setUploads(up); setPreview(null);
+      setArUploads(await listArUploads());
+      setArPreview(null);
     } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); }
     finally { setLoading(false); }
   }, [entities]);
@@ -99,7 +112,7 @@ export default function ReceivableTab() {
     for (const e of entities) {
       for (const p of e.places) {
         byPlace.set(p.id, {
-          placeId: p.id, code: `${e.code}-${String(p.placeNo).padStart(2, '0')}`,
+          placeId: p.id, entityId: e.id, code: `${e.code}-${String(p.placeNo).padStart(2, '0')}`,
           name: corpDisplayName(e.name, e.corpForm, e.corpFormPosition), placeName: p.placeName,
           cpa: p.cpa || '', staff: (p.staff ?? []).map((x) => x.staffName).join(','),
           teams: p.salesTeams ?? [],
@@ -149,6 +162,7 @@ export default function ReceivableTab() {
 
   const placeInfos = useMemo(() => rows.map((r) => ({
     placeId: r.placeId, code: r.code, company: r.name, place: r.placeName,
+    entityId: r.entityId,
     cpa: r.cpa, staff: r.staff, team: (r.teams ?? []).join(','),
   })), [rows]);
 
@@ -157,11 +171,25 @@ export default function ReceivableTab() {
     let alive = true;
     setAgingBusy(true);
     void agingReport(asOf, placeInfos, team || undefined)
-      .then((a) => { if (alive) setAging(a); })
+      .then((a) => { if (alive) { setAging(a.rows); setAgingSource(a.source); } })
       .catch(() => { if (alive) setAging([]); })
       .finally(() => { if (alive) setAgingBusy(false); });
+    void listArUnmatched(asOf.slice(0, 7), team || undefined)
+      .then((u) => { if (alive) setArUnmatched(u); })
+      .catch(() => { if (alive) setArUnmatched([]); });
     return () => { alive = false; };
-  }, [tab, asOf, placeInfos, team]);
+  }, [tab, asOf, placeInfos, team, arUploads]);
+
+  /** 미수금대장 읽기 — 저장은 확인 뒤에. */
+  async function onArFile(file: File) {
+    setBusy(true);
+    try {
+      const read = await parseArLedger(file, ym, team);
+      if (!read.rows.length) throw new Error('미수금대장에서 줄을 하나도 찾지 못했습니다.');
+      setArPreview({ ...read, fileName: file.name });
+    } catch (e) { alert('파일을 읽지 못했습니다.\n\n' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
 
   const agingView = useMemo(() => {
     let l = aging;
@@ -396,8 +424,23 @@ export default function ReceivableTab() {
       </div>
 
       {tab === 'aging' && (
+        <AgingLedgerBox
+          ym={ym} team={team} uploads={arUploads} preview={arPreview} busy={busy} canWrite={canWrite}
+          unmatched={arUnmatched}
+          placeOpts={placeOpts}
+          onFile={onArFile} onCancel={() => setArPreview(null)}
+          onSave={() => void run(async () => {
+            if (!arPreview) return;
+            const rowsWith = attachEntities(arPreview.rows, entities);
+            await saveArItems(ym, team, rowsWith, arPreview.fileName, arPreview);
+            setArPreview(null);
+          }, '✓ 미수금대장을 반영했습니다')}
+          onAssign={(name, opt) => run(() => assignArClient(name, opt.entityId, opt.id).then(() => undefined), '✓ 연결했습니다')}
+          onExclude={(name, on) => run(() => excludeArClient(name, on).then(() => undefined), on ? '✓ 제외했습니다' : '✓ 되돌렸습니다')} />
+      )}
+      {tab === 'aging' && (
         <AgingPanel
-          rows={agingView} asOf={asOf} busy={agingBusy || busy}
+          rows={agingView} asOf={asOf} busy={agingBusy || busy} source={agingSource}
           q={q} setQ={setQ} overdueOnly={overdueOnly} setOverdueOnly={setOverdueOnly}
           canWrite={canWrite} freshOverdue={freshOverdue.length}
           onDetail={setDetail}
