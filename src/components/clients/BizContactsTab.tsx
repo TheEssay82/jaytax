@@ -77,7 +77,8 @@ export default function BizContactsTab() {
     { key: 'note', label: '비고', val: (r) => r.c.note, w: 120 },
   ];
   // 숨긴 열은 표에서만 뺀다 — 필터·정렬은 전체 열 기준 그대로다.
-  const shownCols = CONTACT_COLS.filter((c) => !tv.isHidden(c.key));
+  const orderedCols = tv.orderCols(CONTACT_COLS);       // 개인 표시순서 적용
+  const shownCols = orderedCols.filter((c) => !tv.isHidden(c.key));
   const tableW = shownCols.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 96 : 0);
   const flatContacts = useMemo<CRow[]>(() => contacts.map((c) => ({ c, e: entMap.get(c.entityId) })), [contacts, entMap]);
   const tableRows = useMemo(() => flatContacts.filter(({ c, e }) => {
@@ -129,7 +130,7 @@ export default function BizContactsTab() {
         </span>
         <input placeholder="🔍 거래처·담당자명·연락처·이메일·수령지" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
         {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
-        {viewMode === 'table' && <ColumnSettings cols={CONTACT_COLS} view={tv} onMessage={flash} />}
+        {viewMode === 'table' && <ColumnSettings cols={orderedCols} view={tv} onMessage={flash} />}
         {canWrite && <button className="btn-p" onClick={() => { setShowAdd((s) => !s); setEditId(null); }}>{showAdd ? '닫기' : '＋ 신규 담당자'}</button>}
       </div>
 

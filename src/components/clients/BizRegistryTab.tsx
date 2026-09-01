@@ -192,12 +192,12 @@ export default function BizRegistryTab() {
     { key: 'code', label: '코드', val: (e, p) => (p ? `${e.code}-${String(p.placeNo).padStart(2, '0')}` : e.code), w: 68 },
     { key: 'status', label: '상태', val: (_e, p) => (p ? (p.status === '정상' ? '정상' : `${p.status}${p.statusMonth ? ` ${p.statusMonth}` : ''}`) : ''), w: 76, opts: PLACE_STATUSES },
     { key: 'kind', label: '구분', val: (e) => e.kind, w: 46, opts: ['법인', '개인'] },
+    { key: 'place', label: '사업장명', val: (_e, p) => p?.placeName ?? '', w: 84 },
     { key: 'name', label: '상호/성명', val: (e) => corpDisplayName(e.name, e.corpForm, e.corpFormPosition), w: 150 },
     { key: 'rep', label: '대표', val: (e) => e.representatives.map((r) => r.repName).join(','), w: 54 },
     { key: 'resident', label: '주민번호', w: 112,
       val: (e) => (residents ? fmtRrn(residents.get(e.id) ?? '')
         : (e.kind === '개인' ? (e.hasResidentNo ? '등록됨' : '') : (e.representatives.some((r) => r.hasResidentNo) ? '등록됨' : ''))) },
-    { key: 'place', label: '사업장명', val: (_e, p) => p?.placeName ?? '', w: 84 },
     { key: 'bizno', label: '사업자번호', val: (_e, p) => (p ? (p.bizRegNo || (p.noBiz ? '없음' : '')) : ''), w: 90 },
     { key: 'branch', label: '본/지점', val: (_e, p) => p?.branchType ?? '', w: 54, opts: ['본점', '지점'] },
     { key: 'htid', label: '홈텍스ID', val: (_e, p) => p?.hometaxId ?? '', w: 88 },
@@ -212,7 +212,8 @@ export default function BizRegistryTab() {
     { key: 'note', label: '비고', val: (e, p) => p?.note || e.note, w: 120 },
   ];
   // 숨긴 열은 표에서 빼되, 필터·정렬 로직은 전체 COLUMNS 기준을 그대로 둔다(숨겨도 걸어둔 필터는 유효).
-  const shownCols = COLUMNS.filter((c) => !tv.isHidden(c.key));
+  const orderedCols = tv.orderCols(COLUMNS);            // 개인 표시순서 적용
+  const shownCols = orderedCols.filter((c) => !tv.isHidden(c.key));
   const tableW = (canWrite ? 26 : 0) + shownCols.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 100 : 0);
   const flatRows = useMemo(() => view.flatMap((e) => (e.places.length ? e.places.map((p) => ({ e, p: p as BizPlace | null })) : [{ e, p: null as BizPlace | null }])), [view]);
   const tableRows = useMemo(() => flatRows.filter(({ e, p }) => COLUMNS.every((c) => {
@@ -406,7 +407,7 @@ export default function BizRegistryTab() {
             {residents || hometaxPws ? '🔒 주민번호및PASS 가리기' : '🔓 주민번호및PASS 보기'}
           </button>
         )}
-        {viewMode === 'table' && <ColumnSettings cols={COLUMNS} view={tv} onMessage={flash} />}
+        {viewMode === 'table' && <ColumnSettings cols={orderedCols} view={tv} onMessage={flash} />}
         {canWrite && (
           <button className="btn-p" onClick={() => setShowAdd((s) => !s)}>{showAdd ? '닫기' : '＋ 신규 거래처'}</button>
         )}
@@ -585,6 +586,7 @@ export default function BizRegistryTab() {
                       <span style={{ display: 'flex', gap: 3 }}>
                         <button className="btn-sm btn-sm-blue" onClick={() => setEditEntity(e)}>거래처</button>
                         {p && <button className="btn-sm btn-sm-blue" onClick={() => setEditPlace({ place: p, entity: e })}>사업장</button>}
+                        <button className="btn-sm" onClick={() => setAddPlaceFor(e)} title="이 거래처에 사업장을 하나 더 추가">＋</button>
                       </span>
                     </td>
                   )}

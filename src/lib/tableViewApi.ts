@@ -7,8 +7,10 @@ import { supabase } from './supabase';
 export interface TableViewSettings {
   widths: Record<string, number>;
   hidden: string[];
+  /** 열 표시순서(열키 배열). 비어 있으면 화면의 기본 순서를 쓴다. */
+  order: string[];
 }
-export const EMPTY_VIEW: TableViewSettings = { widths: {}, hidden: [] };
+export const EMPTY_VIEW: TableViewSettings = { widths: {}, hidden: [], order: [] };
 
 /** 화면 식별자 — 표 하나당 하나. 값이 바뀌면 저장해 둔 설정과 끊어지니 함부로 고치지 말 것. */
 export const VIEW_KEYS = {
@@ -27,7 +29,7 @@ export async function loadTableView(viewKey: string): Promise<TableViewSettings 
   if (error) throw new Error(error.message);
   const s = (data as { settings?: Partial<TableViewSettings> } | null)?.settings;
   if (!s) return null;
-  return { widths: s.widths ?? {}, hidden: s.hidden ?? [] };
+  return { widths: s.widths ?? {}, hidden: s.hidden ?? [], order: s.order ?? [] };
 }
 
 export async function saveTableView(viewKey: string, settings: TableViewSettings): Promise<void> {

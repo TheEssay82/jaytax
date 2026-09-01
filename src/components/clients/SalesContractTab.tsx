@@ -193,7 +193,8 @@ export default function SalesContractTab() {
     { key: 'note', label: '비고', val: (c) => c.note, w: 120 },
   ];
   // 숨긴 열은 표에서만 뺀다 — 필터·정렬·합계 계산은 전체 COLUMNS 기준 그대로다.
-  const shownCols = COLUMNS.filter((c) => !tv.isHidden(c.key));
+  const orderedCols = tv.orderCols(COLUMNS);            // 개인 표시순서 적용
+  const shownCols = orderedCols.filter((c) => !tv.isHidden(c.key));
   const tableW = shownCols.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 96 : 0);
   const tableRows = useMemo(() => contracts.filter((c) => COLUMNS.every((col) => {
     const fv = (colF[col.key] || '').trim().toLowerCase();
@@ -551,7 +552,7 @@ export default function SalesContractTab() {
           </span>
         )}
         {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
-        {viewMode === 'table' && <ColumnSettings cols={COLUMNS} view={tv} onMessage={flash} />}
+        {viewMode === 'table' && <ColumnSettings cols={orderedCols} view={tv} onMessage={flash} />}
         {canWrite && <button className="btn-p" onClick={() => { setShowAdd((s) => !s); setEditId(null); }}>{showAdd ? '닫기' : '＋ 신규 매출계약'}</button>}
       </div>
 

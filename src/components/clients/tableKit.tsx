@@ -115,6 +115,7 @@ const selStyle: React.CSSProperties = { width: '100%', fontSize: 10.5, padding: 
 export function useTableView(viewKey: string) {
   const [widths, setWidths] = useState<Record<string, number>>({});
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [order, setOrder] = useState<string[]>([]);
   const [saved, setSaved] = useState<TableViewSettings>(EMPTY_VIEW);
   const [loaded, setLoaded] = useState(false);
 
@@ -123,7 +124,7 @@ export function useTableView(viewKey: string) {
     void loadTableView(viewKey)
       .then((s) => {
         if (!alive) return;
-        if (s) { setWidths(s.widths); setHidden(new Set(s.hidden)); setSaved(s); }
+        if (s) { setWidths(s.widths); setHidden(new Set(s.hidden)); setOrder(s.order); setSaved(s); }
         setLoaded(true);
       })
       .catch(() => { if (alive) setLoaded(true); });   // 설정을 못 읽어도 표는 기본값으로 뜬다
@@ -137,6 +138,34 @@ export function useTableView(viewKey: string) {
   const toggleHidden = (key: string) =>
     setHidden((p) => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const showAll = () => setHidden(new Set());
+
+  /**
+   * 저장해 둔 표시순서를 적용한다.
+   * 저장 당시 없던 열(나중에 추가된 열)은 사라지지 않고 원래 순서대로 뒤에 붙는다.
+   */
+  const orderCols = useCallback(<T extends { key: string }>(cols: T[]): T[] => {
+    if (!order.length) return cols;
+    const rest = new Map(cols.map((c) => [c.key, c]));
+    const out: T[] = [];
+    for (const k of order) { const c = rest.get(k); if (c) { out.push(c); rest.delete(k); } }
+    for (const c of cols) if (rest.has(c.key)) out.push(c);
+    return out;
+  }, [order]);
+  /** 열을 한 칸 위/아래로. keys 는 지금 화면에 그려지는 순서 그대로여야 한다. */
+  const moveCol = (keys: string[], key: string, dir: -1 | 1) => {
+    const i = keys.indexOf(key), j = i + dir;
+    if (i < 0 || j < 0 || j >= keys.length) return;
+    const next = [...keys];
+    [next[i], next[j]] = [next[j], next[i]];
+    setOrder(next);
+  };
+  /** 끌어 놓기로 순서 바꾸기 — from 을 to 자리에 끼워 넣는다. */
+  const dropCol = (keys: string[], from: string, to: string) => {
+    if (from === to) return;
+    const next = keys.filter((k) => k !== from);
+    next.splice(next.indexOf(to), 0, from);
+    setOrder(next);
+  };
 
   const startResize = (key: string, cur: number) => (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -152,22 +181,27 @@ export function useTableView(viewKey: string) {
     document.body.style.cursor = 'col-resize';
   };
 
-  const current = useCallback((): TableViewSettings => ({ widths, hidden: [...hidden].sort() }), [widths, hidden]);
-  const dirty = JSON.stringify(current()) !== JSON.stringify({ widths: saved.widths, hidden: [...saved.hidden].sort() });
+  const current = useCallback((): TableViewSettings => ({ widths, hidden: [...hidden].sort(), order }), [widths, hidden, order]);
+  const dirty = JSON.stringify(current())
+    !== JSON.stringify({ widths: saved.widths, hidden: [...saved.hidden].sort(), order: saved.order });
 
   const save = async () => { const s = current(); await saveTableView(viewKey, s); setSaved(s); };
   /** 저장분까지 지우고 기본 화면으로. */
   const reset = async () => {
     await clearTableView(viewKey);
-    setWidths({}); setHidden(new Set()); setSaved(EMPTY_VIEW);
+    setWidths({}); setHidden(new Set()); setOrder([]); setSaved(EMPTY_VIEW);
   };
 
-  return { widthOf, setWidth, startResize, isHidden, toggleHidden, showAll, hiddenCount: hidden.size, dirty, save, reset, loaded };
+  return {
+    widthOf, setWidth, startResize, isHidden, toggleHidden, showAll, hiddenCount: hidden.size,
+    orderCols, moveCol, dropCol,
+    dirty, save, reset, loaded,
+  };
 }
 
 /**
- * 열 설정 패널 — 열 체크로 숨기고/보이고, 개인 설정으로 저장한다.
- * cols 는 표가 쓰는 컬럼 정의 그대로(키·라벨만 본다).
+ * 열 설정 패널 — 열 숨김·표시순서를 정하고 개인 설정으로 저장한다.
+ * cols 는 **지금 표에 그려지는 순서 그대로**(숨긴 열 포함) 넘겨야 위/아래 이동이 맞는다.
  */
 export function ColumnSettings({ cols, view, onMessage }: {
   cols: readonly { key: string; label: string }[];
@@ -176,6 +210,8 @@ export function ColumnSettings({ cols, view, onMessage }: {
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState<string | null>(null);
+  const keys = cols.map((c) => c.key);
 
   const run = async (fn: () => Promise<void>, ok: string) => {
     setBusy(true);
@@ -187,7 +223,7 @@ export function ColumnSettings({ cols, view, onMessage }: {
   return (
     <span style={{ position: 'relative' }}>
       <button className="btn-sm btn-sm-blue" onClick={() => setOpen((v) => !v)}
-        title="열 숨김·너비를 정하고 내 계정에 저장합니다">
+        title="열 숨김·순서·너비를 정하고 내 계정에 저장합니다">
         ⚙️ 열 설정{view.hiddenCount ? ` (${view.hiddenCount} 숨김)` : ''}{view.dirty ? ' •' : ''}
       </button>
       {open && (
@@ -197,17 +233,35 @@ export function ColumnSettings({ cols, view, onMessage }: {
           <div style={{
             position: 'absolute', top: '110%', left: 0, zIndex: 41, background: '#fff',
             border: '1px solid #ddd', borderRadius: 6, boxShadow: '0 6px 20px rgba(0,0,0,.12)',
-            padding: 10, minWidth: 230, maxHeight: '60vh', overflow: 'auto', textAlign: 'left',
+            padding: 10, minWidth: 268, maxHeight: '60vh', overflow: 'auto', textAlign: 'left',
           }}>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 6, lineHeight: 1.5 }}>
-              체크를 풀면 그 열이 숨겨집니다. 너비는 머리글 오른쪽 끝을 끌어 조절합니다.<br />
+            <div style={{ fontSize: 11, color: '#888', marginBottom: 6, lineHeight: 1.55 }}>
+              체크를 풀면 그 열이 숨겨집니다. <b>끌어 놓거나 ▲▼</b>로 표시순서를 바꿉니다.<br />
+              너비는 머리글 오른쪽 끝을 끌어 조절하고, <b>더블클릭하면 내용에 맞춰</b>집니다.<br />
               <b>설정 저장</b>을 눌러야 다음에도 이 모습으로 열립니다.
             </div>
-            {cols.map((c) => (
-              <label key={c.key} style={{ display: 'block', fontSize: 12, padding: '2px 0', cursor: 'pointer' }}>
-                <input type="checkbox" checked={!view.isHidden(c.key)} onChange={() => view.toggleHidden(c.key)} />
-                {' '}{c.label}
-              </label>
+            {cols.map((c, i) => (
+              <div key={c.key} draggable
+                onDragStart={() => setDrag(c.key)}
+                onDragEnd={() => setDrag(null)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); if (drag) view.dropCol(keys, drag, c.key); setDrag(null); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: 2, borderRadius: 3,
+                  cursor: 'grab', background: drag === c.key ? '#eef3ff' : undefined,
+                }}>
+                <span style={{ color: '#bbb', fontSize: 11, userSelect: 'none' }} title="끌어서 순서 변경">⋮⋮</span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <button style={{ ...arrowBtn, opacity: i === 0 ? 0.3 : 1 }} disabled={i === 0}
+                    onClick={() => view.moveCol(keys, c.key, -1)} title="위로">▲</button>
+                  <button style={{ ...arrowBtn, opacity: i === cols.length - 1 ? 0.3 : 1 }} disabled={i === cols.length - 1}
+                    onClick={() => view.moveCol(keys, c.key, 1)} title="아래로">▼</button>
+                </span>
+                <label style={{ fontSize: 12, cursor: 'pointer', flex: 1 }}>
+                  <input type="checkbox" checked={!view.isHidden(c.key)} onChange={() => view.toggleHidden(c.key)} />
+                  {' '}{c.label}
+                </label>
+              </div>
             ))}
             <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
               <button className="btn-sm btn-sm-blue" disabled={busy || !view.hiddenCount} onClick={view.showAll}>
@@ -228,3 +282,8 @@ export function ColumnSettings({ cols, view, onMessage }: {
     </span>
   );
 }
+
+const arrowBtn: React.CSSProperties = {
+  border: '1px solid #ddd', background: '#fff', borderRadius: 3, cursor: 'pointer',
+  fontSize: 9, lineHeight: '11px', width: 16, height: 13, padding: 0, color: '#667',
+};
