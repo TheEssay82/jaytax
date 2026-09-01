@@ -5,6 +5,7 @@
  *   node scripts/erp/fetch.mjs --month 2026-07
  *   node scripts/erp/fetch.mjs --bu 1024 --dept 기장24팀
  *   node scripts/erp/fetch.mjs --only slip,ledger  일부만
+ *   node scripts/erp/fetch.mjs --inspect unpaid   조회 조건 배우기(사람이 한 번 조회)
  *   node scripts/erp/fetch.mjs --doctor            환경 점검(크롬 안 띄움)
  *
  * 원칙
@@ -325,6 +326,72 @@ const REPORTS = {
   ledger: ['부서별원장', fetchLedger],
 };
 
+const URLS = {
+  slip: `${ERP}/apps/invjunpyo/invjunpyonolist.jsp?PageAction=OrderByNo`,
+  unpaid: `${ERP}/apps/sales/accfirm/arlistbybucode.jsp?menu=BCC&ReadBU=1`,
+  flow: `${ERP}/apps/sales/accfirm/arlistbybucode_flow.jsp?menu=BCC&ReadBU=1`,
+  ledger: `${ERP}/apps/common/buperiodselect.jsp`,
+};
+
+// ── 조건 배우기 ───────────────────────────────────────────
+// 화면마다 조회 조건의 필드 이름·값 형식이 달라 추측이 잘 빗나간다.
+// 사람이 한 번 직접 조건을 넣고 조회하면, 그때 폼에 들어간 값을 그대로 읽어 온다.
+//   node scripts/erp/fetch.mjs --inspect unpaid
+
+const dumpForms = (page) => page.evaluate(() => {
+  const out = [];
+  for (const f of document.forms) {
+    const fields = [];
+    for (const e of f.elements) {
+      const n = e.name || e.id;
+      if (!n) continue;
+      const sel = e.tagName === 'SELECT' && e.selectedIndex >= 0 ? e.options[e.selectedIndex].text.trim() : '';
+      fields.push({ n, tag: e.tagName, type: e.type || '', v: String(e.value ?? ''), sel });
+    }
+    out.push({ name: f.name || '(이름없음)', action: f.getAttribute('action') || '', fields });
+  }
+  return { url: location.href, rows: document.querySelectorAll('tr').length, forms: out };
+});
+
+const printForms = (d, title) => {
+  console.log('');
+  console.log(`  [${title}] ${d.url.replace(ERP, '')} · 표 ${d.rows}행`);
+  for (const f of d.forms) {
+    if (!f.fields.length) continue;
+    console.log(`   폼 ${f.name}${f.action ? ` → ${f.action}` : ''}`);
+    for (const x of f.fields) {
+      const val = x.v === '' ? '' : `= ${x.v}`;
+      console.log(`     ${x.n.padEnd(24)} ${x.tag.toLowerCase()}/${x.type} ${val}${x.sel ? `  (${x.sel})` : ''}`);
+    }
+  }
+};
+
+async function inspect(key) {
+  if (!URLS[key]) throw new Error(`--inspect 에는 ${Object.keys(URLS).join(', ')} 중 하나를 적어 주세요.`);
+  const s = new Session();
+  try {
+    await s.open();
+    await open(s.page, URLS[key]);
+    await s.page.waitForFunction(() => !!document.forms['myform'], undefined, { timeout: NAV_MS });
+    await s.page.waitForTimeout(1500);
+    printForms(await dumpForms(s.page), `${REPORTS[key][0]} — 열었을 때`);
+
+    console.log('');
+    console.log('  ────────────────────────────────────────────────');
+    console.log('  이제 **브라우저에서 직접** 원하는 조건을 넣고 조회를 눌러 주세요.');
+    console.log('  (엑셀은 누르지 않으셔도 됩니다. 자료가 나온 상태면 됩니다.)');
+    console.log('  다 되면 이 창으로 돌아와 Enter 를 눌러 주세요.');
+    console.log('  ────────────────────────────────────────────────');
+    await new Promise((res) => process.stdin.once('data', res).resume());
+
+    const page = s.ctx.pages().find((p) => !p.isClosed()) || s.page;
+    printForms(await dumpForms(page), `${REPORTS[key][0]} — 조회한 뒤`);
+    console.log('');
+    console.log('  위 출력을 그대로 Claude 에게 붙여 주시면 조건을 코드에 넣습니다.');
+    console.log('');
+  } finally { await s.close(); }
+}
+
 async function main() {
   if (has('doctor')) {
     const pkg = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
@@ -338,6 +405,8 @@ async function main() {
     for (const exe of CHROME_PATHS) console.log(`    ${fs.existsSync(exe) ? '✓' : '✗'} ${exe}`);
     return;
   }
+
+  if (has('inspect')) return inspect(arg('inspect'));
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const r = range(month);
