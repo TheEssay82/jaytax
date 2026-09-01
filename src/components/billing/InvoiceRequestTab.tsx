@@ -90,6 +90,7 @@ export default function InvoiceRequestTab() {
   const pickedReqs = reqs.filter((r) => pickReq.has(r.id));
 
   const sum = (list: InvoiceRequest[]) => list.reduce((s, r) => s + r.total, 0);
+  const sumSupply = (list: InvoiceRequest[]) => list.reduce((s, r) => s + r.supplyAmount, 0);
   const stat = useMemo(() => ({
     요청: reqs.filter((r) => r.status === '요청'),
     발행완료: reqs.filter((r) => r.status === '발행완료'),
@@ -328,7 +329,7 @@ export default function InvoiceRequestTab() {
       {/* ── 청구예정 → 발행요청 ── */}
       <div style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>① {ym} 청구예정 ({candView.length}건)</b>
+          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>① {ym} 청구예정 ({candView.length}건 · 공급가액 {won(candView.reduce((s, c) => s + c.supplyAmount, 0))})</b>
           {canWrite && (
             <>
               <button className="btn-sm" onClick={() => setPick(new Set(candView.map((c) => c.key)))}>보이는 건 전체선택</button>
@@ -390,7 +391,10 @@ export default function InvoiceRequestTab() {
       {/* ── 요청 목록 → 발행처리 ── */}
       <div style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>② 발행요청 목록 ({reqView.length}건 · 합계 {won(sum(reqView))})</b>
+          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
+            ② 발행요청 목록 ({reqView.length}건 · <span title="부가세 별도 — 엑셀·ERP의 공급가액과 맞춰 보는 기준">공급가액 {won(sumSupply(reqView))}</span>
+            {' · '}<span style={{ fontWeight: 400, color: '#666' }}>합계(VAT포함) {won(sum(reqView))}</span>)
+          </b>
           {canWrite && (
             <>
               <span style={{ fontSize: 11.5, color: '#666' }}>발행일</span>
