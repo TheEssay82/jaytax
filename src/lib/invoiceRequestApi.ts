@@ -33,7 +33,12 @@ export function erpAccountOf(categoryCode: string): ErpAccount {
   return '기타용역수입';
 }
 
-export type InvoiceStatus = '요청' | '발행완료' | '취소';
+/**
+ * 발행요청 상태.
+ * `수정발행` = ERP 의 (−)수정세금계산서. 금액이 음수로 들어가고 원래 건에 연결된다(corrects_request_id).
+ * 미수금이 한 줄로 계산되도록 별도 표로 빼지 않고 같은 표에 담는다(사용자 확정 2026-09-01).
+ */
+export type InvoiceStatus = '요청' | '발행완료' | '취소' | '수정발행';
 
 export interface InvoiceRequest {
   id: string;
