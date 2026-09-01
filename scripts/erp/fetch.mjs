@@ -29,6 +29,7 @@ const has = (k) => argv.includes(`--${k}`);
 const month = arg('month') || defaultMonth();      // 'YYYY-MM' — 기본은 전월
 const dept = arg('dept', '기장24팀');
 const explore = has('explore');
+const doctor = has('doctor');
 
 function defaultMonth() {
   const d = new Date();
@@ -90,7 +91,60 @@ const REPORTS = [
   { key: 'unpaid',   name: '부서별 미수금현황',      file: (ym) => `${ym.replace('-', '')}_${dept}_미수금.xls` },
 ];
 
+// ── 크롬 띄우기 ────────────────────────────────────────
+// playwright-core 는 브라우저를 내려받지 않으므로 설치된 크롬을 쓴다.
+// channel:'chrome' 이 안 먹는 환경이 있어 실제 실행파일 경로로도 한 번 더 시도한다.
+const CHROME_PATHS = [
+  process.env.CHROME_PATH,
+  'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+  path.join(process.env.LOCALAPPDATA || '', 'Google/Chrome/Application/chrome.exe'),
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome',
+].filter(Boolean);
+
+async function launchChrome() {
+  const base = {
+    headless: false,
+    acceptDownloads: true,
+    args: ['--no-first-run', '--no-default-browser-check', '--start-maximized', '--disable-gpu'],
+  };
+  const errs = [];
+  const first = (msg) => String(msg).split('\n')[0];
+  try {
+    return await chromium.launchPersistentContext(PROFILE_DIR, { ...base, channel: 'chrome' });
+  } catch (e) { errs.push(`channel:chrome → ${first(e.message)}`); }
+
+  for (const exe of CHROME_PATHS) {
+    if (!fs.existsSync(exe)) continue;
+    try {
+      console.log(`  크롬 실행파일로 재시도: ${exe}`);
+      return await chromium.launchPersistentContext(PROFILE_DIR, { ...base, executablePath: exe });
+    } catch (e) { errs.push(`${exe} → ${first(e.message)}`); }
+  }
+  throw new Error([
+    '크롬을 띄우지 못했습니다.',
+    ...errs.map((x) => '  ' + x),
+    '',
+    '  · 크롬이 설치돼 있는지 확인하세요.',
+    '  · 경로가 특이하면 CHROME_PATH 환경변수로 지정해 주세요. (PowerShell)',
+    '    $env:CHROME_PATH="C:/Program Files/Google/Chrome/Application/chrome.exe"; npm run erp -- --explore',
+  ].join('\n'));
+}
+
 async function main() {
+  if (doctor) {                       // 환경 점검 — 크롬을 띄우지 않고 상태만 출력
+    const pkg = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+    console.log('');
+    console.log('[ERP 수집기 환경 점검]');
+    console.log('  node           ', process.version);
+    console.log('  playwright-core', pkg.devDependencies?.['playwright-core'] ?? '(설치 안 됨)');
+    console.log('  프로필 경로    ', PROFILE_DIR, fs.existsSync(PROFILE_DIR) ? '(있음)' : '(없음 — 처음 실행 시 생성)');
+    console.log('  저장 폴더      ', OUT_DIR, fs.existsSync(OUT_DIR) ? '(있음)' : '(없음 — 실행 시 생성)');
+    console.log('  크롬 후보:');
+    for (const exe of CHROME_PATHS) console.log(`    ${fs.existsSync(exe) ? '✓' : '✗'} ${exe}`);
+    return;
+  }
   fs.mkdirSync(PROFILE_DIR, { recursive: true });
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const { from, to } = monthRange(month);
@@ -98,12 +152,7 @@ async function main() {
   console.log(`  프로필 ${PROFILE_DIR}`);
   console.log(`  저장   ${OUT_DIR}`);
 
-  const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
-    channel: 'chrome',
-    headless: false,
-    viewport: null,
-    acceptDownloads: true,
-  });
+  const ctx = await launchChrome();
   const page = ctx.pages()[0] || await ctx.newPage();
 
   try {
