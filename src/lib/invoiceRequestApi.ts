@@ -6,8 +6,33 @@ import { supabase, assertWrote } from './supabase';
 import { billingItemsForMonth } from './billingSchedule';
 import { listSalesContracts, type SalesContract } from './salesContractApi';
 import { corpDisplayName, type BizEntityFull } from './bizRegistryApi';
+import { listBizContacts, type BizContact } from './bizContactApi';
 
 export const VAT_RATE = 0.1;
+
+/** 인덕 ERP 의 매출계정 7종. 표기가 흔들리지 않게 여기서만 고른다. */
+export const ERP_ACCOUNTS = [
+  '회계감사수입', '세무조정수입', '기업진단수입', '기장대리수입',
+  '경영자문수입', '기타용역수입', '임의감사수입',
+] as const;
+export type ErpAccount = (typeof ERP_ACCOUNTS)[number];
+
+/**
+ * 우리 매출유형 → ERP 매출계정 (2026-09-01 사용자 확정).
+ *  · 기장 + **부가세 신고대리 + 원천세** = 기장대리수입   ← 부가세·원천이 세무조정이 아니라 기장이다
+ *  · 그 밖의 신고대리(법인세·소득세·양도·상속 등) = 세무조정수입
+ *  · 회계감사 = 회계감사수입
+ *  · 가치평가·실사·자문 등 = 기타용역수입
+ * 기업진단수입·경영자문수입·임의감사수입은 대응하는 매출유형이 아직 없어 화면에서 직접 고른다.
+ */
+export function erpAccountOf(categoryCode: string): ErpAccount {
+  const c = categoryCode || '';
+  if (c === 'TAX.BOOK' || c === 'TAX.FILING.VAT' || c === 'TAX.FILING.WHT') return '기장대리수입';
+  if (c.startsWith('TAX.FILING') || c.startsWith('AUD.SVC.FILING')) return '세무조정수입';
+  if (c === 'AUD.AUDIT') return '회계감사수입';
+  return '기타용역수입';
+}
+
 export type InvoiceStatus = '요청' | '발행완료' | '취소';
 
 export interface InvoiceRequest {
@@ -28,6 +53,11 @@ export interface InvoiceRequest {
   contractCode: string;
   note: string;
   requestedAt: string;
+  team: string;
+  erpAccount: string;
+  docEmail: string;
+  issueDate: string | null;
+  issuedByName: string;         // 발행완료를 누른 사람(누가 처리했는지 화면에 보인다)
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -37,16 +67,32 @@ const toReq = (r: any): InvoiceRequest => ({
   total: Number(r.total) || 0, status: r.status, invoiceNo: r.invoice_no || '', issuedDate: r.issued_date,
   companyName: r.company_name || '', placeName: r.place_name || '', contractCode: r.contract_code || '',
   note: r.note || '', requestedAt: r.requested_at,
+  team: r.team || 'taxteam', erpAccount: r.erp_account || '', docEmail: r.doc_email || '',
+  issueDate: r.issue_date ?? null,
+  issuedByName: r.issued_by_name || '',
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-/** 발행요청 조회 — ym 을 주면 그 달만. */
-export async function listInvoiceRequests(ym?: string): Promise<InvoiceRequest[]> {
+/**
+ * 발행요청 조회 — ym 을 주면 그 달만, team 을 주면 그 팀만.
+ * 발행완료를 누른 사람 이름을 함께 채운다(누가 처리했는지 화면에 보여야 하므로).
+ */
+export async function listInvoiceRequests(ym?: string, team?: string): Promise<InvoiceRequest[]> {
   let q = supabase.from('biz_invoice_request').select('*').order('ym', { ascending: false }).order('company_name');
   if (ym) q = q.eq('ym', ym);
+  if (team) q = q.eq('team', team);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
-  return (data as unknown[]).map(toReq);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const rows = (data as any[]) ?? [];
+  const ids = [...new Set(rows.map((r) => r.issued_by).filter(Boolean))];
+  let names = new Map<string, string>();
+  if (ids.length) {
+    const { data: p } = await supabase.from('profiles').select('id, name').in('id', ids);
+    names = new Map((p as any[] ?? []).map((x) => [x.id as string, ((x.name as string) || '').trim()]));
+  }
+  return rows.map((r) => toReq({ ...r, issued_by_name: names.get(r.issued_by) ?? '' }));
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 /** 그 달 청구예정 후보 한 건(아직 요청 안 된 것). */
@@ -67,6 +113,21 @@ export interface InvoiceCandidate {
   confirmed: boolean;           // 계약확정 여부(미계약이면 표시해 준다)
   billingCycle: string;         // 청구주기 — 연 1회면 청구월을 실제 요청월로 맞춘다
   billingMonth: number | null;  // 계약에 적힌 청구월(잠정값일 수 있다)
+  erpAccount: ErpAccount;       // ERP 매출계정(유형에서 자동)
+  docEmail: string;             // 세금계산서 수신 이메일(담당자에서 자동)
+}
+
+/**
+ * 세금계산서 수신 이메일 고르기.
+ * 사업장 담당자 > 대표연락처 > 아무 담당자 순. 거래처에 전용 필드가 생기면 그쪽이 우선이 된다.
+ */
+function pickDocEmail(contacts: BizContact[], placeId: string | null): string {
+  const cs = contacts.filter((c) => c.email.trim());
+  if (!cs.length) return '';
+  return (placeId ? cs.find((c) => c.placeId === placeId && c.isPrimary)?.email : '')
+    || (placeId ? cs.find((c) => c.placeId === placeId)?.email : '')
+    || cs.find((c) => c.isPrimary)?.email
+    || cs[0].email;
 }
 
 /**
@@ -74,7 +135,13 @@ export interface InvoiceCandidate {
  * 이미 요청된 건(취소 제외)은 빼고 돌려준다.
  */
 export async function listInvoiceCandidates(ym: string, entities: BizEntityFull[]): Promise<InvoiceCandidate[]> {
-  const [contracts, existing] = await Promise.all([listSalesContracts(), listInvoiceRequests(ym)]);
+  const [contracts, existing, contacts] = await Promise.all([
+    listSalesContracts(), listInvoiceRequests(ym), listBizContacts(),
+  ]);
+  const byEntity = new Map<string, BizContact[]>();
+  for (const c of contacts) {
+    const l = byEntity.get(c.entityId); if (l) l.push(c); else byEntity.set(c.entityId, [c]);
+  }
   const taken = new Set(
     existing.filter((r) => r.status !== '취소')
       .map((r) => `${r.contractId ?? ''}|${r.installmentId ?? ''}`),
@@ -108,6 +175,9 @@ export async function listInvoiceCandidates(ym: string, entities: BizEntityFull[
         confirmed: c.confirmed,
         billingCycle: c.billingCycle,
         billingMonth: c.billingMonth,
+        erpAccount: erpAccountOf(c.categoryCode),
+        // 세금계산서 수신 이메일 — 거래처에 전용 필드가 생기기 전까지는 담당자(대표연락처 우선)에서 끌어 쓴다.
+        docEmail: pickDocEmail(byEntity.get(c.entityId) ?? [], place?.id ?? null),
       });
     }
   }
@@ -115,7 +185,9 @@ export async function listInvoiceCandidates(ym: string, entities: BizEntityFull[
 }
 
 /** 후보를 발행요청으로 등록 — 생성 건수 반환 */
-export async function createInvoiceRequests(ym: string, rows: InvoiceCandidate[]): Promise<number> {
+export async function createInvoiceRequests(
+  ym: string, rows: InvoiceCandidate[], opt: { team?: string; issueDate?: string } = {},
+): Promise<number> {
   if (!rows.length) return 0;
   const { data: u } = await supabase.auth.getUser();
   const payload = rows.map((r) => {
@@ -130,6 +202,10 @@ export async function createInvoiceRequests(ym: string, rows: InvoiceCandidate[]
       vat,
       total: r.supplyAmount + vat,
       status: '요청',
+      team: opt.team ?? 'taxteam',
+      issue_date: opt.issueDate ?? null,
+      erp_account: r.erpAccount,
+      doc_email: r.docEmail || null,
       company_name: r.companyName,
       place_name: r.placeName,
       contract_code: r.contractCode,

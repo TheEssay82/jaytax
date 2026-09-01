@@ -11,13 +11,25 @@ import {
   markIssued, cancelRequests, revertToRequested, updateInvoiceRequest,
   type InvoiceCandidate, type InvoiceRequest, type InvoiceStatus,
 } from '../../lib/invoiceRequestApi';
+import {
+  getMonthState, openMonth, notifyCheckers, markMyCheck, clearMyCheck, setFinalConfirm,
+  issueDateOf, pastIssueDay, CHECKERS, FINAL_APPROVER, type MonthState,
+} from '../../lib/invoiceMonthApi';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
 const thisMonth = () => todayYmd().slice(0, 7);
+const prevMonthOf = (ym: string) => {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 2, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+};
 
 export default function InvoiceRequestTab() {
-  const { readonly, role } = useAuth();
+  const { readonly, role, profileName } = useAuth();
   const canWrite = !readonly && role !== 'per_head_accountant';
+  // 발행완료·최종확인은 김민섭이 원칙. 부재 시 기장팀장·최고관리자도 누를 수 있고, 누른 사람이 기록된다.
+  const isApprover = canWrite && (profileName === FINAL_APPROVER || role === 'team_lead' || role === 'superuser');
+  const isChecker = canWrite && (CHECKERS as readonly string[]).includes(profileName);
 
   const [ym, setYm] = useState(thisMonth);
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
@@ -28,6 +40,8 @@ export default function InvoiceRequestTab() {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const [month, setMonth] = useState<MonthState | null>(null);
+  const [prev, setPrev] = useState<InvoiceRequest[]>([]);   // 전월 요청(비교용)
   const [pick, setPick] = useState<Set<string>>(new Set());
   const [pickReq, setPickReq] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | ''>('');
@@ -42,8 +56,14 @@ export default function InvoiceRequestTab() {
       setErr(null);
       const ents = entities.length ? entities : await listBizEntities();
       if (!entities.length) setEntities(ents);
-      const [c, r] = await Promise.all([listInvoiceCandidates(ym, ents), listInvoiceRequests(ym)]);
-      setCands(c); setReqs(r); setPick(new Set()); setPickReq(new Set());
+      const [c, r, p, mst] = await Promise.all([
+        listInvoiceCandidates(ym, ents),
+        listInvoiceRequests(ym, 'taxteam'),
+        listInvoiceRequests(prevMonthOf(ym), 'taxteam'),
+        getMonthState(ym),
+      ]);
+      setCands(c); setReqs(r); setPrev(p); setMonth(mst);
+      setPick(new Set()); setPickReq(new Set());
     } catch (e) {
       setErr(e instanceof Error ? e.message : '불러오지 못했습니다.');
     } finally { setLoading(false); }
@@ -75,6 +95,74 @@ export default function InvoiceRequestTab() {
     발행완료: reqs.filter((r) => r.status === '발행완료'),
     취소: reqs.filter((r) => r.status === '취소'),
   }), [reqs]);
+
+  /**
+   * 전월 대비 비교 — 엑셀에서 '전월 열을 복사한 뒤 눈으로 훑던' 일을 대신한다.
+   * 계약(contractId)으로 맞춘다. 계약이 없는 건은 비교 대상이 아니다.
+   */
+  const diff = useMemo(() => {
+    const prevBy = new Map<string, InvoiceRequest>();
+    for (const r of prev) if (r.status !== '취소' && r.contractId) prevBy.set(r.contractId, r);
+    const nowIds = new Set<string>();
+    const mark = new Map<string, { kind: '신규' | '변동'; prevAmount: number }>();
+    const put = (contractId: string | null, amount: number) => {
+      if (!contractId) return;
+      nowIds.add(contractId);
+      const p = prevBy.get(contractId);
+      if (!p) mark.set(contractId, { kind: '신규', prevAmount: 0 });
+      else if (p.supplyAmount !== amount) mark.set(contractId, { kind: '변동', prevAmount: p.supplyAmount });
+    };
+    for (const c of cands) put(c.contractId, c.supplyAmount);
+    for (const r of reqs) if (r.status !== '취소') put(r.contractId, r.supplyAmount);
+    // 전월엔 있었는데 이번 달엔 없는 것 = 해지 의심(엑셀의 'X')
+    const dropped = [...prevBy.values()].filter((p) => !nowIds.has(p.contractId!));
+    return { mark, dropped };
+  }, [prev, cands, reqs]);
+
+  const checkedNames = new Set((month?.checks ?? []).map((c) => c.name));
+  const allChecked = CHECKERS.every((n) => checkedNames.has(n));
+  const iChecked = checkedNames.has(profileName);
+
+  /** 당월 전개 — 청구예정을 전부 요청으로 등록하고 담당자에게 확인 알림을 보낸다. */
+  async function doOpenMonth() {
+    const n = cands.length;
+    if (!confirm(`${ym} 을 엽니다.
+
+· 청구예정 ${n}건을 발행요청으로 등록합니다(작성일 ${issueDateOf(ym)})
+· ${CHECKERS.join('·')} 에게 확인 요청 알림을 보냅니다
+
+진행할까요?`)) return;
+    setBusy(true);
+    try {
+      await openMonth(ym);
+      if (n) await createInvoiceRequests(ym, cands, { team: 'taxteam', issueDate: issueDateOf(ym) });
+      const sent = await notifyCheckers(ym);
+      await load();
+      flash(`✓ ${ym} 전개 완료 — 요청 ${n}건 · 알림 ${sent}명`);
+    } catch (e) { alert('전개 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
+  async function doCheck() {
+    setBusy(true);
+    try {
+      if (iChecked) await clearMyCheck(ym);
+      else await markMyCheck(ym, diff.mark.size || diff.dropped.length ? '' : '변경 없음');
+      await load();
+      flash(iChecked ? '확인을 해제했습니다' : '✓ 확인했습니다');
+    } catch (e) { alert('처리 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
+  async function doFinal() {
+    const on = !month?.finalConfirmedAt;
+    if (on && !allChecked && !confirm(`아직 확인하지 않은 담당자가 있습니다.
+(${CHECKERS.filter((n) => !checkedNames.has(n)).join('·')})
+
+그래도 최종확인할까요?`)) return;
+    setBusy(true);
+    try { await setFinalConfirm(ym, on); await load(); flash(on ? '✓ 최종확인' : '최종확인을 해제했습니다'); }
+    catch (e) { alert('처리 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
 
   async function doRequest() {
     if (!picked.length) return;
@@ -147,6 +235,78 @@ export default function InvoiceRequestTab() {
       </div>
       {err && <div className="alert-w">{err}</div>}
 
+      {/* ── 이번 달 진행 상태 — 엑셀의 '전월 복사 → 3인 확인 → 마감'을 그대로 옮긴 자리 ── */}
+      <div style={{
+        border: '1px solid #e2d9c6', background: '#fdfaf3', borderRadius: 6,
+        padding: '8px 10px', marginBottom: 10, fontSize: 12,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <b style={{ color: '#1A2B52' }}>{ym} 진행</b>
+          {!month?.opened ? (
+            <>
+              <span style={{ color: '#a15' }}>아직 열지 않았습니다.</span>
+              {pastIssueDay(ym, todayYmd()) && (
+                <span style={{ color: '#a15', fontWeight: 700 }}>· 작성일({issueDateOf(ym)})이 지났습니다</span>
+              )}
+              {canWrite && (
+                <button className="btn-p" disabled={busy} onClick={() => void doOpenMonth()}>
+                  📂 당월 전개 + 확인요청
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <span style={{ color: '#666' }}>
+                전개 {month.openedAt?.slice(0, 10)}{month.openedBy && ` · ${month.openedBy}`} · 작성일 {issueDateOf(ym)}
+              </span>
+              <span style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 4 }}>
+                {CHECKERS.map((n) => {
+                  const c = month.checks.find((x) => x.name === n);
+                  return (
+                    <span key={n} title={c ? `${c.checkedAt.slice(0, 16).replace('T', ' ')}${c.note ? ` · ${c.note}` : ''}` : '아직 확인 전'}
+                      style={{
+                        padding: '1px 7px', borderRadius: 9, fontSize: 11, fontWeight: 700,
+                        background: c ? '#D1FAE5' : '#F3F4F6', color: c ? '#065F46' : '#9CA3AF',
+                        border: '1px solid ' + (c ? '#6EE7B7' : '#E5E7EB'),
+                      }}>{c ? '✓ ' : '○ '}{n}</span>
+                  );
+                })}
+              </span>
+              {isChecker && (
+                <button className={iChecked ? 'btn-sm' : 'btn-p'} disabled={busy} onClick={() => void doCheck()}>
+                  {iChecked ? '확인 해제' : '✅ 확인했습니다'}
+                </button>
+              )}
+              {month.finalConfirmedAt ? (
+                <span style={{ marginLeft: 4, padding: '1px 8px', borderRadius: 9, fontSize: 11, fontWeight: 700, background: '#1A2B52', color: '#fff' }}>
+                  최종확인 {month.finalConfirmedAt.slice(0, 10)}{month.finalConfirmedBy && ` · ${month.finalConfirmedBy}`}
+                </span>
+              ) : (
+                isApprover && (
+                  <button className="btn-p" disabled={busy} onClick={() => void doFinal()}
+                    title={allChecked ? '' : '아직 확인하지 않은 담당자가 있습니다'}>
+                    🔒 최종확인{allChecked ? '' : ' (미확인 있음)'}
+                  </button>
+                )
+              )}
+              {month.finalConfirmedAt && isApprover && (
+                <button className="btn-sm" disabled={busy} onClick={() => void doFinal()}>해제</button>
+              )}
+            </>
+          )}
+        </div>
+        {month?.opened && (diff.mark.size > 0 || diff.dropped.length > 0) && (
+          <div style={{ marginTop: 5, fontSize: 11.5, color: '#7a5' }}>
+            전월 대비 — 🆕신규·⚠️금액변동 <b>{diff.mark.size}</b>건
+            {diff.dropped.length > 0 && (
+              <> · ❌전월에 있었는데 이번 달 없음 <b style={{ color: '#c33' }}>{diff.dropped.length}</b>건
+                <span style={{ color: '#999' }}> ({diff.dropped.slice(0, 4).map((d) => d.companyName).join(', ')}{diff.dropped.length > 4 ? ' 외' : ''}) — 해지·중단인지 확인하세요</span>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="alert-i" style={{ fontSize: 11 }}>
         매출계약의 청구주기·분할회차에서 그 달 청구분을 펼쳐 보여줍니다. 체크해서 <b>발행요청</b>으로 등록하고,
         실제로 발행하면 <b>발행완료</b>로 바꿔 승인번호와 발행일을 남깁니다. 금액은 요청한 시점 기준으로 저장되어,
@@ -209,6 +369,7 @@ export default function InvoiceRequestTab() {
                     <td style={{ fontWeight: 700, color: '#1A2B52' }}>
                       {c.companyName}
                       {!c.confirmed && <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>미계약</span>}
+                      <DiffBadge d={diff.mark.get(c.contractId)} amount={c.supplyAmount} />
                     </td>
                     <td>{c.placeName}</td>
                     <td style={{ fontSize: 11 }}>{pathLabel(c.typeLabel)}</td>
@@ -234,7 +395,10 @@ export default function InvoiceRequestTab() {
             <>
               <span style={{ fontSize: 11.5, color: '#666' }}>발행일</span>
               <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 12 }} />
-              <button className="btn-p" disabled={busy || !pickedReqs.length} onClick={() => void doIssue()}>발행완료 처리</button>
+              <button className="btn-p" disabled={busy || !pickedReqs.length || !isApprover} onClick={() => void doIssue()}
+                title={isApprover ? '' : `발행완료는 ${FINAL_APPROVER}(부재 시 기장팀장·최고관리자)만 처리합니다`}>
+                발행완료 처리
+              </button>
               <button className="btn-sm" disabled={busy || !pickedReqs.length} onClick={() => void doRevert()}>요청으로 되돌리기</button>
               <button className="btn-sm btn-sm-del" disabled={busy || !pickedReqs.length} onClick={() => void doCancel()}>취소</button>
             </>
@@ -246,12 +410,12 @@ export default function InvoiceRequestTab() {
               <tr>
                 {canWrite && <th style={{ width: 32 }}></th>}
                 <th>상태</th><th>거래처</th><th>사업장</th><th>계약코드</th><th>비고</th>
-                <th className="r">공급가액</th><th className="r">합계</th><th>승인번호</th><th>발행일</th>
+                <th className="r">공급가액</th><th className="r">합계</th><th>승인번호</th><th>발행일</th><th>처리자</th>
               </tr>
             </thead>
             <tbody>
               {reqView.length === 0 && (
-                <tr><td colSpan={canWrite ? 10 : 9} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+                <tr><td colSpan={canWrite ? 11 : 10} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
                   발행요청이 없습니다. 위에서 청구예정을 골라 등록하세요.
                 </td></tr>
               )}
@@ -270,7 +434,10 @@ export default function InvoiceRequestTab() {
                     <td>
                       <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.status}</span>
                     </td>
-                    <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.companyName}</td>
+                    <td style={{ fontWeight: 700, color: '#1A2B52' }}>
+                      {r.companyName}
+                      <DiffBadge d={diff.mark.get(r.contractId ?? '')} amount={r.supplyAmount} />
+                    </td>
                     <td>{r.placeName}</td>
                     <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.contractCode}</td>
                     <td>{r.note}</td>
@@ -283,6 +450,9 @@ export default function InvoiceRequestTab() {
                       )}
                     </td>
                     <td style={{ fontSize: 11 }}>{r.issuedDate ?? <span style={{ color: '#CCC' }}>—</span>}</td>
+                    <td style={{ fontSize: 11, color: r.issuedByName === FINAL_APPROVER ? '#666' : '#a15', fontWeight: r.issuedByName && r.issuedByName !== FINAL_APPROVER ? 700 : 400 }}>
+                      {r.issuedByName || <span style={{ color: '#CCC' }}>—</span>}
+                    </td>
                   </tr>
                 );
               })}
@@ -291,5 +461,22 @@ export default function InvoiceRequestTab() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** 전월 대비 표시 — 🆕 신규 / ⚠️ 금액변동(전월 → 당월). */
+function DiffBadge({ d, amount }: { d?: { kind: '신규' | '변동'; prevAmount: number }; amount: number }) {
+  if (!d) return null;
+  const isNew = d.kind === '신규';
+  return (
+    <span title={isNew ? '전월에는 없던 건입니다' : `전월 ${won(d.prevAmount)} → 이번 달 ${won(amount)}`}
+      style={{
+        marginLeft: 4, fontSize: 10, fontWeight: 700, padding: '0 4px', borderRadius: 3,
+        color: isNew ? '#1E3A8A' : '#92400E',
+        background: isNew ? '#DBEAFE' : '#FEF3C7',
+        border: '1px solid ' + (isNew ? '#93C5FD' : '#FCD34D'),
+      }}>
+      {isNew ? '🆕신규' : `⚠️${won(d.prevAmount)}→${won(amount)}`}
+    </span>
   );
 }
