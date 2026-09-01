@@ -72,7 +72,7 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'audit-invoice', label: '🧾 발행요청 · 감사팀' },
       { id: 'erp-reconcile', label: '📥 ERP 발행내역 대사' },
       { id: 'receivable', label: '💰 수금·미수금' },
-      { id: 'staff-revenue', label: '📊 직원별 매출' },
+      { id: 'staff-revenue', label: '📊 담당별 매출' },
       { id: 'receivable-opening', label: '⚙️ 기초 미수금 입력' },
     ],
   },

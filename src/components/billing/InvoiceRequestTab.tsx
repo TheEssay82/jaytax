@@ -360,12 +360,12 @@ export default function InvoiceRequestTab() {
               <tr>
                 {canWrite && <th style={{ width: 32 }}></th>}
                 <th>거래처</th><th>사업장</th><th>매출유형</th><th>계약코드</th><th>회차</th>
-                <th className="r">공급가액</th><th className="r">부가세</th><th className="r">합계</th><th>담당</th>
+                <th className="r">공급가액</th><th className="r">부가세</th><th className="r">합계</th><th>담당회계사</th><th>담당직원</th>
               </tr>
             </thead>
             <tbody>
               {candView.length === 0 && (
-                <tr><td colSpan={canWrite ? 10 : 9} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+                <tr><td colSpan={canWrite ? 11 : 10} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
                   {ym}에 청구예정인 계약이 없습니다.
                 </td></tr>
               )}
@@ -392,7 +392,10 @@ export default function InvoiceRequestTab() {
                     <td className="r">{won(c.supplyAmount)}</td>
                     <td className="r" style={{ color: '#888' }}>{won(vat)}</td>
                     <td className="r" style={{ fontWeight: 700 }}>{won(c.supplyAmount + vat)}</td>
-                    <td style={{ fontSize: 11 }}>{c.cpa}{c.staff && ` · ${c.staff}`}</td>
+                    <td style={{ fontSize: 11 }}>{c.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
+                    <td style={{ fontSize: 11, fontWeight: 600, color: '#1A2B52' }}>
+                      {c.staff || <span style={{ color: '#CCC', fontWeight: 400 }}>—</span>}
+                    </td>
                   </tr>
                 );
               })}
@@ -442,7 +445,7 @@ export default function InvoiceRequestTab() {
                   );
                 })()}
                 <th>상태</th><th>팀</th><th>거래처</th><th>사업장</th><th>매출계정</th><th>계약코드</th>
-                <th>담당CPA</th><th>담당직원</th><th>비고</th>
+                <th>담당회계사</th><th>담당직원</th><th>비고</th>
                 <th className="r">공급가액</th><th className="r">VAT</th><th className="r">합계</th>
                 <th>승인번호</th><th>발행일</th><th>처리자</th>
               </tr>
@@ -518,6 +521,8 @@ export default function InvoiceRequestTab() {
       {editShare && (
         <StaffShareEditor
           requestId={editShare.id} amount={editShare.supplyAmount}
+          ym={editShare.ym} contractId={editShare.contractId} placeId={editShare.placeId}
+          company={editShare.companyName}
           current={shares.get(editShare.id) ?? (editShare.staff
             ? editShare.staff.split(',').map((n, i) => ({ staffName: n.trim(), share: i === 0 ? 100 : 0, seq: i + 1 }))
             : [])}

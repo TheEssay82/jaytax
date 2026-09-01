@@ -283,7 +283,7 @@ export default function AuditInvoiceTab() {
                 );
               })()}
               <th>상태</th><th>팀</th><th>거래처</th><th>사업장</th><th>매출계정</th><th>구분</th>
-              <th>담당CPA</th><th>담당직원</th><th>계약코드</th>
+              <th>담당회계사</th><th>담당직원</th><th>계약코드</th>
               <th className="r">공급가액</th><th className="r">VAT</th><th className="r">합계</th>
               <th>발행 시 적요</th><th>작성일</th><th>요청자</th><th>승인번호</th><th>처리자</th>
             </tr>
