@@ -28,11 +28,13 @@ export default function ErpReconcileTab() {
   const canFinish = canWrite && (profileName === FINAL_APPROVER || role === 'team_lead' || role === 'superuser');
 
   const [ym, setYm] = useState(prevMonth);
+  // 대사는 팀별로 한다 — 한 달에 두 팀 파일이 따로 올라온다.
+  const [team, setTeam] = useState('taxteam');
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [slips, setSlips] = useState<ErpSlip[]>([]);
   const [reqs, setReqs] = useState<InvoiceRequest[]>([]);
   const [state, setState] = useState<ReconcileState | null>(null);
-  const [preview, setPreview] = useState<{ rows: ErpSlip[]; skipped: number; fileName: string } | null>(null);
+  const [preview, setPreview] = useState<{ rows: ErpSlip[]; skipped: number; fileName: string; depts: string[]; fileTeam: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -51,11 +53,13 @@ export default function ErpReconcileTab() {
       setErr(null);
       const ents = entities.length ? entities : await listBizEntities();
       if (!entities.length) setEntities(ents);
-      const [s, r, st] = await Promise.all([listSlips(ym), listInvoiceRequests(ym), getReconcileState(ym)]);
+      const [s, r, st] = await Promise.all([
+        listSlips(ym, team), listInvoiceRequests(ym, team), getReconcileState(ym, team),
+      ]);
       setSlips(s); setReqs(r); setState(st); setPreview(null);
     } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); }
     finally { setLoading(false); }
-  }, [ym, entities]);
+  }, [ym, team, entities]);
   useEffect(() => { void load(); }, [load]);
 
   const all: MatchResult = useMemo(() => matchSlips(slips, reqs, entities), [slips, reqs, entities]);
@@ -94,9 +98,9 @@ export default function ErpReconcileTab() {
     setBusy(true);
     try {
       setErr(null);
-      const { rows, skipped } = await parseErpSlipFile(file, ym);
+      const { rows, skipped, depts, team: fileTeam } = await parseErpSlipFile(file, ym);
       if (!rows.length) throw new Error('매출 전표를 하나도 찾지 못했습니다. 기간과 파일을 확인해 주세요.');
-      setPreview({ rows, skipped, fileName: file.name });
+      setPreview({ rows, skipped, fileName: file.name, depts, fileTeam });
     } catch (e) { alert('파일을 읽지 못했습니다.\n\n' + (e instanceof Error ? e.message : e)); }
     finally { setBusy(false); }
   }
@@ -118,6 +122,11 @@ export default function ErpReconcileTab() {
         📥 ERP 발행내역 대사
         <select value={ym} onChange={(e) => setYm(e.target.value)} style={{ fontWeight: 700 }}>
           {monthOpts.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <select value={team} onChange={(e) => setTeam(e.target.value)} style={{ fontWeight: 700 }}
+          title="한 달에 두 팀 파일이 따로 올라옵니다. 팀마다 따로 대사합니다.">
+          <option value="taxteam">taxteam (기장24팀)</option>
+          <option value="감사team">감사팀 (2본부5팀)</option>
         </select>
         <span style={{ display: 'flex', gap: 4 }}>
           <Step n={1} label="① 파일" /><Step n={2} label="② 확인" /><Step n={3} label="③ 처리" /><Step n={4} label="④ 마감" />
@@ -144,7 +153,8 @@ export default function ErpReconcileTab() {
             ERP 거래전표 엑셀을 여기에 끌어다 놓으세요
           </div>
           <div style={{ fontSize: 11.5, color: '#777', lineHeight: 1.7 }}>
-            인덕 ERP ▸ 회계관리 ▸ <b>거래전표 리스트</b> ▸ 기간 {ym}-01 ~ {ym} 말일 ▸ <b>검색</b> ▸ <b>엑셀</b><br />
+            인덕 ERP ▸ 회계관리 ▸ <b>거래전표 리스트</b> ▸ 기간 {ym}-01 ~ {ym} 말일 ▸
+            부서 <b>{team === 'taxteam' ? '기장24팀' : '2본부5팀'}</b> ▸ <b>검색</b> ▸ <b>엑셀</b><br />
             내려받은 파일을 그대로 올리시면 됩니다. 매입 전표는 자동으로 걸러냅니다.<br />
             <span style={{ color: '#999' }}>파일을 고르기만 하고 아직 저장하지 않습니다 — 내용을 먼저 보여드립니다.</span>
           </div>
@@ -161,12 +171,19 @@ export default function ErpReconcileTab() {
           </div>
           <div style={{ fontSize: 11.5, color: '#666', marginBottom: 8 }}>
             {preview.fileName}{preview.skipped > 0 && ` · 매입 ${preview.skipped}건은 뺐습니다`}
+            {preview.depts.length > 0 && ` · 부서 ${preview.depts.join(', ')}`}
             {preview.rows.some((r) => r.supplyAmount < 0) && ` · (−)수정전표 ${preview.rows.filter((r) => r.supplyAmount < 0).length}건 포함`}
             <br />이 내용이 맞으면 저장하세요. 아니면 취소하고 다른 파일을 올리면 됩니다.
           </div>
+          {preview.fileTeam && preview.fileTeam !== team && (
+            <div className="alert-w" style={{ fontSize: 11.5, marginBottom: 8 }}>
+              이 파일은 <b>{preview.fileTeam === 'taxteam' ? 'taxteam (기장24팀)' : '감사팀 (2본부5팀)'}</b> 자료로 보입니다.
+              지금 고른 팀과 다릅니다 — 위에서 팀을 바꾸고 다시 올리시거나, 파일을 확인해 주세요.
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn-p" disabled={busy}
-              onClick={() => void run(async () => { await saveSlips(ym, preview.rows, preview.fileName); }, '✓ 저장했습니다. 아래에서 대사 결과를 확인하세요')}>
+            <button className="btn-p" disabled={busy || (!!preview.fileTeam && preview.fileTeam !== team)}
+              onClick={() => void run(async () => { await saveSlips(ym, team, preview.rows, preview.fileName); }, '✓ 저장했습니다. 아래에서 대사 결과를 확인하세요')}>
               저장하고 대사하기
             </button>
             <button className="btn-sm" disabled={busy} onClick={() => setPreview(null)}>취소</button>
@@ -189,20 +206,20 @@ export default function ErpReconcileTab() {
             </span>
             {canWrite && !state.doneAt && (
               <button className="btn-sm" disabled={busy}
-                onClick={() => { if (confirm('올린 파일과 대사 내용을 지웁니다. 발행완료로 바꾼 건은 그대로 남습니다. 진행할까요?')) void run(() => clearSlips(ym), '지웠습니다'); }}>
+                onClick={() => { if (confirm('올린 파일과 대사 내용을 지웁니다. 발행완료로 바꾼 건은 그대로 남습니다. 진행할까요?')) void run(() => clearSlips(ym, team), '지웠습니다'); }}>
                 파일 지우고 다시 올리기
               </button>
             )}
             {state.doneAt ? (
               <span style={{ marginLeft: 'auto', padding: '1px 8px', borderRadius: 9, fontSize: 11, fontWeight: 700, background: '#1A2B52', color: '#fff' }}>
                 대사완료 {state.doneAt.slice(0, 10)}{state.doneBy && ` · ${state.doneBy}`}
-                {canFinish && <button className="btn-sm" style={{ marginLeft: 6 }} disabled={busy} onClick={() => void run(() => setReconcileDone(ym, false), '해제했습니다')}>해제</button>}
+                {canFinish && <button className="btn-sm" style={{ marginLeft: 6 }} disabled={busy} onClick={() => void run(() => setReconcileDone(ym, team, false), '해제했습니다')}>해제</button>}
               </span>
             ) : canFinish && (
               <button className="btn-p" style={{ marginLeft: 'auto' }} disabled={busy}
                 onClick={() => {
                   if (todo > 0 && !confirm(`아직 처리하지 않은 건이 ${todo}건 있습니다.\n그래도 대사를 마감할까요?`)) return;
-                  void run(() => setReconcileDone(ym, true), '✓ 대사 완료');
+                  void run(() => setReconcileDone(ym, team, true), '✓ 대사 완료');
                 }}>
                 🔒 이번 달 대사 완료{todo > 0 ? ` (미처리 ${todo})` : ''}
               </button>
@@ -238,7 +255,7 @@ export default function ErpReconcileTab() {
               ? `우리 발행요청에 없는 발행입니다. 미등록 거래처 ${hiddenOther}곳은 감춰져 있습니다 — 위 「우리 거래처만」을 끄면 보입니다.`
               : '우리 발행요청에 없는 발행입니다. 건별매출(결산료 등)이거나 새로 수임한 곳입니다.'}>
             <Table rows={m.erpOnly} kind="erpOnly" busy={busy} canWrite={canWrite}
-              onImport={(row) => void run(() => importErpOnly(row, ym, issuedDate), '✓ 발행요청으로 들여왔습니다 — 매출계약을 등록해 주세요')} />
+              onImport={(row) => void run(() => importErpOnly(row, ym, issuedDate, team), '✓ 발행요청으로 들여왔습니다 — 매출계약을 등록해 주세요')} />
           </Bucket>
 
           <Bucket title={`❗ 우리에만 있음 ${m.ourOnly.length}곳`} tone="#a15" openKey="ourOnly" open={open} setOpen={setOpen}
@@ -263,7 +280,7 @@ export default function ErpReconcileTab() {
                           {c.requestId ? <span style={{ color: '#2a7', fontSize: 11 }}>✓ 기록됨</span>
                             : canWrite && (
                               <button className="btn-sm btn-sm-blue" disabled={busy}
-                                onClick={() => void run(() => importCorrection(c, entities), '✓ 수정발행으로 기록했습니다')}>
+                                onClick={() => void run(() => importCorrection(c, entities, team), '✓ 수정발행으로 기록했습니다')}>
                                 수정발행으로 기록
                               </button>
                             )}

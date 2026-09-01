@@ -6,6 +6,14 @@ import { supabase } from './supabase';
 import { VAT_RATE, type InvoiceRequest } from './invoiceRequestApi';
 import type { BizEntityFull } from './bizRegistryApi';
 
+/** ERP 부서명 → 우리 팀. 파일이 어느 팀 것인지 스스로 알아내려고 쓴다. */
+export function teamOfDept(dept: string): string | null {
+  const d = String(dept ?? '');
+  if (/기장/.test(d)) return 'taxteam';
+  if (/본부|감사/.test(d)) return '감사team';
+  return null;
+}
+
 /** 숫자만 남긴다 — 사업자번호는 하이픈 유무가 자료마다 다르다. */
 export const digits = (s: unknown) => String(s ?? '').replace(/[^0-9]/g, '');
 const num = (v: unknown) => Number(String(v ?? '').replace(/[^0-9.-]/g, '')) || 0;
@@ -42,7 +50,9 @@ const toSlip = (r: any): ErpSlip => ({
  * ERP 거래전표 엑셀 읽기. 저장하지 않고 **읽기만** 한다 — 잘못 올렸을 때 되돌릴 수 있게.
  * 매입은 걸러내고 매출만 남긴다.
  */
-export async function parseErpSlipFile(file: File, ym: string): Promise<{ rows: ErpSlip[]; skipped: number; header: string[] }> {
+export async function parseErpSlipFile(
+  file: File, ym: string,
+): Promise<{ rows: ErpSlip[]; skipped: number; header: string[]; depts: string[]; team: string | null }> {
   const XLSX = await import('xlsx');
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
@@ -78,16 +88,19 @@ export async function parseErpSlipFile(file: File, ym: string): Promise<{ rows: 
       deptName: col.dept >= 0 ? txt(r[col.dept]) : '', requestId: null,
     });
   }
-  return { rows, skipped, header };
+  // 파일 안의 부서명으로 어느 팀 자료인지 스스로 판정한다(사람이 팀을 잘못 고르는 것을 막는다).
+  const depts = [...new Set(rows.map((r) => r.deptName).filter(Boolean))];
+  const teams = [...new Set(depts.map(teamOfDept).filter(Boolean))];
+  return { rows, skipped, header, depts, team: teams.length === 1 ? (teams[0] as string) : null };
 }
 
 /** 읽은 전표를 그 달에 저장(같은 달을 다시 올리면 통째로 갈아끼운다). */
-export async function saveSlips(ym: string, rows: ErpSlip[], fileName: string): Promise<number> {
+export async function saveSlips(ym: string, team: string, rows: ErpSlip[], fileName: string): Promise<number> {
   const { data: u } = await supabase.auth.getUser();
-  await supabase.from('biz_erp_slip').delete().eq('ym', ym);
+  await supabase.from('biz_erp_slip').delete().eq('ym', ym).eq('team', team);
   if (rows.length) {
     const payload = rows.map((r) => ({
-      ym, slip_no: r.slipNo, acct_slip_no: r.acctSlipNo || null, biz_no: r.bizNo || null,
+      ym, team, slip_no: r.slipNo, acct_slip_no: r.acctSlipNo || null, biz_no: r.bizNo || null,
       client_name: r.clientName, description: r.description, kind: r.kind,
       contract_kind: r.contractKind || null, supply_amount: r.supplyAmount, vat: r.vat,
       total: r.total, dept_name: r.deptName || null,
@@ -96,25 +109,26 @@ export async function saveSlips(ym: string, rows: ErpSlip[], fileName: string): 
     if (error) throw new Error(error.message);
   }
   const { error: e2 } = await supabase.from('biz_invoice_reconcile').upsert({
-    ym, file_name: fileName, slip_count: rows.length,
+    ym, team, file_name: fileName, slip_count: rows.length,
     supply_total: rows.reduce((s, r) => s + r.supplyAmount, 0),
     uploaded_at: new Date().toISOString(), uploaded_by: u.user?.id ?? null,
     done_at: null, done_by: null,
-  }, { onConflict: 'ym' });
+  }, { onConflict: 'ym,team' });
   if (e2) throw new Error(e2.message);
   return rows.length;
 }
 
-export async function listSlips(ym: string): Promise<ErpSlip[]> {
-  const { data, error } = await supabase.from('biz_erp_slip').select('*').eq('ym', ym).order('slip_no');
+export async function listSlips(ym: string, team: string): Promise<ErpSlip[]> {
+  const { data, error } = await supabase.from('biz_erp_slip')
+    .select('*').eq('ym', ym).eq('team', team).order('slip_no');
   if (error) throw new Error(error.message);
   return (data as unknown[]).map(toSlip);
 }
 
-/** 올린 것을 통째로 지운다 — 파일을 잘못 올렸을 때. */
-export async function clearSlips(ym: string): Promise<void> {
-  await supabase.from('biz_erp_slip').delete().eq('ym', ym);
-  const { error } = await supabase.from('biz_invoice_reconcile').delete().eq('ym', ym);
+/** 올린 것을 통째로 지운다 — 파일을 잘못 올렸을 때. 그 팀 것만 지운다. */
+export async function clearSlips(ym: string, team: string): Promise<void> {
+  await supabase.from('biz_erp_slip').delete().eq('ym', ym).eq('team', team);
+  const { error } = await supabase.from('biz_invoice_reconcile').delete().eq('ym', ym).eq('team', team);
   if (error) throw new Error(error.message);
 }
 
@@ -122,8 +136,9 @@ export interface ReconcileState {
   ym: string; fileName: string; slipCount: number; supplyTotal: number;
   uploadedAt: string | null; uploadedBy: string; doneAt: string | null; doneBy: string;
 }
-export async function getReconcileState(ym: string): Promise<ReconcileState | null> {
-  const { data, error } = await supabase.from('biz_invoice_reconcile').select('*').eq('ym', ym).maybeSingle();
+export async function getReconcileState(ym: string, team: string): Promise<ReconcileState | null> {
+  const { data, error } = await supabase.from('biz_invoice_reconcile')
+    .select('*').eq('ym', ym).eq('team', team).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -142,11 +157,11 @@ export async function getReconcileState(ym: string): Promise<ReconcileState | nu
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
-export async function setReconcileDone(ym: string, on: boolean): Promise<void> {
+export async function setReconcileDone(ym: string, team: string, on: boolean): Promise<void> {
   const { data: u } = await supabase.auth.getUser();
   const { error } = await supabase.from('biz_invoice_reconcile')
     .update({ done_at: on ? new Date().toISOString() : null, done_by: on ? (u.user?.id ?? null) : null })
-    .eq('ym', ym);
+    .eq('ym', ym).eq('team', team);
   if (error) throw new Error(error.message);
 }
 
@@ -326,7 +341,7 @@ export async function importErpOnly(
   if (error) throw new Error(error.message);
   const id = (data as { id: string }).id;
   await supabase.from('biz_erp_slip').update({ request_id: id })
-    .eq('ym', ym).in('slip_no', row.slips.map((s) => s.slipNo));
+    .eq('ym', ym).eq('team', team).in('slip_no', row.slips.map((s) => s.slipNo));
 }
 
 /** (−)수정전표를 수정발행으로 기록한다. 금액은 음수 그대로. */
@@ -350,5 +365,5 @@ export async function importCorrection(
   }).select('id').single();
   if (error) throw new Error(error.message);
   await supabase.from('biz_erp_slip').update({ request_id: (data as { id: string }).id })
-    .eq('ym', slip.ym).eq('slip_no', slip.slipNo);
+    .eq('ym', slip.ym).eq('team', team).eq('slip_no', slip.slipNo);
 }
