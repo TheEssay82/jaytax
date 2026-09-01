@@ -20,8 +20,8 @@ import {
 import { listInvoiceStaff, type InvoiceStaffShare } from '../../lib/invoiceStaffApi';
 import {
   listDrafts, openDrafts, addDrafts, updateDraft, deleteDrafts, clearDrafts,
-  candidateFromDraft, draftFromCandidate, reconcileDrafts,
-  type InvoiceDraft, type ReconcileRow,
+  candidateFromDraft, draftFromCandidate, reconcileDrafts, listDraftLog, changeSummary,
+  type InvoiceDraft, type ReconcileRow, type DraftLog,
 } from '../../lib/invoiceDraftApi';
 import { Grid, useGrid, type GridCol } from './grid';
 import { ColumnSettings } from '../clients/tableKit';
@@ -41,26 +41,32 @@ const dash = <span style={{ color: '#CCC' }}>—</span>;
  * 계약은 **참고자료**다. 그래서 이 창은 "계약대로 고쳐라"가 아니라
  * "이만큼 다른데 어느 쪽이 맞나"를 보여 주고, 맞다고 판단한 쪽으로 반영하게 한다.
  */
-function ReconcileModal({ rows, ym, busy, canWrite, onClose, onAdd, onDelete, onApplyAmount }: {
+function ReconcileModal({ rows, ym, busy, canWrite, me, isMine, onClose, onAdd, onDelete, onApplyAmount }: {
   rows: ReconcileRow[];
   ym: string;
   busy: boolean;
   canWrite: boolean;
+  /** 내 이름(담당직원일 때만). 비어 있으면 '내 담당만'을 내놓지 않는다. */
+  me: string;
+  isMine: (staff: string) => boolean;
   onClose: () => void;
   onAdd: (cands: InvoiceCandidate[]) => Promise<void>;
   onDelete: (draftIds: string[]) => Promise<void>;
   onApplyAmount: (pairs: [string, number][]) => Promise<void>;
 }) {
   const [sel, setSel] = useState<Set<number>>(new Set());
+  const [mineOnly, setMineOnly] = useState(false);
+  // 걸러도 원본 번호(i)로 고르므로, 필터를 껐다 켜도 선택이 흐트러지지 않는다.
+  const shown = rows.map((r, i) => [r, i] as const).filter(([r]) => !mineOnly || isMine(r.staff));
   const toggle = (i: number) => setSel((p) => { const n = new Set(p); if (n.has(i)) n.delete(i); else n.add(i); return n; });
   const pickKind = (kind: ReconcileRow['kind']) =>
-    setSel(new Set(rows.map((r, i) => (r.kind === kind ? i : -1)).filter((i) => i >= 0)));
+    setSel(new Set(shown.filter(([r]) => r.kind === kind).map(([, i]) => i)));
   const chosen = [...sel].map((i) => rows[i]).filter(Boolean);
   const addable = chosen.filter((r) => r.kind === '계약에만' && r.cand).map((r) => r.cand!);
   const delible = chosen.filter((r) => r.kind === '초안에만' && r.draftId).map((r) => r.draftId!);
   const amtable = chosen.filter((r) => r.kind === '금액다름' && r.draftId)
     .map((r) => [r.draftId!, r.candAmount] as [string, number]);
-  const count = (k: ReconcileRow['kind']) => rows.filter((r) => r.kind === k).length;
+  const count = (k: ReconcileRow['kind']) => shown.filter(([r]) => r.kind === k).length;
 
   return (
     <div onClick={onClose} style={{
@@ -71,7 +77,7 @@ function ReconcileModal({ rows, ym, busy, canWrite, onClose, onAdd, onDelete, on
         <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           🔍 매출계약 대사 · {ym}
           <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
-            청구예정 ↔ 매출계약등록
+            청구예정 ↔ 매출계약등록{shown.length !== rows.length && ` · ${shown.length}/${rows.length} 보는 중`}
           </span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
@@ -90,6 +96,13 @@ function ReconcileModal({ rows, ym, busy, canWrite, onClose, onAdd, onDelete, on
               <br />· <b>금액다름</b> ({count('금액다름')}) — 계약금액이 바뀌었습니다. 계약이 맞으면 <b>계약금액으로 맞춤</b>, 이번 달만 다른 것이면 표에서 직접 고치세요.
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+              {me && (
+                <label style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
+                  title="담당직원이 나인 건만 봅니다">
+                  <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} />
+                  내 담당만 ({rows.filter((r) => isMine(r.staff)).length})
+                </label>
+              )}
               <span style={{ fontSize: 11.5, color: '#666' }}>골라서:</span>
               <button className="btn-sm" onClick={() => pickKind('계약에만')}>계약에만 전체</button>
               <button className="btn-sm" onClick={() => pickKind('초안에만')}>초안에만 전체</button>
@@ -115,12 +128,12 @@ function ReconcileModal({ rows, ym, busy, canWrite, onClose, onAdd, onDelete, on
                 <thead>
                   <tr>
                     <th style={{ width: 28 }}></th>
-                    <th style={{ width: 84 }}>구분</th><th>거래처</th><th>사업장</th><th>계약코드</th>
+                    <th style={{ width: 84 }}>구분</th><th>거래처</th><th>사업장</th><th>담당직원</th><th>계약코드</th>
                     <th className="r">청구예정</th><th className="r">매출계약</th><th className="r">차이</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, i) => {
+                  {shown.map(([r, i]) => {
                     const c = r.kind === '계약에만' ? { bg: '#DBEAFE', fg: '#1E3A8A' }
                       : r.kind === '초안에만' ? { bg: '#FEE2E2', fg: '#991B1B' } : { bg: '#FEF3C7', fg: '#92400E' };
                     return (
@@ -129,6 +142,7 @@ function ReconcileModal({ rows, ym, busy, canWrite, onClose, onAdd, onDelete, on
                         <td><span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.kind}</span></td>
                         <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.company}</td>
                         <td>{r.place}</td>
+                        <td style={{ fontSize: 11, fontWeight: 600, color: '#1A2B52' }}>{r.staff || dash}</td>
                         <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.contractCode}</td>
                         <td className="r">{r.draftAmount ? won(r.draftAmount) : dash}</td>
                         <td className="r">{r.candAmount ? won(r.candAmount) : dash}</td>
@@ -197,6 +211,10 @@ export default function InvoiceRequestTab() {
   const [showDiff, setShowDiff] = useState(false);
   const [drafts, setDrafts] = useState<InvoiceDraft[]>([]);
   const [recon, setRecon] = useState(false);          // 매출계약 대사 창
+  const [logs, setLogs] = useState<DraftLog[]>([]);  // 이번 달 초안 변경 기록
+  const [showLog, setShowLog] = useState(false);
+  const [mineOnly, setMineOnly] = useState(false);   // 내 담당만 보기
+  const [noStaffOnly, setNoStaffOnly] = useState(false);   // 담당 미지정만 보기
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3000); };
 
@@ -206,14 +224,15 @@ export default function InvoiceRequestTab() {
       setErr(null);
       const ents = entities.length ? entities : await listBizEntities();
       if (!entities.length) setEntities(ents);
-      const [c, d, r, p, mst] = await Promise.all([
+      const [c, d, r, p, mst, lg] = await Promise.all([
         listInvoiceCandidates(ym, ents, 'taxteam'),   // 대사용 참고자료
         listDrafts(ym, 'taxteam'),
         listInvoiceRequests(ym, 'taxteam'),
         listInvoiceRequests(prevMonthOf(ym), 'taxteam'),
         getMonthState(ym),
+        listDraftLog(ym, 'taxteam'),
       ]);
-      setCands(c); setDrafts(d); setReqs(r); setPrev(p); setMonth(mst);
+      setCands(c); setDrafts(d); setReqs(r); setPrev(p); setMonth(mst); setLogs(lg);
       setShares(await listInvoiceStaff(r.map((x) => x.id)));
       if (!staffOpts.length) setStaffOpts((await listInternalStaff()).map((x) => x.name));
       setPick(new Set()); setPickReq(new Set());
@@ -223,11 +242,25 @@ export default function InvoiceRequestTab() {
   }, [ym, entities, staffOpts.length]);
   useEffect(() => { void load(); }, [load]);
 
+  /** 이 사람이 담당인가 — 담당직원은 쉼표로 여럿일 수 있다. */
+  const isMine = useCallback(
+    (staff: string) => staff.split(',').map((x) => x.trim()).includes(profileName),
+    [profileName],
+  );
+  /** 내가 담당직원 명단에 있는 사람인가(회계사·팀장은 '내 담당' 개념이 없다). */
+  const amStaff = staffOpts.includes(profileName);
+  const myDrafts = useMemo(() => drafts.filter((d) => isMine(d.staff)), [drafts, isMine]);
+  /** 담당직원이 비어 있는 건 — 아무도 보지 않고 지나갈 위험이 있다. */
+  const noStaff = useMemo(() => drafts.filter((d) => !d.staff.trim()), [drafts]);
+
   const draftSearched = useMemo(() => {
-    if (!q.trim()) return drafts;
+    let l = drafts;
+    if (mineOnly) l = l.filter((d) => isMine(d.staff));
+    if (noStaffOnly) l = l.filter((d) => !d.staff.trim());
+    if (!q.trim()) return l;
     const k = q.trim().toLowerCase();
-    return drafts.filter((d) => (d.companyName + d.placeName + d.contractCode + d.cpa + d.staff).toLowerCase().includes(k));
-  }, [drafts, q]);
+    return l.filter((d) => (d.companyName + d.placeName + d.contractCode + d.cpa + d.staff).toLowerCase().includes(k));
+  }, [drafts, q, mineOnly, noStaffOnly, isMine]);
   const reqSearched = useMemo(() => {
     if (!q.trim()) return reqs;
     const k = q.trim().toLowerCase();
@@ -349,7 +382,8 @@ export default function InvoiceRequestTab() {
     setBusy(true);
     try {
       if (iChecked) await clearMyCheck(ym);
-      else await markMyCheck(ym, diff.mark.size || diff.dropped.length ? '' : '변경 없음');
+      // '확인했다'만으로는 무엇을 손댔는지 알 수 없다 — 이번 달 내 변경을 요약해 함께 남긴다.
+      else await markMyCheck(ym, changeSummary(logs, profileName));
       await load();
       flash(iChecked ? '확인을 해제했습니다' : '✓ 확인했습니다');
     } catch (e) { alert('처리 실패: ' + (e instanceof Error ? e.message : e)); }
@@ -370,6 +404,12 @@ export default function InvoiceRequestTab() {
   /** 초안을 발행요청으로 옮긴다 — 옮긴 초안은 지운다(같은 건이 두 곳에 있으면 안 된다). */
   async function doRequest() {
     if (!picked.length) return;
+    // 담당자 확인을 보고 등록하는 것이 3단계다 — 아직 안 본 사람이 있으면 짚어 준다.
+    const notYet = CHECKERS.filter((n) => !checkedNames.has(n));
+    if (notYet.length && !confirm(`아직 확인하지 않은 담당자가 있습니다.
+(${notYet.join('·')})
+
+담당자 확인을 받고 등록하는 것이 원래 순서입니다. 그래도 등록할까요?`)) return;
     const noContract = picked.filter((d) => !d.contractId).length;
     if (!confirm(`${picked.length}건을 ${ym} 발행요청으로 등록합니다(작성일 ${issueDateOf(ym)}).
 ${noContract ? `
@@ -388,15 +428,15 @@ ${noContract ? `
   }
 
   /** 초안 한 줄 고치기 — 금액·담당직원·적요는 담당자가 그 자리에서 바꾼다. */
-  async function saveDraft(id: string, patch: Partial<InvoiceDraft>) {
-    try { await updateDraft(id, patch); await load(); }
+  async function saveDraft(id: string, patch: Partial<InvoiceDraft>, before?: InvoiceDraft) {
+    try { await updateDraft(id, patch, before); await load(); }
     catch (e) { alert('저장 실패: ' + (e instanceof Error ? e.message : e)); }
   }
   async function removeDrafts(ids: string[]) {
     if (!ids.length) return;
     if (!confirm(`청구예정에서 ${ids.length}건을 지웁니다. (계약이나 지난 실적은 그대로입니다)`)) return;
     setBusy(true);
-    try { await deleteDrafts(ids); await load(); flash(`✓ ${ids.length}건 삭제`); }
+    try { await deleteDrafts(ids, drafts); await load(); flash(`✓ ${ids.length}건 삭제`); }
     catch (e) { alert('삭제 실패: ' + (e instanceof Error ? e.message : e)); }
     finally { setBusy(false); }
   }
@@ -460,7 +500,7 @@ ${noContract ? `
         <input defaultValue={String(Math.round(d.supplyAmount))} key={`${d.id}:${d.supplyAmount}`}
           onBlur={(e) => {
             const v = Number(e.target.value.replace(/[^\d-]/g, '')) || 0;
-            if (v !== Math.round(d.supplyAmount)) void saveDraft(d.id, { supplyAmount: v });
+            if (v !== Math.round(d.supplyAmount)) void saveDraft(d.id, { supplyAmount: v }, d);
           }}
           style={{ width: '100%', textAlign: 'right', fontSize: 11.5, padding: '1px 3px', boxSizing: 'border-box' }} />
       ) : won(d.supplyAmount)) },
@@ -473,7 +513,7 @@ ${noContract ? `
     { key: 'staff', label: '담당직원', width: 96, value: (d) => d.staff, opts: staffOpts,
       style: { fontWeight: 600, color: '#1A2B52' },
       cell: (d) => (canWrite ? (
-        <select value={d.staff} onChange={(e) => void saveDraft(d.id, { staff: e.target.value })}
+        <select value={d.staff} onChange={(e) => void saveDraft(d.id, { staff: e.target.value }, d)}
           style={{ width: '100%', fontSize: 11, padding: '1px 2px', boxSizing: 'border-box' }}>
           <option value="">(미지정)</option>
           {[...new Set([...staffOpts, ...(d.staff ? [d.staff] : [])])].map((n) => <option key={n} value={n}>{n}</option>)}
@@ -482,7 +522,7 @@ ${noContract ? `
     { key: 'summary', label: '적요', width: 130, value: (d) => d.summary,
       cell: (d) => (canWrite ? (
         <input defaultValue={d.summary} key={`${d.id}:s:${d.summary}`}
-          onBlur={(e) => { if (e.target.value !== d.summary) void saveDraft(d.id, { summary: e.target.value }); }}
+          onBlur={(e) => { if (e.target.value !== d.summary) void saveDraft(d.id, { summary: e.target.value }, d); }}
           style={{ width: '100%', fontSize: 11, padding: '1px 3px', boxSizing: 'border-box' }} />
       ) : d.summary) },
     { key: 'source', label: '출처', width: 70, value: (d) => d.source, opts: ['전월복사', '계약추가', '수동추가'],
@@ -602,20 +642,34 @@ ${noContract ? `
               <span style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 4 }}>
                 {CHECKERS.map((n) => {
                   const c = month.checks.find((x) => x.name === n);
+                  // 확인해 놓고 그 뒤에 또 고쳤으면 그 확인은 낡은 것이다 — 김민섭이 알아야 한다.
+                  const stale = !!c && logs.some((l) => l.actor === n && l.at > c.checkedAt);
                   return (
-                    <span key={n} title={c ? `${c.checkedAt.slice(0, 16).replace('T', ' ')}${c.note ? ` · ${c.note}` : ''}` : '아직 확인 전'}
+                    <span key={n} title={c
+                      ? `${c.checkedAt.slice(0, 16).replace('T', ' ')}${c.note ? ` · ${c.note}` : ''}${stale ? ' · 확인 뒤에 또 고쳤습니다' : ''}`
+                      : '아직 확인 전'}
                       style={{
                         padding: '1px 7px', borderRadius: 9, fontSize: 11, fontWeight: 700,
-                        background: c ? '#D1FAE5' : '#F3F4F6', color: c ? '#065F46' : '#9CA3AF',
-                        border: '1px solid ' + (c ? '#6EE7B7' : '#E5E7EB'),
-                      }}>{c ? '✓ ' : '○ '}{n}</span>
+                        background: stale ? '#FEF3C7' : c ? '#D1FAE5' : '#F3F4F6',
+                        color: stale ? '#92400E' : c ? '#065F46' : '#9CA3AF',
+                        border: '1px solid ' + (stale ? '#FCD34D' : c ? '#6EE7B7' : '#E5E7EB'),
+                      }}>{stale ? '⚠ ' : c ? '✓ ' : '○ '}{n}{c?.note ? ` · ${c.note}` : ''}</span>
                   );
                 })}
               </span>
               {isChecker && (
-                <button className={iChecked ? 'btn-sm' : 'btn-p'} disabled={busy} onClick={() => void doCheck()}>
-                  {iChecked ? '확인 해제' : '✅ 확인했습니다'}
-                </button>
+                <>
+                  {amStaff && (
+                    <span style={{ fontSize: 11.5, color: '#666' }}>
+                      내 담당 <b style={{ color: '#1A2B52' }}>{myDrafts.length}</b>건
+                      {myDrafts.length > 0 && ` · ${won(myDrafts.reduce((t, d) => t + d.supplyAmount, 0))}`}
+                    </span>
+                  )}
+                  <button className={iChecked ? 'btn-sm' : 'btn-p'} disabled={busy} onClick={() => void doCheck()}
+                    title="이번 달 내가 고친 내용이 확인 기록에 함께 남습니다">
+                    {iChecked ? '확인 해제' : `✅ 확인했습니다 (${changeSummary(logs, profileName)})`}
+                  </button>
+                </>
               )}
               {month.finalConfirmedAt ? (
                 <span style={{ marginLeft: 4, padding: '1px 8px', borderRadius: 9, fontSize: 11, fontWeight: 700, background: '#1A2B52', color: '#fff' }}>
@@ -685,6 +739,49 @@ ${noContract ? `
         )}
       </div>
 
+      {month?.opened && noStaff.length > 0 && (
+        <div className="alert-w" style={{ fontSize: 11.5 }}>
+          ⚠️ <b>담당직원이 비어 있는 건이 {noStaff.length}건</b> 있습니다
+          ({won(noStaff.reduce((t, d) => t + d.supplyAmount, 0))}) — 아무도 보지 않고 지나갈 수 있습니다.
+          <button className="btn-sm" style={{ marginLeft: 6 }}
+            onClick={() => { setMineOnly(false); setQ(''); setNoStaffOnly((v) => !v); }}>
+            {noStaffOnly ? '전체 보기' : '이 건들만 보기'}
+          </button>
+          <span style={{ color: '#999' }}>
+            {' '}{noStaff.slice(0, 5).map((d) => d.companyName).join(', ')}{noStaff.length > 5 ? ' 외' : ''}
+          </span>
+        </div>
+      )}
+      {month?.opened && logs.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          <button className="btn-sm" onClick={() => setShowLog((v) => !v)}>
+            {showLog ? '▾' : '▸'} 이번 달 변경 이력 ({logs.length}) — {CHECKERS.map((n) => `${n} ${changeSummary(logs, n)}`).join(' / ')}
+          </button>
+          {showLog && (
+            <div style={{ maxHeight: 240, overflow: 'auto', marginTop: 6, border: '1px solid #eee', borderRadius: 6 }}>
+              <table className="tbl" style={{ fontSize: 11.5 }}>
+                <thead>
+                  <tr><th>한 일</th><th>거래처</th><th>항목</th><th>이전</th><th>이후</th><th>사람</th><th>시각</th></tr>
+                </thead>
+                <tbody>
+                  {logs.map((l) => (
+                    <tr key={l.id}>
+                      <td style={{ fontWeight: 700, color: l.action === '삭제' ? '#c33' : l.action === '추가' ? '#1E3A8A' : '#92400E' }}>{l.action}</td>
+                      <td style={{ fontWeight: 700, color: '#1A2B52' }}>{l.company}</td>
+                      <td>{l.field || (l.amount ? won(l.amount) : '')}</td>
+                      <td style={{ color: '#888' }}>{l.before || dash}</td>
+                      <td style={{ fontWeight: 600 }}>{l.after || dash}</td>
+                      <td>{l.actor || dash}</td>
+                      <td style={{ color: '#888' }}>{l.at.slice(5, 16).replace('T', ' ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="alert-i" style={{ fontSize: 11 }}>
 <b>업무 순서</b> — ① 김민섭이 <b>당월 전개</b>를 누르면 <b>전월 세금계산서가 그대로 복사</b>되어 청구예정이 됩니다(엑셀에서 전월 열을 복사하던 그 일).
         ② 담당자 3인이 각자 맡은 곳을 고치고 지우고 더한 뒤 <b>확인</b>을 누릅니다 — 이때 <b>🔍 매출계약 대사</b>로 계약과 맞춰 봅니다.
@@ -707,6 +804,13 @@ ${noContract ? `
       <div style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 12.5, color: '#1A2B52' }}>① {ym} 청구예정 ({candView.length}건 · 공급가액 {won(candView.reduce((s, d) => s + d.supplyAmount, 0))})</b>
+          {amStaff && (
+            <label style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
+              title="담당직원이 나인 건만 봅니다">
+              <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} />
+              내 담당만 ({myDrafts.length})
+            </label>
+          )}
           <button className="btn-sm btn-sm-blue" onClick={() => setRecon(true)}
             title="청구예정을 매출계약과 맞춰 봅니다 — 계약에만 있는 것, 초안에만 있는 것, 금액이 다른 것">
             🔍 매출계약 대사{reconRows.length ? ` (${reconRows.length})` : ' ✓'}
@@ -793,7 +897,7 @@ ${noContract ? `
       </div>
       {recon && (
         <ReconcileModal rows={reconRows} ym={ym} busy={busy}
-          canWrite={canWrite}
+          canWrite={canWrite} me={amStaff ? profileName : ''} isMine={isMine}
           onClose={() => setRecon(false)}
           onAdd={async (cs) => {
             setBusy(true);
