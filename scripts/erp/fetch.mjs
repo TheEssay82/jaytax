@@ -319,11 +319,23 @@ async function fetchLedger(page, r) {
   }
 }
 
+/**
+ * 거래처 마스터. 부서·기간 조건이 없는 전사 목록이라 **코드 매핑의 원천**이다.
+ * 원장에는 거래처코드만 있고 사업자번호가 없어서, 코드↔사업자번호를 여기서 얻는다.
+ */
+async function fetchClients(page) {
+  await open(page, `${ERP}/apps/code/cvcode/cvlist.jsp?menu=BCC`);
+  await ready(page);
+  await submitAndWait(page, () => window.search('search'));
+  return grab(page, [() => window.xls_click(), clickExcelButton], `${tag}_ERP거래처마스터.xls`);
+}
+
 const REPORTS = {
   slip: ['거래전표 리스트', fetchSlip],
   unpaid: ['기준일자 미수금현황', fetchUnpaid],
   flow: ['기간 미수금대장', fetchFlow],
   ledger: ['부서별원장', fetchLedger],
+  clients: ['거래처 마스터', fetchClients],
 };
 
 const URLS = {
@@ -331,6 +343,7 @@ const URLS = {
   unpaid: `${ERP}/apps/sales/accfirm/arlistbybucode.jsp?menu=BCC&ReadBU=1`,
   flow: `${ERP}/apps/sales/accfirm/arlistbybucode_flow.jsp?menu=BCC&ReadBU=1`,
   ledger: `${ERP}/apps/common/buperiodselect.jsp`,
+  clients: `${ERP}/apps/code/cvcode/cvlist.jsp?menu=BCC`,
 };
 
 // ── 조건 배우기 ───────────────────────────────────────────
