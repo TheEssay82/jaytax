@@ -56,8 +56,11 @@ const shiftMonth = (ym: string, n: number) => {
 
 export default function AuditInvoiceTab() {
   const { readonly, role, profileName } = useAuth();
-  const canWrite = !readonly && role !== 'per_head_accountant';
-  const isApprover = canWrite && (profileName === FINAL_APPROVER || role === 'team_lead' || role === 'superuser');
+  // 인당회계사도 담당 회계사로서 자기 건을 요청해야 한다 — **이 화면만** 쓰기를 연다(2026-09-03).
+  // 서버도 team='감사team' 으로 좁혀 허용한다(마이그 0122). 발행완료는 여전히 승인자만.
+  const canWrite = !readonly;
+  const isApprover = canWrite && role !== 'per_head_accountant'
+    && (profileName === FINAL_APPROVER || role === 'team_lead' || role === 'superuser');
 
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [contacts, setContacts] = useState<BizContact[]>([]);

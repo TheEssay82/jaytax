@@ -63,6 +63,7 @@ function Shell() {
   const navRef = useRef<HTMLElement>(null);
   const fromPop = useRef(false); // popstate로 인한 탭 변경이면 pushState 생략
   const navMounted = useRef(false);
+  const curTabRef = useRef<string>('');   // popstate 안에서 '지금 탭'을 보기 위한 거울
 
   // 권한 필터링된 메뉴 그룹/아이콘.
   //  · 외부인: 정해진 조회 메뉴만(EXTERNAL_ALLOWED_TABS), 아이콘 메뉴 없음.
@@ -115,16 +116,20 @@ function Shell() {
 
   // 브라우저 뒤로/앞으로가 사이트를 벗어나지 않고 앱 내 탭 사이를 이동하게 한다.
   // 탭 변경마다 history 항목을 쌓고, popstate 시 해당 탭으로 복원한다.
+  //
+  // ⚠️ 여기서 한 번 틀렸었다 — 되돌아간 곳이 **지금 탭과 같으면** setCurTab 이 아무 일도 안 해
+  // 아래 [curTab] 효과가 돌지 않고, `fromPop` 이 true 로 남았다. 그러면 **다음 이동의 push 가 통째로
+  // 건너뛰어져** 그 다음 뒤로가기가 한 칸을 넘어 뛰고, 결국 홈까지 밀려났다.
+  // 그래서 '실제로 탭이 바뀔 때만' 표시를 세운다.
   useEffect(() => {
     history.replaceState({ jaytab: curTab }, '');
     const onPop = (e: PopStateEvent) => {
       const t = (e.state as { jaytab?: string } | null)?.jaytab;
-      if (t) {
-        fromPop.current = true;
-        setCurTab(t);
-        setReloadKey((k) => k + 1);
-        setOpenMenu(null);
-      }
+      if (!t || t === curTabRef.current) return;
+      fromPop.current = true;
+      setCurTab(t);
+      setReloadKey((k) => k + 1);
+      setOpenMenu(null);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -132,6 +137,7 @@ function Shell() {
   }, []);
 
   useEffect(() => {
+    curTabRef.current = curTab;
     if (!navMounted.current) { navMounted.current = true; return; } // 초기 렌더는 replaceState가 처리
     if (fromPop.current) { fromPop.current = false; return; } // 뒤로가기로 인한 변경은 push 안 함
     history.pushState({ jaytab: curTab }, '');

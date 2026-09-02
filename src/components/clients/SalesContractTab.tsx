@@ -110,6 +110,19 @@ export default function SalesContractTab() {
   const [taxOffer, setTaxOffer] = useState<TaxOffer | null>(null);   // 세무조정 계약 동반등록 제안
   const [editId, setEditId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
+  /**
+   * 표에서 '수정'을 누르면 박스 화면으로 넘어가는데, 화면이 맨 위로 올라가 그 계약을 다시 찾아야 했다.
+   * 넘어간 뒤 그 행으로 내려가 준다.
+   */
+  useEffect(() => {
+    if (viewMode !== 'box' || !editId) return;
+    // 목록이 길면(계약 266건) 한 번만 불러서는 아직 그려지기 전이라 그냥 지나간다.
+    // 그려진 뒤 다시 한 번 더 부른다. smooth 는 재렌더에 끊겨서 쓰지 않는다.
+    const jump = () => document.getElementById(`contract-${editId}`)?.scrollIntoView({ block: 'center' });
+    const raf = requestAnimationFrame(jump);
+    const t = setTimeout(jump, 250);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
+  }, [viewMode, editId]);
   const [showCodeHelp, setShowCodeHelp] = useState(false);
   const [codeFixing, setCodeFixing] = useState(false);
   const [showRenew, setShowRenew] = useState(false);
@@ -601,7 +614,10 @@ export default function SalesContractTab() {
         {view.map((c) => {
           const leaf = leafOf(c.categoryCode);
           return (
-            <div key={c.id} style={{ border: '1px solid #e6e0d8', borderRadius: 6, padding: '8px 10px', marginLeft: c.parentContractId ? 24 : 0 }}>
+            <div key={c.id} id={`contract-${c.id}`} style={{
+              border: editId === c.id ? '2px solid #c9a54a' : '1px solid #e6e0d8',
+              borderRadius: 6, padding: '8px 10px', marginLeft: c.parentContractId ? 24 : 0,
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 {c.parentContractId && <span style={{ fontSize: 10, color: '#a80' }}>↳종속</span>}
                 {c.contractCode && <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#667', background: '#f2f0ea', padding: '1px 5px', borderRadius: 3 }}>{c.contractCode}{c.dateEstimated && ' ·추정'}</span>}

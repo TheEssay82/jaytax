@@ -45,6 +45,19 @@ export default function BizContactsTab() {
   const entMap = useMemo(() => new Map(entities.map((e) => [e.id, e])), [entities]);
   /** 이직·퇴사로 접어 둔 담당자까지 볼지. 기본은 유효한 사람만 본다. */
   const [showLeft, setShowLeft] = useState(false);
+  /**
+   * 표에서 '수정'을 누르면 박스 화면으로 넘어가는데, 화면이 맨 위로 올라가 그 거래처를 다시 찾아야 했다.
+   * 넘어간 뒤 그 행으로 내려가 준다.
+   */
+  useEffect(() => {
+    if (viewMode !== 'box' || !editId) return;
+    // 목록이 길면(계약 266건) 한 번만 불러서는 아직 그려지기 전이라 그냥 지나간다.
+    // 그려진 뒤 다시 한 번 더 부른다. smooth 는 재렌더에 끊겨서 쓰지 않는다.
+    const jump = () => document.getElementById(`contact-${editId}`)?.scrollIntoView({ block: 'center' });
+    const raf = requestAnimationFrame(jump);
+    const t = setTimeout(jump, 250);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
+  }, [viewMode, editId]);
   const leftCount = contacts.filter((c) => !c.active).length;
   /** 목록의 바탕이 되는 담당자 — 접힌 사람은 기본으로 뺀다. */
   const liveContacts = useMemo(
@@ -235,7 +248,8 @@ export default function BizContactsTab() {
               {entity ? entLabel(entity) : '(삭제된 거래처)'} <span style={{ fontSize: 10.5, fontWeight: 400, color: '#999' }}>담당자 {cs.length}</span>
             </div>
             {cs.map((c) => (
-              <div key={c.id}>
+              <div key={c.id} id={`contact-${c.id}`}
+                style={editId === c.id ? { outline: '2px solid #c9a54a', borderRadius: 4 } : undefined}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 11.5, flexWrap: 'wrap', padding: '2px 0' }}>
                   <b style={{ textDecoration: c.active ? undefined : 'line-through' }}>{c.contactName} {c.honorific}</b>
                   {!c.active && (
