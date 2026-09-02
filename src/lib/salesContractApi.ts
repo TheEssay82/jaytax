@@ -563,3 +563,101 @@ export async function saveContractStaff(contractId: string, staff: { staffId: st
   );
   if (ins.error) throw new Error(ins.error.message);
 }
+
+/* ────────────────────────────────────────────────────────────────
+   세무조정수수료관리 → 매출계약 금액 밀어넣기
+
+   담당회계사 정우철인 거래처의 법인세조정·종합소득세는 기장계약을 등록할 때
+   금액 0 인 계약이 함께 생긴다(SalesContractTab.createTaxFiling). 실제 금액은
+   세무조정수수료관리에서 청구서를 확정할 때 정해진다 — 그 값을 여기서 계약에
+   되돌려 놓는다. 사람이 두 화면을 오가며 옮겨 적지 않게 하려는 것이다.
+   ──────────────────────────────────────────────────────────────── */
+
+export interface TaxFilingSync {
+  /** 계약 금액을 실제로 고쳤는가. */
+  updated: boolean;
+  contractCode?: string;
+  /** 새로 넣은 공급가액. */
+  amount?: number;
+  /** 고치기 전 금액(0 이면 처음 채운 것). */
+  previous?: number;
+  /** 못 고친 이유 — 화면에 그대로 보여 준다. */
+  reason?: string;
+}
+
+/**
+ * 확정된 세무조정 청구서의 공급가액을 그 거래처의 세무조정 매출계약에 적는다.
+ *
+ * 계약은 **확정일이 청구기간(start_date~end_date) 안에 드는** 세무조정 계약으로 찾는다.
+ * 계약의 fiscal_year 는 대상 사업연도가 아니라 정산연도(청구가 일어나는 7/1~익6/30)라,
+ * 날짜로 찾는 편이 어긋나지 않는다.
+ *
+ * 실패해도 예외를 던지지 않는다 — 청구 확정 자체가 막히면 안 된다.
+ */
+export async function syncTaxFilingContractAmount(input: {
+  clientId: string | null;
+  companyName: string;
+  /** 공급가액(D). grand 는 부가세가 붙은 값이라 쓰지 않는다. */
+  supplyAmount: number;
+  /** 확정일(YYYY-MM-DD). 계약 기간 매칭에 쓴다. */
+  onDate: string;
+}): Promise<TaxFilingSync> {
+  try {
+    if (!(input.supplyAmount > 0)) return { updated: false, reason: '공급가액이 0이라 옮기지 않았습니다.' };
+
+    // 청구기록의 거래처(clients) → 거래처마스터(biz_entity). 연결이 없으면 상호로 찾는다.
+    let entityId: string | null = null;
+    if (input.clientId) {
+      const { data } = await supabase.from('clients').select('entity_id').eq('id', input.clientId).maybeSingle();
+      entityId = (data as { entity_id: string | null } | null)?.entity_id ?? null;
+    }
+    if (!entityId) {
+      const { data } = await supabase.from('biz_entity').select('id').eq('name', input.companyName.trim()).limit(2);
+      const hit = (data as { id: string }[] | null) ?? [];
+      if (hit.length === 1) entityId = hit[0].id;
+    }
+    if (!entityId) {
+      return { updated: false, reason: `‘${input.companyName}’이 거래처관리의 어느 거래처인지 찾지 못했습니다 — 매출계약 금액은 직접 적어 주세요.` };
+    }
+
+    const { data: cons, error } = await supabase
+      .from('biz_sales_contract')
+      .select('id, contract_code, amount, start_date, end_date, note')
+      .eq('entity_id', entityId)
+      .in('category_code', ['TAX.FILING.CORP', 'TAX.FILING.INCOME'])
+      .lte('start_date', input.onDate);
+    if (error) return { updated: false, reason: error.message };
+
+    const rows = ((cons as {
+      id: string; contract_code: string | null; amount: number | null;
+      start_date: string | null; end_date: string | null; note: string | null;
+    }[] | null) ?? []).filter((c) => !c.end_date || c.end_date >= input.onDate);
+    if (!rows.length) {
+      return { updated: false, reason: '확정일이 속한 세무조정 매출계약이 없습니다 — 계약을 먼저 등록해 주세요.' };
+    }
+    // 후보가 여럿이면 금액이 비어 있는 것(=채워지길 기다리는 자리)을 먼저 고른다.
+    const target = rows.find((c) => !Number(c.amount)) ?? rows[0];
+    const previous = Number(target.amount) || 0;
+    if (previous === Math.round(input.supplyAmount)) {
+      return { updated: false, contractCode: target.contract_code ?? undefined, reason: '계약 금액이 이미 같습니다.' };
+    }
+
+    const { data: u } = await supabase.auth.getUser();
+    const { error: ue } = await supabase.from('biz_sales_contract').update({
+      amount: Math.round(input.supplyAmount),
+      note: `세무조정수수료관리에서 확정 (${input.onDate})`,
+      updated_by: u.user?.id ?? null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', target.id);
+    if (ue) return { updated: false, reason: ue.message };
+
+    return {
+      updated: true,
+      contractCode: target.contract_code ?? undefined,
+      amount: Math.round(input.supplyAmount),
+      previous,
+    };
+  } catch (e) {
+    return { updated: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}

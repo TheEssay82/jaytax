@@ -1,6 +1,7 @@
 // 청구기록(billing_records) Supabase 데이터 레이어
 // payload(jsonb)에 WizardState+CalcResult 전체 스냅샷을 저장하고, 조회용 핵심 컬럼을 별도 보관한다.
 import { supabase } from './supabase';
+import { syncTaxFilingContractAmount, type TaxFilingSync } from './salesContractApi';
 import type { BillingRecord } from '../types';
 
 interface BillingRow {
@@ -139,11 +140,29 @@ async function explainBlocked(
   return new Error(`${action} 권한이 없습니다. 읽기전용 계정이거나 권한이 부족합니다.`);
 }
 
-/** 청구기록 확정 (작성중 → 확정). RLS상 팀장+ 만 가능. */
-export async function finalizeBillingRecord(id: string): Promise<void> {
-  const { data, error } = await supabase.from('billing_records').update({ status: 'final' }).eq('id', id).select('id');
+/**
+ * 청구기록 확정 (작성중 → 확정). RLS상 팀장+ 만 가능.
+ *
+ * 확정된 금액은 그 거래처의 **세무조정 매출계약에도 밀어 넣는다** — 기장계약과 함께
+ * 금액 0 으로 만들어 둔 자리를 여기서 채운다. 계약 반영이 실패해도 확정 자체는 살린다
+ * (돌려주는 값으로 화면이 알린다).
+ */
+export async function finalizeBillingRecord(id: string): Promise<TaxFilingSync> {
+  const { data, error } = await supabase.from('billing_records')
+    .update({ status: 'final' }).eq('id', id)
+    .select('id, client_id, company_name, payload, grand_total');
   if (error) throw await explainBlocked(id, '확정', error);
   if (!data?.length) throw await explainBlocked(id, '확정');
+
+  const row = data[0] as { client_id: string | null; company_name: string; payload: Record<string, unknown> };
+  // 계약에 적는 것은 공급가액(D)이다. grand 는 부가세가 붙은 값이라 쓰면 안 된다.
+  const supply = Number((row.payload as { D?: number } | null)?.D ?? 0);
+  return syncTaxFilingContractAmount({
+    clientId: row.client_id,
+    companyName: row.company_name ?? '',
+    supplyAmount: supply,
+    onDate: new Date().toISOString().slice(0, 10),
+  });
 }
 
 /** 청구기록 삭제 */

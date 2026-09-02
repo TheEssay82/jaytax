@@ -86,8 +86,19 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
   async function finalize(r: BillingRecord) {
     if (!confirm(`'${r.companyName}' ${r.fiscalYear}년 청구건을 확정하시겠습니까?`)) return;
     try {
-      await finalizeBillingRecord(r.id);
+      const sync = await finalizeBillingRecord(r.id);
       await refresh();
+      // 세무조정 매출계약까지 채워졌는지 알려 준다 — 조용히 지나가면 옮겨 적을 일을 놓친다.
+      if (sync.updated) {
+        alert(`확정했습니다.
+
+매출계약 ${sync.contractCode ?? ''} 금액도 ${(sync.amount ?? 0).toLocaleString('ko-KR')}원으로 채웠습니다`
+          + `${sync.previous ? ` (이전 ${sync.previous.toLocaleString('ko-KR')}원)` : ''}.`);
+      } else if (sync.reason) {
+        alert(`확정했습니다.
+
+다만 매출계약 금액은 채우지 못했습니다 — ${sync.reason}`);
+      }
     } catch (e) {
       alert('확정 실패: ' + (e instanceof Error ? e.message : e));
     }
