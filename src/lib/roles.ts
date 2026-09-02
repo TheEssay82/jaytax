@@ -1,7 +1,9 @@
 // 사용자 역할(등급) 및 권한 정의 — 권한 매트릭스(2026-06-27 확정)
-// per_head_accountant(인당회계사): 외부 위촉 성격의 제한 등급. '일반업무관리'·'거래처관리(조회)'·'업데이트요청'을 노출하고
-//   문서발송관리의 '발송요청 처리'는 숨긴다. 거래처관리는 2026-08 조회 허용(biz_* SELECT RLS 개방, 쓰기·PII복호는 계속 차단).
-//   청구·상담·자료실 등 나머지 민감 데이터는 외부인과 동일하게 RLS 읽기 차단(is_perhead) 유지 — 메뉴 숨김 + API 차단 이중.
+// per_head_accountant(인당회계사): 외부 위촉 성격의 제한 등급이지만 **조회 범위는 계속 넓어졌다**.
+//   · 2026-08 거래처관리 조회 허용(biz_* SELECT 개방, 쓰기·PII복호는 차단)
+//   · 2026-09-03 기장등청구관리·세무조정수수료관리·회계및세무상담관리 **조회** 허용
+//     (마이그 0121 로 perhead_block_select RESTRICTIVE 정책 제거). 쓰기는 등급별 정책이 그대로 막는다.
+//   아직 숨기는 것: 발송요청 처리 · ERP 발행내역 대사 · 통계 · AI 사용량 · 기초 미수금 입력 · 설정 · 사용자 관리.
 export type Role = 'superuser' | 'accountant' | 'team_lead' | 'team_member' | 'per_head_accountant' | 'external';
 
 export const ROLES: Role[] = ['superuser', 'accountant', 'team_lead', 'team_member', 'per_head_accountant', 'external'];
@@ -15,10 +17,17 @@ export const ROLE_LABELS: Record<Role, string> = {
   external: '외부인',
 };
 
-/** 인당회계사가 접근 가능한 대분류(그룹) id — 일반업무관리 + 거래처관리(조회 전용). */
-export const PER_HEAD_ALLOWED_GROUPS = new Set<string>(['general', 'clients-hub']);
-/** 인당회계사에게 숨기는 세부 탭 id — 문서발송관리 › 발송요청 처리. */
-export const PER_HEAD_HIDDEN_TABS = new Set<string>(['doc-process']);
+/** 인당회계사가 접근 가능한 대분류(그룹) id. 조회 전용이다. */
+export const PER_HEAD_ALLOWED_GROUPS = new Set<string>([
+  'general', 'clients-hub', 'billing-req', 'billing', 'advisory',
+]);
+/**
+ * 인당회계사에게 숨기는 세부 탭 id.
+ * 대분류를 열어 주되 안에서 몇 개는 접는다 — 발송요청 처리(쓰기 업무),
+ * ERP 발행내역 대사(원본 대사는 내부 업무), 통계(회계사·관리자용).
+ * 나머지(설정·AI 사용량·사용자 관리)는 권한(cap)으로, 기초 미수금 입력은 onlyFor 로 이미 막힌다.
+ */
+export const PER_HEAD_HIDDEN_TABS = new Set<string>(['doc-process', 'erp-reconcile', 'stats']);
 /** 인당회계사가 접근 가능한 우측 아이콘 메뉴 id — 업데이트요청만. */
 export const PER_HEAD_ALLOWED_ICONS = new Set<string>(['requests']);
 
@@ -59,7 +68,8 @@ const MATRIX: Record<Capability, Role[]> = {
   saveInvoice: ['superuser', 'accountant', 'team_lead', 'team_member'],
   finalizeInvoice: ['superuser', 'accountant', 'team_lead'],
   // 거래처관리 메뉴 접근: 전 직원(팀원은 일부 필드 수정만) / 전체 CRUD: 팀장+
-  viewClients: ['superuser', 'accountant', 'team_lead', 'team_member'],
+  // 인당회계사도 세무조정 대상선정을 본다(조회만) — 2026-09-03.
+  viewClients: ['superuser', 'accountant', 'team_lead', 'team_member', 'per_head_accountant'],
   manageClients: ['superuser', 'accountant', 'team_lead'],
   manageTargets: ['superuser', 'accountant', 'team_lead'],
   deleteBilling: ['superuser', 'accountant', 'team_lead'],
