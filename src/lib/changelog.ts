@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.27.1',
+    date: '2026-09-03',
+    title: '세무조정수수료관리 › 통계도 김민섭·김동주 제외',
+    highlights: [
+      '<세무조정수수료관리 › 📊 통계>가 김민섭·김동주 메뉴에서 빠집니다 — 기장등청구관리의 <매출통계>와 같은 성격이라 같은 기준을 적용했습니다.',
+      '사용자/계정관리 › 🔐 권한 현황에서 이름을 골라 확인할 수 있습니다.',
+    ],
+  },
+  {
     version: '2.27.0',
     date: '2026-09-03',
     title: '감사팀 발행요청을 4단으로 · 제안은 고쳐서 넘긴다',

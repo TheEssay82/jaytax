@@ -48,7 +48,8 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'targets', label: '🎯 세무조정 대상선정', cap: 'viewClients' },
       { id: 'wizard', label: '📝 청구서 작성' },
       { id: 'history', label: '📋 청구기록' },
-      { id: 'stats', label: '📊 통계' },
+      // 매출통계와 같은 성격이다 — 회계사·관리자가 보는 자리라 실무 담당자에게는 내놓지 않는다.
+      { id: 'stats', label: '📊 통계', hideFor: ['김민섭', '김동주'] },
       { id: 'settings', label: '⚙️ 설정', cap: 'changeSettings' },
     ],
   },
