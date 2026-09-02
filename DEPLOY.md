@@ -44,3 +44,38 @@ git push -u origin main
 - 빌드 명령 `npm run build`, 게시 디렉터리 `dist`
 - SPA 리다이렉트: `public/_redirects` 에 `/* /index.html 200` (또는 `netlify.toml`)
 - 환경변수·도메인 설정은 위와 동일
+
+---
+
+## 보안 헤더 (`vercel.json`)
+
+개인정보보호법 제29조 · 「개인정보의 안전성 확보조치 기준」 제7조(인터넷 구간 전송 암호화) 대응.
+Vercel 이 HTTPS 자체는 강제하지만 **헤더는 명시해야 붙는다**.
+
+| 헤더 | 값 | 왜 |
+|---|---|---|
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | 브라우저가 이 도메인을 **2년간 HTTPS로만** 연결한다. 처음 한 번의 http 접속을 가로채는 길(SSL stripping)을 막는다. |
+| `X-Content-Type-Options` | `nosniff` | 브라우저가 파일 내용을 보고 타입을 추측하지 않게 한다. 올린 파일이 스크립트로 실행되는 것을 막는다. |
+| `X-Frame-Options` | `DENY` | 다른 사이트가 jaytax 를 iframe 에 넣고 클릭을 가로채는 것(클릭재킹)을 막는다. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | 외부 링크를 눌렀을 때 **어느 화면에 있었는지가 상대 사이트로 새지 않게** 한다. |
+| `Permissions-Policy` | 카메라·마이크·위치 차단 | 쓰지 않는 기능은 닫아 둔다. |
+
+### `preload` 를 넣지 않은 이유
+
+`preload` 는 브라우저 제조사가 관리하는 목록에 도메인을 올리는 것이라 **되돌리기가 매우 어렵다**
+(제거 신청 후 수개월). 하위 도메인 중 http 로만 열리는 것이 하나라도 생기면 접속이 막힌다.
+지금은 `includeSubDomains` 까지만 두고, 하위 도메인 구성이 확정된 뒤에 판단한다.
+
+### CSP(Content-Security-Policy) 는 아직 없다
+
+넣으면 가장 강한 방어가 되지만 지금 화면이 부르는 곳이 여럿이다 — Supabase(REST·Edge Function),
+esm.sh, 법제처(`law.go.kr` 조문 이미지). 목록을 빠뜨리면 **조용히 화면 일부가 깨진다**.
+먼저 `Content-Security-Policy-Report-Only` 로 한동안 관찰해 실제 호출처를 모은 뒤 적용한다. (미착수)
+
+### 배포 후 확인
+
+```
+curl -sI https://jaytax.co.kr | grep -i "strict-transport\|x-content-type\|x-frame\|referrer\|permissions"
+```
+
+다섯 줄이 모두 보이면 정상이다.
