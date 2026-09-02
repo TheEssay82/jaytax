@@ -41,6 +41,16 @@ export function erpAccountOf(categoryCode: string): ErpAccount {
  */
 export type InvoiceStatus = '요청' | '발행완료' | '취소' | '수정발행';
 
+/** 세금계산서 한 장 안의 한 줄 — 엑셀 '발행 요구서'의 <세부내역>과 같다. */
+export interface DetailLine {
+  /** 거래종류(회계감사·기타용역 …) 또는 '제경비'. */
+  kind: string;
+  /** 세부내역 — 무엇에 대한 것인가. */
+  desc: string;
+  /** 공급가액(부가세 별도). */
+  amount: number;
+}
+
 export interface InvoiceRequest {
   id: string;
   ym: string;
@@ -71,6 +81,12 @@ export interface InvoiceRequest {
   correctsInvoiceNo: string;
   /** 수정 사유. */
   correctReason: string;
+  /** 취소 사유 — 왜 물렸는지. 요청자가 고쳐 다시 낼 때의 실마리다. */
+  cancelReason: string;
+  /** 세부내역(용역료·제경비를 나눠 적을 때). 합계 = supplyAmount. */
+  detailLines: DetailLine[];
+  /** 청구서(서면)를 따로 보내야 하는 건인가. */
+  needsInvoiceDoc: boolean;
   /** 청구 시점의 담당 회계사(스냅샷). 계약이 나중에 바뀌어도 이 값은 그대로다. */
   cpa: string;
   /** 청구 시점의 담당 직원(스냅샷). 직원별 매출 집계의 근거 — 계속계약은 연중에도 바뀐다. */
@@ -92,6 +108,9 @@ const toReq = (r: any): InvoiceRequest => ({
   requestedByName: r.requested_by_name || '',
   phase: r.phase || '', summary: r.summary || '',
   cpa: r.cpa || '', staff: r.staff || '',
+  cancelReason: r.cancel_reason || '',
+  detailLines: Array.isArray(r.detail_lines) ? r.detail_lines : [],
+  needsInvoiceDoc: !!r.needs_invoice_doc,
   correctsRequestId: r.corrects_request_id ?? null,
   correctsInvoiceNo: r.corrects_invoice_no || '',
   correctReason: r.correct_reason || '',
@@ -144,6 +163,8 @@ export interface InvoiceCandidate {
   billingMonth: number | null;  // 계약에 적힌 청구월(잠정값일 수 있다)
   erpAccount: ErpAccount;       // ERP 매출계정(유형에서 자동)
   docEmail: string;             // 세금계산서 수신 이메일(담당자에서 자동)
+  /** 청구서(서면)도 보내야 하는 건인가 — 제안을 넘길 때 화면이 채운다. */
+  needsInvoiceDoc?: boolean;
 }
 
 /**
@@ -243,6 +264,7 @@ export async function createInvoiceRequests(
       cpa: r.cpa || null, staff: r.staff || null,     // 청구 시점 담당을 굳혀 둔다
       erp_account: r.erpAccount,
       doc_email: r.docEmail || null,
+      needs_invoice_doc: !!r.needsInvoiceDoc,
       company_name: r.companyName,
       place_name: r.placeName,
       contract_code: r.contractCode,
@@ -291,6 +313,8 @@ export interface ManualInvoiceInput {
   summary: string;
   issueDate: string;
   docEmail: string;
+  detailLines?: DetailLine[];
+  needsInvoiceDoc?: boolean;
   companyName: string;
   placeName: string;
   contractCode?: string;
@@ -366,6 +390,8 @@ export async function createManualInvoiceRequest(input: ManualInvoiceInput): Pro
     status: '요청', erp_account: input.erpAccount || null, phase: input.phase || null,
     summary: input.summary || null, issue_date: input.issueDate || null,
     doc_email: input.docEmail || null,
+    detail_lines: input.detailLines?.length ? input.detailLines : null,
+    needs_invoice_doc: !!input.needsInvoiceDoc,
     cpa: input.cpa || null, staff: input.staff || null,
     company_name: input.companyName, place_name: input.placeName,
     contract_code: input.contractCode ?? '', note: input.note ?? null,
@@ -391,10 +417,18 @@ export async function markIssued(ids: string[], invoiceNo: string | null, issued
 }
 
 /** 요청 취소(되돌리기) — 다시 후보로 돌아간다 */
-export async function cancelRequests(ids: string[]): Promise<void> {
+/**
+ * 발행요청을 취소한다. **왜 취소했는지 반드시 남긴다** —
+ * 요청자가 그 사유를 보고 고쳐 다시 내야 하기 때문이다.
+ */
+export async function cancelRequests(ids: string[], reason: string): Promise<void> {
   if (!ids.length) return;
+  const r = reason.trim();
+  if (!r) throw new Error('취소 사유를 적어 주세요 — 요청자가 무엇을 고쳐야 할지 알 수 없습니다.');
+  const { data: u } = await supabase.auth.getUser();
   const { data, error } = await supabase.from('biz_invoice_request')
-    .update({ status: '취소' }).in('id', ids).select('id');
+    .update({ status: '취소', cancel_reason: r, canceled_by: u.user?.id ?? null, canceled_at: new Date().toISOString() })
+    .in('id', ids).select('id');
   if (error) throw new Error(error.message);
   assertWrote(data, '요청 취소');
 }

@@ -173,6 +173,34 @@ export async function notifyRequested(approver: string, rows: { companyName: str
     `${by ? `${by}가 ` : ''}${head}${rows.length > 3 ? ' 외' : ''} — 공급가액 합계 ${won(total)} 발행요청했습니다.`);
 }
 
+/**
+ * 요청을 물렸다 → **요청한 회계사에게** 사유와 함께.
+ * 사유를 알려 주지 않으면 요청자는 무엇을 고쳐야 할지 알 수 없다.
+ */
+export async function notifyCanceled(
+  rows: { cpa: string; companyName: string; supplyAmount: number }[], reason: string, by: string,
+): Promise<number> {
+  const byCpa = new Map<string, typeof rows>();
+  for (const r of rows) {
+    if (!r.cpa.trim()) continue;
+    const l = byCpa.get(r.cpa) ?? [];
+    l.push(r); byCpa.set(r.cpa, l);
+  }
+  let sent = 0;
+  for (const [cpa, list] of byCpa) {
+    const total = list.reduce((s, r) => s + r.supplyAmount, 0);
+    const head = list.slice(0, 3).map((r) => r.companyName).join(', ');
+    sent += await notify(cpa, 'audit_cancel',
+      `발행요청이 취소되었습니다 — ${list.length}건`,
+      `${head}${list.length > 3 ? ' 외' : ''} (공급가액 ${won(total)})${by ? ` · ${by}` : ''}
+`
+      + `사유: ${reason}
+`
+      + '발행 이력에서 그 건의 [다시 요청]으로 고쳐서 다시 낼 수 있습니다.');
+  }
+  return sent;
+}
+
 /** 발행완료했다 → 요청한 회계사에게. 회계사별로 한 통. */
 export async function notifyIssued(rows: { cpa: string; companyName: string; supplyAmount: number }[]): Promise<number> {
   const byCpa = new Map<string, typeof rows>();

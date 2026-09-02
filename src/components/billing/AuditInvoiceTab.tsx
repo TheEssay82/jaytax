@@ -20,11 +20,11 @@ import { pathLabel } from '../../lib/salesContractTaxonomy';
 import {
   listInvoiceRequests, createInvoiceRequests, createManualInvoiceRequest,
   markIssued, cancelRequests, revertToRequested, updateInvoiceRequest,
-  ERP_ACCOUNTS,
-  type InvoiceRequest,
+  ERP_ACCOUNTS, erpAccountOf,
+  type InvoiceRequest, type DetailLine,
 } from '../../lib/invoiceRequestApi';
 import {
-  listAuditProposals, notifyProposals, notifyRequested, notifyIssued, dismissProposals,
+  listAuditProposals, notifyProposals, notifyRequested, notifyIssued, notifyCanceled, dismissProposals,
   AUDIT_TEAM, type AuditProposal,
 } from '../../lib/auditInvoiceApi';
 import { FINAL_APPROVER } from '../../lib/invoiceMonthApi';
@@ -33,6 +33,10 @@ import { ProposalRequestModal, type ProposalEdit } from './ProposalRequestModal'
 import { ColumnSettings } from '../clients/tableKit';
 import { CorrectionModal } from './CorrectionModal';
 import { WorkflowManual } from './WorkflowManual';
+import { TaxEmailPicker, emptyEmailChoice, type EmailChoice } from './TaxEmailPicker';
+import { DetailLinesEditor } from './DetailLinesEditor';
+import { savePlaceTaxEmails, recordEmailUse, joinEmails, splitEmails } from '../../lib/taxEmailApi';
+import { listSalesContracts, type SalesContract } from '../../lib/salesContractApi';
 import { VIEW_KEYS } from '../../lib/tableViewApi';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
@@ -82,6 +86,10 @@ export default function AuditInvoiceTab() {
   /** 제안을 고쳐서 넘기는 창. 제안은 알림이지 요청이 아니므로 한 번 손볼 자리를 둔다. */
   const [proposeOpen, setProposeOpen] = useState(false);
   const [manual, setManual] = useState(false);
+  const [email, setEmail] = useState<EmailChoice>(emptyEmailChoice);
+  const [detail, setDetail] = useState<DetailLine[]>([]);
+  const [needsDoc, setNeedsDoc] = useState(false);
+  const [contracts, setContracts] = useState<SalesContract[]>([]);
   const [range, setRange] = useState<string>('3m');
   const [year, setYear] = useState('');           // 연도로 좁혀 볼 때
   const [q, setQ] = useState('');
@@ -100,16 +108,18 @@ export default function AuditInvoiceTab() {
       setErr(null);
       const ents = entities.length ? entities : await listBizEntities();
       if (!entities.length) setEntities(ents);
-      const [r, ct, pr] = await Promise.all([
+      const [r, ct, pr, cons] = await Promise.all([
         listInvoiceRequests(undefined, TEAM),
         contacts.length ? Promise.resolve(contacts) : listBizContacts(),
         listAuditProposals(ents, todayYmd(), soon ? 30 : 0),
+        contracts.length ? Promise.resolve(contracts) : listSalesContracts(),
       ]);
       setReqs(r); setProps(pr); if (!contacts.length) setContacts(ct);
+      if (!contracts.length) setContracts(cons);
       setPickP(new Set()); setPickR(new Set());
     } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); }
     finally { setLoading(false); }
-  }, [entities, contacts, soon]);
+  }, [entities, contacts, contracts, soon]);
   useEffect(() => { void load(); }, [load]);
 
   const run = async (fn: () => Promise<void>, ok: string) => {
@@ -169,9 +179,16 @@ export default function AuditInvoiceTab() {
     const ym = date.slice(0, 7);
     const edited = rows.map((r) => {
       const e = edits.get(r.key);
-      return e ? { ...r, supplyAmount: e.supplyAmount, erpAccount: e.erpAccount as typeof r.erpAccount } : r;
+      return e ? {
+        ...r, supplyAmount: e.supplyAmount, erpAccount: e.erpAccount as typeof r.erpAccount,
+        docEmail: e.docEmail, needsInvoiceDoc: e.needsInvoiceDoc,
+      } : r;
     });
     await createInvoiceRequests(ym, edited, { team: TEAM, issueDate: date });
+    // 이번에 쓴 이메일을 이력에 남긴다 — 다음 요청에서 후보로 뜨게.
+    for (const r of edited) {
+      await recordEmailUse(r.companyName, splitEmails(r.docEmail), r.entityId, r.placeId, date);
+    }
     const sent = await notifyRequested(FINAL_APPROVER, edited, profileName);
     await load();
     flash(`✓ ${rows.length}건 발행요청${sent ? ` · ${FINAL_APPROVER}에게 알림` : ''}`);
@@ -224,6 +241,44 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
     [working, mineOnly, isMine],
   );
   const pickedR = reqs.filter((r) => pickR.has(r.id));
+
+  /**
+   * 발행요청을 물린다. **사유를 받아 요청자에게 알린다** —
+   * 요청자는 그 사유를 보고 고쳐서 다시 내야 하는데, 말해 주지 않으면 알 길이 없다.
+   */
+  async function cancelPicked() {
+    const rows = pickedR.filter((r) => r.status !== '취소');
+    if (!rows.length) return alert('취소할 건을 골라 주세요.');
+    const reason = prompt(`${rows.length}건을 취소합니다.\n\n`
+      + `${rows.slice(0, 5).map((r) => `· ${r.companyName} ${won(r.supplyAmount)}`).join('\n')}`
+      + `${rows.length > 5 ? `\n · 외 ${rows.length - 5}건` : ''}\n\n`
+      + '취소 사유를 적어 주세요 — 요청자에게 그대로 전달됩니다.', '');
+    if (reason === null) return;
+    if (!reason.trim()) return alert('사유 없이는 취소할 수 없습니다.');
+    setBusy(true);
+    try {
+      await cancelRequests(rows.map((r) => r.id), reason);
+      const sent = await notifyCanceled(rows, reason, profileName);
+      await load();
+      flash(`✓ ${rows.length}건 취소${sent ? ' · 요청자에게 알림' : ''}`);
+    } catch (e) { alert('취소 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
+
+  /** 취소된 건을 고쳐서 다시 낸다 — 값이 채워진 채로 건별 등록 폼이 열린다. */
+  function reRequest(r: InvoiceRequest) {
+    const o = options.find((x) => x.id === r.entityId);
+    setShowForm(true);
+    setF({
+      company: o?.label ?? r.companyName, entityId: r.entityId, placeId: r.placeId ?? '',
+      amount: String(Math.round(r.supplyAmount)), account: r.erpAccount || '회계감사수입',
+      phase: r.phase || '잔금', summary: r.summary || '', issueDate: todayYmd(), email: '',
+    });
+    setDetail(r.detailLines ?? []);
+    setNeedsDoc(r.needsInvoiceDoc);
+    setEmail({ ...emptyEmailChoice, emails: splitEmails(r.docEmail) });
+    setTimeout(() => document.getElementById('audit-newform')?.scrollIntoView({ block: 'center' }), 80);
+  }
 
   async function issuePicked() {
     const rows = pickedR.filter((r) => r.status === '요청' || r.status === '수정발행');
@@ -287,7 +342,25 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       cell: (r) => won(r.vat), sum: (r) => (r.status === '취소' ? 0 : r.vat), style: { color: '#888' } },
     { key: 'total', label: '합계', width: 108, num: true, value: (r) => r.total,
       cell: (r) => won(r.total), sum: (r) => (r.status === '취소' ? 0 : r.total), style: { fontWeight: 700 } },
-    { key: 'summary', label: '발행 시 적요', width: 150, value: (r) => r.summary || r.note },
+    { key: 'summary', label: '발행 시 적요', width: 150, value: (r) => r.summary || r.note,
+      cell: (r) => (
+        <>
+          {r.summary || r.note}
+          {r.detailLines.length > 0 && (
+            <span title={r.detailLines.map((d) => `${d.kind} ${d.desc} ${won(d.amount)}`).join('\n')}
+              style={{ marginLeft: 4, fontSize: 9.5, fontWeight: 700, color: '#5B21B6', background: '#EDE9FE', border: '1px solid #C4B5FD', padding: '0 4px', borderRadius: 3 }}>
+              세부 {r.detailLines.length}
+            </span>
+          )}
+        </>
+      ) },
+    { key: 'doc', label: '청구서', width: 60, value: (r) => (r.needsInvoiceDoc ? '필요' : ''),
+      opts: ['필요'],
+      cell: (r) => (r.needsInvoiceDoc
+        ? <span style={{ fontSize: 10.5, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>필요</span>
+        : dash) },
+    { key: 'email', label: '발송 e-mail', width: 170, value: (r) => r.docEmail, cell: (r) => r.docEmail || dash,
+      style: { fontSize: 10.5, color: '#666' } },
     { key: 'issueDate', label: '작성일', width: 88, value: (r) => r.issueDate ?? '', cell: (r) => r.issueDate ?? dash },
     { key: 'requestedBy', label: '요청자', width: 76, value: (r) => r.requestedByName, cell: (r) => r.requestedByName || dash },
     { key: 'invoiceNo', label: '승인번호', width: 110, value: (r) => r.invoiceNo,
@@ -304,6 +377,21 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       ) },
     { key: 'issuedDate', label: '발행일', width: 88, value: (r) => r.issuedDate ?? '', cell: (r) => r.issuedDate ?? dash },
     { key: 'issuedBy', label: '처리자', width: 76, value: (r) => r.issuedByName, cell: (r) => r.issuedByName || dash, style: { color: '#666' } },
+    ...(withStatus ? [{
+      key: 'cancel', label: '취소 사유 · 다시요청', width: 200,
+      value: (r: InvoiceRequest) => r.cancelReason,
+      cell: (r: InvoiceRequest) => (r.status === '취소' ? (
+        <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 10.5, color: '#c33', flex: 1 }} title={r.cancelReason}>
+            {r.cancelReason || '(사유 없음)'}
+          </span>
+          {canWrite && (
+            <button className="btn-sm btn-sm-blue" onClick={() => reRequest(r)}
+              title="이 건을 고쳐서 다시 요청합니다 — 건별 발행요청 폼에 값이 채워집니다">다시 요청</button>
+          )}
+        </span>
+      ) : dash),
+    } as GridCol<InvoiceRequest>] : []),
   ];
   const workGrid = useGrid(VIEW_KEYS.auditInvoiceRequest, reqCols(false), workView, { key: 'ym', dir: 'desc' });
   const histGrid = useGrid(VIEW_KEYS.auditHistory, reqCols(true), history, { key: 'ym', dir: 'desc' });
@@ -323,16 +411,46 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
     const hq = o.places.find((p) => p.isHeadquarters) ?? o.places[0];
     set('entityId', o.id);
     set('placeId', hq?.id ?? '');
-    const cs = contacts.filter((c) => c.entityId === o.id && c.email.trim() && c.active);
-    set('email', cs.find((c) => c.placeId === hq?.id && c.isPrimary)?.email
-      ?? cs.find((c) => c.isPrimary)?.email ?? cs[0]?.email ?? '');
+    setEmail(emptyEmailChoice);   // 거래처가 바뀌면 이메일도 다시 고른다
+    // 적요는 그 거래처의 매출계약에서 추천한다 — 무슨 계약 건인지 적히게.
+    const cs = contracts.filter((c) => c.entityId === o.id && c.team === TEAM);
+    if (cs.length && !f.summary.trim()) {
+      const c = cs[0];
+      set('summary', `${new Date().getFullYear()}년 ${pathLabel(c.categoryCode)}`.trim());
+      set('account', erpAccountOf(c.categoryCode));
+    }
   }
+
+  /** 그 거래처의 감사팀 매출계약 — 적요 추천 단추로 쓴다. */
+  const suggestions = useMemo(() => {
+    if (!f.entityId) return [] as { label: string; summary: string; account: string }[];
+    return contracts
+      .filter((c) => c.entityId === f.entityId && c.team === TEAM)
+      .flatMap((c) => {
+        const base = pathLabel(c.categoryCode);
+        const rounds = c.installments.length
+          ? c.installments.map((it) => it.label || `${it.seq}회차`)
+          : ['총액'];
+        return rounds.map((r) => ({
+          label: `${c.contractCode} · ${base} ${r}`,
+          summary: `${(c.fiscalYear ?? new Date().getFullYear())}년 ${base} ${r}`.trim(),
+          account: erpAccountOf(c.categoryCode),
+        }));
+      })
+      .slice(0, 8);
+  }, [contracts, f.entityId]);
 
   async function add() {
     const amt = Number(f.amount.replace(/[^\d-]/g, ''));
     if (!f.entityId) return alert('거래처를 목록에서 골라 주세요.');
     if (!amt) return alert('공급가액을 입력해 주세요.');
-    if (!f.summary.trim()) return alert('발행 시 적요를 적어 주세요. (예: 2026년 회계감사 착수금)');
+    if (!f.summary.trim()) return alert('발행 시 적요를 적어 주세요 — 무슨 계약 건인지 알 수 있게. (예: 2026년 회계감사 착수금)');
+    if (!email.emails.length) return alert('전자세금계산서 발송 e-mail 을 한 곳 이상 골라 주세요. 세금계산서가 어디로 갈지 정해야 합니다.');
+    if (detail.length) {
+      const sum = detail.reduce((t, x) => t + (Number(x.amount) || 0), 0);
+      if (Math.round(sum) !== Math.round(amt)) return alert(`세부내역 합계(${won(sum)})와 공급가액(${won(amt)})이 다릅니다.`);
+      if (detail.some((x) => !x.desc.trim())) return alert('세부내역의 내용을 적어 주세요.');
+    }
     const o = options.find((x) => x.id === f.entityId)!;
     const place = o.places.find((p) => p.id === f.placeId);
     // 청구 시점의 담당을 함께 굳힌다 — 나중에 담당이 바뀌어도 이 기록은 그대로여야 한다.
@@ -344,11 +462,18 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       await createManualInvoiceRequest({
         ym: f.issueDate.slice(0, 7), team: TEAM, entityId: f.entityId, placeId: f.placeId || null,
         supplyAmount: amt, erpAccount: f.account, phase: f.phase,
-        summary: f.summary.trim(), issueDate: f.issueDate, docEmail: f.email.trim(),
+        summary: f.summary.trim(), issueDate: f.issueDate,
+        docEmail: joinEmails(email.emails),
+        detailLines: detail.length ? detail : undefined,
+        needsInvoiceDoc: needsDoc,
         cpa, staff, companyName, placeName: place?.placeName ?? '',
       });
+      // 고른 이메일을 이력에 남기고, 원하면 거래처정보에도 반영한다.
+      await recordEmailUse(companyName, email.emails, f.entityId, f.placeId || null, f.issueDate);
+      if (email.saveToPlace && f.placeId) await savePlaceTaxEmails(f.placeId, email.emails, email.mode);
       await notifyRequested(FINAL_APPROVER, [{ companyName, supplyAmount: amt }], profileName);
       setF((p) => ({ ...p, company: '', entityId: '', placeId: '', amount: '', summary: '', email: '' }));
+      setEmail(emptyEmailChoice); setDetail([]); setNeedsDoc(false);
       await load();
       flash(`✓ 발행요청 등록 — ${FINAL_APPROVER}에게 알림이 갔습니다`);
     } catch (e) { alert('등록 실패: ' + (e instanceof Error ? e.message : e)); }
@@ -454,7 +579,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           )}
         </div>
         {showForm && canWrite && (
-          <div style={{ border: '1px solid #e2d9c6', background: '#fdfaf3', borderRadius: 6, padding: 10, marginBottom: 10 }}>
+          <div id="audit-newform" style={{ border: '1px solid #e2d9c6', background: '#fdfaf3', borderRadius: 6, padding: 10, marginBottom: 10 }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <Field label="거래처" width={230}>
                 <input list="audit-companies" value={f.company} placeholder="코드 또는 상호로 찾기"
@@ -488,16 +613,46 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
                 <input type="date" value={f.issueDate} onChange={(e) => set('issueDate', e.target.value)} style={{ width: '100%' }} />
               </Field>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 6 }}>
-              <Field label="발행 시 적요" width={320}>
+            <div style={{ marginTop: 6 }}>
+              <Field label="발행 시 적요 — 무슨 계약 건인지 적습니다" width={640}>
                 <input value={f.summary} onChange={(e) => set('summary', e.target.value)}
-                  placeholder="예: 2026년 회계감사 착수금 / BW평가용역: 반기" style={{ width: '100%' }} />
+                  placeholder="예: 2026년 회계감사 착수금 / 2026년 BW평가용역 반기" style={{ width: '100%' }} />
               </Field>
-              <Field label="공급받는자 이메일" width={230}>
-                <input value={f.email} onChange={(e) => set('email', e.target.value)}
-                  placeholder="거래처담당자에서 자동" style={{ width: '100%' }} />
-              </Field>
-              <button className="btn-p" disabled={busy} onClick={() => void add()}>＋ 발행요청 등록</button>
+              {suggestions.length > 0 && (
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4, alignItems: 'center' }}>
+                  <span style={{ fontSize: 10.5, color: '#888' }}>매출계약에서 추천 —</span>
+                  {suggestions.map((g, i) => (
+                    <button key={i} className="btn-sm" title={g.label}
+                      onClick={() => { set('summary', g.summary); set('account', g.account); }}>
+                      {g.summary}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 8 }}>
+              <DetailLinesEditor lines={detail} baseKind={f.account.replace('수입', '')}
+                onChange={(l) => {
+                  setDetail(l);
+                  // 세부내역을 쓰면 공급가액은 그 합계가 정본이다.
+                  if (l.length) set('amount', String(l.reduce((t, x) => t + (Number(x.amount) || 0), 0)));
+                }} />
+            </div>
+
+            <div style={{ marginTop: 8 }}>
+              <TaxEmailPicker entityId={f.entityId || null} placeId={f.placeId || null}
+                clientName={(chosen?.label ?? '').replace(/^\S+\s/, '')}
+                value={email} onChange={setEmail} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+              <label style={{ fontSize: 11.5, display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}>
+                <input type="checkbox" checked={needsDoc} onChange={(e) => setNeedsDoc(e.target.checked)} />
+                <b>청구서(서면)도 보내야 함</b> — 목록에 표시되어 빠뜨리지 않습니다.
+              </label>
+              <button className="btn-p" style={{ marginLeft: 'auto' }} disabled={busy}
+                onClick={() => void add()}>＋ 발행요청 등록</button>
               {f.amount && <span style={{ fontSize: 11.5, color: '#666' }}>
                 합계 {won(Math.round(Number(f.amount.replace(/[^\d-]/g, '') || 0) * 1.1))}
               </span>}
@@ -525,7 +680,8 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
                 발행완료 처리
               </button>
               <button className="btn-sm btn-sm-del" disabled={busy || !pickedR.length}
-                onClick={() => { if (confirm(`${pickedR.length}건을 취소합니다.`)) void run(() => cancelRequests(pickedR.map((r) => r.id)), '취소했습니다'); }}>
+                onClick={() => void cancelPicked()}
+                title="취소 사유를 남기고, 요청한 회계사에게 알립니다">
                 취소
               </button>
               <button className="btn-sm" disabled={busy}

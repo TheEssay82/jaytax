@@ -459,9 +459,14 @@ ${noContract ? `
   async function doCancel() {
     const ids = pickedReqs.filter((r) => r.status !== '취소').map((r) => r.id);
     if (!ids.length) return;
-    if (!confirm(`${ids.length}건을 취소합니다. 취소하면 다시 청구예정 목록으로 돌아갑니다.`)) return;
+    const reason = prompt(`${ids.length}건을 취소합니다. 취소하면 다시 청구예정 목록으로 돌아갑니다.
+
+`
+      + '취소 사유를 적어 주세요 — 나중에 왜 뺐는지 알 수 없게 됩니다.', '');
+    if (reason === null) return;
+    if (!reason.trim()) return alert('사유 없이는 취소할 수 없습니다.');
     setBusy(true);
-    try { await cancelRequests(ids); await load(); flash(`✓ ${ids.length}건 취소`); }
+    try { await cancelRequests(ids, reason); await load(); flash(`✓ ${ids.length}건 취소`); }
     catch (e) { alert('취소 실패: ' + (e instanceof Error ? e.message : e)); }
     finally { setBusy(false); }
   }
