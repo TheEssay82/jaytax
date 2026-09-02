@@ -385,7 +385,13 @@ export default function ReceivableTab() {
       )}
 
       {/* ── 못 붙은 입금 ── */}
-      {(unmatched.length > 0 || excluded.length > 0) && (
+      {unmatched.length === 0 && excluded.length > 0 && (
+        <div style={{ fontSize: 11, color: '#999', marginBottom: 6 }}>
+          ✓ 거래처를 못 찾은 입금은 없습니다. (우리와 무관하다고 접어 둔 {excluded.length}건 {won(excluded.reduce((s, c) => s + c.amount, 0))} 별도)
+          <button className="btn-sm" style={{ marginLeft: 6 }} onClick={() => setShowUnmatched(true)}>접어 둔 건 보기</button>
+        </div>
+      )}
+      {unmatched.length > 0 && (
         <div className="alert-w" style={{ fontSize: 11.5 }}>
           <b>거래처를 못 찾은 입금 {unmatched.length}건 · {won(unmatched.reduce((s, c) => s + c.amount, 0))}</b>
           {' — '}원장의 거래처코드가 우리 거래처등록에 없습니다. 다른 회계사 담당이거나 미등록입니다.

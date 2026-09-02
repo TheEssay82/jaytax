@@ -14,7 +14,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import { listBizContacts, type BizContact } from '../../lib/bizContactApi';
-import { todayYmd } from '../../lib/format';
+import { todayYmd, withJosa } from '../../lib/format';
 import { pathLabel } from '../../lib/salesContractTaxonomy';
 import {
   listInvoiceRequests, createInvoiceRequests, createManualInvoiceRequest,
@@ -373,7 +373,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
         감사 용역은 계약금·중도금·잔금이 <b>건별로</b> 생기므로 달로 묶지 않습니다. 세 층으로 나뉩니다.
         <br />① <b>제안</b> — 매출계약의 분할회차 중 <b>청구기한이 지난 것</b>을 띄웁니다. 담당 회계사에게 알림이 갑니다.
         <br />② <b>처리 중</b> — 회계사가 <b>확인 한 번으로 발행요청</b>하면 {FINAL_APPROVER}에게 알림이 가고,
-        {FINAL_APPROVER}가 ERP에서 발행한 뒤 <b>발행완료</b>를 누르면 요청한 회계사에게 알림이 갑니다.
+        {withJosa(FINAL_APPROVER, '이', '가')} ERP에서 발행한 뒤 <b>발행완료</b>를 누르면 요청한 회계사에게 알림이 갑니다.
         <br />③ <b>이력</b> — 지난 요청·발행을 기간으로 조회합니다(기본 최근 3개월).
         <br />계약에 없는 건은 ②의 <b>＋ 건별 등록</b>으로 한 줄 적으면 됩니다.
       </div>

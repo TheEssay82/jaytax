@@ -696,7 +696,7 @@ ${noContract ? `
             </>
           )}
         </div>
-        {diff.rows.length > 0 && (
+        {month?.opened && diff.rows.length > 0 && (
           <div style={{ marginTop: 5, fontSize: 11.5, color: '#7a5' }}>
             전월({prevMonthOf(ym)}) 대비 — 🆕신규·⚠️금액변동 <b>{diff.mark.size}</b>건
             {diff.dropped.length > 0 && <> · ❌전월에 있었는데 이번 달 없음 <b style={{ color: '#c33' }}>{diff.dropped.length}</b>건</>}

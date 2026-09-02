@@ -1,6 +1,17 @@
 // 표시·포맷 헬퍼 — 원본 HTML(ver.4.6)의 fm/dt/getRevForYear 등을 옮긴 것
 import type { Client } from '../types';
 
+/**
+ * 이름 뒤에 붙는 조사를 받침에 맞춘다 — '김민섭가'가 아니라 '김민섭이'.
+ * 담당자 이름을 문장에 끼워 넣는 곳이 여럿이라 한 곳에 둔다.
+ */
+export function withJosa(name: string, withBatchim: string, without: string): string {
+  const last = name.trim().slice(-1);
+  const code = last.charCodeAt(0);
+  if (!last || code < 0xac00 || code > 0xd7a3) return `${name}${without}`;
+  return `${name}${(code - 0xac00) % 28 ? withBatchim : without}`;
+}
+
 /** 숫자 → 천단위 콤마 (원본 fm) */
 export const fm = (n: number): string => Math.round(n || 0).toLocaleString('ko-KR');
 
