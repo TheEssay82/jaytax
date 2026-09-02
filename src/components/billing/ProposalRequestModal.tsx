@@ -1,0 +1,170 @@
+// 감사팀 › 제안을 **고쳐서** 발행요청으로 넘기는 창.
+//
+// 1층 제안은 **알림**이다 — "이 계약, 청구할 때가 됐다"고 알려 줄 뿐 그대로 넘기면 안 된다.
+// 기한이 한참 지난 건은 계약에 적힌 날짜가 아니라 **지금 발행할 날짜**로 나가야 하고,
+// 금액도 그 사이 조정되었을 수 있다. 그래서 넘기기 전에 한 번 손볼 자리를 둔다.
+import { useState } from 'react';
+import { ERP_ACCOUNTS } from '../../lib/invoiceRequestApi';
+import type { AuditProposal } from '../../lib/auditInvoiceApi';
+
+const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
+const PHASES = ['계약금', '중도금', '잔금', '총액'] as const;
+
+export interface ProposalEdit {
+  key: string;
+  supplyAmount: number;
+  erpAccount: string;
+  phase: string;
+  summary: string;
+}
+
+export function ProposalRequestModal({ rows, approver, issueDate, onClose, onSubmit }: {
+  rows: AuditProposal[];
+  /** 발행요청이 도착할 사람(김민섭). 안내에만 쓴다. */
+  approver: string;
+  issueDate: string;
+  onClose: () => void;
+  onSubmit: (issueDate: string, edits: Map<string, ProposalEdit>) => Promise<void>;
+}) {
+  const [date, setDate] = useState(issueDate);
+  const [busy, setBusy] = useState(false);
+  const [edits, setEdits] = useState<Map<string, ProposalEdit>>(
+    () => new Map(rows.map((r) => [r.key, {
+      key: r.key,
+      supplyAmount: r.supplyAmount,
+      erpAccount: r.erpAccount,
+      phase: r.label.includes('착수') || r.label.includes('계약') ? '계약금'
+        : r.label.includes('중도') ? '중도금' : r.label.includes('잔') ? '잔금' : '총액',
+      summary: `${r.companyName} ${r.label}`.trim(),
+    }])),
+  );
+  const set = (key: string, patch: Partial<ProposalEdit>) =>
+    setEdits((p) => new Map(p).set(key, { ...p.get(key)!, ...patch }));
+
+  const total = [...edits.values()].reduce((s, e) => s + e.supplyAmount, 0);
+  /** 기한이 많이 지난 건은 계약 날짜를 그대로 쓰면 안 된다 — 그 사실을 눈에 띄게 알린다. */
+  const stale = rows.filter((r) => r.overdueDays > 60);
+
+  async function go() {
+    if ([...edits.values()].some((e) => e.supplyAmount <= 0)) {
+      return alert('공급가액이 0인 건이 있습니다. 고치거나 목록에서 빼 주세요.');
+    }
+    if (!confirm(`${rows.length}건을 발행요청합니다.
+
+· 공급가액 합계 ${won(total)}
+· 작성일(발행기준일) ${date}
+
+${approver}에게 바로 알림이 갑니다. 진행할까요?`)) return;
+    setBusy(true);
+    try { await onSubmit(date, edits); onClose(); }
+    catch (e) { alert('요청 실패: ' + (e instanceof Error ? e.message : e)); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 60,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    }}>
+      <div className="card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 980, width: '100%' }}>
+        <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          ✅ 발행요청으로 넘기기
+          <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
+            {rows.length}건 · 공급가액 {won(total)}
+          </span>
+          <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
+        </div>
+
+        <div className="alert-i" style={{ fontSize: 11 }}>
+          제안은 <b>알림</b>입니다 — 계약에 적힌 대로 그대로 나가면 안 됩니다.
+          넘기기 전에 <b>작성일·금액·적요</b>를 이 자리에서 고치세요.
+          <br /><b>작성일(발행기준일)</b>이 실제 세금계산서 날짜입니다. 계약의 청구기한이 아니라
+          <b> 지금 발행할 날</b>을 넣으세요.
+        </div>
+        {stale.length > 0 && (
+          <div className="alert-w" style={{ fontSize: 11.5 }}>
+            ⚠️ 청구기한이 <b>60일 넘게 지난 건이 {stale.length}건</b> 있습니다
+            ({stale.slice(0, 3).map((r) => `${r.companyName} ${r.overdueDays}일`).join(', ')}{stale.length > 3 ? ' 외' : ''}).
+            작성일을 오늘 날짜로 두는 것이 맞는지 확인해 주세요.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+          <b style={{ fontSize: 12, color: '#1A2B52' }}>작성일(발행기준일)</b>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ fontSize: 12 }} />
+          <span style={{ fontSize: 11, color: '#888' }}>고른 건 모두에 같은 날짜로 들어갑니다.</span>
+        </div>
+
+        <div style={{ maxHeight: '50vh', overflow: 'auto' }}>
+          <table className="tbl" style={{ fontSize: 11.5 }}>
+            <thead>
+              <tr>
+                <th>거래처</th><th>회차</th><th>청구기한</th>
+                <th className="r" style={{ minWidth: 120 }}>공급가액</th>
+                <th style={{ minWidth: 120 }}>매출계정</th><th style={{ minWidth: 80 }}>구분</th>
+                <th style={{ minWidth: 200 }}>발행 시 적요</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const e = edits.get(r.key)!;
+                const changed = Math.round(e.supplyAmount) !== Math.round(r.supplyAmount);
+                return (
+                  <tr key={r.key}>
+                    <td style={{ fontWeight: 700, color: '#1A2B52' }}>
+                      {r.companyName}
+                      <div style={{ fontSize: 10.5, fontWeight: 400, color: '#888' }}>{r.placeName}</div>
+                    </td>
+                    <td>{r.label}</td>
+                    <td style={{ color: r.overdueDays > 60 ? '#c33' : '#888', whiteSpace: 'nowrap' }}>
+                      {r.dueDate}
+                      <div style={{ fontSize: 10.5 }}>{r.overdueDays >= 0 ? `${r.overdueDays}일 지남` : `${-r.overdueDays}일 뒤`}</div>
+                    </td>
+                    <td className="r">
+                      <input value={String(Math.round(e.supplyAmount))}
+                        onChange={(ev) => set(r.key, { supplyAmount: Number(ev.target.value.replace(/[^\d]/g, '')) || 0 })}
+                        style={{ width: '100%', textAlign: 'right', fontWeight: changed ? 700 : 400, color: changed ? '#c33' : undefined }} />
+                      {changed && (
+                        <div style={{ fontSize: 10, color: '#888' }}>계약 {won(r.supplyAmount)}</div>
+                      )}
+                    </td>
+                    <td>
+                      <select value={e.erpAccount} onChange={(ev) => set(r.key, { erpAccount: ev.target.value })}
+                        style={{ width: '100%', fontSize: 11 }}>
+                        {ERP_ACCOUNTS.map((a) => <option key={a} value={a}>{a}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select value={e.phase} onChange={(ev) => set(r.key, { phase: ev.target.value })}
+                        style={{ width: '100%', fontSize: 11 }}>
+                        {PHASES.map((p) => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <input value={e.summary} onChange={(ev) => set(r.key, { summary: ev.target.value })}
+                        style={{ width: '100%', fontSize: 11 }} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
+                <td colSpan={3}>합계 {rows.length}건</td>
+                <td className="r">{won(total)}</td>
+                <td colSpan={3}></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+          <button className="btn-p" disabled={busy} onClick={() => void go()}>
+            {busy ? '요청 중…' : `✅ ${rows.length}건 발행요청`}
+          </button>
+          <button className="btn-sm" disabled={busy} onClick={onClose}>취소</button>
+        </div>
+      </div>
+    </div>
+  );
+}

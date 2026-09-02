@@ -3,10 +3,11 @@
 // taxteam 과 구조가 다르다. 감사 용역은 계약금·중도금·잔금이 **건별로** 생기므로 월 마감이 없다.
 // 엑셀 `세금계산서발행요청서.xlsx` 를 그대로 옮긴 **3층 구조**다.
 //
-//   1층 제안 — 매출계약의 분할회차 중 **청구기한이 지난 것**을 띄우고, 담당 회계사에게 알린다
-//   2층 처리 — 회계사가 확인 한 번으로 발행요청(→ 김민섭에게 알림),
-//              김민섭이 발행완료(→ 요청한 회계사에게 알림)
-//   3층 이력 — 요청·발행완료를 기간으로 조회한다(기본 최근 3개월)
+//   1층 제안 — 매출계약의 분할회차 중 **청구기한이 지난 것**. 이것은 **알림**이지 요청이 아니다.
+//             그대로 넘기지 않고 창을 열어 작성일·금액·적요를 고친 뒤 넘긴다.
+//   2층 건별 발행요청 — 계약에 없는 건을 회계사가 한 줄 적는다(→ 김민섭에게 알림)
+//   3층 처리 중 — 김민섭의 작업공간. 요청된 건을 발행완료로 바꾼다(→ 요청한 회계사에게 알림)
+//   4층 이력 — 발행이 끝난 건을 기간으로 조회한다(기본 최근 3개월)
 //
 // 월 셀렉터는 두지 않는다 — 감사팀은 '이 달 것'이라는 개념이 약하고, 기한이 지난 건은
 // 몇 달 전 것이라도 지금 청구한다. 기간은 3층의 조회 조건일 뿐이다.
@@ -28,6 +29,7 @@ import {
 } from '../../lib/auditInvoiceApi';
 import { FINAL_APPROVER } from '../../lib/invoiceMonthApi';
 import { Grid, useGrid, type GridCol } from './grid';
+import { ProposalRequestModal, type ProposalEdit } from './ProposalRequestModal';
 import { ColumnSettings } from '../clients/tableKit';
 import { CorrectionModal } from './CorrectionModal';
 import { VIEW_KEYS } from '../../lib/tableViewApi';
@@ -73,6 +75,8 @@ export default function AuditInvoiceTab() {
   const [mineOnly, setMineOnly] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [correct, setCorrect] = useState<{ origin: InvoiceRequest | null } | null>(null);
+  /** 제안을 고쳐서 넘기는 창. 제안은 알림이지 요청이 아니므로 한 번 손볼 자리를 둔다. */
+  const [proposeOpen, setProposeOpen] = useState(false);
   const [range, setRange] = useState<string>('3m');
   const [year, setYear] = useState('');           // 연도로 좁혀 볼 때
   const [q, setQ] = useState('');
@@ -148,26 +152,24 @@ export default function AuditInvoiceTab() {
   const propGrid = useGrid(VIEW_KEYS.auditProposal, propCols, propView, { key: 'due', dir: 'asc' });
 
   /** 제안을 발행요청으로 — 회계사가 확인 한 번으로 넘기는 자리다. */
-  async function requestPicked() {
+  /**
+   * 고른 제안을 **창에서 고친 값 그대로** 발행요청으로 넘긴다.
+   * 제안 자체를 그대로 옮기지 않는 이유 — 기한이 한참 지난 건은 계약에 적힌 날짜가 아니라
+   * 지금 발행할 날짜로 나가야 하고, 금액도 그 사이 조정되었을 수 있다.
+   */
+  async function submitProposals(date: string, edits: Map<string, ProposalEdit>) {
     const rows = props.filter((p) => pickP.has(p.key));
     if (!rows.length) return;
-    const total = rows.reduce((s, p) => s + p.supplyAmount, 0);
-    if (!confirm(`${rows.length}건을 발행요청합니다.
-
-${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmount)}`).join('\n')}${rows.length > 6 ? '\n · 외 ' + (rows.length - 6) + '건' : ''}
-
-공급가액 합계 ${won(total)} · 작성일 ${issuedDate}
-${FINAL_APPROVER}에게 바로 알림이 갑니다. 진행할까요?`)) return;
-    setBusy(true);
-    try {
-      // 귀속월은 '지금 발행하는 달'로 둔다 — ERP 발행내역과 맞춰 보기 위해서다.
-      const ym = issuedDate.slice(0, 7);
-      await createInvoiceRequests(ym, rows, { team: TEAM, issueDate: issuedDate });
-      const sent = await notifyRequested(FINAL_APPROVER, rows, profileName);
-      await load();
-      flash(`✓ ${rows.length}건 발행요청${sent ? ` · ${FINAL_APPROVER}에게 알림` : ''}`);
-    } catch (e) { alert('요청 실패: ' + (e instanceof Error ? e.message : e)); }
-    finally { setBusy(false); }
+    // 귀속월은 '지금 발행하는 달'로 둔다 — ERP 발행내역과 맞춰 보기 위해서다.
+    const ym = date.slice(0, 7);
+    const edited = rows.map((r) => {
+      const e = edits.get(r.key);
+      return e ? { ...r, supplyAmount: e.supplyAmount, erpAccount: e.erpAccount as typeof r.erpAccount } : r;
+    });
+    await createInvoiceRequests(ym, edited, { team: TEAM, issueDate: date });
+    const sent = await notifyRequested(FINAL_APPROVER, edited, profileName);
+    await load();
+    flash(`✓ ${rows.length}건 발행요청${sent ? ` · ${FINAL_APPROVER}에게 알림` : ''}`);
   }
 
   /** 제안에서 뺀다 — 계약의 그 회차를 '청구했음'으로 닫는다. */
@@ -373,18 +375,19 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
 
       <div className="alert-i" style={{ fontSize: 11 }}>
         감사 용역은 계약금·중도금·잔금이 <b>건별로</b> 생기므로 달로 묶지 않습니다. 세 층으로 나뉩니다.
-        <br />① <b>제안</b> — 매출계약의 분할회차 중 <b>청구기한이 지난 것</b>을 띄웁니다. 담당 회계사에게 알림이 갑니다.
-        <br />② <b>처리 중</b> — 회계사가 <b>확인 한 번으로 발행요청</b>하면 {FINAL_APPROVER}에게 알림이 가고,
-        {withJosa(FINAL_APPROVER, '이', '가')} ERP에서 발행한 뒤 <b>발행완료</b>를 누르면 요청한 회계사에게 알림이 갑니다.
-        <br />③ <b>이력</b> — 지난 요청·발행을 기간으로 조회합니다(기본 최근 3개월).
-        <br />계약에 없는 건은 ②의 <b>＋ 건별 등록</b>으로 한 줄 적으면 됩니다.
+        <br />① <b>제안</b> — 매출계약의 분할회차 중 <b>청구기한이 지난 것</b>입니다. <b>알림일 뿐</b>이라 그대로 넘어가지 않습니다 —
+        고른 뒤 창에서 <b>작성일·금액·적요를 고쳐</b> 발행요청으로 보냅니다.
+        <br />② <b>건별 발행요청</b> — 계약에 없거나 분할회차를 등록해 두지 않은 건을 회계사가 한 줄 적습니다.
+        <br />③ <b>처리 중</b> — {withJosa(FINAL_APPROVER, '이', '가')} 발행하는 자리입니다. ①②에서 올라온 요청이 여기 모이고,
+        ERP에서 발행한 뒤 <b>발행완료</b>를 누르면 요청한 회계사에게 알림이 갑니다.
+        <br />④ <b>발행 이력</b> — 발행이 끝난 건을 기간으로 조회합니다(기본 최근 3개월).
       </div>
 
       {/* ══ 1층 — 제안 ══════════════════════════════ */}
       <div style={{ marginTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
-            ① 청구할 때가 된 계약 ({propGrid.rowsView.length}건 · 공급가액 {won(propGrid.rowsView.reduce((s, p) => s + p.supplyAmount, 0))})
+            ① 청구할 때가 된 계약 — 알림 ({propGrid.rowsView.length}건 · 공급가액 {won(propGrid.rowsView.reduce((s, p) => s + p.supplyAmount, 0))})
           </b>
           <label style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
             title="아직 기한이 오지 않았지만 30일 안에 다가오는 것도 함께 봅니다">
@@ -393,10 +396,8 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           </label>
           {canWrite && (
             <>
-              <span style={{ fontSize: 11.5, color: '#666' }}>작성일</span>
-              <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 12 }} />
-              <button className="btn-p" disabled={busy || !pickP.size} onClick={() => void requestPicked()}
-                title="고른 건을 발행요청으로 넘깁니다 — 김민섭에게 바로 알림이 갑니다">
+              <button className="btn-p" disabled={busy || !pickP.size} onClick={() => setProposeOpen(true)}
+                title="고른 건을 창에서 고친 뒤 발행요청으로 넘깁니다 — 작성일·금액·적요를 그 자리에서 바꿉니다">
                 ✅ 확인 · 발행요청 ({pickP.size})
               </button>
             </>
@@ -430,49 +431,23 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           } : undefined} />
       </div>
 
-      {/* ══ 2층 — 처리 중 ═══════════════════════════ */}
+      {/* ══ 2층 — 건별 발행요청 ═════════════════════ */}
       <div style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
-            ② 처리 중 ({workGrid.rowsView.length}건 · 공급가액 {won(workGrid.rowsView.reduce((s, r) => s + r.supplyAmount, 0))})
-          </b>
-          {canWrite && (
-            <>
-              <button className="btn-sm" onClick={() => setShowForm((v) => !v)}>
-                {showForm ? '닫기' : '＋ 건별 등록'}
-              </button>
-              <button className="btn-sm" onClick={() => setPickR(new Set(workGrid.rowsView.map((r) => r.id)))}>전체선택</button>
-              <button className="btn-sm" onClick={() => setPickR(new Set())}>선택해제</button>
-              <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{pickedR.length}</b>건</span>
-              <span style={{ fontSize: 11.5, color: '#666' }}>발행일</span>
-              <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 12 }} />
-              <button className="btn-p" disabled={busy || !pickedR.length || !isApprover} onClick={() => void issuePicked()}
-                title={isApprover ? '' : `발행완료는 ${FINAL_APPROVER}(부재 시 기장팀장·최고관리자)만 처리합니다`}>
-                발행완료 처리
-              </button>
-              <button className="btn-sm btn-sm-del" disabled={busy || !pickedR.length}
-                onClick={() => { if (confirm(`${pickedR.length}건을 취소합니다.`)) void run(() => cancelRequests(pickedR.map((r) => r.id)), '취소했습니다'); }}>
-                취소
-              </button>
-              <button className="btn-sm" disabled={busy}
-                title="이미 발행한 세금계산서를 되돌립니다. 한 건을 고르면 그 건을, 고르지 않으면 거래처를 직접 골라 등록합니다."
-                onClick={() => setCorrect({ origin: pickedR.length === 1 ? pickedR[0] : null })}>
-                ➖ 수정발행 (−/+)
-              </button>
-            </>
-          )}
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-            {workGrid.filterCount > 0 && <button className="btn-sm" onClick={workGrid.clearFilters}>필터 초기화</button>}
-            <ColumnSettings cols={workGrid.ordered} view={workGrid.view} onMessage={flash} />
+          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>② 건별 발행요청</b>
+          <span style={{ fontSize: 11, color: '#888' }}>
+            계약에 없거나 분할회차를 등록해 두지 않은 건을 한 줄로 적습니다 —
+            등록하면 {FINAL_APPROVER}에게 바로 알림이 갑니다.
           </span>
+          {canWrite && (
+            <button className={showForm ? 'btn-sm' : 'btn-p'} style={{ marginLeft: 'auto' }}
+              onClick={() => setShowForm((v) => !v)}>
+              {showForm ? '닫기' : '＋ 건별 발행요청'}
+            </button>
+          )}
         </div>
-
         {showForm && canWrite && (
           <div style={{ border: '1px solid #e2d9c6', background: '#fdfaf3', borderRadius: 6, padding: 10, marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>
-              계약에 없는 건, 또는 분할회차를 등록해 두지 않은 건을 한 줄로 적습니다.
-              등록하면 {FINAL_APPROVER}에게 바로 알림이 갑니다.
-            </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <Field label="거래처" width={230}>
                 <input list="audit-companies" value={f.company} placeholder="코드 또는 상호로 찾기"
@@ -523,6 +498,42 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           </div>
         )}
 
+      </div>
+
+      {/* ══ 3층 — 처리 중 ═══════════════════════════ */}
+      <div style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
+            ③ 처리 중 — {FINAL_APPROVER} 발행 대기 ({workGrid.rowsView.length}건 · 공급가액 {won(workGrid.rowsView.reduce((s, r) => s + r.supplyAmount, 0))})
+          </b>
+          {canWrite && (
+            <>
+              <button className="btn-sm" onClick={() => setPickR(new Set(workGrid.rowsView.map((r) => r.id)))}>전체선택</button>
+              <button className="btn-sm" onClick={() => setPickR(new Set())}>선택해제</button>
+              <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{pickedR.length}</b>건</span>
+              <span style={{ fontSize: 11.5, color: '#666' }}>발행일</span>
+              <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 12 }} />
+              <button className="btn-p" disabled={busy || !pickedR.length || !isApprover} onClick={() => void issuePicked()}
+                title={isApprover ? '' : `발행완료는 ${FINAL_APPROVER}(부재 시 기장팀장·최고관리자)만 처리합니다`}>
+                발행완료 처리
+              </button>
+              <button className="btn-sm btn-sm-del" disabled={busy || !pickedR.length}
+                onClick={() => { if (confirm(`${pickedR.length}건을 취소합니다.`)) void run(() => cancelRequests(pickedR.map((r) => r.id)), '취소했습니다'); }}>
+                취소
+              </button>
+              <button className="btn-sm" disabled={busy}
+                title="이미 발행한 세금계산서를 되돌립니다. 한 건을 고르면 그 건을, 고르지 않으면 거래처를 직접 골라 등록합니다."
+                onClick={() => setCorrect({ origin: pickedR.length === 1 ? pickedR[0] : null })}>
+                ➖ 수정발행 (−/+)
+              </button>
+            </>
+          )}
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            {workGrid.filterCount > 0 && <button className="btn-sm" onClick={workGrid.clearFilters}>필터 초기화</button>}
+            <ColumnSettings cols={workGrid.ordered} view={workGrid.view} onMessage={flash} />
+          </span>
+        </div>
+
         <Grid grid={workGrid} rowKey={(r) => r.id} maxHeight={300}
           empty="발행을 기다리는 건이 없습니다."
           footerLabel={`합계 ${workGrid.rowsView.length}건`}
@@ -534,11 +545,11 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           } : undefined} />
       </div>
 
-      {/* ══ 3층 — 이력 ══════════════════════════════ */}
+      {/* ══ 4층 — 이력 ══════════════════════════════ */}
       <div style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
-            ③ 발행 이력 ({histGrid.rowsView.length}건)
+            ④ 발행 이력 ({histGrid.rowsView.length}건)
           </b>
           <select value={year ? '' : range} onChange={(e) => { setRange(e.target.value); setYear(''); }}
             disabled={!!year} style={{ fontWeight: 700 }}>
@@ -579,6 +590,14 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
         )}
       </div>
 
+      {proposeOpen && (
+        <ProposalRequestModal
+          rows={props.filter((x) => pickP.has(x.key))}
+          approver={FINAL_APPROVER}
+          issueDate={issuedDate}
+          onClose={() => setProposeOpen(false)}
+          onSubmit={submitProposals} />
+      )}
       {correct && (
         <CorrectionModal team={TEAM} origin={correct.origin} entities={entities}
           onClose={() => setCorrect(null)}
