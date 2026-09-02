@@ -32,6 +32,7 @@ import { Grid, useGrid, type GridCol } from './grid';
 import { ProposalRequestModal, type ProposalEdit } from './ProposalRequestModal';
 import { ColumnSettings } from '../clients/tableKit';
 import { CorrectionModal } from './CorrectionModal';
+import { WorkflowManual } from './WorkflowManual';
 import { VIEW_KEYS } from '../../lib/tableViewApi';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
@@ -80,6 +81,7 @@ export default function AuditInvoiceTab() {
   const [correct, setCorrect] = useState<{ origin: InvoiceRequest | null } | null>(null);
   /** 제안을 고쳐서 넘기는 창. 제안은 알림이지 요청이 아니므로 한 번 손볼 자리를 둔다. */
   const [proposeOpen, setProposeOpen] = useState(false);
+  const [manual, setManual] = useState(false);
   const [range, setRange] = useState<string>('3m');
   const [year, setYear] = useState('');           // 연도로 좁혀 볼 때
   const [q, setQ] = useState('');
@@ -372,6 +374,8 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
             내 담당만
           </label>
         )}
+        <button className="btn-sm" onClick={() => setManual(true)}
+          title="내 자리에서 무엇을 언제 하는지 — 김민섭·담당직원·회계사별로">📖 업무 매뉴얼</button>
         {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
       </div>
       {err && <div className="alert-w">{err}</div>}
@@ -593,6 +597,9 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
         )}
       </div>
 
+      {manual && (
+        <WorkflowManual initial={isApprover ? 'approver' : 'cpa'} onClose={() => setManual(false)} />
+      )}
       {proposeOpen && (
         <ProposalRequestModal
           rows={props.filter((x) => pickP.has(x.key))}

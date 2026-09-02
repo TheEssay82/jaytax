@@ -26,6 +26,7 @@ import {
 import { Grid, useGrid, type GridCol } from './grid';
 import { ColumnSettings } from '../clients/tableKit';
 import { CorrectionModal } from './CorrectionModal';
+import { WorkflowManual } from './WorkflowManual';
 import { VIEW_KEYS } from '../../lib/tableViewApi';
 import { StaffShareEditor, shareLabel } from './StaffShareEditor';
 import { listInternalStaff } from '../../lib/bizRegistryApi';
@@ -210,6 +211,7 @@ export default function InvoiceRequestTab() {
   const [editShare, setEditShare] = useState<InvoiceRequest | null>(null);
   const [q, setQ] = useState('');
   const [showDiff, setShowDiff] = useState(false);
+  const [manual, setManual] = useState(false);
   const [drafts, setDrafts] = useState<InvoiceDraft[]>([]);
   const [recon, setRecon] = useState(false);          // 매출계약 대사 창
   const [correct, setCorrect] = useState<{ origin: InvoiceRequest | null } | null>(null);
@@ -607,6 +609,8 @@ ${noContract ? `
           청구예정 {drafts.length} · 요청 {stat.요청.length} · 발행완료 {stat.발행완료.length}
           {stat.취소.length > 0 && ` · 취소 ${stat.취소.length}`}
         </span>
+        <button className="btn-sm" onClick={() => setManual(true)}
+          title="내 자리에서 무엇을 언제 하는지 — 김민섭·담당직원·회계사별로">📖 업무 매뉴얼</button>
         {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
       </div>
       {err && <div className="alert-w">{err}</div>}
@@ -926,6 +930,9 @@ ${noContract ? `
             } catch (e) { alert('반영 실패: ' + (e instanceof Error ? e.message : e)); }
             finally { setBusy(false); }
           }} />
+      )}
+      {manual && (
+        <WorkflowManual initial={isApprover ? 'approver' : 'staff'} onClose={() => setManual(false)} />
       )}
       {correct && (
         <CorrectionModal team="taxteam" origin={correct.origin} entities={entities}
