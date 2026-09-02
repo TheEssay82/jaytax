@@ -374,6 +374,8 @@ export interface ReceivableOpening {
   /** 부가세 포함 잔액 — 거래처가 VAT 뺀 금액만 입금했는지 가려내는 데 쓴다 */
   amountGross: number;
   note: string;
+  /** 어느 팀의 기초인가 — 화면의 팀 필터가 쓴다. */
+  team: string;
 }
 
 export async function listReceivableOpenings(asOf = OPENING_AS_OF): Promise<ReceivableOpening[]> {
@@ -382,7 +384,7 @@ export async function listReceivableOpenings(asOf = OPENING_AS_OF): Promise<Rece
   /* eslint-disable @typescript-eslint/no-explicit-any */
   return (data as any[]).map((r) => ({
     id: r.id, placeId: r.place_id, asOf: r.as_of, amount: Number(r.amount) || 0,
-    amountGross: Number(r.amount_gross) || 0, note: r.note || '',
+    amountGross: Number(r.amount_gross) || 0, note: r.note || '', team: r.team || 'taxteam',
   }));
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }

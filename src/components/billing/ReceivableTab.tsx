@@ -120,15 +120,22 @@ export default function ReceivableTab() {
         });
       }
     }
-    for (const o of openings) { const r = byPlace.get(o.placeId); if (r) r.opening += o.amountGross; }
+    // 팀 셀렉터는 화면 전체에 걸린다 — 원장·나이 분석만 걸리고 이 표에는 안 걸리면
+    // taxteam 을 골라 놓고도 감사팀 기초가 섞여 들어가 숫자가 어긋난다.
+    for (const o of openings) {
+      if (team && o.team !== team) continue;
+      const r = byPlace.get(o.placeId); if (r) r.opening += o.amountGross;
+    }
     for (const q0 of reqs) {
       if (q0.ym > ym) continue;
+      if (team && q0.team !== team) continue;
       if (q0.status !== '발행완료' && q0.status !== '수정발행') continue;   // 요청만 된 건 아직 채권이 아니다
       const r = q0.placeId ? byPlace.get(q0.placeId) : null;
       if (r) r.issued += q0.total;
     }
     for (const c of receipts) {
       if (c.ym > ym) continue;
+      if (team && c.team !== team) continue;
       const r = c.placeId ? byPlace.get(c.placeId) : null;
       if (r) r.paid += c.amount;
     }
@@ -138,7 +145,7 @@ export default function ReceivableTab() {
       if (r.opening || r.issued || r.paid) out.push(r);
     }
     return out.sort((a, b) => b.balance - a.balance);
-  }, [entities, openings, reqs, receipts, ym]);
+  }, [entities, openings, reqs, receipts, ym, team]);
 
   const view = useMemo(() => {
     let l = rows;
@@ -255,6 +262,7 @@ export default function ReceivableTab() {
         <b>미수금 = 기초 + 발행 − 입금</b> (모두 부가세 포함). 기초는 {OPENING_AS_OF} 잔액,
         발행은 <b>발행완료</b>된 건, 입금은 ERP 부서별원장의 <b>외상매출금 대변</b>입니다.
         <br />ERP는 입금을 청구건에 연결하지 않으므로(입금 전표에 거래#가 없습니다) <b>사업장 단위</b>로만 잡습니다.
+        <br />위에서 고른 <b>팀 기준</b>입니다 — 기초·발행·입금·나이 분석이 모두 그 팀 것만 셉니다.
       </div>
 
       {/* ── 어디까지 올렸나 ── */}
