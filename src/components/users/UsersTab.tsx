@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ROLES, ROLE_LABELS, type Role } from '../../lib/roles';
 import { listProfiles, updateProfile, createEmployee, type UserProfile } from '../../lib/usersApi';
 import { useAuth } from '../../context/AuthContext';
+import PermissionMatrix from './PermissionMatrix';
 
 export default function UsersTab() {
   const { user } = useAuth();
@@ -250,6 +251,8 @@ export default function UsersTab() {
           </tbody>
         </table>
       </div>
+
+      <PermissionMatrix users={rows} />
     </div>
   );
 }

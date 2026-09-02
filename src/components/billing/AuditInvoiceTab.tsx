@@ -314,7 +314,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
     const hq = o.places.find((p) => p.isHeadquarters) ?? o.places[0];
     set('entityId', o.id);
     set('placeId', hq?.id ?? '');
-    const cs = contacts.filter((c) => c.entityId === o.id && c.email.trim());
+    const cs = contacts.filter((c) => c.entityId === o.id && c.email.trim() && c.active);
     set('email', cs.find((c) => c.placeId === hq?.id && c.isPrimary)?.email
       ?? cs.find((c) => c.isPrimary)?.email ?? cs[0]?.email ?? '');
   }

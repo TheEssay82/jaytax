@@ -64,7 +64,7 @@ export async function listAuditProposals(
       const item = billingItemsForMonth(c, ym).find((x) => x.installmentId === (it.id ?? null));
       const net = item ? item.net : Math.round(it.amount);
       if (net <= 0) continue;
-      const cs = contacts.filter((x) => x.entityId === c.entityId && x.email.trim());
+      const cs = contacts.filter((x) => x.entityId === c.entityId && x.email.trim() && x.active);
       out.push({
         key,
         entityId: c.entityId,

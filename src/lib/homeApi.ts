@@ -18,9 +18,14 @@ async function countOf(
 export const countDispatchPending = () =>
   countOf(supabase.from('doc_send_requests').select('*', { count: 'exact', head: true }).eq('status', '미접수'));
 
-/** 내가 요청한 발송 중 아직 발송완료 안 된 건. */
+/**
+ * 내가 요청한 발송 중 **아직 끝나지 않은** 건.
+ * 취소는 내가 접은 건이고 재발송완료는 끝난 건이다 — 둘 다 '할 일'이 아니다.
+ */
 export const countMyDispatchActive = (uid: string) =>
-  countOf(supabase.from('doc_send_requests').select('*', { count: 'exact', head: true }).eq('requester_id', uid).neq('status', '발송완료'));
+  countOf(supabase.from('doc_send_requests').select('*', { count: 'exact', head: true })
+    .eq('requester_id', uid)
+    .not('status', 'in', '("발송완료","재발송완료","취소")'));
 
 /** 미완료 업데이트요청(미접수·개발중) — 최고관리자용. */
 export const countOpenRequests = () =>

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
-  listBizContacts, createBizContact, updateBizContact, deleteBizContact,
+  listBizContacts, createBizContact, updateBizContact, deleteBizContact, setContactActive,
   type BizContact, type ContactInput,
 } from '../../lib/bizContactApi';
 import {
@@ -43,13 +43,21 @@ export default function BizContactsTab() {
   function flash(t: string) { setMsg(t); setTimeout(() => setMsg(''), 2500); }
 
   const entMap = useMemo(() => new Map(entities.map((e) => [e.id, e])), [entities]);
+  /** 이직·퇴사로 접어 둔 담당자까지 볼지. 기본은 유효한 사람만 본다. */
+  const [showLeft, setShowLeft] = useState(false);
+  const leftCount = contacts.filter((c) => !c.active).length;
+  /** 목록의 바탕이 되는 담당자 — 접힌 사람은 기본으로 뺀다. */
+  const liveContacts = useMemo(
+    () => (showLeft ? contacts : contacts.filter((c) => c.active)),
+    [contacts, showLeft],
+  );
   const entLabel = (e: BizEntityFull) => `${e.code} ${corpDisplayName(e.name, e.corpForm, e.corpFormPosition)}`;
   const placeName = (e: BizEntityFull | undefined, pid: string | null) => (pid && e ? e.places.find((p) => p.id === pid)?.placeName ?? '' : '');
 
   // 거래처별 그룹(담당자 있는 거래처만)
   const groups = useMemo(() => {
     const m = new Map<string, BizContact[]>();
-    for (const c of contacts) (m.get(c.entityId) ?? m.set(c.entityId, []).get(c.entityId)!).push(c);
+    for (const c of liveContacts) (m.get(c.entityId) ?? m.set(c.entityId, []).get(c.entityId)!).push(c);
     let arr = [...m.entries()].map(([eid, cs]) => ({ entity: entMap.get(eid), contacts: cs }));
     if (q.trim()) {
       const s = q.trim().toLowerCase();
@@ -59,7 +67,7 @@ export default function BizContactsTab() {
     }
     arr.sort((a, b) => (a.entity ? entLabel(a.entity) : '').localeCompare(b.entity ? entLabel(b.entity) : '', 'ko'));
     return arr;
-  }, [contacts, entMap, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [liveContacts, entMap, q]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 표(list)형 — 담당자 1행 플랫. 컬럼 val 로 필터·정렬.
   type CRow = { c: BizContact; e: BizEntityFull | undefined };
@@ -75,12 +83,16 @@ export default function BizContactsTab() {
     { key: 'email', label: '이메일', val: (r) => r.c.email, w: 150 },
     { key: 'address', label: '수령지', val: (r) => r.c.address, w: 190 },
     { key: 'note', label: '비고', val: (r) => r.c.note, w: 120 },
+    {
+      key: 'active', label: '상태', w: 96, opts: ['유효', '이직·퇴사'],
+      val: (r) => (r.c.active ? '유효' : `이직·퇴사${r.c.leftAt ? ` ${r.c.leftAt}` : ''}${r.c.leftNote ? ` (${r.c.leftNote})` : ''}`),
+    },
   ];
   // 숨긴 열은 표에서만 뺀다 — 필터·정렬은 전체 열 기준 그대로다.
   const orderedCols = tv.orderCols(CONTACT_COLS);       // 개인 표시순서 적용
   const shownCols = orderedCols.filter((c) => !tv.isHidden(c.key));
   const tableW = shownCols.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 96 : 0);
-  const flatContacts = useMemo<CRow[]>(() => contacts.map((c) => ({ c, e: entMap.get(c.entityId) })), [contacts, entMap]);
+  const flatContacts = useMemo<CRow[]>(() => liveContacts.map((c) => ({ c, e: entMap.get(c.entityId) })), [liveContacts, entMap]);
   const tableRows = useMemo(() => flatContacts.filter(({ c, e }) => {
     if (q.trim()) {
       const s = q.trim().toLowerCase();
@@ -106,6 +118,24 @@ export default function BizContactsTab() {
       flash(existingId ? '✓ 담당자 수정됨' : '✓ 담당자 등록됨');
     } catch (e) { alert('저장 실패: ' + (e instanceof Error ? e.message : e)); }
   }
+  /**
+   * 이직·퇴사 처리 — 지우지 않고 접는다.
+   * 지난 문서발송·세금계산서가 그 사람 앞으로 나간 기록이라 지우면 되짚을 수 없다.
+   */
+  async function toggleActive(c: BizContact) {
+    if (c.active) {
+      const note = prompt(`'${c.contactName}' 을 더 이상 쓰지 않는 연락처로 접습니다.\n\n사유(퇴사·이직·담당변경 등)`, '퇴사');
+      if (note === null) return;
+      try {
+        await setContactActive(c.id, false, { leftNote: note });
+        await load(); flash(`✓ ${c.contactName} — 이직·퇴사 처리`);
+      } catch (e) { alert('처리 실패: ' + (e instanceof Error ? e.message : e)); }
+    } else {
+      if (!confirm(`'${c.contactName}' 을 다시 유효한 담당자로 되돌릴까요?`)) return;
+      try { await setContactActive(c.id, true); await load(); flash(`✓ ${c.contactName} — 되살림`); }
+      catch (e) { alert('처리 실패: ' + (e instanceof Error ? e.message : e)); }
+    }
+  }
   async function del(c: BizContact) {
     if (!confirm(`담당자 '${c.contactName}' 을 삭제할까요?`)) return;
     try { await deleteBizContact(c.id); await load(); flash('삭제됨'); }
@@ -118,7 +148,10 @@ export default function BizContactsTab() {
     <div className="card">
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         👤 거래처담당자등록
-        <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>거래처 {groups.length} · 담당자 {contacts.length}</span>
+        <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
+          거래처 {groups.length} · 담당자 {liveContacts.length}
+          {leftCount > 0 && <span style={{ color: '#bbb' }}> (이직·퇴사 {leftCount} 제외)</span>}
+        </span>
         {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
       </div>
       {error && <div style={{ color: '#c33', fontSize: 12, marginBottom: 8 }}>{error}</div>}
@@ -129,6 +162,13 @@ export default function BizContactsTab() {
           <button className={viewMode === 'table' ? 'btn-p' : 'btn-sm'} onClick={() => setViewMode('table')}>▦ 표</button>
         </span>
         <input placeholder="🔍 거래처·담당자명·연락처·이메일·수령지" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
+        {leftCount > 0 && (
+          <label style={{ fontSize: 11.5, whiteSpace: 'nowrap', cursor: 'pointer' }}
+            title="이직·퇴사로 접어 둔 연락처까지 함께 봅니다">
+            <input type="checkbox" checked={showLeft} onChange={(e) => setShowLeft(e.target.checked)} />
+            {' '}이직·퇴사 포함 ({leftCount})
+          </label>
+        )}
         {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
         {viewMode === 'table' && <ColumnSettings cols={orderedCols} view={tv} onMessage={flash} />}
         {canWrite && <button className="btn-p" onClick={() => { setShowAdd((s) => !s); setEditId(null); }}>{showAdd ? '닫기' : '＋ 신규 담당자'}</button>}
@@ -167,12 +207,14 @@ export default function BizContactsTab() {
             <tbody>
               {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + (canWrite ? 1 : 0)} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 담당자가 없습니다.</td></tr>}
               {sortedRows.map(({ c, e }) => (
-                <tr key={c.id}>
+                <tr key={c.id} style={{ opacity: c.active ? 1 : 0.5 }}>
                   {shownCols.map((col) => <td key={col.key} style={{ ...tdc, ...clip, fontWeight: col.key === 'name' || col.key === 'contact' ? 600 : 400, borderTop: '1px solid #eee' }} title={col.val({ c, e })}>{col.val({ c, e })}</td>)}
                   {canWrite && (
                     <td style={{ ...tdc, borderTop: '1px solid #eee' }}>
                       <span style={{ display: 'flex', gap: 3 }}>
                         <button className="btn-sm btn-sm-blue" onClick={() => { setViewMode('box'); setEditId(c.id); setShowAdd(false); }}>수정</button>
+                        <button className="btn-sm" title={c.active ? '이직·퇴사로 더 이상 쓰지 않는 연락처로 접습니다(기록은 남습니다)' : '다시 유효한 담당자로'}
+                          onClick={() => void toggleActive(c)}>{c.active ? '이직·퇴사' : '되살리기'}</button>
                         <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
                       </span>
                     </td>
@@ -195,7 +237,11 @@ export default function BizContactsTab() {
             {cs.map((c) => (
               <div key={c.id}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 11.5, flexWrap: 'wrap', padding: '2px 0' }}>
-                  <b>{c.contactName} {c.honorific}</b>
+                  <b style={{ textDecoration: c.active ? undefined : 'line-through' }}>{c.contactName} {c.honorific}</b>
+                  {!c.active && (
+                    <span style={{ fontSize: 9.5, background: '#999', color: '#fff', padding: '1px 5px', borderRadius: 3 }}
+                      title={`${c.leftAt ?? ''} ${c.leftNote ?? ''}`.trim()}>이직·퇴사</span>
+                  )}
                   {c.position && <span style={{ color: '#888' }}>{c.position}</span>}
                   {c.isPrimary && <span style={{ fontSize: 9.5, background: '#2a8', color: '#fff', padding: '1px 5px', borderRadius: 3 }}>대표</span>}
                   {c.phone && <span>☎ {c.phone}</span>}
@@ -207,6 +253,7 @@ export default function BizContactsTab() {
                   {canWrite && (
                     <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                       <button className="btn-sm btn-sm-blue" onClick={() => { setEditId(c.id); setShowAdd(false); }}>수정</button>
+                      <button className="btn-sm" onClick={() => void toggleActive(c)}>{c.active ? '이직·퇴사' : '되살리기'}</button>
                       <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
                     </span>
                   )}

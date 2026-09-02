@@ -72,7 +72,8 @@ export default function BizStatusTab() {
     const conByEnt = new Map<string, SalesContract[]>();
     for (const c of contracts) (conByEnt.get(c.entityId) ?? conByEnt.set(c.entityId, []).get(c.entityId)!).push(c);
     const ctByEnt = new Map<string, number>();
-    for (const c of contacts) ctByEnt.set(c.entityId, (ctByEnt.get(c.entityId) ?? 0) + 1);
+    // 이직·퇴사로 접어 둔 담당자는 세지 않는다 — 연락 가능한 사람 수여야 뜻이 있다.
+    for (const c of contacts) if (c.active) ctByEnt.set(c.entityId, (ctByEnt.get(c.entityId) ?? 0) + 1);
     return entities.map((e) => {
       const cons = conByEnt.get(e.id) ?? [];
       const annual = cons.reduce((s, c) => s + annualize(c), 0);
@@ -113,7 +114,7 @@ export default function BizStatusTab() {
     const byTeam = agg(contracts, (c) => c.team);
     const byCpa = agg(contracts.filter((c) => c.effectiveCpa), (c) => c.effectiveCpa);
     const byType = agg(contracts, (c) => `${c.team.replace('team', '')}·${topLabel(c.categoryCode)}`);
-    return { corp, person, places, salesPlaces, contracts: contracts.length, totalAnnual, pendingCount: pending.length, pendingAnnual, contacts: contacts.length, byTeam, byCpa, byType };
+    return { corp, person, places, salesPlaces, contracts: contracts.length, totalAnnual, pendingCount: pending.length, pendingAnnual, contacts: contacts.filter((c) => c.active).length, byTeam, byCpa, byType };
   }, [entities, contracts, contacts]);
 
   // 정산연도 후보(추이 드롭다운)

@@ -142,7 +142,8 @@ export interface InvoiceCandidate {
  * 사업장 담당자 > 대표연락처 > 아무 담당자 순. 거래처에 전용 필드가 생기면 그쪽이 우선이 된다.
  */
 function pickDocEmail(contacts: BizContact[], placeId: string | null): string {
-  const cs = contacts.filter((c) => c.email.trim());
+  // 이직·퇴사로 접어 둔 담당자에게 보내면 안 된다.
+  const cs = contacts.filter((c) => c.email.trim() && c.active);
   if (!cs.length) return '';
   return (placeId ? cs.find((c) => c.placeId === placeId && c.isPrimary)?.email : '')
     || (placeId ? cs.find((c) => c.placeId === placeId)?.email : '')
