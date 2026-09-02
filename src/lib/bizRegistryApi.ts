@@ -519,18 +519,19 @@ export async function setPlaceHometaxPw(id: string, val: string): Promise<void> 
   const { error } = await supabase.rpc('biz_set_place_hometax_pw', { p_id: id, p_val: val });
   if (error) throw new Error(error.message);
 }
-export async function revealEntityResident(id: string): Promise<string | null> {
-  const { data, error } = await supabase.rpc('biz_reveal_entity_resident', { p_id: id });
+// 아래 열람 함수들은 **서버가 접속기록에 남긴다**(고시 제8조). 사유(reason)는 화면이 받아 넘긴다.
+export async function revealEntityResident(id: string, reason?: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('biz_reveal_entity_resident', { p_id: id, p_reason: reason ?? null });
   if (error) throw new Error(error.message);
   return (data as string | null) ?? null;
 }
-export async function revealRepResident(id: string): Promise<string | null> {
-  const { data, error } = await supabase.rpc('biz_reveal_rep_resident', { p_id: id });
+export async function revealRepResident(id: string, reason?: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('biz_reveal_rep_resident', { p_id: id, p_reason: reason ?? null });
   if (error) throw new Error(error.message);
   return (data as string | null) ?? null;
 }
-export async function revealPlaceHometaxPw(id: string): Promise<string | null> {
-  const { data, error } = await supabase.rpc('biz_reveal_place_hometax_pw', { p_id: id });
+export async function revealPlaceHometaxPw(id: string, reason?: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('biz_reveal_place_hometax_pw', { p_id: id, p_reason: reason ?? null });
   if (error) throw new Error(error.message);
   return (data as string | null) ?? null;
 }
@@ -561,16 +562,17 @@ export async function listInternalStaff(): Promise<StaffProfile[]> {
 /** 거래처등록 표뷰용 — 개인 본인/법인 대표자 주민번호를 한 번에 열람(권한자만). */
 export interface ResidentRow { entityId: string; kind: string; holder: string; residentNo: string }
 /** 홈택스PW 일괄 열람 — 표뷰에서 한 번에 펼치기 위한 것. 반환은 사업장id → 비밀번호. */
-export async function revealAllHometaxPws(): Promise<Map<string, string>> {
-  const { data, error } = await supabase.rpc('biz_reveal_hometax_pws');
+// 일괄 열람은 사실상 다운로드다 — **사유 없이는 서버가 거부한다**(고시 제8조제2항).
+export async function revealAllHometaxPws(reason: string): Promise<Map<string, string>> {
+  const { data, error } = await supabase.rpc('biz_reveal_hometax_pws', { p_reason: reason });
   if (error) throw new Error(error.message);
   /* eslint-disable @typescript-eslint/no-explicit-any */
   return new Map((data as any[]).map((r) => [r.place_id as string, (r.hometax_pw || '') as string]));
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
-export async function revealAllResidents(): Promise<ResidentRow[]> {
-  const { data, error } = await supabase.rpc('biz_reveal_residents');
+export async function revealAllResidents(reason: string): Promise<ResidentRow[]> {
+  const { data, error } = await supabase.rpc('biz_reveal_residents', { p_reason: reason });
   if (error) throw new Error(error.message);
   /* eslint-disable @typescript-eslint/no-explicit-any */
   return (data as any[]).map((r) => ({

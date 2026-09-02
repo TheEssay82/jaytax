@@ -23,6 +23,7 @@ import ReceivableOpeningTab from './billing/ReceivableOpeningTab';
 import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
 import UsersTab from './users/UsersTab';
+import AccessLogTab from './users/AccessLogTab';
 import StandardsTab from './advisory/StandardsTab';
 import TaxLawTab from './advisory/TaxLawTab';
 import ConsultTab from './advisory/ConsultTab';
@@ -329,6 +330,8 @@ function TabContent({
       return <RequestsTab />;
     case 'users':
       return <UsersTab />;
+    case 'access-log':
+      return <AccessLogTab />;
     case 'std-kifrs':
       return <StandardsTab />;
     case 'std-tax':

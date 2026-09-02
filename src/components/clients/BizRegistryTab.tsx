@@ -346,19 +346,29 @@ export default function BizRegistryTab() {
   // 한쪽만 막혀도 나머지는 열리게 따로 처리한다.
   async function toggleSecrets() {
     if (residents || hometaxPws) { setResidents(null); setHometaxPws(null); return; }
+    // 전체를 한 번에 펼치는 것은 사실상 다운로드다 — 고시 제8조제2항이 '다운로드 상황 확인'을
+    // 요구한다. 사유를 받아 접속기록에 남긴다(서버가 사유 없으면 거부한다).
+    const reason = prompt(
+      '주민등록번호·홈택스 비밀번호를 한 번에 펼칩니다.\n\n'
+      + '무엇 때문에 필요한지 적어 주세요 — 접속기록에 그대로 남습니다.\n'
+      + '(예: 2026년 종합소득세 신고자료 작성)', '');
+    if (reason === null) return;
+    if (!reason.trim()) return alert('사유 없이는 펼칠 수 없습니다.');
     const failed: string[] = [];
     try {
-      const rows = await revealAllResidents();
+      const rows = await revealAllResidents(reason);
       const m = new Map<string, string>();
       for (const r of rows) if (!m.has(r.entityId)) m.set(r.entityId, r.residentNo);
       setResidents(m);
     } catch { failed.push('주민번호'); }
-    try { setHometaxPws(await revealAllHometaxPws()); } catch { failed.push('홈택스PW'); }
+    try { setHometaxPws(await revealAllHometaxPws(reason)); } catch { failed.push('홈택스PW'); }
     if (failed.length) alert(`${failed.join('·')} 은(는) 열람 권한이 없습니다.`);
   }
 
   async function reveal(kind: 'entity' | 'rep' | 'hometax', id: string, label: string) {
     try {
+      // 한 건 열람은 업무 중 흔한 일이라 사유를 묻지 않는다 — 대신 무엇을 열었는지는
+      // 서버가 접속기록에 남긴다(누가·언제·어디서·누구의 것을).
       const v = kind === 'entity' ? await revealEntityResident(id)
         : kind === 'rep' ? await revealRepResident(id)
         : await revealPlaceHometaxPw(id);
