@@ -4,6 +4,7 @@ import { WizardProvider, useWizard } from '../context/WizardContext';
 import { ConfigProvider } from '../context/ConfigContext';
 import { can, ROLE_LABELS, PER_HEAD_ALLOWED_ICONS } from '../lib/roles';
 import PasswordModal from './PasswordModal';
+import MfaModal from './MfaModal';
 import NotificationBell from './NotificationBell';
 import BizRegistryTab from './clients/BizRegistryTab';
 import SalesContractTab from './clients/SalesContractTab';
@@ -57,6 +58,7 @@ function Shell() {
   const [curTab, setCurTab] = useState('home');
   const [reloadKey, setReloadKey] = useState(0);
   const [showPw, setShowPw] = useState(false);
+  const [showMfa, setShowMfa] = useState(false);
   const [showDevNotes, setShowDevNotes] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [openSub, setOpenSub] = useState<string | null>(null); // 열린 중분류 플라이아웃 서브메뉴
@@ -265,6 +267,9 @@ function Shell() {
           <button className="ha" onClick={() => setShowPw(true)}>
             비밀번호 변경
           </button>
+          <button className="ha" onClick={() => setShowMfa(true)} title="로그인할 때 인증 앱의 숫자 6자리를 함께 묻습니다">
+            2차 인증
+          </button>
           <button className="ha" onClick={signOut}>
             로그아웃
           </button>
@@ -272,6 +277,7 @@ function Shell() {
       </header>
 
       {showPw && <PasswordModal onClose={() => setShowPw(false)} />}
+      {showMfa && <MfaModal onClose={() => setShowMfa(false)} />}
       {showDevNotes && <DevNotesModal onClose={() => setShowDevNotes(false)} />}
 
       {readonly && (

@@ -1,6 +1,7 @@
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './components/Login';
 import AppShell from './components/AppShell';
+import MfaGate from './components/MfaGate';
 import SharedConsult from './components/SharedConsult';
 import EssayReader from './components/essay/EssayReader';
 import EssayAdmin from './components/essay/EssayAdmin';
@@ -16,7 +17,7 @@ function Gate() {
       </div>
     );
   }
-  return session ? <AppShell /> : <Login />;
+  return session ? <MfaGate><AppShell /></MfaGate> : <Login />;
 }
 
 /** 습작 관리: 로그인은 필요하지만 좌측 메뉴에는 노출하지 않는 숨김 URL(/essay/admin). */
@@ -25,7 +26,7 @@ function EssayAdminGate() {
   if (loading) {
     return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#888' }}>불러오는 중…</div>;
   }
-  return session ? <EssayAdmin /> : <Login />;
+  return session ? <MfaGate><EssayAdmin /></MfaGate> : <Login />;
 }
 
 export default function App() {
