@@ -25,6 +25,7 @@ import {
 } from '../../lib/invoiceDraftApi';
 import { Grid, useGrid, type GridCol } from './grid';
 import { ColumnSettings } from '../clients/tableKit';
+import { CorrectionModal } from './CorrectionModal';
 import { VIEW_KEYS } from '../../lib/tableViewApi';
 import { StaffShareEditor, shareLabel } from './StaffShareEditor';
 import { listInternalStaff } from '../../lib/bizRegistryApi';
@@ -211,6 +212,7 @@ export default function InvoiceRequestTab() {
   const [showDiff, setShowDiff] = useState(false);
   const [drafts, setDrafts] = useState<InvoiceDraft[]>([]);
   const [recon, setRecon] = useState(false);          // 매출계약 대사 창
+  const [correct, setCorrect] = useState<{ origin: InvoiceRequest | null } | null>(null);
   const [logs, setLogs] = useState<DraftLog[]>([]);  // 이번 달 초안 변경 기록
   const [showLog, setShowLog] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);   // 내 담당만 보기
@@ -873,6 +875,11 @@ ${noContract ? `
               </button>
               <button className="btn-sm" disabled={busy || !pickedReqs.length} onClick={() => void doRevert()}>요청으로 되돌리기</button>
               <button className="btn-sm btn-sm-del" disabled={busy || !pickedReqs.length} onClick={() => void doCancel()}>취소</button>
+              <button className="btn-sm" disabled={busy}
+                title="이미 발행한 세금계산서를 되돌립니다. 한 건을 고르면 그 건을, 고르지 않으면 거래처를 직접 골라 등록합니다."
+                onClick={() => setCorrect({ origin: pickedReqs.length === 1 ? pickedReqs[0] : null })}>
+                ➖ 수정발행 (−/+)
+              </button>
             </>
           )}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
@@ -919,6 +926,11 @@ ${noContract ? `
             } catch (e) { alert('반영 실패: ' + (e instanceof Error ? e.message : e)); }
             finally { setBusy(false); }
           }} />
+      )}
+      {correct && (
+        <CorrectionModal team="taxteam" origin={correct.origin} entities={entities}
+          onClose={() => setCorrect(null)}
+          onSaved={(m) => { flash(m); void load(); }} />
       )}
       {editShare && (
         <StaffShareEditor

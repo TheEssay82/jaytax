@@ -29,6 +29,7 @@ import {
 import { FINAL_APPROVER } from '../../lib/invoiceMonthApi';
 import { Grid, useGrid, type GridCol } from './grid';
 import { ColumnSettings } from '../clients/tableKit';
+import { CorrectionModal } from './CorrectionModal';
 import { VIEW_KEYS } from '../../lib/tableViewApi';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
@@ -71,6 +72,7 @@ export default function AuditInvoiceTab() {
   const [soon, setSoon] = useState(false);        // 다가오는 것(30일)도 볼까
   const [mineOnly, setMineOnly] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [correct, setCorrect] = useState<{ origin: InvoiceRequest | null } | null>(null);
   const [range, setRange] = useState<string>('3m');
   const [year, setYear] = useState('');           // 연도로 좁혀 볼 때
   const [q, setQ] = useState('');
@@ -452,6 +454,11 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
                 onClick={() => { if (confirm(`${pickedR.length}건을 취소합니다.`)) void run(() => cancelRequests(pickedR.map((r) => r.id)), '취소했습니다'); }}>
                 취소
               </button>
+              <button className="btn-sm" disabled={busy}
+                title="이미 발행한 세금계산서를 되돌립니다. 한 건을 고르면 그 건을, 고르지 않으면 거래처를 직접 골라 등록합니다."
+                onClick={() => setCorrect({ origin: pickedR.length === 1 ? pickedR[0] : null })}>
+                ➖ 수정발행 (−/+)
+              </button>
             </>
           )}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
@@ -571,6 +578,12 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           </div>
         )}
       </div>
+
+      {correct && (
+        <CorrectionModal team={TEAM} origin={correct.origin} entities={entities}
+          onClose={() => setCorrect(null)}
+          onSaved={(m) => { flash(m); void load(); }} />
+      )}
     </div>
   );
 }

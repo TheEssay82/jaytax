@@ -65,6 +65,12 @@ export interface InvoiceRequest {
   issueDate: string | null;
   issuedByName: string;         // 발행완료를 누른 사람(누가 처리했는지 화면에 보인다)
   requestedByName: string;      // 요청한 사람(감사팀 건별에서 '발행요청자')
+  /** 되돌리는 원 발행요청(수정발행일 때). 원 건이 우리 장부에 없으면 비어 있다. */
+  correctsRequestId: string | null;
+  /** 되돌리는 원 세금계산서·ERP 전표번호 — 원 건이 우리 장부에 없을 때의 실마리. */
+  correctsInvoiceNo: string;
+  /** 수정 사유. */
+  correctReason: string;
   /** 청구 시점의 담당 회계사(스냅샷). 계약이 나중에 바뀌어도 이 값은 그대로다. */
   cpa: string;
   /** 청구 시점의 담당 직원(스냅샷). 직원별 매출 집계의 근거 — 계속계약은 연중에도 바뀐다. */
@@ -86,6 +92,9 @@ const toReq = (r: any): InvoiceRequest => ({
   requestedByName: r.requested_by_name || '',
   phase: r.phase || '', summary: r.summary || '',
   cpa: r.cpa || '', staff: r.staff || '',
+  correctsRequestId: r.corrects_request_id ?? null,
+  correctsInvoiceNo: r.corrects_invoice_no || '',
+  correctReason: r.correct_reason || '',
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -289,6 +298,64 @@ export interface ManualInvoiceInput {
   staff?: string;
   note?: string;
 }
+/**
+ * 수정세금계산서를 등록한다 — **(−)와 (+) 둘 다**.
+ *
+ * 새 테이블을 만들지 않는다. 수정발행도 발행이고, 미수금·매출통계·ERP 대사가 모두
+ * 이 표를 보므로 `status='수정발행'` 인 행 하나면 그 화면들이 알아서 더하고 뺀다.
+ *
+ * 방향이 둘인 이유 —
+ *  · (−) 이미 발행한 것을 되돌린다(계약 해지·과다청구). 파인즈플래닝 4~6월 기장료가 이 경우.
+ *  · (+) 덜 발행했거나, 예전에 끊어 둔 (−)크레딧이 소멸해 채권이 되살아난다. 제이엠스토리가 이 경우.
+ * `amount` 는 언제나 **양수로 받아** 여기서 부호를 붙인다 — 사람이 직접 (−)를 치면 빠뜨린다.
+ *
+ * 원 건이 우리 장부에 있으면 correctsRequestId 로 잇고,
+ * 기초미수금에 묻혀 있어 없으면 correctsInvoiceNo(ERP 전표번호)만 적는다.
+ */
+export async function createCorrection(input: {
+  ym: string; team: string;
+  entityId: string; placeId: string | null; contractId?: string | null;
+  /** 고칠 금액(공급가액, **양수**로 준다). 부호는 sign 이 정한다. */
+  amount: number;
+  /** '-' 되돌리기(기본) · '+' 되살리기. */
+  sign?: '-' | '+';
+  reason: string;
+  issueDate: string;
+  /** 이미 ERP 에서 발행된 것이면 그 날짜 — 넣으면 바로 채권에서 빠진다. */
+  issuedDate?: string | null;
+  correctsRequestId?: string | null;
+  correctsInvoiceNo?: string;
+  erpAccount?: string; companyName: string; placeName?: string; contractCode?: string;
+  cpa?: string; staff?: string; summary?: string;
+}): Promise<string> {
+  const dir = input.sign === '+' ? 1 : -1;
+  const amt = dir * Math.abs(Math.round(input.amount));
+  if (!amt) throw new Error('금액을 넣어 주세요.');
+  if (!input.reason.trim()) throw new Error('수정 사유를 적어 주세요 — 나중에 왜 뺐는지 알 수 없게 됩니다.');
+  const { data: u } = await supabase.auth.getUser();
+  const vat = dir * Math.round(Math.abs(amt) * VAT_RATE);
+  const { data, error } = await supabase.from('biz_invoice_request').insert({
+    ym: input.ym, team: input.team, entity_id: input.entityId, place_id: input.placeId,
+    contract_id: input.contractId ?? null,
+    supply_amount: amt, vat, total: amt + vat,
+    status: '수정발행',
+    erp_account: input.erpAccount || null,
+    summary: input.summary || null,
+    issue_date: input.issueDate || null,
+    issued_date: input.issuedDate ?? null,
+    cpa: input.cpa || null, staff: input.staff || null,
+    company_name: input.companyName, place_name: input.placeName ?? '',
+    contract_code: input.contractCode ?? '',
+    corrects_request_id: input.correctsRequestId ?? null,
+    corrects_invoice_no: input.correctsInvoiceNo || null,
+    correct_reason: input.reason.trim(),
+    note: `${dir < 0 ? '(−)' : '(+)'}수정발행 · ${input.reason.trim()}`,
+    requested_by: u.user?.id ?? null,
+  }).select('id').single();
+  if (error) throw new Error(error.message);
+  return (data as { id: string }).id;
+}
+
 export async function createManualInvoiceRequest(input: ManualInvoiceInput): Promise<string> {
   const { data: u } = await supabase.auth.getUser();
   const vat = Math.round(input.supplyAmount * VAT_RATE);
