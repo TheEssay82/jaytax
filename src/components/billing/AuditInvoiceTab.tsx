@@ -272,7 +272,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
     setF({
       company: o?.label ?? r.companyName, entityId: r.entityId, placeId: r.placeId ?? '',
       amount: String(Math.round(r.supplyAmount)), account: r.erpAccount || '회계감사수입',
-      phase: r.phase || '잔금', summary: r.summary || '', issueDate: todayYmd(), email: '',
+      phase: r.phase || '잔금', summary: r.summary || r.note || '', issueDate: todayYmd(), email: '',
     });
     setDetail(r.detailLines ?? []);
     setNeedsDoc(r.needsInvoiceDoc);
