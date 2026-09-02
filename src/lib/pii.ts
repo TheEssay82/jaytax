@@ -60,10 +60,12 @@ const PATTERNS: { kind: PiiKind; re: RegExp; keep?: (m: string) => boolean }[] =
   // 휴대전화·유선전화
   { kind: '연락처', re: /\b0(?:1[016-9]|2|[3-6]\d)[-–—)\s]?\d{3,4}[-–—\s]?\d{4}\b/g },
   { kind: '이메일', re: /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g },
-  // 주소 — 시/도부터 번지·건물까지 한 덩어리
+  // 주소 — 시/도 → 시·군·구 → 도로명/동 → 번지 → (선택) 건물까지. **여기서 끊는다.**
+  // 꼬리를 "아무 40자"로 잡았더니 뒤 문장과 다음 사람 이름까지 삼켰다("…{주소1}민섭 대리").
+  // 각 마디를 길이로 묶고, 번지·건물만 조건부로 붙인다. 시·군·구는 두 번 나올 수 있다(경기도 성남시 분당구).
   {
     kind: '주소',
-    re: /(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)(?:특별시|광역시|특별자치시|특별자치도|도)?\s?\S*(?:시|군|구)\s\S*(?:읍|면|동|가|로|길)[^\n,]{0,40}/g,
+    re: /(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)(?:특별시|광역시|특별자치시|특별자치도|도)?\s?\S{1,10}?(?:시|군|구)(?:\s\S{1,10}?(?:시|군|구))?\s\S{1,15}?(?:읍|면|동|가|로|길)(?:\s?\d+(?:-\d+)?(?:번지)?)?(?:\s?\S{1,10}?(?:층|호|동|빌딩|타워|센터|아파트|오피스텔))?/g,
   },
 ];
 
@@ -139,13 +141,22 @@ export function createMasker(names: string[] = []): Masker {
   };
 }
 
-/** 답변에 남은 자리표를 원래 값으로 되돌린다. */
+/**
+ * 답변에 남은 자리표를 원래 값으로 되돌린다.
+ *
+ * **자리표가 자리표를 품을 수 있다.** 이메일이 주소보다 먼저 지워지면 주소값 안에
+ * 이미 `{이메일1}` 이 들어가 있다. 한 바퀴만 돌면 그 안쪽 자리표가 답변에 그대로 남는다.
+ * 더 바뀌지 않을 때까지 돈다(맞물려 도는 것을 막으려 횟수를 제한한다).
+ */
 export function unmaskPii(text: string, map: Record<string, string>): string {
   if (!text) return text;
-  let out = text;
   // 긴 자리표부터 — {인명10} 이 {인명1} 로 먼저 잘리면 안 된다.
-  for (const t of Object.keys(map).sort((a, b) => b.length - a.length)) {
-    out = out.split(t).join(map[t]);
+  const keys = Object.keys(map).sort((a, b) => b.length - a.length);
+  let out = text;
+  for (let round = 0; round < 5; round++) {
+    const before = out;
+    for (const t of keys) out = out.split(t).join(map[t]);
+    if (out === before) break;
   }
   return out;
 }

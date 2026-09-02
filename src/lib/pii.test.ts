@@ -80,3 +80,27 @@ test('가릴 것이 없으면 원문 그대로다', () => {
   assert.equal(r.hits.length, 0);
   assert.equal(summarizeHits(r.hits), '');
 });
+
+test('주소가 뒷문장과 다음 이름까지 삼키지 않는다', () => {
+  const src = '서울특별시 강남구 테헤란로 123 에서 사업을 하고 있으며 geniwoo@gmail.com 으로 회신 예정입니다. 김민섭 대리와 함께 검토했습니다.';
+  const r = maskPii(src, ['김민섭']);
+  // 주소는 번지까지만 — '에서 사업을' 이후는 남아야 한다
+  assert.ok(r.masked.includes('에서 사업을 하고 있으며'), r.masked);
+  // 이름이 통째로 지워져야 한다 — '민섭' 조각이 흘러나가면 안 된다
+  assert.ok(!r.masked.includes('민섭'), r.masked);
+  assert.ok(!r.masked.includes('테헤란로') && !r.masked.includes('@gmail'), r.masked);
+  assert.equal(unmaskPii(r.masked, r.map), src);
+});
+
+test('자리표 안에 자리표가 들어가도 끝까지 되돌린다', () => {
+  // 주소값이 이메일 자리표를 품은 상황을 손으로 만든다
+  const map = { '{주소1}': '서울 강남구 테헤란로 1, {이메일1} 앞', '{이메일1}': 'a@b.com' };
+  assert.equal(unmaskPii('보낸 곳은 {주소1} 입니다.', map),
+    '보낸 곳은 서울 강남구 테헤란로 1, a@b.com 앞 입니다.');
+});
+
+test('주소는 건물(층·호)까지만 먹는다', () => {
+  const r = maskPii('경기도 성남시 분당구 판교로 235 4층 으로 방문했습니다');
+  assert.ok(r.masked.includes('으로 방문했습니다'), r.masked);
+  assert.ok(!r.masked.includes('판교로'), r.masked);
+});

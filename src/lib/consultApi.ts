@@ -94,18 +94,22 @@ export async function runConsult(
 let piiNameCache: string[] | null = null;
 export async function piiNames(): Promise<string[]> {
   if (piiNameCache) return piiNameCache;
-  try {
-    const [ent, rep, con] = await Promise.all([
-      supabase.from('biz_entity').select('name'),
-      supabase.from('biz_representative').select('name'),
-      supabase.from('biz_contact').select('name'),
-    ]);
-    const pick = (r: { data: unknown }) => ((r.data as { name?: string }[] | null) ?? [])
-      .map((x) => (x.name ?? '').trim()).filter(Boolean);
-    piiNameCache = [...new Set([...pick(ent), ...pick(rep), ...pick(con)])];
-  } catch {
-    piiNameCache = [];   // 사전을 못 읽어도 패턴 마스킹은 살린다
-  }
+  // 테이블마다 이름 컬럼이 다르다(name / rep_name / contact_name). 한 번 틀리면 사전이
+  // 통째로 비는데 마스킹은 조용히 계속 돌아 성명이 그대로 나간다 — 그래서 **하나씩** 읽고
+  // 실패한 것만 버린다. 한 곳이 막혀도 나머지 사전은 살아 있어야 한다.
+  const from = async (table: string, col: string): Promise<string[]> => {
+    const { data, error } = await supabase.from(table).select(col);
+    if (error) { console.warn(`[pii] 이름 사전 ${table}.${col} 읽기 실패: ${error.message}`); return []; }
+    return ((data as unknown as Record<string, unknown>[] | null) ?? [])
+      .map((r) => String(r[col] ?? '').trim()).filter(Boolean);
+  };
+  const lists = await Promise.all([
+    from('biz_entity', 'name'),              // 거래처 상호(개인사업자는 본인 성명)
+    from('biz_representative', 'rep_name'),  // 대표자
+    from('biz_contact', 'contact_name'),     // 거래처담당자
+    from('profiles', 'name'),                // 우리 임직원 — 상담 메일에 자주 등장한다
+  ]);
+  piiNameCache = [...new Set(lists.flat())];
   return piiNameCache;
 }
 
