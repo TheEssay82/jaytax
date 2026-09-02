@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
-import { todayYmd } from '../../lib/format';
+import { todayYmd, kstDateTime } from '../../lib/format';
 import { listInvoiceRequests, type InvoiceRequest } from '../../lib/invoiceRequestApi';
 import { listReceivableOpenings, OPENING_AS_OF, type ReceivableOpening } from '../../lib/invoiceRequestApi';
 import {
@@ -292,7 +292,7 @@ export default function ReceivableTab() {
                     <td className="r" style={{ fontWeight: 700 }}>{won(u.amountTotal)}</td>
                     <td className="r" style={{ color: '#888' }}>{won(u.opening)}</td>
                     <td className="r" style={{ color: '#888' }}>{won(u.debitTotal)}</td>
-                    <td style={{ fontSize: 11, color: '#888' }}>{u.uploadedAt.slice(0, 16).replace('T', ' ')}</td>
+                    <td style={{ fontSize: 11, color: '#888' }}>{kstDateTime(u.uploadedAt)}</td>
                     <td style={{ fontSize: 11 }}>{u.uploadedBy}</td>
                     <td>
                       <button className="btn-sm" onClick={() => { setYm(u.ym); setTeam(u.team); }}>보기</button>

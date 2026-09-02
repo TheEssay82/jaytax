@@ -167,7 +167,7 @@ export default function SalesContractTab() {
     const ys = new Set<number>();
     for (const c of contracts) { const fy = contractFiscalYear(c); if (fy != null) ys.add(fy); }
     if (contracts.some(isOngoing)) {
-      const now = settlementYearOfDate(new Date().toISOString().slice(0, 10)) ?? OPERATION_START_YEAR;
+      const now = settlementYearOfDate(todayYmd()) ?? OPERATION_START_YEAR;
       const top = Math.max(now, OPERATION_START_YEAR, ...ys);
       for (let y = OPERATION_START_YEAR; y <= top; y++) ys.add(y);
     }
@@ -316,7 +316,7 @@ export default function SalesContractTab() {
   // 청구예정일 경과 알람 — 로그인한 담당CPA 본인 계약의 분할 회차 중 예정일이 지난 것
   const myOverdue = useMemo(() => {
     if (!profileName) return [];
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayYmd();   // UTC 로 찍으면 오전 9시 이전에 기한 지난 건이 안 잡힌다
     const out: { id: string; name: string; label: string; due: string; amount: number }[] = [];
     for (const c of contracts) {
       if (c.effectiveCpa !== profileName) continue;

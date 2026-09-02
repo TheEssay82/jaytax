@@ -1,6 +1,7 @@
 // 청구기록(billing_records) Supabase 데이터 레이어
 // payload(jsonb)에 WizardState+CalcResult 전체 스냅샷을 저장하고, 조회용 핵심 컬럼을 별도 보관한다.
 import { supabase } from './supabase';
+import { todayYmd } from './format';
 import { syncTaxFilingContractAmount, type TaxFilingSync } from './salesContractApi';
 import type { BillingRecord } from '../types';
 
@@ -161,7 +162,7 @@ export async function finalizeBillingRecord(id: string): Promise<TaxFilingSync> 
     clientId: row.client_id,
     companyName: row.company_name ?? '',
     supplyAmount: supply,
-    onDate: new Date().toISOString().slice(0, 10),
+    onDate: todayYmd(),   // UTC 로 찍으면 오전 9시 이전 확정이 어제 정산연도로 갈 수 있다
   });
 }
 

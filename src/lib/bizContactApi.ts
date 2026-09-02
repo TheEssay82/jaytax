@@ -1,5 +1,6 @@
 // 거래처담당자(외부 연락처) biz_contact 데이터 접근 + 기존 doc_contacts 1회성 이관. 거래처관리 2.0.0 step3.
 import { supabase, assertWrote } from './supabase';
+import { todayYmd } from './format';
 
 export interface BizContact {
   id: string;
@@ -63,7 +64,7 @@ export async function setContactActive(
 ): Promise<void> {
   const { data, error } = await supabase.from('biz_contact').update({
     active,
-    left_at: active ? null : (opt.leftAt ?? new Date().toISOString().slice(0, 10)),
+    left_at: active ? null : (opt.leftAt ?? todayYmd()),   // 퇴사일이 하루 앞당겨지지 않게
     left_note: active ? null : (opt.leftNote?.trim() || null),
   }).eq('id', id).select('id');
   if (error) throw new Error(error.message);

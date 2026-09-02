@@ -8,7 +8,7 @@
 //
 // 기간은 **사업연도(7/1~익년 6/30)** 가 기본이다. FY2026 = 2026-07~2027-06.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { todayYmd } from '../../lib/format';
+import { todayYmd, kstDateTime } from '../../lib/format';
 import { listStaffChangeLog, type StaffChangeLog } from '../../lib/invoiceStaffApi';
 import {
   listRevenueFacts, pivot, DIMS, fyOf, fyRange, fyLabel,
@@ -270,7 +270,7 @@ export default function StaffRevenueTab() {
                         {l.propagated ? '예' : '아니오'}
                       </td>
                       <td>{l.changedBy || '—'}</td>
-                      <td style={{ color: '#888' }}>{l.changedAt.slice(0, 16).replace('T', ' ')}</td>
+                      <td style={{ color: '#888' }}>{kstDateTime(l.changedAt)}</td>
                     </tr>
                   ))}
                 </tbody>

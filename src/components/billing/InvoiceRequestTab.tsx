@@ -11,7 +11,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, CPA_OPTIONS, type BizEntityFull } from '../../lib/bizRegistryApi';
-import { todayYmd } from '../../lib/format';
+import { todayYmd, kstDateTime, kstShort } from '../../lib/format';
 import {
   listInvoiceCandidates, listInvoiceRequests, createInvoiceRequests,
   markIssued, cancelRequests, revertToRequested, updateInvoiceRequest,
@@ -657,7 +657,7 @@ ${noContract ? `
                   const stale = !!c && logs.some((l) => l.actor === n && l.at > c.checkedAt);
                   return (
                     <span key={n} title={c
-                      ? `${c.checkedAt.slice(0, 16).replace('T', ' ')}${c.note ? ` · ${c.note}` : ''}${stale ? ' · 확인 뒤에 또 고쳤습니다' : ''}`
+                      ? `${kstDateTime(c.checkedAt)}${c.note ? ` · ${c.note}` : ''}${stale ? ' · 확인 뒤에 또 고쳤습니다' : ''}`
                       : '아직 확인 전'}
                       style={{
                         padding: '1px 7px', borderRadius: 9, fontSize: 11, fontWeight: 700,
@@ -783,7 +783,7 @@ ${noContract ? `
                       <td style={{ color: '#888' }}>{l.before || dash}</td>
                       <td style={{ fontWeight: 600 }}>{l.after || dash}</td>
                       <td>{l.actor || dash}</td>
-                      <td style={{ color: '#888' }}>{l.at.slice(5, 16).replace('T', ' ')}</td>
+                      <td style={{ color: '#888' }}>{kstShort(l.at)}</td>
                     </tr>
                   ))}
                 </tbody>

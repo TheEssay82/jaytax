@@ -4,6 +4,7 @@
 // 그러려면 **월 단위로 훑을 수 있고, 위험한 것이 먼저 눈에 띄어야** 한다.
 // 그래서 기본 조회를 이번 달로 두고, 주민번호·홈택스PW 열람을 따로 세어 위에 올린다.
 import { useEffect, useMemo, useState } from 'react';
+import { kstDateTime } from '../../lib/format';
 import {
   listAccessLog, verifyAccessLog, ACTIONS, actionLabel,
   type AccessLogRow, type VerifyResult,
@@ -92,7 +93,7 @@ export default function AccessLogTab() {
         <div className={verify.ok ? 'alert-s' : 'alert-e'} style={{ fontSize: 11.5 }}>
           {verify.ok
             ? `✅ ${verify.checked.toLocaleString('ko-KR')}건 검증 — 고쳐지거나 빠진 줄이 없습니다.`
-            : `⚠️ ${verify.checked.toLocaleString('ko-KR')}건 중 id ${verify.firstBadId} (${verify.firstBadAt?.slice(0, 19).replace('T', ' ')}) 부터 어긋납니다 — 그 줄이 고쳐졌거나, 그 앞줄이 지워졌습니다.`}
+            : `⚠️ ${verify.checked.toLocaleString('ko-KR')}건 중 id ${verify.firstBadId} (${kstDateTime(verify.firstBadAt)}) 부터 어긋납니다 — 그 줄이 고쳐졌거나, 그 앞줄이 지워졌습니다.`}
         </div>
       )}
 
@@ -128,7 +129,7 @@ export default function AccessLogTab() {
             )}
             {rows.map((r) => (
               <tr key={r.id} style={SENSITIVE.has(r.action) ? { background: '#FFFBEB' } : undefined}>
-                <td style={{ whiteSpace: 'nowrap' }}>{r.at.slice(0, 19).replace('T', ' ')}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{kstDateTime(r.at)}</td>
                 <td>
                   {r.actorName}
                   <div style={{ fontSize: 10, color: '#888' }}>{r.actorEmail}</div>

@@ -7,6 +7,7 @@
 //   2층 작업 — 회계사가 확인 한 번으로 발행요청 → 김민섭에게 알림 → 발행완료 → 회계사에게 알림
 //   3층 이력 — 요청·발행완료를 기간으로 조회한다
 import { supabase } from './supabase';
+import { todayYmd } from './format';
 import { billingItemsForMonth } from './billingSchedule';
 import { listSalesContracts } from './salesContractApi';
 import { erpAccountOf, listInvoiceRequests, type InvoiceCandidate } from './invoiceRequestApi';
@@ -108,7 +109,8 @@ export async function dismissProposals(installmentIds: string[], on = todayOf())
     .update({ billed_at: on }).in('id', ids);
   if (error) throw new Error(error.message);
 }
-const todayOf = () => new Date().toISOString().slice(0, 10);
+// toISOString() 은 UTC 라 한국시간 오전 9시 이전이면 어제가 나온다 — 작성일이 하루 밀린다.
+const todayOf = () => todayYmd();
 
 async function listNotifiedKeys(): Promise<Set<string>> {
   const { data, error } = await supabase.from('biz_audit_proposal_notice').select('proposal_key');
