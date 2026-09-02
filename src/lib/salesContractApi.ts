@@ -1,6 +1,7 @@
 // 매출계약(biz_sales_contract) + 위성(담당직원·분할·할인) 데이터 접근 레이어. 거래처관리 2.0.0 step2.
 import { supabase, assertWrote } from './supabase';
 import { typeMnemonic, teamCode, type Team } from './salesContractTaxonomy';
+import { settlementYearOfDate, pickTaxFilingContract, type TaxFilingRow } from './fiscalYear';
 
 export type OccurrenceUnit = '사업장' | '법인' | '개인';
 export type BillingUnit = '사업장' | '법인' | '개인' | '건';
@@ -9,14 +10,9 @@ export type AdvisoryType = '일반' | '전문';
 export const BILLING_CYCLES: BillingCycle[] = ['월', '분기', '반기', '연', '발생시', '건'];
 
 // ── 정산연도(귀속연도) 규칙 ──────────────────────────────
-// 정산기간(회계연도) = 매년 7/1 ~ 익년 6/30. 어떤 날짜의 정산연도 = 월이 7~12면 그 해, 1~6이면 전년.
-// (예: 종료 2027-03 → 2026 귀속 / 종료 2026-11 → 2026 귀속). 날짜는 'YYYY-MM' 또는 'YYYY-MM-DD'.
-export function settlementYearOfDate(d: string | null | undefined): number | null {
-  if (!d || d.length < 7) return null;
-  const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
-  if (!y || !m) return null;
-  return m >= 7 ? y : y - 1;
-}
+// 규칙 본체는 fiscalYear.ts 에 있다(supabase 를 물지 않아야 테스트가 돈다). 여기서 다시 내보낸다.
+export { settlementYearOfDate, pickTaxFilingContract } from './fiscalYear';
+export type { TaxFilingRow } from './fiscalYear';
 // 계약의 귀속(정산)연도: 명시 fiscalYear 우선, 없으면 종료시점에서 도출(일회성 감사·컨설팅·신고).
 // 기장 등 계속거래(종료 없음)는 계약 단위 귀속이 없어 null(귀속은 월 청구/발생 단계에서 적용).
 export function contractFiscalYear(c: { fiscalYear: number | null; endDate: string | null }): number | null {
@@ -622,21 +618,16 @@ export async function syncTaxFilingContractAmount(input: {
 
     const { data: cons, error } = await supabase
       .from('biz_sales_contract')
-      .select('id, contract_code, amount, start_date, end_date, note')
+      .select('id, contract_code, amount, fiscal_year, start_date, end_date, note')
       .eq('entity_id', entityId)
-      .in('category_code', ['TAX.FILING.CORP', 'TAX.FILING.INCOME'])
-      .lte('start_date', input.onDate);
+      .in('category_code', ['TAX.FILING.CORP', 'TAX.FILING.INCOME']);
     if (error) return { updated: false, reason: error.message };
 
-    const rows = ((cons as {
-      id: string; contract_code: string | null; amount: number | null;
-      start_date: string | null; end_date: string | null; note: string | null;
-    }[] | null) ?? []).filter((c) => !c.end_date || c.end_date >= input.onDate);
-    if (!rows.length) {
-      return { updated: false, reason: '확정일이 속한 세무조정 매출계약이 없습니다 — 계약을 먼저 등록해 주세요.' };
+    const target = pickTaxFilingContract((cons as TaxFilingRow[] | null) ?? [], input.onDate);
+    if (!target) {
+      const fy = settlementYearOfDate(input.onDate);
+      return { updated: false, reason: `FY${fy} 세무조정 매출계약이 없습니다 — 계약을 먼저 등록해 주세요.` };
     }
-    // 후보가 여럿이면 금액이 비어 있는 것(=채워지길 기다리는 자리)을 먼저 고른다.
-    const target = rows.find((c) => !Number(c.amount)) ?? rows[0];
     const previous = Number(target.amount) || 0;
     if (previous === Math.round(input.supplyAmount)) {
       return { updated: false, contractCode: target.contract_code ?? undefined, reason: '계약 금액이 이미 같습니다.' };
