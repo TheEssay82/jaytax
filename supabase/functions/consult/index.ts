@@ -8,6 +8,21 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const EMBED_MODEL = 'text-embedding-3-small';
+
+/**
+ * 국외이전 마지막 관문 (개인정보보호법 제28조의8).
+ *
+ * 마스킹은 브라우저에서 한다(consultApi.runConsult) — 원문이 서버에도 남지 않게 하려는 것이다.
+ * 여기서는 **혹시 통과한 것이 있는지** 한 번 더 본다. 함수는 직접 호출될 수도 있고,
+ * 프론트가 갱신되지 않은 채로 남아 있을 수도 있다. 고유식별정보는 한 건도 나가면 안 된다.
+ */
+function hasResidentNo(text: string): boolean {
+  for (const m of String(text ?? '').matchAll(/\b(\d{6})[-–—]?\d{7}\b/g)) {
+    const mm = Number(m[1].slice(2, 4)), dd = Number(m[1].slice(4, 6));
+    if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) return true;
+  }
+  return false;
+}
 // 회신 작성 모델: 프런트에서 선택(기본 Sonnet, 고품질 Opus). allowlist 밖이면 기본으로.
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const ALLOWED_MODELS = new Set(['claude-sonnet-4-6', 'claude-opus-4-8']);
@@ -416,6 +431,14 @@ Deno.serve(async (req) => {
       await req.json().catch(() => ({}));
     if (!question || typeof question !== 'string' || !question.trim()) {
       return json({ ok: false, error: '질문(question)은 필수입니다.' }, 400);
+    }
+    // 주민등록번호가 실려 오면 여기서 끊는다 — 국외로 한 건도 내보내지 않는다.
+    if ([question, priorAnswer, followup].some(hasResidentNo)) {
+      return json({
+        ok: false,
+        error: '주민등록번호로 보이는 값이 포함되어 요청을 처리하지 않았습니다. '
+          + '고유식별정보는 외부 AI 로 보낼 수 없습니다 (개인정보보호법 제28조의8).',
+      }, 400);
     }
     const useModel = typeof model === 'string' && ALLOWED_MODELS.has(model) ? model : DEFAULT_MODEL;
     // 보완 재회신(대화형): followup 있으면 기존 초안을 개정한다. 근거는 질문+보완요청 합쳐 재수집.

@@ -2,6 +2,7 @@
 //  - runConsult: 질문 → consult Edge Function(회계기준 RAG 근거 + Claude 회신 초안).
 //  - consultations 테이블 CRUD: 전체 열람(공유 이력), 작성/수정/삭제는 본인 것만(RLS 0014).
 import { supabase } from './supabase';
+import { createMasker, findResidentNos, summarizeHits, type PiiHit } from './pii';
 
 // ── 근거(citation) ───────────────────────────────────────────────
 // consult Edge가 돌려주고 consultations.citations(jsonb)에 그대로 저장하는 형태.
@@ -22,6 +23,10 @@ export interface ConsultResult {
   citations: Citation[];
   model: string;
   tags: string[];
+  /** 국외로 나가기 전에 가린 개인정보. 화면에 무엇이 가려졌는지 보여 준다. */
+  masked: PiiHit[];
+  /** 가린 내용 한 줄 요약 (예: '인명 2 · 사업자번호 1'). 없으면 빈 문자열. */
+  maskedSummary: string;
 }
 
 /** 상담 회신에 쓸 수 있는 모델(서버 allowlist와 일치). 첫 항목이 기본값. */
@@ -44,22 +49,64 @@ export async function runConsult(
   question: string,
   opts: { standardNo?: string; lawRefs?: LawRef[]; model?: string; includePrecedents?: boolean; includeTaxLaw?: boolean; domain?: '공통' | '회계' | '세무'; priorAnswer?: string; followup?: string } = {}
 ): Promise<ConsultResult> {
-  const { data, error } = await supabase.functions.invoke('consult', {
-    body: {
-      question,
-      standardNo: opts.standardNo ?? '',
-      lawRefs: opts.lawRefs ?? [],
-      model: opts.model ?? DEFAULT_CONSULT_MODEL,
-      includePrecedents: opts.includePrecedents ?? false,
-      includeTaxLaw: opts.includeTaxLaw ?? true,
-      domain: opts.domain ?? '공통',
-      priorAnswer: opts.priorAnswer ?? '',
-      followup: opts.followup ?? '',
-    },
-  });
+  // ── 국외이전 관문 (개인정보보호법 제28조의8) ──────────────
+  // Anthropic API 는 국외에 있다. 의뢰인의 성명·주민번호·사업자번호·연락처·주소는
+  // 여기서 자리표로 바꾸고, 답변을 받은 뒤 되돌린다. 원문은 브라우저를 벗어나지 않는다.
+  // 질문·기존초안·보완요청을 **한 마스커로** 가린다 — 따로 가리면 자리표가 뒤섞인다.
+  const masker = createMasker(await piiNames());
+  const body = {
+    question: masker.mask(question),
+    standardNo: opts.standardNo ?? '',
+    lawRefs: opts.lawRefs ?? [],
+    model: opts.model ?? DEFAULT_CONSULT_MODEL,
+    includePrecedents: opts.includePrecedents ?? false,
+    includeTaxLaw: opts.includeTaxLaw ?? true,
+    domain: opts.domain ?? '공통',
+    priorAnswer: masker.mask(opts.priorAnswer ?? ''),
+    followup: masker.mask(opts.followup ?? ''),
+  };
+  // 마스킹을 통과했는데도 주민번호 모양이 남았다면 보내지 않는다 —
+  // 고유식별정보는 한 건도 나가면 안 된다.
+  const leftover = [body.question, body.priorAnswer, body.followup].flatMap(findResidentNos);
+  if (leftover.length) {
+    throw new Error(`주민등록번호로 보이는 값이 남아 있어 보내지 않았습니다 (${leftover.length}건). `
+      + '해당 부분을 지우고 다시 시도해 주세요 — 고유식별정보는 외부 AI 로 보낼 수 없습니다.');
+  }
+
+  const { data, error } = await supabase.functions.invoke('consult', { body });
   if (error) throw new Error(error.message);
   if (!data || data.ok === false) throw new Error(data?.error || '회신 초안 작성에 실패했습니다.');
-  return { answer_md: data.answer_md, citations: data.citations ?? [], model: data.model, tags: data.tags ?? [] };
+  return {
+    answer_md: masker.unmask(data.answer_md ?? ''),
+    citations: data.citations ?? [],
+    model: data.model,
+    tags: (data.tags ?? []).map((t: string) => masker.unmask(t)),
+    masked: masker.hits,
+    maskedSummary: summarizeHits(masker.hits),
+  };
+}
+
+/**
+ * 마스킹에 쓸 이름 사전 — 거래처명·대표자명·거래처담당자명.
+ * 성명은 모양이 없어 정규식으로 못 잡는다. 우리가 아는 이름으로 잡는 것이 유일하게 정확하다.
+ * 한 세션에 한 번만 읽는다(사전이 조금 낡아도 패턴 마스킹은 그대로 돈다).
+ */
+let piiNameCache: string[] | null = null;
+export async function piiNames(): Promise<string[]> {
+  if (piiNameCache) return piiNameCache;
+  try {
+    const [ent, rep, con] = await Promise.all([
+      supabase.from('biz_entity').select('name'),
+      supabase.from('biz_representative').select('name'),
+      supabase.from('biz_contact').select('name'),
+    ]);
+    const pick = (r: { data: unknown }) => ((r.data as { name?: string }[] | null) ?? [])
+      .map((x) => (x.name ?? '').trim()).filter(Boolean);
+    piiNameCache = [...new Set([...pick(ent), ...pick(rep), ...pick(con)])];
+  } catch {
+    piiNameCache = [];   // 사전을 못 읽어도 패턴 마스킹은 살린다
+  }
+  return piiNameCache;
 }
 
 /** 모델 id → 사람이 읽는 표기 (예: 'claude-sonnet-4-6' → 'Anthropic Claude Sonnet 4.6'). */

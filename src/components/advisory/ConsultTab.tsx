@@ -47,6 +47,8 @@ export default function ConsultTab() {
 
   // 생성 결과 (편집 가능)
   const [answer, setAnswer] = useState<string | null>(null);
+  // 국외이전 전에 무엇을 가렸는지 — 직원이 눈으로 확인할 수 있어야 한다.
+  const [maskedNote, setMaskedNote] = useState('');
   const [citations, setCitations] = useState<Citation[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [model, setModel] = useState('');
@@ -94,6 +96,7 @@ export default function ConsultTab() {
     setSaved(false);
     try {
       const res = await runConsult(q, { lawRefs, model: selModel, includePrecedents: includePrec, includeTaxLaw, domain });
+      setMaskedNote(res.maskedSummary);
       setAnswer(res.answer_md);
       setCitations(res.citations);
       setTags(res.tags);
@@ -154,6 +157,7 @@ export default function ConsultTab() {
         lawRefs, model: selModel, includePrecedents: includePrec, includeTaxLaw, domain,
         priorAnswer: answer, followup: fu,
       });
+      setMaskedNote(res.maskedSummary);
       setAnswer(res.answer_md);
       setCitations(res.citations);
       setTags(res.tags);
@@ -356,6 +360,12 @@ export default function ConsultTab() {
         </div>
       )}
 
+      {answer !== null && maskedNote && (
+        <div className="alert-i" style={{ fontSize: 11.5, marginTop: 14 }}>
+          🔒 <b>{maskedNote}</b> 을(를) 가린 뒤 보냈습니다 — 개인정보는 외부 AI 로 나가지 않습니다
+          (개인정보보호법 제28조의8). 위 초안에는 원래 값으로 되돌려 두었습니다.
+        </div>
+      )}
       {answer !== null && (
         <div style={{ marginTop: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
