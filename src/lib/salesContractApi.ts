@@ -2,6 +2,7 @@
 import { supabase, assertWrote } from './supabase';
 import { typeMnemonic, teamCode, type Team } from './salesContractTaxonomy';
 import { settlementYearOfDate, pickTaxFilingContract, type TaxFilingRow } from './fiscalYear';
+import { buildStaffIndex, resolveStaff, staffActiveOn as staffActiveOnRow } from './contractStaff';
 
 export type OccurrenceUnit = '사업장' | '법인' | '개인';
 export type BillingUnit = '사업장' | '법인' | '개인' | '건';
@@ -46,14 +47,11 @@ export interface ContractStaff {
 export function staffHistoryApplies(c: { team: Team; billingCycle: BillingCycle }): boolean {
   return c.team === 'taxteam' && c.billingCycle === '월';
 }
-/** 그 달(YYYY-MM)에 유효한 담당직원인지 */
-export function staffActiveOn(s: ContractStaff, month: string): boolean {
-  if (!s.active) return false;
-  const m = `${month}-01`;
-  if (s.fromMonth && s.fromMonth > m) return false;
-  if (s.toMonth && s.toMonth < m) return false;
-  return true;
-}
+/**
+ * 그 달(YYYY-MM)에 유효한 담당직원인지.
+ * 판정은 contractStaff.ts 에 있다 — 규칙이 두 벌이 되면 한쪽만 고쳐 어긋난다.
+ */
+export const staffActiveOn = (s: ContractStaff, month: string): boolean => staffActiveOnRow(s, month);
 export interface Installment { id?: string; seq: number; label: string; amount: number; dueDate: string | null; conditionNote: string; billedAt?: string | null }
 export interface Discount { id?: string; discType: '무료' | '할인'; startDate: string | null; endDate: string | null; rate: number | null; amount: number | null; note: string }
 
@@ -149,16 +147,14 @@ export async function listSalesContracts(): Promise<SalesContract[]> {
     if (!v) continue;
     if (p.is_headquarters || !cpaByEntity.has(p.entity_id)) cpaByEntity.set(p.entity_id, v);
   }
-  const staffByPlace = new Map<string, { staffId: string; staffName: string }[]>();
-  for (const r of (ps as any[]) ?? []) {
-    const list = staffByPlace.get(r.place_id) ?? staffByPlace.set(r.place_id, []).get(r.place_id)!;
-    list.push({ staffId: r.staff_id, staffName: r.staff_name || '' });
-  }
-  const placeOfEntity = new Map<string, string[]>();   // 거래처 → 사업장(본사 우선)
-  for (const p of (pl as any[]) ?? []) {
-    const list = placeOfEntity.get(p.entity_id) ?? placeOfEntity.set(p.entity_id, []).get(p.entity_id)!;
-    if (p.is_headquarters) list.unshift(p.id); else list.push(p.id);
-  }
+  // 담당직원 판정(active 걸러내기·상속 순서)은 contractStaff.ts 한 곳에 있다.
+  // 여기서 직접 짜지 않는다 — 규칙이 두 벌이 되면 한쪽만 고쳐 어긋난다.
+  const staffIndex = buildStaffIndex(
+    ((pl as any[]) ?? []).map((p) => ({ id: p.id, entityId: p.entity_id, isHeadquarters: !!p.is_headquarters })),
+    ((ps as any[]) ?? []).map((r) => ({
+      placeId: r.place_id, staffId: r.staff_id, staffName: r.staff_name || '', active: r.active,
+    })),
+  );
   /* eslint-enable @typescript-eslint/no-explicit-any */
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const byC = <T,>(rows: any[], map: (r: any) => T & { contractId?: string }, key = 'contract_id') => {
@@ -173,22 +169,16 @@ export async function listSalesContracts(): Promise<SalesContract[]> {
   return (con.data as any[]).map(toContract).map((c) => {
     const inherited = !c.cpa ? cpaByEntity.get(c.entityId) ?? '' : '';
     const history = sM.get(c.id) ?? [];
-    // 조회시점(이번 달) 기준으로 유효한 담당직원만 현재 담당으로 본다.
+    // 조회시점(이번 달) 기준. 계약 우선 → 없으면 사업장 상속(계약 사업장 → 본사 → 나머지).
     const current = history.filter((s) => staffActiveOn(s, nowMonth));
-    let inheritedStaff: { staffId: string; staffName: string }[] = [];
-    if (!current.length) {
-      const placeIds = c.placeId ? [c.placeId, ...(placeOfEntity.get(c.entityId) ?? [])] : placeOfEntity.get(c.entityId) ?? [];
-      for (const pid of placeIds) {
-        const hit = staffByPlace.get(pid);
-        if (hit?.length) { inheritedStaff = hit; break; }
-      }
-    }
+    const resolved = resolveStaff(
+      { entityId: c.entityId, placeId: c.placeId, staff: history }, staffIndex, nowMonth);
     return {
       ...c, staff: current, installments: iM.get(c.id) ?? [], discounts: dM.get(c.id) ?? [],
       effectiveCpa: c.cpa || inherited, cpaInherited: !c.cpa && !!inherited,
       staffHistory: history,
-      effectiveStaff: current.length ? current.map((s) => ({ staffId: s.staffId, staffName: s.staffName })) : inheritedStaff,
-      staffInherited: !current.length && inheritedStaff.length > 0,
+      effectiveStaff: resolved.staff,
+      staffInherited: resolved.inherited,
     };
   });
   /* eslint-enable @typescript-eslint/no-explicit-any */
