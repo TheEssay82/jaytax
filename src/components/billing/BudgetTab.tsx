@@ -1,15 +1,22 @@
-// 예산 — 직원별 수입 대비 인건비.
+// 매출통계 › 예산 — 수입 대비 인건비.
 //
 // 사용자가 엑셀에서 하던 일을 옮긴 것이다 —
 //   "1년간의 성과를 직원별로 집계하고, 인건비를 예측해서 실적을 계산한다"
 //
 // **급여가 걸린 자리라 김민섭·김동주·정남지는 이 탭을 열 수 없다.** 화면과 표(RLS)
 // 양쪽에서 막는다. 배부는 **직접비(인건비)만** 한다 — 공통비는 결산 시스템을 만들 때 붙인다.
+//
+// 팀에 따라 **구분 기준이 다르다**(사용자 확정 2026-09-03):
+//   · 감사팀  — 담당회계사. 감사 계약에는 담당직원이 아예 없다(33건 전부).
+//              인건비는 비워 둔다 — 수입·거래처만 본다.
+//   · taxteam — 담당직원, 또는 담당회계사 › 담당직원 2단계(엑셀 시트 모양). 화면에서 전환한다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   listBudgetFacts, listForecastFacts, listRevenueAll, fyOf, fyLabel, fyRange, kstYm,
+  DIMS, type RevenueFact,
 } from '../../lib/revenueStatsApi';
+import { pivotMulti, type Dim, type Measure } from '../../lib/revenuePivot';
 import {
   listStaffCost, saveStaffCost, deleteStaffCost, copyStaffCostFrom, totalCost, canSeeStaffCost,
   isCostExempt, type StaffCost,
@@ -19,6 +26,12 @@ const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 const curFy = fyOf(kstYm());
 const num = (s: string) => Number(String(s).replace(/[^\d-]/g, '')) || 0;
 
+/** 'YYYY-MM' 한 달 앞 — 안내 문구에만 쓴다. */
+function prevOf(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
 /** 수입을 무엇으로 볼지. 기본은 **예산(혼합)** — 예산은 원래 이렇게 굴러간다. */
 type Basis = 'budget' | 'forecast' | 'actual';
 const BASIS_LABEL: Record<Basis, string> = {
@@ -27,10 +40,44 @@ const BASIS_LABEL: Record<Basis, string> = {
   actual: '실적만(청구 기준)',
 };
 
-/** 'YYYY-MM' 한 달 앞 — 안내 문구에만 쓴다. */
-function prevOf(ym: string): string {
-  const [y, m] = ym.split('-').map(Number);
-  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+/** taxteam 의 행 구성. 감사팀은 언제나 담당회계사라 이 선택이 없다. */
+type Axis = 'staff' | 'cpa-staff';
+
+/**
+ * 수입을 크게 셋으로 가른다(사용자 요구 2026-09-03). **ERP 매출계정**으로 판정한다 —
+ * 청구주기로 가르면 FY2025 실적(biz_revenue_actual)에는 주기가 없어 통째로 빈다.
+ *   · 기장(월별)   = 기장대리수입 (기장·부가세·원천)
+ *   · 조정수수료   = 세무조정수입 (법인세조정 + 종합소득세)
+ *   · 건별·기타    = 회계감사수입 · 기타용역수입 (한 건씩 끊는 일)
+ */
+const KINDS = [
+  { key: 'book', label: '기장(월별)', is: (f: RevenueFact) => f.kind === '기장료' },
+  { key: 'adj', label: '조정수수료', is: (f: RevenueFact) => f.kind === '세무조정' },
+  { key: 'etc', label: '건별·기타', is: (f: RevenueFact) => f.kind === '기타' },
+] as const;
+
+const MEAS: Measure<RevenueFact>[] = [
+  { key: 'clients', label: '거래처', agg: 'clients' },
+  ...KINDS.map((k) => ({ key: k.key, label: k.label, agg: 'sum' as const, where: k.is })),
+  { key: 'supply', label: '수입', agg: 'sum' as const },
+];
+
+const dimOf = (key: string): Dim<RevenueFact> =>
+  DIMS.find((d) => d.key === key) as unknown as Dim<RevenueFact>;
+
+/** 표에 그릴 한 줄. 소계 줄은 인건비를 붙이지 않는다(아래 자식 줄에서 이미 센다). */
+interface Row {
+  key: string;
+  sub: string | null;
+  /** 인건비를 붙이는 줄(= 사람 한 명). 2단계의 회계사 소계 줄은 false. */
+  leaf: boolean;
+  /** 이 줄이 가리키는 사람 이름 — 인건비를 찾는 열쇠. 감사팀이면 회계사 이름. */
+  person: string;
+  values: Record<string, number>;
+  cost: number;
+  exempt: boolean;
+  /** 인건비를 안분했는가(2단계에서 한 사람이 여러 회계사에 걸칠 때). */
+  split: boolean;
 }
 
 export default function BudgetTab() {
@@ -40,11 +87,15 @@ export default function BudgetTab() {
   const [fy, setFy] = useState(curFy);
   const [basis, setBasis] = useState<Basis>('budget');
   const [team, setTeam] = useState('taxteam');
+  const [axis, setAxis] = useState<Axis>('staff');
   const [costs, setCosts] = useState<StaffCost[]>([]);
-  const [income, setIncome] = useState<Map<string, { supply: number; clients: Set<string> }>>(new Map());
+  const [facts, setFacts] = useState<RevenueFact[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [edit, setEdit] = useState<StaffCost | null>(null);
+
+  /** 감사팀은 담당회계사로만 구분한다 — 감사 계약에는 담당직원이 없다. */
+  const isAudit = team === '감사team';
 
   const load = useCallback(async () => {
     if (!allowed) { setLoading(false); return; }
@@ -52,66 +103,98 @@ export default function BudgetTab() {
     try {
       const { from, to } = fyRange(fy);
       const t = team || undefined;
-      const [cs, facts] = await Promise.all([
+      const [cs, fs] = await Promise.all([
         listStaffCost(fy),
         basis === 'budget' ? listBudgetFacts(fy, t, { includeDraft: true })
           : basis === 'forecast' ? listForecastFacts(from, to, t, { includeDraft: true })
             : listRevenueAll(from, to, t),
       ]);
-      const m = new Map<string, { supply: number; clients: Set<string> }>();
-      for (const f of facts) {
-        const list = f.shares.length ? f.shares : [{ name: '(미지정)', share: 100 }];
-        for (const s of list) {
-          const g = m.get(s.name) ?? { supply: 0, clients: new Set<string>() };
-          g.supply += f.supply * (s.share / 100);
-          g.clients.add(f.company);
-          m.set(s.name, g);
-        }
-      }
-      setCosts(cs); setIncome(m);
+      setCosts(cs); setFacts(fs);
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setLoading(false); }
   }, [allowed, fy, basis, team]);
   useEffect(() => { void load(); }, [load]);
 
-  /** 인건비가 등록된 사람 + 수입이 잡힌 사람을 합쳐 한 줄씩. */
-  const rows = useMemo(() => {
-    const names = new Set<string>([...costs.map((c) => c.staffName), ...income.keys()]);
-    names.delete('(미지정)');
-    return [...names].map((name) => {
+  const costOf = useCallback(
+    (name: string) => {
       const c = costs.find((x) => x.staffName === name);
-      const inc = income.get(name);
-      const exempt = isCostExempt(name);
-      const cost = exempt ? 0 : c ? totalCost(c) : 0;
-      const supply = inc?.supply ?? 0;
-      return { name, exempt, cost, supply, clients: inc?.clients.size ?? 0, c, margin: supply - cost };
-    }).sort((a, b) => Number(a.exempt) - Number(b.exempt) || b.margin - a.margin);
-  }, [costs, income]);
+      return c ? totalCost(c) : 0;
+    }, [costs]);
 
-  // 합계는 **인건비 대상만** 센다 — 대상 아닌 사람의 수입이 섞이면 배수가 부풀려진다.
-  const counted = rows.filter((r) => !r.exempt);
-  const sum = (f: (r: typeof rows[number]) => number) => counted.reduce((s, r) => s + f(r), 0);
-  const exempted = rows.filter((r) => r.exempt && r.supply > 0);
-  const unassigned = income.get('(미지정)');
+  /**
+   * 표 줄 만들기. 인건비를 붙이는 규칙이 여기 다 있다.
+   *
+   * **2단계(회계사 › 직원)에서는 인건비를 수입 비율로 안분한다.** 한 직원이 두 회계사
+   * 아래 걸치면 인건비를 양쪽에 통째로 놓을 수 없다 — 합계가 두 배가 된다. 수입 비율로
+   * 나누면 소계·합계가 그대로 맞아떨어지고 각 칸의 배수도 뜻이 산다.
+   */
+  const { rows, leaves } = useMemo(() => {
+    const rowDim = dimOf(isAudit || axis === 'cpa-staff' ? 'cpa' : 'staff');
+    const subDim = !isAudit && axis === 'cpa-staff' ? dimOf('staff') : null;
+    const t = pivotMulti(facts, rowDim, subDim, MEAS);
+
+    // 안분 기준 — 그 사람의 전체 수입(모든 회계사 아래를 합친 것).
+    const wholeOf = new Map<string, number>();
+    if (subDim) {
+      for (const r of pivotMulti(facts, subDim, null, MEAS).rows) {
+        wholeOf.set(r.key, r.values.supply ?? 0);
+      }
+    }
+
+    const out: Row[] = t.rows.map((r) => {
+      const isSub = r.sub != null;
+      const leaf = subDim ? isSub : true;
+      const person = (isSub ? r.sub : r.key) ?? '';
+      const exempt = isCostExempt(person);
+      let cost = 0;
+      let split = false;
+      if (leaf && !isAudit && !exempt && person !== '(미지정)') {
+        const full = costOf(person);
+        if (subDim) {
+          const whole = wholeOf.get(person) ?? 0;
+          const ratio = whole > 0 ? (r.values.supply ?? 0) / whole : 0;
+          cost = full * ratio;
+          split = full > 0 && ratio < 0.999;
+        } else {
+          cost = full;
+        }
+      }
+      return { key: r.key, sub: r.sub, leaf, person, values: r.values, cost, exempt, split };
+    });
+
+    // 소계 줄의 인건비 = 그 아래 자식 줄의 합.
+    if (subDim) {
+      for (const r of out) {
+        if (r.sub != null) continue;
+        r.cost = out.filter((x) => x.key === r.key && x.sub != null).reduce((s, x) => s + x.cost, 0);
+      }
+    }
+    return { rows: out, leaves: out.filter((r) => r.leaf) };
+  }, [facts, isAudit, axis, costOf]);
+
+  // 합계는 **잎 줄만** 센다 — 소계까지 더하면 두 번 센다.
+  const counted = leaves.filter((r) => !r.exempt);
+  const exempted = leaves.filter((r) => r.exempt && (r.values.supply ?? 0) > 0);
+  const unassigned = leaves.filter((r) => r.person === '(미지정)');
+  const sumOf = (l: Row[], k: string) => l.reduce((s, r) => s + (r.values[k] ?? 0), 0);
+  const totCost = counted.reduce((s, r) => s + r.cost, 0);
+  const totSupply = sumOf(counted, 'supply');
+  const exSupply = sumOf(exempted, 'supply');
   const cut = kstYm();
 
   if (!allowed) {
     return (
-      <div className="card">
-        <div className="chdr">💵 예산</div>
-        <div className="alert-w" style={{ fontSize: 12 }}>
-          이 화면은 <b>급여 자료</b>를 다루므로 열 수 없습니다.
-          <br />필요하시면 최고관리자에게 문의해 주세요.
-        </div>
+      <div className="alert-w" style={{ fontSize: 12 }}>
+        이 화면은 <b>급여 자료</b>를 다루므로 열 수 없습니다.
+        <br />필요하시면 최고관리자에게 문의해 주세요.
       </div>
     );
   }
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <div style={{ padding: 12 }}>불러오는 중…</div>;
 
   return (
-    <div className="card">
-      <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        💵 예산 — 직원별 수입 대비 인건비
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <select value={fy} onChange={(e) => setFy(Number(e.target.value))} style={{ fontWeight: 700 }}>
           {[curFy + 1, curFy, curFy - 1, curFy - 2].map((y) => (
             <option key={y} value={y}>{fyLabel(y)}</option>
@@ -127,19 +210,28 @@ export default function BudgetTab() {
         <select value={team} onChange={(e) => setTeam(e.target.value)}>
           <option value="taxteam">taxteam</option>
           <option value="감사team">감사팀</option>
-          <option value="">전체 팀</option>
         </select>
+        {isAudit ? (
+          <span style={{ fontSize: 11.5, color: '#92400E', fontWeight: 700 }}>구분: 담당회계사</span>
+        ) : (
+          <select value={axis} onChange={(e) => setAxis(e.target.value as Axis)}>
+            <option value="staff">담당직원별</option>
+            <option value="cpa-staff">담당회계사 › 담당직원</option>
+          </select>
+        )}
         <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => void load()}>새로고침</button>
       </div>
 
       <div className="alert-i" style={{ fontSize: 11.5 }}>
-        <b>수입 − 인건비 = 기여</b>. 직원이 맡은 거래처에서 나오는(나올) 매출에서 그 사람의 총부담비용을 뺀 것입니다.
+        <b>수입 − 인건비 = 기여</b>. 맡은 거래처에서 나오는(나올) 매출에서 그 사람의 총부담비용을 뺀 것입니다.
         <br />· <b>배수 = 수입 ÷ 인건비</b> — 인건비 1원당 얼마를 벌어들였는가입니다. <b>2.00×</b> 면 인건비의
         두 배를 벌어온 것입니다. 기여 금액만 보면 사람마다 인건비 규모가 달라 비교가 어긋나는데, 배수는 그 차이를 지웁니다.
+        <br />· 수입은 셋으로 갈라 봅니다 — <b>기장(월별)</b> · <b>조정수수료</b>(법인세조정+종합소득세) ·
+        {' '}<b>건별·기타</b>. ERP 매출계정으로 가릅니다.
         <br />· 배부는 <b>직접비(인건비)만</b> 합니다. 임차료·관리비 같은 공통비는 결산 시스템을 만들 때 붙입니다.
         <br />· 공동담당은 <b>배분 비율만큼</b> 나눠 더합니다 — 한 거래처가 두 사람에게 통째로 잡히지 않습니다.
-        <br />· 이 화면은 <b>급여 자료</b>라 김민섭·김동주·정남지에게는 열리지 않습니다.
       </div>
+
       {basis === 'budget' && (
         <div style={{ fontSize: 11.5, color: '#555', margin: '6px 0' }}>
           📐 수입 기준 — <b>{fyRange(fy).from} ~ {prevOf(cut)}</b> 은 실제로 청구한 <b>실적</b>,
@@ -147,101 +239,157 @@ export default function BudgetTab() {
           {' '}달이 갈수록 실적이 예상을 밀어냅니다. 이번 달은 아직 청구가 끝나지 않았을 수 있어 예상 쪽에 둡니다.
         </div>
       )}
+      {isAudit && (
+        <div className="alert-w" style={{ fontSize: 11.5 }}>
+          감사팀은 <b>담당회계사</b>로 구분합니다 — 감사 계약에는 담당직원이 없습니다.
+          {' '}인건비는 <b>비워 둡니다</b>(수입·거래처만 봅니다).
+        </div>
+      )}
+      {!isAudit && axis === 'cpa-staff' && (
+        <div style={{ fontSize: 11.5, color: '#555', margin: '6px 0' }}>
+          ⚖️ 한 직원이 여러 회계사 아래 걸치면 <b>인건비를 수입 비율로 나눠</b> 놓았습니다(그 줄에 <i>안분</i> 표시).
+          {' '}통째로 놓으면 합계가 사람 수보다 부풀기 때문입니다. 회계사 줄의 인건비는 아래 직원 줄의 합입니다.
+        </div>
+      )}
       {err && <div className="alert-e" style={{ fontSize: 11.5 }}>{err}</div>}
 
       <table className="tbl" style={{ fontSize: 11.5 }}>
         <thead>
           <tr>
-            <th style={{ minWidth: 90 }}>직원</th>
-            <th className="r" style={{ width: 70 }}>거래처</th>
-            <th className="r" style={{ minWidth: 120 }}>수입</th>
-            <th className="r" style={{ minWidth: 120 }}>인건비(총부담)</th>
-            <th className="r" style={{ minWidth: 120 }}>기여</th>
-            <th className="r" style={{ width: 70 }} title="수입 ÷ 인건비 — 인건비 1원당 벌어들인 수입">배수</th>
-            <th style={{ width: 90 }}>인건비 입력</th>
+            <th style={{ minWidth: 110 }}>
+              {isAudit ? '담당회계사' : axis === 'cpa-staff' ? '회계사 › 직원' : '담당직원'}
+            </th>
+            <th className="r" style={{ width: 60 }}>거래처</th>
+            {KINDS.map((k) => <th key={k.key} className="r" style={{ minWidth: 100 }}>{k.label}</th>)}
+            <th className="r" style={{ minWidth: 110 }}>수입 합계</th>
+            <th className="r" style={{ minWidth: 110 }}>인건비(총부담)</th>
+            <th className="r" style={{ minWidth: 110 }}>기여</th>
+            <th className="r" style={{ width: 66 }} title="수입 ÷ 인건비 — 인건비 1원당 벌어들인 수입">배수</th>
+            <th style={{ width: 80 }}>인건비 입력</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
-            <tr><td colSpan={7} style={{ textAlign: 'center', padding: 18, color: '#BBB' }}>
+            <tr><td colSpan={KINDS.length + 7} style={{ textAlign: 'center', padding: 18, color: '#BBB' }}>
               자료가 없습니다.
             </td></tr>
           )}
-          {rows.map((r) => (
-            <tr key={r.name}
-              style={r.exempt ? { color: '#999' } : r.cost === 0 ? { background: '#FFFBEB' } : undefined}>
-              <td style={{ fontWeight: 700, color: r.exempt ? '#999' : '#1A2B52' }}>{r.name}</td>
-              <td className="r" style={{ color: '#666' }}>{r.clients}</td>
-              <td className="r">{won(r.supply)}</td>
-              <td className="r" style={{ color: r.exempt ? '#999' : r.cost ? '#666' : '#c33' }}>
-                {r.exempt ? '대상 아님' : r.cost ? won(r.cost) : '미등록'}
-              </td>
-              <td className="r" style={{
-                fontWeight: 700,
-                color: r.exempt ? '#999' : r.margin >= 0 ? '#065F46' : '#991B1B',
-              }}>
-                {r.exempt ? '—' : won(r.margin)}
-              </td>
-              <td className="r" style={{ color: '#666' }}>
-                {r.exempt || !r.cost ? '—' : `${(r.supply / r.cost).toFixed(2)}×`}
-              </td>
-              <td>
-                {!r.exempt && (
-                  <button className="btn-sm" disabled={readonly}
-                    onClick={() => setEdit(r.c ?? {
-                      id: '', fy, staffName: r.name, monthly: 0, annual: 0, bonus: 0,
-                      severance: 0, insurance: 0, etcCost: 0, note: '',
-                    })}>
-                    {r.c ? '수정' : '입력'}
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
+          {rows.map((r) => {
+            const supply = r.values.supply ?? 0;
+            const noCost = isAudit || r.exempt || r.person === '(미지정)';
+            const margin = supply - r.cost;
+            const isSubtotal = r.sub == null && !isAudit && axis === 'cpa-staff';
+            return (
+              <tr key={`${r.key} ${r.sub ?? ''}`}
+                style={isSubtotal ? { background: '#F3F4F6', fontWeight: 700 }
+                  : r.exempt ? { color: '#999' }
+                    : !noCost && r.cost === 0 ? { background: '#FFFBEB' } : undefined}>
+                <td style={{ fontWeight: r.sub == null ? 700 : 400, color: r.exempt ? '#999' : '#1A2B52' }}>
+                  {r.sub == null ? r.key : <span style={{ paddingLeft: 14, color: '#444' }}>└ {r.sub}</span>}
+                  {r.split && <span style={{ fontSize: 10, color: '#92400E' }}> 안분</span>}
+                </td>
+                <td className="r" style={{ color: '#666' }}>{r.values.clients ?? 0}</td>
+                {KINDS.map((k) => (
+                  <td key={k.key} className="r" style={{ color: (r.values[k.key] ?? 0) ? undefined : '#CCC' }}>
+                    {won(r.values[k.key] ?? 0)}
+                  </td>
+                ))}
+                <td className="r" style={{ fontWeight: 700 }}>{won(supply)}</td>
+                <td className="r" style={{ color: noCost ? '#999' : r.cost ? '#666' : '#c33' }}>
+                  {isAudit ? '—' : r.exempt ? '대상 아님' : r.person === '(미지정)' ? '—'
+                    : r.cost ? won(r.cost) : '미등록'}
+                </td>
+                <td className="r" style={{
+                  fontWeight: 700,
+                  color: noCost ? '#999' : margin >= 0 ? '#065F46' : '#991B1B',
+                }}>
+                  {noCost ? '—' : won(margin)}
+                </td>
+                <td className="r" style={{ color: '#666' }}>
+                  {noCost || !r.cost ? '—' : `${(supply / r.cost).toFixed(2)}×`}
+                </td>
+                <td>
+                  {r.leaf && !isAudit && !r.exempt && r.person !== '(미지정)' && !r.split && (
+                    <button className="btn-sm" disabled={readonly}
+                      onClick={() => setEdit(costs.find((x) => x.staffName === r.person) ?? {
+                        id: '', fy, staffName: r.person, monthly: 0, annual: 0, bonus: 0,
+                        severance: 0, insurance: 0, etcCost: 0, note: '',
+                      })}>
+                      {costs.some((x) => x.staffName === r.person) ? '수정' : '입력'}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
         <tfoot>
           <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
-            <td>합계<span style={{ fontWeight: 400, fontSize: 10.5, color: '#666' }}> (인건비 대상)</span></td>
-            <td className="r">{sum((r) => r.clients)}</td>
-            <td className="r">{won(sum((r) => r.supply))}</td>
-            <td className="r">{won(sum((r) => r.cost))}</td>
-            <td className="r" style={{ color: sum((r) => r.margin) >= 0 ? '#065F46' : '#991B1B' }}>
-              {won(sum((r) => r.margin))}
+            <td>
+              합계
+              {!isAudit && <span style={{ fontWeight: 400, fontSize: 10.5, color: '#666' }}> (인건비 대상)</span>}
             </td>
-            <td className="r">
-              {sum((r) => r.cost) ? `${(sum((r) => r.supply) / sum((r) => r.cost)).toFixed(2)}×` : '—'}
+            <td className="r">{sumOf(counted, 'clients')}</td>
+            {KINDS.map((k) => <td key={k.key} className="r">{won(sumOf(counted, k.key))}</td>)}
+            <td className="r">{won(totSupply)}</td>
+            <td className="r">{isAudit ? '—' : won(totCost)}</td>
+            <td className="r" style={{ color: totSupply - totCost >= 0 ? '#065F46' : '#991B1B' }}>
+              {isAudit ? '—' : won(totSupply - totCost)}
             </td>
+            <td className="r">{!isAudit && totCost ? `${(totSupply / totCost).toFixed(2)}×` : '—'}</td>
             <td></td>
           </tr>
+          {exempted.length > 0 && (
+            <>
+              <tr style={{ color: '#999' }}>
+                <td>대상 아님 ({exempted.map((r) => r.person).join('·')})</td>
+                <td className="r">{sumOf(exempted, 'clients')}</td>
+                {KINDS.map((k) => <td key={k.key} className="r">{won(sumOf(exempted, k.key))}</td>)}
+                <td className="r">{won(exSupply)}</td>
+                <td colSpan={4}></td>
+              </tr>
+              <tr style={{ background: '#EEF2FF', fontWeight: 700 }}>
+                <td>전체 합계</td>
+                <td className="r"></td>
+                {KINDS.map((k) => (
+                  <td key={k.key} className="r">{won(sumOf(counted, k.key) + sumOf(exempted, k.key))}</td>
+                ))}
+                <td className="r">{won(totSupply + exSupply)}</td>
+                <td colSpan={4}></td>
+              </tr>
+            </>
+          )}
         </tfoot>
       </table>
 
       {exempted.length > 0 && (
         <div style={{ fontSize: 11.5, color: '#666', marginTop: 8 }}>
-          ℹ️ {exempted.map((r) => r.name).join('·')} 님의 수입{' '}
-          <b>{won(exempted.reduce((s, r) => s + r.supply, 0))}</b> 은 <b>인건비 대상이 아니어서</b> 위 합계에서
-          뺐습니다 — 인건비 없이 합치면 배수가 부풀려집니다.
+          ℹ️ {exempted.map((r) => r.person).join('·')} 님은 <b>인건비 대상이 아니어서</b> 기여·배수를 따지지
+          않습니다 — 인건비 없이 수입만 합치면 배수가 부풀려집니다.
         </div>
       )}
 
-      {unassigned && unassigned.supply > 0 && (
+      {sumOf(unassigned, 'supply') > 0 && (
         <div className="alert-w" style={{ fontSize: 11.5, marginTop: 8 }}>
-          ⚠️ 담당직원이 지정되지 않은 매출이 <b>{won(unassigned.supply)}</b>({unassigned.clients.size}곳) 있습니다 —
-          어느 직원의 기여로도 잡히지 않습니다. 매출계약이나 거래처에 담당직원을 넣어 주세요.
+          ⚠️ 담당{isAudit ? '회계사' : '직원'}가 지정되지 않은 매출이 <b>{won(sumOf(unassigned, 'supply'))}</b>
+          ({sumOf(unassigned, 'clients')}곳) 있습니다 — 누구의 기여로도 잡히지 않습니다.
+          매출계약이나 거래처에 담당을 넣어 주세요.
         </div>
       )}
 
-      <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-        <button className="btn-sm" disabled={readonly}
-          onClick={() => void (async () => {
-            if (!confirm(`FY${fy - 1} 인건비를 FY${fy} 로 복사합니다. 이미 있는 사람은 덮어씁니다.`)) return;
-            const n = await copyStaffCostFrom(fy - 1, fy);
-            if (!n) return alert(`FY${fy - 1} 에 등록된 인건비가 없습니다.`);
-            await load();
-          })()}>
-          ⧉ 앞 연도에서 복사
-        </button>
-      </div>
+      {!isAudit && (
+        <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
+          <button className="btn-sm" disabled={readonly}
+            onClick={() => void (async () => {
+              if (!confirm(`FY${fy - 1} 인건비를 FY${fy} 로 복사합니다. 이미 있는 사람은 덮어씁니다.`)) return;
+              const n = await copyStaffCostFrom(fy - 1, fy);
+              if (!n) return alert(`FY${fy - 1} 에 등록된 인건비가 없습니다.`);
+              await load();
+            })()}>
+            ⧉ 앞 연도에서 복사
+          </button>
+        </div>
+      )}
 
       {edit && (
         <CostEditor row={edit} onClose={() => setEdit(null)}

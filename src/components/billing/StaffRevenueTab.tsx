@@ -15,11 +15,48 @@ import {
   listRevenueAll, listForecastFacts, pivot, DIMS, fyOf, fyRange, fyLabel,
   type RevenueFact, type Dim,
 } from '../../lib/revenueStatsApi';
+import { useAuth } from '../../context/AuthContext';
+import { canSeeStaffCost } from '../../lib/staffCostApi';
+import BudgetTab from './BudgetTab';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 const dimOf = (key: string): Dim => DIMS.find((d) => d.key === key) ?? DIMS[0];
 
+/**
+ * 매출통계 — 통계와 **예산**을 나란히 둔 자리.
+ *
+ * 예산을 여기 넣은 이유: 자료가 같고(같은 매출 사실), 「감사팀은 담당회계사 ·
+ * taxteam 은 회계사×직원」이라는 구분 규칙이 이 화면에 이미 있다.
+ *
+ * **급여 자료라 볼 수 없는 사람에게는 서브탭 자체를 내놓지 않는다** — 눌러서 막히는 것이
+ * 아니라 있는 줄도 모르게 한다(사용자 요구 2026-09-03).
+ */
 export default function StaffRevenueTab() {
+  const { role, profileName } = useAuth();
+  const canBudget = canSeeStaffCost(role, profileName);
+  const [sub, setSub] = useState<'stats' | 'budget'>('stats');
+
+  if (!canBudget) return <StatsPanel />;
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        {([['stats', '📊 통계'], ['budget', '💵 예산']] as const).map(([k, label]) => (
+          <button key={k} className={sub === k ? 'btn-p' : 'btn-sm'} onClick={() => setSub(k)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {sub === 'budget' ? (
+        <div className="card">
+          <div className="chdr">💵 예산 — 수입 대비 인건비</div>
+          <BudgetTab />
+        </div>
+      ) : <StatsPanel />}
+    </>
+  );
+}
+
+function StatsPanel() {
   const thisMonth = todayYmd().slice(0, 7);
   const curFy = fyOf(thisMonth);
 
