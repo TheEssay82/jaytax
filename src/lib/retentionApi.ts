@@ -19,6 +19,10 @@ export interface RetentionRow {
   months: number;
   basis: string;
   destroyOk: boolean;
+  /** 'row' 행 삭제 · 'columns' 개인정보 열만 비움 · 'keep' 영구보관(파기 대상 아님) */
+  mode: 'row' | 'columns' | 'keep';
+  /** mode='columns' 일 때 비우는 열. */
+  piiCols: string[];
   note: string;
   /** 이 날짜보다 앞선 것이 파기 대상. */
   cutoff: string;
@@ -47,7 +51,8 @@ export async function surveyRetention(): Promise<RetentionRow[]> {
   /* eslint-disable @typescript-eslint/no-explicit-any */
   return ((data as any[]) ?? []).map((r) => ({
     key: r.key, label: r.label, tableName: r.table_name, months: Number(r.months),
-    basis: r.basis, destroyOk: !!r.destroy_ok, note: r.note ?? '',
+    basis: r.basis, destroyOk: !!r.destroy_ok,
+    mode: r.mode, piiCols: r.pii_cols ?? [], note: r.note ?? '',
     cutoff: r.cutoff, due: Number(r.due), total: Number(r.total),
   }));
   /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -80,3 +85,10 @@ export async function listPurgeLog(): Promise<PurgeLogRow[]> {
 /** 개월 수를 사람이 읽는 말로 — 24 → '2년', 3 → '3개월'. */
 export const periodLabel = (months: number): string =>
   months % 12 === 0 ? `${months / 12}년` : `${months}개월`;
+
+/** 파기 방식을 사람이 읽는 말로. */
+export function modeLabel(r: RetentionRow): string {
+  if (r.mode === 'keep') return '영구보관';
+  if (r.mode === 'columns') return `개인정보만 비움 (${r.piiCols.join(', ')})`;
+  return '행 삭제';
+}
