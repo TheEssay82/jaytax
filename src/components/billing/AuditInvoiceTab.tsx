@@ -98,6 +98,8 @@ export default function AuditInvoiceTab() {
   const [f, setF] = useState({
     company: '', entityId: '', placeId: '', amount: '', account: '회계감사수입',
     phase: '잔금' as string, summary: '', issueDate: todayYmd(), email: '',
+    /** 어느 매출계약의 건인가. 분할회차가 없는 계약은 여기에 **누적**으로 붙는다. */
+    contractId: '',
   });
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3000); };
@@ -273,6 +275,9 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       company: o?.label ?? r.companyName, entityId: r.entityId, placeId: r.placeId ?? '',
       amount: String(Math.round(r.supplyAmount)), account: r.erpAccount || '회계감사수입',
       phase: r.phase || '잔금', summary: r.summary || r.note || '', issueDate: todayYmd(), email: '',
+      // 계약 연결을 그대로 물려준다 — 취소한 건을 다시 낼 때 연결이 끊기면
+      // '청구했는데 계약엔 안 붙은' 건이 또 생긴다(감사팀 착수금 3건이 그랬다).
+      contractId: r.contractId ?? '',
     });
     setDetail(r.detailLines ?? []);
     setNeedsDoc(r.needsInvoiceDoc);
@@ -414,12 +419,35 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
     setEmail(emptyEmailChoice);   // 거래처가 바뀌면 이메일도 다시 고른다
     // 적요는 그 거래처의 매출계약에서 추천한다 — 무슨 계약 건인지 적히게.
     const cs = contracts.filter((c) => c.entityId === o.id && c.team === TEAM);
+    // 계약이 하나뿐이면 그것으로 정한다 — 고르는 수고를 없애고, 무엇보다 **빠뜨리지 않게**.
+    set('contractId', cs.length === 1 ? cs[0].id : '');
     if (cs.length && !f.summary.trim()) {
       const c = cs[0];
       set('summary', `${new Date().getFullYear()}년 ${pathLabel(c.categoryCode)}`.trim());
       set('account', erpAccountOf(c.categoryCode));
     }
   }
+
+  /** 고를 수 있는 매출계약 — 그 거래처의 감사팀 계약. */
+  const pickable = useMemo(
+    () => contracts.filter((c) => c.entityId === f.entityId && c.team === TEAM),
+    [contracts, f.entityId]);
+
+  /**
+   * 고른 계약의 **누적청구**. 분할회차를 등록하지 않는 계약(회계사가 회차 정보를 주지
+   * 않는 경우)은 회차로 추적할 수 없어, 계약에 붙은 발행요청을 **더해서** 본다
+   * (사용자 확정 2026-09-03). 취소된 것은 세지 않는다.
+   */
+  const cum = useMemo(() => {
+    const c = pickable.find((x) => x.id === f.contractId);
+    if (!c) return null;
+    const billed = reqs
+      .filter((r) => r.contractId === c.id && r.status !== '취소')
+      .reduce((t, r) => t + r.supplyAmount, 0);
+    const now = Number(f.amount.replace(/[^\d-]/g, '')) || 0;
+    return { amount: c.amount, billed, rest: c.amount - billed, after: c.amount - billed - now,
+             hasInstallments: c.installments.length > 0, code: c.contractCode };
+  }, [pickable, f.contractId, f.amount, reqs]);
 
   /** 그 거래처의 감사팀 매출계약 — 적요 추천 단추로 쓴다. */
   const suggestions = useMemo(() => {
@@ -459,8 +487,10 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
     const companyName = o.label.replace(/^\S+\s/, '');
     setBusy(true);
     try {
+      const picked = pickable.find((x) => x.id === f.contractId);
       await createManualInvoiceRequest({
         ym: f.issueDate.slice(0, 7), team: TEAM, entityId: f.entityId, placeId: f.placeId || null,
+        contractId: picked?.id ?? null, contractCode: picked?.contractCode ?? '',
         supplyAmount: amt, erpAccount: f.account, phase: f.phase,
         summary: f.summary.trim(), issueDate: f.issueDate,
         docEmail: joinEmails(email.emails),
@@ -595,6 +625,19 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
                   </select>
                 </Field>
               )}
+              {f.entityId && (
+                <Field label="매출계약 — 이 건이 어느 계약인지" width={250}>
+                  <select value={f.contractId} onChange={(e) => set('contractId', e.target.value)}
+                    style={{ width: '100%' }}>
+                    <option value="">(계약 없음 — 일회성)</option>
+                    {pickable.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.contractCode} · {won(c.amount)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
               <Field label="매출계정" width={130}>
                 <select value={f.account} onChange={(e) => set('account', e.target.value)} style={{ width: '100%' }}>
                   {ERP_ACCOUNTS.map((a) => <option key={a} value={a}>{a}</option>)}
@@ -613,6 +656,23 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
                 <input type="date" value={f.issueDate} onChange={(e) => set('issueDate', e.target.value)} style={{ width: '100%' }} />
               </Field>
             </div>
+            {cum && (
+              <div style={{
+                marginTop: 6, fontSize: 11.5, padding: '6px 9px', borderRadius: 4,
+                background: cum.after < 0 ? '#FDECEA' : '#F2F6F2',
+                color: cum.after < 0 ? '#9B3527' : '#33553F',
+              }}>
+                <b>{cum.code}</b> 누적청구 — 계약금액 {won(cum.amount)} · 지금까지 {won(cum.billed)} ·
+                {' '}남은 금액 <b>{won(cum.rest)}</b>
+                {!!f.amount && <> → 이 건({won(Number(f.amount.replace(/[^\d-]/g, '')) || 0)}) 반영 후 <b>{won(cum.after)}</b></>}
+                {cum.after < 0 && <> · <b>계약금액을 넘습니다</b> — 금액이나 계약을 다시 보세요.</>}
+                {!cum.hasInstallments && (
+                  <><br /><span style={{ color: '#666' }}>
+                    이 계약에는 분할회차가 없습니다 — 회차 대신 <b>누적</b>으로 따집니다.
+                  </span></>
+                )}
+              </div>
+            )}
             <div style={{ marginTop: 6 }}>
               <Field label="발행 시 적요 — 무슨 계약 건인지 적습니다" width={640}>
                 <input value={f.summary} onChange={(e) => set('summary', e.target.value)}
