@@ -112,6 +112,8 @@ export const ICON_ITEMS: (MenuItem & { icon: string })[] = [
   // 보존기한이 지난 개인정보는 지체 없이 파기해야 한다(법 제21조). 파기는 되돌릴 수 없어
   // 개인정보 보호책임자만 볼 수 있게 둔다.
   { id: 'retention', label: '보존기한 · 파기', icon: '🗑️', cap: 'manageUsers' },
+  // 개발노트(끝난 일)의 짝 — 남은 일. 착수금 금액·내부 우선순위가 담겨 최고관리자에게만 내놓는다.
+  { id: 'backlog', label: '개발 백로그', icon: '📌', cap: 'manageUsers' },
 ];
 
 /**
