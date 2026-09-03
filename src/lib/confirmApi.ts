@@ -455,69 +455,16 @@ export async function bulkApply(
 }
 
 // ── 현황 집계 ───────────────────────────────────────────────
-/** 발송·회수 집계 한 덩어리. 전자/실물을 나눠 세고 비율까지 함께 낸다. */
-export interface Progress {
-  total: number;
-  sent: number;
-  collected: number;
-  returned: number;
-  elecTotal: number;
-  elecSent: number;
-  elecCollected: number;
-  postTotal: number;
-  postSent: number;
-  postCollected: number;
-  /** 발송일 범위 — 최초/최종 */
-  firstSentDate: string | null;
-  lastSentDate: string | null;
-}
-
-export const emptyProgress = (): Progress => ({
-  total: 0, sent: 0, collected: 0, returned: 0,
-  elecTotal: 0, elecSent: 0, elecCollected: 0,
-  postTotal: 0, postSent: 0, postCollected: 0,
-  firstSentDate: null, lastSentDate: null,
-});
-
-/** 조회처 목록 → 집계. 화면·엑셀이 같은 함수를 쓰므로 숫자가 어긋날 수 없다. */
-export function summarize(items: ConfirmItem[]): Progress {
-  const p = emptyProgress();
-  for (const it of items) {
-    p.total++;
-    if (it.isElectronic) p.elecTotal++; else p.postTotal++;
-    if (it.sent) {
-      p.sent++;
-      if (it.isElectronic) p.elecSent++; else p.postSent++;
-      if (it.sentDate) {
-        if (!p.firstSentDate || it.sentDate < p.firstSentDate) p.firstSentDate = it.sentDate;
-        if (!p.lastSentDate || it.sentDate > p.lastSentDate) p.lastSentDate = it.sentDate;
-      }
-    }
-    if (it.collectStatus === '회수완료') {
-      p.collected++;
-      if (it.isElectronic) p.elecCollected++; else p.postCollected++;
-    } else if (it.collectStatus === '반송') {
-      p.returned++;
-    }
-  }
-  return p;
-}
-
-/** 비율(%) — 분모 0이면 0 */
-export const pct = (n: number, d: number): number => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
-
-/** 여러 집계를 합산(연도 전체 합계용) */
-export function sumProgress(list: Progress[]): Progress {
-  const t = emptyProgress();
-  for (const p of list) {
-    t.total += p.total; t.sent += p.sent; t.collected += p.collected; t.returned += p.returned;
-    t.elecTotal += p.elecTotal; t.elecSent += p.elecSent; t.elecCollected += p.elecCollected;
-    t.postTotal += p.postTotal; t.postSent += p.postSent; t.postCollected += p.postCollected;
-    if (p.firstSentDate && (!t.firstSentDate || p.firstSentDate < t.firstSentDate)) t.firstSentDate = p.firstSentDate;
-    if (p.lastSentDate && (!t.lastSentDate || p.lastSentDate > t.lastSentDate)) t.lastSentDate = p.lastSentDate;
-  }
-  return t;
-}
+// 발송·회수 집계 셈법은 confirmProgress.ts 에 있다(supabase 를 물지 않아 테스트가 돈다).
+// 화면들이 여기 한 곳에서 가져다 쓰도록 그대로 내보낸다.
+export {
+  emptyProgress, summarize, pct, sumProgress,
+  daysSince, findOverdue, countPending,
+  OVERDUE_THRESHOLDS, DEFAULT_OVERDUE_DAYS,
+} from './confirmProgress';
+export type { Progress } from './confirmProgress';
+/** 독촉 대상 한 줄 — 이 파일의 구체 타입으로 굳혀 둔다(화면이 그대로 쓰던 이름). */
+export type OverdueRow = { conf: Confirmation; item: ConfirmItem; days: number };
 
 /** 연도 전체의 조회처를 거래처별로 묶어 한 번에 가져온다(현황 화면용). */
 export async function listItemsByYear(year: number): Promise<Record<string, ConfirmItem[]>> {
@@ -576,62 +523,6 @@ export async function listAudit(confirmationId?: string, limit = 300): Promise<C
     summary: r.summary || '',
     at: r.at,
   }));
-}
-
-// ── 회수 독촉 대상 ──────────────────────────────────────────
-/** 'YYYY-MM-DD' → 일(day) 단위 정수. 시간대 영향을 받지 않도록 UTC 자정 기준으로 센다. */
-const toDayNumber = (ymd: string): number => Math.floor(Date.parse(`${ymd}T00:00:00Z`) / 86_400_000);
-
-/** 발송일로부터 오늘까지 지난 날수. 발송일이 없으면 null. */
-export function daysSince(ymd: string | null, todayYmd?: string): number | null {
-  if (!ymd) return null;
-  const today = todayYmd ?? localToday();
-  return toDayNumber(today) - toDayNumber(ymd);
-}
-
-/** 독촉 임계일 선택지 — 전자조회는 며칠, 우편은 2주 남짓 걸리는 것이 보통이라 14일을 기본으로 둔다. */
-export const OVERDUE_THRESHOLDS = [7, 14, 21, 30] as const;
-export const DEFAULT_OVERDUE_DAYS = 14;
-
-export interface OverdueRow {
-  conf: Confirmation;
-  item: ConfirmItem;
-  /** 발송 후 경과일 */
-  days: number;
-}
-
-/**
- * 독촉 대상 = 발송했는데 아직 회수도 반송도 아닌 건 중 임계일이 지난 것.
- * 반송은 이미 '조치 필요'로 따로 다루므로 여기서 제외한다.
- * 오래 밀린 것부터 위로 올린다.
- */
-export function findOverdue(
-  rows: Confirmation[],
-  itemsByConf: Record<string, ConfirmItem[]>,
-  thresholdDays: number,
-  todayYmd?: string,
-): OverdueRow[] {
-  const out: OverdueRow[] = [];
-  for (const conf of rows) {
-    for (const item of itemsByConf[conf.id] ?? []) {
-      if (!item.sent || item.collectStatus !== null) continue;
-      const days = daysSince(item.sentDate, todayYmd);
-      if (days === null || days < thresholdDays) continue;
-      out.push({ conf, item, days });
-    }
-  }
-  return out.sort((a, b) => b.days - a.days || a.conf.companyName.localeCompare(b.conf.companyName, 'ko'));
-}
-
-/** 발송했지만 아직 미회수인 건(임계일 무관) — 요약 숫자용 */
-export function countPending(rows: Confirmation[], itemsByConf: Record<string, ConfirmItem[]>): number {
-  let n = 0;
-  for (const conf of rows) {
-    for (const item of itemsByConf[conf.id] ?? []) {
-      if (item.sent && item.collectStatus === null) n++;
-    }
-  }
-  return n;
 }
 
 /**

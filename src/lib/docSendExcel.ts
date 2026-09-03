@@ -1,6 +1,7 @@
 // 발송업무 현황 → 엑셀(.xlsx) 내보내기.
 // 화면에서 필터·정렬한 결과(view)를 그대로 받아 저장하므로, 보이는 것과 파일이 일치한다.
-import * as XLSX from 'xlsx';
+// xlsx 는 **함수 안에서 동적으로** 불러온다. 위에서 정적으로 물면 900KB 남짓이
+// 메인 번들에 실려 첫 화면이 그만큼 늦어진다 — 엑셀은 실제로 파일을 다룰 때만 필요하다.
 import type { SendRequest } from './docSendApi';
 
 const HEADERS = [
@@ -27,7 +28,7 @@ export interface ExportMeta {
 }
 
 /** 현황 목록을 엑셀로 저장한다. rows 는 화면에 보이는 순서 그대로. */
-export function exportSendStatus(rows: SendRequest[], meta: ExportMeta): void {
+export async function exportSendStatus(rows: SendRequest[], meta: ExportMeta): Promise<void> {
   const info = [
     `기간: ${meta.basis} ${meta.from || '처음'} ~ ${meta.to || '오늘'}`,
     `상태필터: ${meta.statusLabel}`,
@@ -55,6 +56,7 @@ export function exportSendStatus(rows: SendRequest[], meta: ExportMeta): void {
     r.phone,
   ]);
 
+  const XLSX = await import('xlsx');
   const ws = XLSX.utils.aoa_to_sheet([[info], [...HEADERS], ...body]);
   // 안내행을 헤더 폭만큼 병합해 한 줄로 보이게 한다.
   ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: HEADERS.length - 1 } }];

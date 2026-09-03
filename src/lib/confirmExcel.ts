@@ -5,7 +5,8 @@
 // 용량이 커서 내보내는 순간에만 동적 로드한다(평소 화면에는 실리지 않는다).
 //
 // 읽기(파싱)는 가벼운 SheetJS 로 충분해 그대로 쓴다.
-import * as XLSX from 'xlsx';
+// xlsx 는 **함수 안에서 동적으로** 불러온다. 위에서 정적으로 물면 900KB 남짓이
+// 메인 번들에 실려 첫 화면이 그만큼 늦어진다 — 엑셀은 실제로 파일을 다룰 때만 필요하다.
 import { ITEM_KINDS, DEFAULT_CONTACT, type ItemInput, type ItemKind } from './confirmApi';
 import type { Confirmation, ConfirmItem, Progress } from './confirmApi';
 import { summarize, pct } from './confirmApi';
@@ -405,6 +406,7 @@ function normalizeKind(raw: string): ItemKind | null {
 
 /** 업로드 파일 → 조회처 명세. 첫 시트만 읽는다. */
 export async function parseItemsFile(file: File): Promise<ParseResult> {
+  const XLSX = await import('xlsx');
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
   const ws = wb.Sheets[wb.SheetNames[0]];

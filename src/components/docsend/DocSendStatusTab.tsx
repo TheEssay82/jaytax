@@ -233,7 +233,7 @@ export default function DocSendStatusTab() {
           style={{ fontSize: 11, padding: '2px 8px' }}
           disabled={view.length === 0}
           onClick={() =>
-            exportSendStatus(view, {
+            void exportSendStatus(view, {
               basis: dateBasis === 'sent' ? '발송일' : '의뢰일자',
               from,
               to,
