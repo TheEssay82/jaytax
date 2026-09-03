@@ -12,7 +12,7 @@ import { pivotMulti, MEASURES } from '../../lib/revenuePivot';
 import { todayYmd, kstDateTime } from '../../lib/format';
 import { listStaffChangeLog, type StaffChangeLog } from '../../lib/invoiceStaffApi';
 import {
-  listRevenueAll, factsHaveWeakStaff, pivot, DIMS, fyOf, fyRange, fyLabel,
+  listRevenueAll, pivot, DIMS, fyOf, fyRange, fyLabel,
   type RevenueFact, type Dim,
 } from '../../lib/revenueStatsApi';
 
@@ -105,9 +105,6 @@ export default function StaffRevenueTab() {
     () => pivotMulti(filtered, dimOf(rowKey), subKey === 'none' ? null : dimOf(subKey), MEASURES),
     [filtered, rowKey, subKey],
   );
-  /** 실적 자료가 섞이면 담당직원 축을 믿을 수 없다 — 올릴 때 열이 잘못 잡혔다. */
-  const weakStaff = useMemo(() => factsHaveWeakStaff(filtered), [filtered]);
-  const staffAxisUsed = rowKey === 'staff' || (mode === 'summary' && subKey === 'staff') || (mode === 'cross' && colKey === 'staff');
   const max = Math.max(1, ...p.rows.map((r) => p.rowTotal.get(r) ?? 0));
   const filterCount = [cpaF, staffF, typeF, erpF].filter(Boolean).length;
 
@@ -223,15 +220,6 @@ export default function StaffRevenueTab() {
         <br />· 앱을 쓰기 전 기간(FY2025)은 <b>2025실적 자료</b>를, 그 뒤는 <b>앱의 청구기록</b>을 씁니다. 한 사업연도 안에서는 한 원천만 써서 이중으로 세지 않습니다.
         <br />· 미래 예상(연환산·추이·예산)은 거래처관리 › <b>현황및예산조회</b>에서 봅니다. 여기는 <b>실제 매출</b>만 셉니다.
       </div>
-
-      {weakStaff && staffAxisUsed && (
-        <div className="alert-w" style={{ fontSize: 11.5 }}>
-          ⚠️ 이 기간에는 앱을 쓰기 전의 <b>실적 자료</b>가 섞여 있고, 그 자료의 <b>담당직원은 정확하지 않습니다</b>
-          (올릴 때 열이 잘못 잡혀 두 사람으로만 들어가 있습니다).
-          <b> 담당회계사·거래처·금액은 정확합니다</b> — 원본 엑셀과 1원까지 맞습니다.
-          담당직원별로 볼 때는 앱에서 청구한 기간(FY2026~)만 보시는 편이 맞습니다.
-        </div>
-      )}
 
       {mode === 'summary' ? (
         <div className="tbl-scroll" style={{ maxHeight: '58vh' }}>

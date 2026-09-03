@@ -119,10 +119,10 @@ export async function listRevenueFacts(
 /**
  * 앱을 쓰기 전의 실적(biz_revenue_actual) 을 같은 모양으로 읽는다.
  *
- * 2025실적 엑셀에서 올린 자료다. **담당직원(manager) 은 믿을 수 없다** —
- * 올릴 때 열이 잘못 잡혀 정남지·송예진 둘만 들어가 있다. 회계사·거래처·금액은 정확하다
- * (FY2025 taxteam 384,937,273 이 원본 엑셀과 1원까지 맞는다).
- * 그래서 담당직원 축으로 묶을 때 화면이 그 사실을 알려야 한다 — factsHaveWeakStaff() 참조.
+ * 2025실적 엑셀에서 올린 자료다. 회계사·거래처·금액·담당직원 모두 원본과 맞는다
+ * (FY2025 taxteam 384,937,273 · 101곳, 회계사 › 담당직원 소계까지 1원 단위로 일치).
+ * 담당직원은 처음 올릴 때 열이 잘못 잡혀 두 사람만 들어가 있었는데, 원본 엑셀의
+ * 거래처별 '기장담당'으로 되돌렸다(마이그 0132).
  */
 async function listActualFacts(
   fromYm: string, toYm: string, team?: string,
@@ -172,10 +172,6 @@ export async function fysWithActuals(): Promise<Set<number>> {
   if (error) return new Set();
   return new Set(((data as { ym: string }[]) ?? []).map((r) => fyOf(r.ym)));
 }
-
-/** 담당직원 축을 믿을 수 없는 줄이 섞여 있는가 — 화면이 경고를 띄우는 근거. */
-export const factsHaveWeakStaff = (facts: RevenueFact[]): boolean =>
-  facts.some((f) => f.origin === '실적');
 
 /**
  * 기간의 매출 사실 — **한 FY 안에서는 한 원천만** 쓴다.
