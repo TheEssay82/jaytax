@@ -19,6 +19,7 @@ import ErpReconcileTab from './billing/ErpReconcileTab';
 import AuditInvoiceTab from './billing/AuditInvoiceTab';
 import ReceivableTab from './billing/ReceivableTab';
 import StaffRevenueTab from './billing/StaffRevenueTab';
+import BudgetTab from './billing/BudgetTab';
 import ReceivableOpeningTab from './billing/ReceivableOpeningTab';
 import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
@@ -362,6 +363,8 @@ function TabContent({
       return <InvoiceRequestTab />;
     case 'audit-invoice':
       return <AuditInvoiceTab />;
+    case 'budget':
+      return <BudgetTab />;
     case 'staff-revenue':
       return <StaffRevenueTab />;
     case 'receivable':
