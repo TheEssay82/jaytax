@@ -338,9 +338,24 @@ export interface RenewCandidate {
   taxType: '법인세' | '종합소득세';
   amount: number;
   cpa: string;                // 담당CPA(계약값 우선, 없으면 사업장 상속)
-  placeStatus: string;        // 사업장 상태(폐업·이관이면 기본 제외)
+  /**
+   * 거래처 단위 유효상태 — 정상 > 폐업 > (이관·종료) 순으로 강한 것을 취한다.
+   * 사업장 하나만 보면 본사가 폐업이고 지점이 정상인 거래처를 잘못 읽는다.
+   */
+  placeStatus: string;
+  /**
+   * 갱신하면 안 되는가 — **이관·종료**가 그렇다(사용자 확정 2026-09-04).
+   *   · 이관 — 일이 다른 사무소로 넘어갔다. 우리가 하지 않는다.
+   *   · 종료 — 거래가 끝났다.
+   *   · 폐업 — **갱신한다.** 청산이 아닌 이상 폐업 연도 신고는 우리가 한다
+   *            (개인도 본인 계약이 살아 있으면 종합소득세를 우리가 한다).
+   */
+  blocked: boolean;
   alreadyRenewed: boolean;    // 대상연도 계약이 이미 있음
 }
+
+/** 갱신하면 안 되는 상태 — 일이 우리를 떠난 경우. */
+const RENEW_BLOCKED = ['이관', '종료'];
 
 /** fromYear 귀속 세무조정 계약을 toYear 로 갱신할 후보 목록 */
 export async function listRenewableTaxContracts(fromYear: number, toYear: number): Promise<RenewCandidate[]> {
@@ -370,7 +385,11 @@ export async function listRenewableTaxContracts(fromYear: number, toYear: number
   return src.map((c) => {
     const e = entMap.get(c.entityId);
     const mine = places.filter((p) => p.entity_id === c.entityId);
-    const place = mine.find((p) => p.id === c.placeId) ?? mine.find((p) => p.is_headquarters) ?? mine[0];
+    // 거래처 단위로 본다 — 사업장이 여럿이면 가장 살아 있는 상태가 그 거래처의 상태다.
+    const status = mine.some((p) => p.status === '정상') ? '정상'
+      : mine.some((p) => p.status === '폐업') ? '폐업'
+        : mine.find((p) => p.id === c.placeId)?.status
+          ?? mine.find((p) => p.is_headquarters)?.status ?? mine[0]?.status ?? '정상';
     return {
       id: c.id,
       contractCode: c.contractCode,
@@ -381,7 +400,8 @@ export async function listRenewableTaxContracts(fromYear: number, toYear: number
       taxType: (c.categoryCode === 'TAX.FILING.CORP' ? '법인세' : '종합소득세') as '법인세' | '종합소득세',
       amount: c.amount,
       cpa: c.effectiveCpa,
-      placeStatus: place?.status ?? '정상',
+      placeStatus: status,
+      blocked: RENEW_BLOCKED.includes(status),
       alreadyRenewed: done.has(`${c.entityId}|${c.categoryCode}`),
     };
   }).sort((a, b) => a.companyName.localeCompare(b.companyName, 'ko'));
@@ -389,6 +409,9 @@ export async function listRenewableTaxContracts(fromYear: number, toYear: number
 
 /** 선택한 전년 계약을 toYear 귀속으로 복제 — 생성 건수 반환 */
 export async function renewTaxContracts(rows: RenewCandidate[], toYear: number): Promise<number> {
+  // 이관·종료는 화면에서도 막지만 여기서 한 번 더 거른다 —
+  // 히츠(2026-03 이관)가 '보이는 건 전체선택'으로 갱신돼 버린 적이 있다.
+  rows = rows.filter((r) => !r.blocked);
   const all = await listSalesContracts();
   const byId = new Map(all.map((c) => [c.id, c]));
   let made = 0;

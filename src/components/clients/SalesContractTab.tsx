@@ -1322,8 +1322,9 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
     listRenewableTaxContracts(toYear - 1, toYear)
       .then((r) => {
         setRows(r);
-        // 기본 선택: 아직 갱신 안 됐고 사업장이 정상인 건.
-        setPick(new Set(r.filter((x) => !x.alreadyRenewed && x.placeStatus === '정상').map((x) => x.id)));
+        // 기본 선택: 아직 갱신 안 됐고 **갱신해도 되는** 건(정상·폐업).
+        // 폐업도 넣는다 — 청산이 아닌 이상 폐업 연도 신고는 우리가 한다.
+        setPick(new Set(r.filter((x) => !x.alreadyRenewed && !x.blocked).map((x) => x.id)));
       })
       .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)));
   }, [toYear]);
@@ -1335,7 +1336,8 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
     return list.filter((r) => (r.code + r.companyName + r.cpa + r.taxType).toLowerCase().includes(k));
   }, [rows, q]);
 
-  const target = (rows ?? []).filter((r) => pick.has(r.id) && !r.alreadyRenewed);
+  const target = (rows ?? []).filter((r) => pick.has(r.id) && !r.alreadyRenewed && !r.blocked);
+  const blockedCount = (rows ?? []).filter((r) => r.blocked).length;
   const sum = target.reduce((a, r) => a + r.amount, 0);
 
   async function run() {
@@ -1375,11 +1377,15 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
               체결되면 계약을 열어 '계약 확정'에 체크하세요(목록에서 계약상태로 걸러볼 수 있습니다).
               계약금액·담당CPA·담당직원을 그대로 이어받습니다. 정우철 담당분은 세무조정수수료관리에서 청구를 확정하면
               그 금액으로 다시 맞춰집니다. <b>올해 세무조정을 하지 않는 거래처는 체크를 빼세요.</b>
-              폐업·이관 사업장과 이미 갱신된 건은 기본 선택에서 빠져 있습니다.
+              <br />· <b>이관·종료</b>한 거래처는 <b>갱신할 수 없습니다</b> — 일이 다른 사무소로 넘어갔거나 거래가 끝났기 때문입니다.
+              {blockedCount > 0 && <> 지금 <b>{blockedCount}건</b>이 그렇습니다.</>}
+              <br />· <b>폐업</b>은 갱신합니다 — 청산이 아닌 이상 <b>폐업 연도 신고는 우리가 합니다</b>
+              (개인도 본인 계약이 살아 있으면 종합소득세를 우리가 합니다).
+              <br />· 이미 갱신된 건도 선택에서 빠져 있습니다.
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '8px 0' }}>
               <input placeholder="🔍 코드·거래처·담당CPA·유형" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-              <button className="btn-sm" onClick={() => setPick(new Set(view.filter((r) => !r.alreadyRenewed).map((r) => r.id)))}>보이는 건 전체선택</button>
+              <button className="btn-sm" onClick={() => setPick(new Set(view.filter((r) => !r.alreadyRenewed && !r.blocked).map((r) => r.id)))}>보이는 건 전체선택</button>
               <button className="btn-sm" onClick={() => setPick(new Set())}>전체해제</button>
               <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{target.length}</b>건 · 합계 {won(sum)}</span>
               <button className="btn-p" disabled={busy || target.length === 0} onClick={() => void run()}>
@@ -1402,11 +1408,12 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
                     </td></tr>
                   )}
                   {view.map((r) => (
-                    <tr key={r.id} style={{ opacity: r.alreadyRenewed ? 0.45 : 1 }}>
+                    <tr key={r.id} style={{ opacity: r.alreadyRenewed || r.blocked ? 0.45 : 1 }}>
                       <td>
                         <input
                           type="checkbox"
-                          disabled={r.alreadyRenewed}
+                          disabled={r.alreadyRenewed || r.blocked}
+                          title={r.blocked ? `${r.placeStatus} 거래처는 갱신하지 않습니다` : undefined}
                           checked={pick.has(r.id)}
                           onChange={() => setPick((prev) => {
                             const n = new Set(prev);
@@ -1420,8 +1427,13 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
                       <td>{r.taxType}</td>
                       <td className="r">{won(r.amount)}</td>
                       <td>{r.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
-                      <td>{r.placeStatus}</td>
-                      <td>{r.alreadyRenewed ? <span style={{ color: '#888' }}>이미 갱신됨</span> : ''}</td>
+                      <td style={{ color: r.blocked ? '#9B3527' : undefined, fontWeight: r.blocked ? 700 : 400 }}>
+                        {r.placeStatus}
+                      </td>
+                      <td>
+                        {r.alreadyRenewed ? <span style={{ color: '#888' }}>이미 갱신됨</span>
+                          : r.blocked ? <span style={{ color: '#9B3527' }}>갱신 안 함</span> : ''}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
