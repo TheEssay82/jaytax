@@ -13,6 +13,7 @@ export const ACTIONS = {
   login: '로그인',
   logout: '로그아웃',
   login_failed: '로그인 실패',
+  login_locked: '로그인 차단',
   reveal_resident: '주민번호 열람',
   reveal_hometax_pw: '홈택스PW 열람',
   download_resident_all: '주민번호 일괄 열람',
@@ -111,4 +112,51 @@ export async function verifyAccessLog(from?: string): Promise<VerifyResult> {
     firstBadId: r?.first_bad_id ?? null,
     firstBadAt: r?.first_bad_at ?? null,
   };
+}
+
+// ── 인증 실패 제한 (고시 제5조제6항) ─────────────────────
+// 같은 (계정, 접속지) 에서 15분 안에 5회 실패하면 15분간 막는다.
+// 계정만으로 잠그면 남의 이메일만 알아도 그 사람을 잠글 수 있어(서비스 거부) 접속지까지 묶는다.
+
+export interface LoginGate { locked: boolean; fails: number; retryAfterSec: number }
+const MAX_FAILS = 5;
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const toGate = (data: any): LoginGate => {
+  const r = (Array.isArray(data) ? data[0] : data) ?? {};
+  return { locked: !!r.locked, fails: Number(r.fails ?? 0), retryAfterSec: Number(r.retry_after_sec ?? 0) };
+};
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/** 로그인 시도 **전에** 확인 — 막혀 있으면 비밀번호를 보내지도 않는다. */
+export async function checkLoginGate(email: string): Promise<LoginGate> {
+  const { data, error } = await supabase.rpc('login_gate', { p_email: email });
+  if (error) return { locked: false, fails: 0, retryAfterSec: 0 };  // 판정 실패로 사람을 잠그지 않는다
+  return toGate(data);
+}
+
+/** 실패를 남기고, 남은 횟수를 돌려준다. */
+export async function recordLoginFailure(email: string): Promise<LoginGate> {
+  const { data, error } = await supabase.rpc('login_failed', { p_email: email });
+  if (error) return { locked: false, fails: 0, retryAfterSec: 0 };
+  return toGate(data);
+}
+
+/** 성공을 남긴다 — 이 뒤로 실패 카운터가 0 부터 다시 센다. */
+export async function recordLoginSuccess(email: string): Promise<void> {
+  try { await supabase.rpc('login_ok', { p_email: email }); } catch { /* 업무를 막지 않는다 */ }
+}
+
+/** 사람이 읽을 잠금 안내. */
+export function lockMessage(g: LoginGate): string {
+  const min = Math.max(1, Math.ceil(g.retryAfterSec / 60));
+  return `비밀번호를 ${MAX_FAILS}회 이상 틀려 이 자리에서의 접속이 잠겼습니다. `
+    + `약 ${min}분 뒤에 다시 시도해 주세요.\n\n`
+    + '비밀번호가 기억나지 않으면 최고관리자에게 재설정을 요청하세요. (개인정보보호법 「안전성 확보조치 기준」 제5조제6항)';
+}
+
+/** 실패했을 때 보여 줄 남은 횟수 안내. */
+export function remainMessage(g: LoginGate): string {
+  const left = Math.max(0, MAX_FAILS - g.fails);
+  return left > 0 && left <= 3 ? ` (${left}회 더 틀리면 15분간 잠깁니다)` : '';
 }

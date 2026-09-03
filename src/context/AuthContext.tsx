@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { normalizeRole, type Role } from '../lib/roles';
-import { logAccess } from '../lib/accessLogApi';
+import { logAccess, checkLoginGate, recordLoginFailure, recordLoginSuccess, lockMessage, remainMessage } from '../lib/accessLogApi';
 
 // 세션 하드 캡 — 로그인 시각 기준으로 이 시간이 지나면 활동 여부와 무관하게 강제 로그아웃.
 // (Supabase는 리프레시 토큰으로 무기한 유지되므로, 이 계층에서 만료를 강제한다.)
@@ -113,14 +113,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn: AuthValue['signIn'] = async (email, password) => {
+    // ① 잠겨 있으면 비밀번호를 보내지도 않는다 (고시 제5조제6항).
+    const gate = await checkLoginGate(email);
+    if (gate.locked) return { error: lockMessage(gate) };
+
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    // 접속기록(고시 제8조)은 **여기서** 남긴다. onAuthStateChange 의 SIGNED_IN 에 걸면
-    // 탭 복귀·토큰 갱신·HMR 로도 튀어 실제로 로그인하지 않은 줄이 쌓인다(2초마다 한 줄씩 쌓였다).
-    // 로그인은 이 함수가 성공한 순간 딱 한 번 일어난다.
-    if (!error) void logAccess('login');
-    // 실패는 세션이 없어 남기지 못한다 — log_access 는 로그인한 사람만 부를 수 있다.
-    // 인증 실패 기록·제한(고시 제5조제6항)은 서버 쪽 과제로 따로 남겨 둔다.
-    return { error: error?.message ?? null };
+
+    if (error) {
+      // ② 실패를 남긴다. 이 경로는 세션이 없어 anon 으로 부를 수 있는 RPC 를 쓴다.
+      const after = await recordLoginFailure(email);
+      if (after.locked) return { error: lockMessage(after) };
+      return { error: (error.message ?? '') + remainMessage(after) };
+    }
+    // ③ 성공 — 실패 카운터를 풀고 접속기록을 남긴다.
+    //    접속기록을 onAuthStateChange 의 SIGNED_IN 에 걸면 탭 복귀·토큰 갱신·HMR 로도 튀어
+    //    실제로 로그인하지 않은 줄이 쌓인다(2초마다 한 줄씩 쌓였다). 로그인은 여기서 딱 한 번이다.
+    void recordLoginSuccess(email);
+    void logAccess('login');
+    return { error: null };
   };
 
   const signOut = async () => {
