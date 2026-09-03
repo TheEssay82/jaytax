@@ -24,6 +24,7 @@ import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
 import UsersTab from './users/UsersTab';
 import AccessLogTab from './users/AccessLogTab';
+import RetentionTab from './users/RetentionTab';
 import StandardsTab from './advisory/StandardsTab';
 import TaxLawTab from './advisory/TaxLawTab';
 import ConsultTab from './advisory/ConsultTab';
@@ -332,6 +333,8 @@ function TabContent({
       return <UsersTab />;
     case 'access-log':
       return <AccessLogTab />;
+    case 'retention':
+      return <RetentionTab />;
     case 'std-kifrs':
       return <StandardsTab />;
     case 'std-tax':

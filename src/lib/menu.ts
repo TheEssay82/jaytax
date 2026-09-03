@@ -102,6 +102,9 @@ export const ICON_ITEMS: (MenuItem & { icon: string })[] = [
   // 접속기록은 개인정보 보호책임자가 월 1회 이상 점검하는 자리다(고시 제8조제2항).
   // 남의 접속기록도 그 자체가 개인정보라 최고관리자에게만 내놓는다.
   { id: 'access-log', label: '접속기록 점검', icon: '🔎', cap: 'manageUsers' },
+  // 보존기한이 지난 개인정보는 지체 없이 파기해야 한다(법 제21조). 파기는 되돌릴 수 없어
+  // 개인정보 보호책임자만 볼 수 있게 둔다.
+  { id: 'retention', label: '보존기한 · 파기', icon: '🗑️', cap: 'manageUsers' },
 ];
 
 /**

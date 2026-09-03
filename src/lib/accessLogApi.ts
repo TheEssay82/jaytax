@@ -19,6 +19,7 @@ export const ACTIONS = {
   download_resident_all: '주민번호 일괄 열람',
   download_hometax_pw_all: '홈택스PW 일괄 열람',
   export: '자료 내려받기',
+  purge: '파기',
 } as const;
 export type ActionKey = keyof typeof ACTIONS;
 export const actionLabel = (a: string) => (ACTIONS as Record<string, string>)[a] ?? a;
