@@ -95,6 +95,14 @@ export default function AuditInvoiceTab() {
   const [q, setQ] = useState('');
 
   // 건별 등록 폼
+  /**
+   * 화면을 셋으로 나눈다 — 네 단계를 한 화면에 쌓으니 무엇을 볼 자리인지 흐려졌다.
+   *   요청  = ① 제안 + ② 세금계산서 발행요청  (회계사가 올리는 자리)
+   *   발행  = ③ 발행 처리                      (김민섭이 끊는 자리)
+   *   이력  = ④ 발행 이력                      (끝난 것을 보는 자리)
+   */
+  const [pane, setPane] = useState<'request' | 'issue' | 'history'>('request');
+
   const [f, setF] = useState({
     company: '', entityId: '', placeId: '', amount: '', account: '회계감사수입',
     phase: '잔금' as string, summary: '', issueDate: todayYmd(), email: '',
@@ -535,17 +543,42 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       </div>
       {err && <div className="alert-w">{err}</div>}
 
-      <div className="alert-i" style={{ fontSize: 11 }}>
-        감사 용역은 계약금·중도금·잔금이 <b>건별로</b> 생기므로 달로 묶지 않습니다. 네 단계로 나뉩니다.
-        <br />① <b>제안</b> — 매출계약의 분할회차 중 <b>청구기한이 지난 것</b>입니다. <b>알림일 뿐</b>이라 그대로 넘어가지 않습니다 —
-        고른 뒤 창에서 <b>작성일·금액·적요를 고쳐</b> 발행요청으로 보냅니다.
-        <br />② <b>건별 발행요청</b> — 계약에 없거나 분할회차를 등록해 두지 않은 건을 회계사가 한 줄 적습니다.
-        <br />③ <b>처리 중</b> — {withJosa(FINAL_APPROVER, '이', '가')} 발행하는 자리입니다. ①②에서 올라온 요청이 여기 모이고,
-        ERP에서 발행한 뒤 <b>발행완료</b>를 누르면 요청한 회계사에게 알림이 갑니다.
-        <br />④ <b>발행 이력</b> — 발행이 끝난 건을 기간으로 조회합니다(기본 최근 3개월).
+      {/* 세 자리로 나눈다 — 회계사가 올리고, {FINAL_APPROVER}이 끊고, 끝난 것을 본다. */}
+      <div style={{ display: 'flex', gap: 6, margin: '8px 0' }}>
+        {([
+          ['request', '🧾 발행요청', overdue.length],
+          ['issue', '🖨️ 발행 처리', working.length],
+          ['history', '📜 발행 이력', reqs.filter((r) => r.status === '발행완료').length],
+        ] as const).map(([k, label, n]) => (
+          <button key={k} className={pane === k ? 'btn-p' : 'btn-sm'} onClick={() => setPane(k)}>
+            {label}{n > 0 && <span style={{ fontWeight: 400, opacity: .8 }}> {n}</span>}
+          </button>
+        ))}
       </div>
 
-      {/* ══ 1층 — 제안 ══════════════════════════════ */}
+      {pane === 'request' && (
+        <div className="alert-i" style={{ fontSize: 11 }}>
+          감사 용역은 계약금·중도금·잔금이 <b>건별로</b> 생기므로 달로 묶지 않습니다. 이 자리는 <b>회계사가 청구를 올리는 곳</b>입니다.
+          <br />① <b>제안</b> — 매출계약의 분할회차 중 <b>청구기한이 지난 것</b>입니다. <b>알림일 뿐</b>이라 그대로 넘어가지 않습니다 —
+          고른 뒤 창에서 <b>작성일·금액·적요를 고쳐</b> 발행요청으로 보냅니다.
+          <br />② <b>세금계산서 발행요청</b> — 계약에 없거나 분할회차를 등록해 두지 않은 건을 한 줄 적습니다.
+          <br />올린 건은 <b>🖨️ 발행 처리</b> 로 넘어갑니다.
+        </div>
+      )}
+      {pane === 'issue' && (
+        <div className="alert-i" style={{ fontSize: 11 }}>
+          {withJosa(FINAL_APPROVER, '이', '가')} <b>세금계산서를 끊는 자리</b>입니다. 발행요청에서 올라온 건이 여기 모입니다.
+          ERP에서 발행한 뒤 <b>발행완료</b>를 누르면 요청한 회계사에게 알림이 갑니다.
+        </div>
+      )}
+      {pane === 'history' && (
+        <div className="alert-i" style={{ fontSize: 11 }}>
+          발행이 끝난 건을 기간으로 조회합니다(기본 최근 3개월). 잘못 나간 건은 여기서 <b>수정발행</b>으로 되돌립니다.
+        </div>
+      )}
+
+      {/* ══ 요청 탭 — ① 제안 + ② 세금계산서 발행요청 ══ */}
+      {pane === 'request' && (<>
       <div style={{ marginTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
@@ -596,17 +629,23 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       {/* ══ 2층 — 건별 발행요청 ═════════════════════ */}
       <div style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>② 건별 발행요청</b>
+          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>② 세금계산서 발행요청</b>
+          {canWrite && (
+            // 이 화면에서 가장 자주 누르는 단추다 — 제목 바로 옆에, 눈에 띄는 색으로 둔다.
+            <button onClick={() => setShowForm((v) => !v)}
+              style={showForm ? undefined : {
+                background: '#C8963C', color: '#fff', border: 'none', borderRadius: 5,
+                padding: '5px 14px', fontWeight: 700, fontSize: 12.5, cursor: 'pointer',
+                boxShadow: '0 1px 3px rgba(0,0,0,.18)',
+              }}
+              className={showForm ? 'btn-sm' : undefined}>
+              {showForm ? '닫기' : '＋ 건별 발행요청'}
+            </button>
+          )}
           <span style={{ fontSize: 11, color: '#888' }}>
             계약에 없거나 분할회차를 등록해 두지 않은 건을 한 줄로 적습니다 —
             등록하면 {FINAL_APPROVER}에게 바로 알림이 갑니다.
           </span>
-          {canWrite && (
-            <button className={showForm ? 'btn-sm' : 'btn-p'} style={{ marginLeft: 'auto' }}
-              onClick={() => setShowForm((v) => !v)}>
-              {showForm ? '닫기' : '＋ 건별 발행요청'}
-            </button>
-          )}
         </div>
         {showForm && canWrite && (
           <div id="audit-newform" style={{ border: '1px solid #e2d9c6', background: '#fdfaf3', borderRadius: 6, padding: 10, marginBottom: 10 }}>
@@ -722,11 +761,14 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
 
       </div>
 
-      {/* ══ 3층 — 처리 중 ═══════════════════════════ */}
-      <div style={{ marginTop: 16 }}>
+      </>)}
+
+      {/* ══ 발행 탭 — ③ 발행 처리 ═══════════════════ */}
+      {pane === 'issue' && (
+      <div style={{ marginTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
-            ③ 처리 중 — {FINAL_APPROVER} 발행 대기 ({workGrid.rowsView.length}건 · 공급가액 {won(workGrid.rowsView.reduce((s, r) => s + r.supplyAmount, 0))})
+            ③ 발행 처리 — {withJosa(FINAL_APPROVER, '이', '가')} 끊을 건 ({workGrid.rowsView.length}건 · 공급가액 {won(workGrid.rowsView.reduce((s, r) => s + r.supplyAmount, 0))})
           </b>
           {canWrite && (
             <>
@@ -768,8 +810,11 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           } : undefined} />
       </div>
 
-      {/* ══ 4층 — 이력 ══════════════════════════════ */}
-      <div style={{ marginTop: 16 }}>
+      )}
+
+      {/* ══ 이력 탭 — ④ 발행 이력 ═══════════════════ */}
+      {pane === 'history' && (
+      <div style={{ marginTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
             ④ 발행 이력 ({histGrid.rowsView.length}건)
@@ -812,6 +857,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           </div>
         )}
       </div>
+      )}
 
       {manual && (
         <WorkflowManual initial={isApprover ? 'approver' : 'cpa'} onClose={() => setManual(false)} />
