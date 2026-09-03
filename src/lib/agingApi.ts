@@ -7,19 +7,12 @@
 import { supabase } from './supabase';
 import { OPENING_AS_OF } from './invoiceRequestApi';
 import { listArItems } from './arLedgerApi';
+import { BUCKETS, OVERDUE_DAYS, settle, daysBetween, type BucketKey } from './aging';
 
-/** 나이 구간 — 경계는 '기준일 − 발행일'의 날수. */
-export const BUCKETS = [
-  { key: 'b30', label: '30일 이내', min: 0, max: 30 },
-  { key: 'b60', label: '31~60일', min: 31, max: 60 },
-  { key: 'b90', label: '61~90일', min: 61, max: 90 },
-  { key: 'b180', label: '91~180일', min: 91, max: 180 },
-  { key: 'over', label: '180일 초과', min: 181, max: 99999 },
-] as const;
-export type BucketKey = (typeof BUCKETS)[number]['key'];
-
-/** 6개월 = 180일. 이 선을 넘은 잔액이 알림 대상이다. */
-export const OVERDUE_DAYS = 180;
+// 나이 구간·상계 규칙은 aging.ts 에 있다(supabase 를 물지 않아야 테스트가 돈다).
+// 여기서는 자료를 읽어 와 그 규칙에 넘기는 일만 한다. 규칙이 두 벌이 되면 안 되므로 다시 내보낸다.
+export { BUCKETS, OVERDUE_DAYS, bucketOf, summarize } from './aging';
+export type { BucketKey, AgingItem } from './aging';
 
 /** 이 나이 분석이 무엇에 근거했는가 — 화면이 그대로 밝혀야 한다. */
 export type AgingSource = '미수금대장' | '추정(FIFO)';
@@ -81,7 +74,7 @@ async function fromLedger(
       date,
       label: `${it.invoiceNo}${it.kind ? ` · ${it.kind}` : ''}${it.phase ? ` ${it.phase}` : ''}`,
       amount: it.balance,
-      days: days(date, asOf),
+      days: daysBetween(date, asOf),
     });
     groups.set(info.placeId, g);
   }
@@ -111,31 +104,6 @@ async function fromLedger(
   return out.sort((a, b) => b.overdue - a.overdue || b.total - a.total);
 }
 
-/**
- * 마이너스 전표(수정·취소)를 같은 거래처의 채권에서 **오래된 것부터** 덜어 낸다.
- *
- * 대장에는 (−)전표가 별개 줄로 남고 어느 청구를 되돌린 것인지 적혀 있지 않다.
- * 그대로 두면 합계가 0인 거래처가 "705일 경과"로 목록에 서는 일이 생긴다(이티머니).
- * 상계 방향을 오래된 쪽으로 잡은 것은 그쪽이 **경고를 부풀리지 않는** 쪽이기 때문이다.
- */
-function settle(items: AgingRow['items']): AgingRow['items'] {
-  let credit = items.filter((x) => x.amount < 0).reduce((s, x) => s - x.amount, 0);
-  if (!credit) return items.filter((x) => Math.round(x.amount) !== 0);
-  const out: AgingRow['items'] = [];
-  for (const x of items) {
-    if (x.amount <= 0) continue;
-    let amt = x.amount;
-    if (credit > 0) { const cut = Math.min(credit, amt); amt -= cut; credit -= cut; }
-    if (Math.round(amt) !== 0) out.push({ ...x, amount: amt });
-  }
-  // 갚고도 남은 마이너스는 선수금이다 — 감추지 않고 가장 최근 자리에 남긴다.
-  if (credit > 0.5) {
-    const last = items[items.length - 1];
-    out.push({ date: last.date, label: '선수금(마이너스 잔액)', amount: -credit, days: last.days });
-  }
-  return out;
-}
-
 /** 대장에 있는데 거래처를 못 붙인 줄 — 화면에서 손으로 붙이거나 접을 대상. */
 export async function listArUnmatched(ym: string, team?: string) {
   const items = (await listArItems(ym, team)).filter((r) => Math.round(r.balance) !== 0);
@@ -153,9 +121,6 @@ export interface PlaceInfo {
   placeId: string; entityId?: string; code: string; company: string; place: string;
   cpa: string; staff: string; team: string;
 }
-
-const days = (from: string, to: string) =>
-  Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 86400000));
 
 /**
  * 기준일 현재의 미수금을 나이별로 나눈다.
@@ -224,7 +189,7 @@ async function estimate(
     for (const it of list) {
       let amt = it.amount;
       if (rest > 0) { const cut = Math.min(rest, amt); amt -= cut; rest -= cut; }
-      if (amt > 0.5) left.push({ ...it, amount: amt, days: days(it.date, asOf) });
+      if (amt > 0.5) left.push({ ...it, amount: amt, days: daysBetween(it.date, asOf) });
     }
     // 입금이 채권보다 많으면(선수금·미반영 발행) 음수 잔액으로 남긴다 — 감추면 원인을 못 찾는다.
     const over = rest > 0.5 ? -rest : 0;

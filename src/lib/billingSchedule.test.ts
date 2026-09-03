@@ -12,6 +12,10 @@ function mk(p: Partial<SalesContract> & { billingCycle: BillingCycle; amount: nu
     parentContractId: null, fiscalYear: null, isInstallment: false, cpa: '', contractDate: null,
     startDate: null, endDate: null, note: '', contractCode: '', includedCodes: [], dateEstimated: false,
     staff: [], installments: [], discounts: [],
+    // 필수 필드는 여기서 기본값을 준다 — Partial 만으로는 boolean|undefined 가 되어 타입이 깨진다.
+    confirmed: true, billingMonth: null,
+    effectiveCpa: '', cpaInherited: false,
+    staffHistory: [], effectiveStaff: [], staffInherited: false,
     ...p,
   };
 }
