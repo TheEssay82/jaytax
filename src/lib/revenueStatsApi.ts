@@ -41,6 +41,23 @@ export interface RevenueFact {
   phase: string;             // 계약금·중도금·잔금(감사팀)
   status: string;
   supply: number;            // 공급가액(부가세 별도)
+  /** 이 줄이 어디서 왔나 — 화면이 밝혀야 한다(원천마다 믿을 수 있는 축이 다르다). */
+  origin: '청구' | '실적';
+  /** 수입 종류를 세 갈래로 정규화 — 원천이 달라도 같은 말로 묶으려는 것. */
+  kind: '세무조정' | '기장료' | '기타';
+  /** 법인/개인 (실적 자료에만 있다). */
+  bizType: string;
+}
+
+/**
+ * 매출계정(청구)·항목(실적)을 세 갈래로 정규화한다.
+ * 엑셀이 '총 기장료수입 / 조정료합계 / 기타수입'으로 갈라 보던 그 구분이다.
+ */
+export function revenueKind(s: string): RevenueFact['kind'] {
+  const v = (s || '').trim();
+  if (v.includes('세무조정')) return '세무조정';
+  if (['기장', '기장대리수입', '원천', '신고대리', '컨설팅', '경영자문수입'].includes(v)) return '기장료';
+  return '기타';
 }
 
 /**
@@ -91,9 +108,88 @@ export async function listRevenueFacts(
       phase: r.phase ?? '',
       status: r.status ?? '',
       supply: Number(r.supply_amount) || 0,
+      origin: '청구' as const,
+      kind: revenueKind(r.erp_account ?? ''),
+      bizType: '',
     };
   });
   /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
+/**
+ * 앱을 쓰기 전의 실적(biz_revenue_actual) 을 같은 모양으로 읽는다.
+ *
+ * 2025실적 엑셀에서 올린 자료다. **담당직원(manager) 은 믿을 수 없다** —
+ * 올릴 때 열이 잘못 잡혀 정남지·송예진 둘만 들어가 있다. 회계사·거래처·금액은 정확하다
+ * (FY2025 taxteam 384,937,273 이 원본 엑셀과 1원까지 맞는다).
+ * 그래서 담당직원 축으로 묶을 때 화면이 그 사실을 알려야 한다 — factsHaveWeakStaff() 참조.
+ */
+async function listActualFacts(
+  fromYm: string, toYm: string, team?: string,
+): Promise<RevenueFact[]> {
+  let q = supabase.from('biz_revenue_actual')
+    .select('id, ym, team, cpa, manager, category, biz_type, entity_name, amount')
+    .gte('ym', fromYm).lte('ym', toYm);
+  if (team) q = q.eq('team', team);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  return ((data as any[]) ?? []).map((r) => {
+    const cat = (r.category ?? '').trim();
+    const mgr = (r.manager ?? '').trim();
+    return {
+      id: `actual:${r.id}`,
+      ym: r.ym,
+      fy: fyOf(r.ym),
+      team: r.team ?? '',
+      cpa: (r.cpa ?? '').trim(),
+      shares: mgr ? [{ name: mgr, share: 100 }] : [],
+      erpAccount: cat,
+      company: r.entity_name ?? '',
+      place: '',
+      typeTop: cat,
+      typeFull: cat,
+      billingCycle: '',
+      phase: '',
+      status: '실적',
+      supply: Number(r.amount) || 0,
+      origin: '실적' as const,
+      kind: revenueKind(cat),
+      bizType: (r.biz_type ?? '').trim(),
+    };
+  });
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
+/**
+ * 그 사업연도에 실적 자료가 있는가 — 있으면 **그 FY 는 실적만** 쓴다.
+ *
+ * 두 원천을 그냥 합치면 겹치는 달이 이중으로 계상된다(2026-06 이 그렇다).
+ * 한 FY 안에서는 한 원천만 쓰는 것이 설명하기 쉽고 틀릴 여지가 없다.
+ */
+export async function fysWithActuals(): Promise<Set<number>> {
+  const { data, error } = await supabase.from('biz_revenue_actual').select('ym');
+  if (error) return new Set();
+  return new Set(((data as { ym: string }[]) ?? []).map((r) => fyOf(r.ym)));
+}
+
+/** 담당직원 축을 믿을 수 없는 줄이 섞여 있는가 — 화면이 경고를 띄우는 근거. */
+export const factsHaveWeakStaff = (facts: RevenueFact[]): boolean =>
+  facts.some((f) => f.origin === '실적');
+
+/**
+ * 기간의 매출 사실 — **한 FY 안에서는 한 원천만** 쓴다.
+ * 실적 자료가 있는 FY 는 실적을, 없는 FY 는 앱의 청구기록을 쓴다.
+ */
+export async function listRevenueAll(
+  fromYm: string, toYm: string, team?: string,
+): Promise<RevenueFact[]> {
+  const actualFys = await fysWithActuals();
+  const [req, act] = await Promise.all([
+    listRevenueFacts(fromYm, toYm, team),
+    actualFys.size ? listActualFacts(fromYm, toYm, team) : Promise.resolve([]),
+  ]);
+  return [...act, ...req.filter((f) => !actualFys.has(f.fy))];
 }
 
 // ── 피벗 ────────────────────────────────────────────────

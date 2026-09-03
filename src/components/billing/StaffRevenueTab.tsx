@@ -8,10 +8,11 @@
 //
 // 기간은 **사업연도(7/1~익년 6/30)** 가 기본이다. FY2026 = 2026-07~2027-06.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { pivotMulti, MEASURES } from '../../lib/revenuePivot';
 import { todayYmd, kstDateTime } from '../../lib/format';
 import { listStaffChangeLog, type StaffChangeLog } from '../../lib/invoiceStaffApi';
 import {
-  listRevenueFacts, pivot, DIMS, fyOf, fyRange, fyLabel,
+  listRevenueAll, factsHaveWeakStaff, pivot, DIMS, fyOf, fyRange, fyLabel,
   type RevenueFact, type Dim,
 } from '../../lib/revenueStatsApi';
 
@@ -29,6 +30,9 @@ export default function StaffRevenueTab() {
   const [rowKey, setRowKey] = useState('staff');
   const [colKey, setColKey] = useState('ym');
   const [value, setValue] = useState<'supply' | 'count'>('supply');
+  /** 'cross' 교차표(행×열, 값 하나) · 'summary' 요약표(행 2단계, 값 여러 개 — 엑셀 시트 모양) */
+  const [mode, setMode] = useState<'cross' | 'summary'>('cross');
+  const [subKey, setSubKey] = useState('staff');
   const [cpaF, setCpaF] = useState('');
   const [staffF, setStaffF] = useState('');
   const [typeF, setTypeF] = useState('');
@@ -50,7 +54,7 @@ export default function StaffRevenueTab() {
     try {
       setErr(null);
       const [f, l] = await Promise.all([
-        listRevenueFacts(from, to, team || undefined),
+        listRevenueAll(from, to, team || undefined),
         listStaffChangeLog(100),
       ]);
       setFacts(f); setLogs(l);
@@ -96,6 +100,14 @@ export default function StaffRevenueTab() {
     [filtered, rowKey, colKey, value],
   );
   const fmt = (n: number) => (value === 'count' ? String(Math.round(n * 100) / 100) : won(n));
+  // 요약표(엑셀 모양) — 행 2단계 × 값 여러 개. 교차표와 달리 열 축을 쓰지 않는다.
+  const sum2 = useMemo(
+    () => pivotMulti(filtered, dimOf(rowKey), subKey === 'none' ? null : dimOf(subKey), MEASURES),
+    [filtered, rowKey, subKey],
+  );
+  /** 실적 자료가 섞이면 담당직원 축을 믿을 수 없다 — 올릴 때 열이 잘못 잡혔다. */
+  const weakStaff = useMemo(() => factsHaveWeakStaff(filtered), [filtered]);
+  const staffAxisUsed = rowKey === 'staff' || (mode === 'summary' && subKey === 'staff') || (mode === 'cross' && colKey === 'staff');
   const max = Math.max(1, ...p.rows.map((r) => p.rowTotal.get(r) ?? 0));
   const filterCount = [cpaF, staffF, typeF, erpF].filter(Boolean).length;
 
@@ -140,25 +152,51 @@ export default function StaffRevenueTab() {
         border: '1px solid #e2d9c6', background: '#fdfaf3', borderRadius: 6,
         padding: '8px 10px', marginBottom: 10, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center',
       }}>
+        <span style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 5, overflow: 'hidden' }}>
+          {([['cross', '교차표'], ['summary', '요약표']] as const).map(([k, lbl]) => (
+            <button key={k} onClick={() => setMode(k)}
+              style={{
+                fontSize: 11.5, padding: '3px 9px', border: 0, cursor: 'pointer',
+                background: mode === k ? '#1A2B52' : '#fff', color: mode === k ? '#fff' : '#555', fontWeight: 700,
+              }}
+              title={k === 'cross' ? '행 × 열 한 값 — 추이·교차 보기' : '행을 두 단계로 펼치고 값을 여러 개 — 엑셀 시트 모양'}>
+              {lbl}
+            </button>
+          ))}
+        </span>
         <label style={{ fontSize: 11.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
           <b style={{ color: '#1A2B52' }}>행</b>
           <select value={rowKey} onChange={(e) => setRowKey(e.target.value)} style={{ fontWeight: 700 }}>
             {DIMS.filter((d) => d.key !== 'none').map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
           </select>
         </label>
-        <label style={{ fontSize: 11.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-          <b style={{ color: '#1A2B52' }}>열</b>
-          <select value={colKey} onChange={(e) => setColKey(e.target.value)} style={{ fontWeight: 700 }}>
-            {DIMS.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
-          </select>
-        </label>
-        <label style={{ fontSize: 11.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-          <b style={{ color: '#1A2B52' }}>값</b>
-          <select value={value} onChange={(e) => setValue(e.target.value as 'supply' | 'count')}>
-            <option value="supply">공급가액</option>
-            <option value="count">건수</option>
-          </select>
-        </label>
+        {mode === 'cross' ? (
+          <>
+            <label style={{ fontSize: 11.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+              <b style={{ color: '#1A2B52' }}>열</b>
+              <select value={colKey} onChange={(e) => setColKey(e.target.value)} style={{ fontWeight: 700 }}>
+                {DIMS.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+              </select>
+            </label>
+            <label style={{ fontSize: 11.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+              <b style={{ color: '#1A2B52' }}>값</b>
+              <select value={value} onChange={(e) => setValue(e.target.value as 'supply' | 'count')}>
+                <option value="supply">공급가액</option>
+                <option value="count">건수</option>
+              </select>
+            </label>
+          </>
+        ) : (
+          <label style={{ fontSize: 11.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+            <b style={{ color: '#1A2B52' }}>하위</b>
+            <select value={subKey} onChange={(e) => setSubKey(e.target.value)} style={{ fontWeight: 700 }}
+              title="행 아래에 한 단계 더 펼칩니다 (엑셀의 회계사 > 담당직원)">
+              <option value="none">(펼치지 않음)</option>
+              {DIMS.filter((d) => d.key !== 'none' && d.key !== rowKey)
+                .map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+            </select>
+          </label>
+        )}
         <span style={{ color: '#ddd' }}>|</span>
         <Filter label="담당회계사" value={cpaF} onChange={setCpaF} opts={opts.cpa} />
         <Filter label="담당직원" value={staffF} onChange={setStaffF} opts={opts.staff} />
@@ -181,9 +219,69 @@ export default function StaffRevenueTab() {
         <br />· <b>담당직원</b>은 배분 비율만큼 쪼개 더합니다 — 공동담당 건도 합계가 부풀지 않습니다.
         <b> 감사팀은 회계사 단위</b>로만 보므로, 팀을 감사팀으로 좁히면 행이 담당회계사로 바뀝니다.
         <br />· 기간의 기본은 <b>사업연도(7월~익년 6월)</b>입니다. 취소분은 빼고 <b>공급가액(부가세 별도)</b> 기준입니다.
-        <br />· 미래 예상(연환산·추이·예산)은 거래처관리 › <b>현황및예산조회</b>에서 봅니다. 여기는 <b>실제로 청구한 것</b>만 셉니다.
+        <br />· <b>요약표</b>는 행을 두 단계로 펼치고 값을 여러 개 보여 줍니다 — 엑셀에서 쓰시던 <b>회계사 › 담당직원 × (거래처수·기장료·조정료·합계)</b> 모양입니다. <b>교차표</b>는 행×열에 한 값으로 추이를 봅니다.
+        <br />· 앱을 쓰기 전 기간(FY2025)은 <b>2025실적 자료</b>를, 그 뒤는 <b>앱의 청구기록</b>을 씁니다. 한 사업연도 안에서는 한 원천만 써서 이중으로 세지 않습니다.
+        <br />· 미래 예상(연환산·추이·예산)은 거래처관리 › <b>현황및예산조회</b>에서 봅니다. 여기는 <b>실제 매출</b>만 셉니다.
       </div>
 
+      {weakStaff && staffAxisUsed && (
+        <div className="alert-w" style={{ fontSize: 11.5 }}>
+          ⚠️ 이 기간에는 앱을 쓰기 전의 <b>실적 자료</b>가 섞여 있고, 그 자료의 <b>담당직원은 정확하지 않습니다</b>
+          (올릴 때 열이 잘못 잡혀 두 사람으로만 들어가 있습니다).
+          <b> 담당회계사·거래처·금액은 정확합니다</b> — 원본 엑셀과 1원까지 맞습니다.
+          담당직원별로 볼 때는 앱에서 청구한 기간(FY2026~)만 보시는 편이 맞습니다.
+        </div>
+      )}
+
+      {mode === 'summary' ? (
+        <div className="tbl-scroll" style={{ maxHeight: '58vh' }}>
+          <table className="tbl" style={{ fontSize: 11.5 }}>
+            <thead>
+              <tr>
+                <th style={{ minWidth: 160 }}>
+                  {dimOf(rowKey).label}{subKey !== 'none' && ` › ${dimOf(subKey).label}`}
+                </th>
+                {MEASURES.map((m) => <th key={m.key} className="r">{m.label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {sum2.rows.length === 0 && (
+                <tr><td colSpan={1 + MEASURES.length} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+                  조건에 맞는 매출이 없습니다.
+                </td></tr>
+              )}
+              {sum2.rows.map((r) => (
+                <tr key={`${r.key}|${r.sub ?? ''}`}
+                  style={r.sub ? undefined : { background: '#f8f5ec' }}>
+                  <td style={r.sub
+                    ? { paddingLeft: 22, color: '#444' }
+                    : { fontWeight: 700, color: '#1A2B52' }}>
+                    {r.sub ?? (sum2.rows.some((x) => x.sub) ? `▾ ${r.key}` : r.key)}
+                  </td>
+                  {MEASURES.map((m) => (
+                    <td key={m.key} className="r"
+                      style={{ fontWeight: r.sub ? 400 : 700, color: r.sub ? '#555' : undefined }}>
+                      {m.agg === 'sum'
+                        ? (r.values[m.key] ? won(r.values[m.key]) : <span style={{ color: '#DDD' }}>—</span>)
+                        : r.values[m.key].toLocaleString('ko-KR')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
+                <td>총합계</td>
+                {MEASURES.map((m) => (
+                  <td key={m.key} className="r">
+                    {m.agg === 'sum' ? won(sum2.total[m.key]) : sum2.total[m.key].toLocaleString('ko-KR')}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      ) : (
       <div className="tbl-scroll" style={{ maxHeight: '58vh' }}>
         <table className="tbl" style={{ fontSize: 11.5 }}>
           <thead>
@@ -235,6 +333,7 @@ export default function StaffRevenueTab() {
           </tfoot>
         </table>
       </div>
+      )}
 
       <div style={{ marginTop: 14 }}>
         <button className="btn-sm" onClick={() => setShowLog((v) => !v)}>
