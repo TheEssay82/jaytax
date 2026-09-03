@@ -7,6 +7,9 @@
 // 여기서는 **사실(fact) 한 줄씩만** 만들고, 어떤 축으로 묶을지는 화면이 정한다(엑셀 피벗처럼).
 import { supabase } from './supabase';
 import { listSalesContracts } from './salesContractApi';
+import { erpAccountOf } from './invoiceRequestApi';
+import { listBizEntities } from './bizRegistryApi';
+import { periodRevenue } from './billingSchedule';
 import { listInvoiceStaff } from './invoiceStaffApi';
 import { findNode, pathLabel } from './salesContractTaxonomy';
 
@@ -42,7 +45,7 @@ export interface RevenueFact {
   status: string;
   supply: number;            // 공급가액(부가세 별도)
   /** 이 줄이 어디서 왔나 — 화면이 밝혀야 한다(원천마다 믿을 수 있는 축이 다르다). */
-  origin: '청구' | '실적';
+  origin: '청구' | '실적' | '예상';
   /** 수입 종류를 세 갈래로 정규화 — 원천이 달라도 같은 말로 묶으려는 것. */
   kind: '세무조정' | '기장료' | '기타';
   /** 법인/개인 (실적 자료에만 있다). */
@@ -279,4 +282,59 @@ export function pivot(facts: RevenueFact[], row: Dim, col: Dim, value: 'supply' 
     cols: sortWith(colSet, col, colTotal),
     cell, rowTotal, colTotal, grand, counts,
   };
+}
+
+// ── 향후 예상 ───────────────────────────────────────────
+//
+// 실적은 "이미 청구한 것"이고, 예상은 "계약대로라면 나올 것"이다.
+// 원천이 다르니 섞지 않고, 화면이 둘 중 하나를 고르게 한다.
+//
+// 금액은 billingSchedule 의 전개 엔진을 그대로 쓴다 — 청구스케줄·분할·할인·부가세 포함
+// 여부를 이미 다루고 있어 규칙이 두 벌이 되면 안 된다.
+
+/**
+ * 기간의 **예상 매출**을 피벗 사실로 만든다. 계약 한 건이 한 줄이 된다.
+ *
+ * · 금액은 그 기간에 인식될 몫만(periodRevenue) — 12개월 계약의 반년치를 물으면 절반이다.
+ * · 담당직원은 계약의 effectiveStaff 를 **같은 비율로 나눈다**(2명이면 50:50).
+ *   실적처럼 청구별 배분이 없으니 균등으로 본다 — 화면이 그 사실을 밝힌다.
+ * · 확정되지 않은 계약(confirmed=false)은 뺀다. 예산에 쓰려면 화면이 따로 켜야 한다.
+ */
+export async function listForecastFacts(
+  fromYm: string, toYm: string, team?: string, opts: { includeDraft?: boolean } = {},
+): Promise<RevenueFact[]> {
+  const [contracts, ents] = await Promise.all([listSalesContracts(), listBizEntities()]);
+  const nameOf = new Map(ents.map((e) => [e.id, e.name]));
+  const out: RevenueFact[] = [];
+  for (const c of contracts) {
+    if (!c.confirmed && !opts.includeDraft) continue;
+    if (team && c.team !== team) continue;
+    const supply = periodRevenue(c, 'accrual', fromYm, toYm);
+    if (!supply) continue;
+    const staff = c.effectiveStaff;
+    const share = staff.length ? 100 / staff.length : 0;
+    const code = c.categoryCode ?? '';
+    const top = code ? (findNode(code)?.path[0]?.label ?? '기타') : '';
+    out.push({
+      id: `forecast:${c.id}`,
+      ym: fromYm,
+      fy: fyOf(fromYm),
+      team: c.team ?? '',
+      cpa: (c.effectiveCpa ?? '').trim(),
+      shares: staff.map((s) => ({ name: s.staffName, share })),
+      erpAccount: erpAccountOf(code),
+      company: nameOf.get(c.entityId) ?? '',
+      place: '',
+      typeTop: top,
+      typeFull: code ? pathLabel(code) : '',
+      billingCycle: c.billingCycle ?? '',
+      phase: '',
+      status: c.confirmed ? '예상' : '예상(미확정)',
+      supply,
+      origin: '예상' as const,
+      kind: revenueKind(erpAccountOf(code)),
+      bizType: c.occurrenceUnit === '개인' ? '개인' : c.occurrenceUnit === '법인' ? '법인' : '',
+    });
+  }
+  return out;
 }

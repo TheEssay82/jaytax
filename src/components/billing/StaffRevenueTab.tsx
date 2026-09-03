@@ -12,7 +12,7 @@ import { pivotMulti, MEASURES } from '../../lib/revenuePivot';
 import { todayYmd, kstDateTime } from '../../lib/format';
 import { listStaffChangeLog, type StaffChangeLog } from '../../lib/invoiceStaffApi';
 import {
-  listRevenueAll, pivot, DIMS, fyOf, fyRange, fyLabel,
+  listRevenueAll, listForecastFacts, pivot, DIMS, fyOf, fyRange, fyLabel,
   type RevenueFact, type Dim,
 } from '../../lib/revenueStatsApi';
 
@@ -32,6 +32,8 @@ export default function StaffRevenueTab() {
   const [value, setValue] = useState<'supply' | 'count'>('supply');
   /** 'cross' 교차표(행×열, 값 하나) · 'summary' 요약표(행 2단계, 값 여러 개 — 엑셀 시트 모양) */
   const [mode, setMode] = useState<'cross' | 'summary'>('cross');
+  /** '실적' 이미 청구한 것 · '예상' 계약대로라면 나올 것. 원천이 달라 섞지 않는다. */
+  const [basis, setBasis] = useState<'actual' | 'forecast'>('actual');
   const [subKey, setSubKey] = useState('staff');
   const [cpaF, setCpaF] = useState('');
   const [staffF, setStaffF] = useState('');
@@ -54,13 +56,15 @@ export default function StaffRevenueTab() {
     try {
       setErr(null);
       const [f, l] = await Promise.all([
-        listRevenueAll(from, to, team || undefined),
+        basis === 'forecast'
+          ? listForecastFacts(from, to, team || undefined, { includeDraft: true })
+          : listRevenueAll(from, to, team || undefined),
         listStaffChangeLog(100),
       ]);
       setFacts(f); setLogs(l);
     } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); }
     finally { setLoading(false); }
-  }, [from, to, team]);
+  }, [from, to, team, basis]);
   useEffect(() => { void load(); }, [load]);
 
   /** FY 를 고르면 기간이 그 사업연도(7월~익년 6월)로 맞춰진다. */
@@ -137,6 +141,12 @@ export default function StaffRevenueTab() {
           <option value="">전체 팀</option>
           <option value="taxteam">taxteam</option>
           <option value="감사team">감사팀</option>
+        </select>
+        <select value={basis} onChange={(e) => setBasis(e.target.value as 'actual' | 'forecast')}
+          style={{ fontWeight: 700, color: basis === 'forecast' ? '#92400E' : undefined }}
+          title="실적은 이미 청구한 것, 예상은 계약대로라면 나올 것입니다">
+          <option value="actual">실적</option>
+          <option value="forecast">예상</option>
         </select>
         <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
           {filtered.length}건 · 공급가액 {won(filtered.reduce((s, f) => s + f.supply, 0))}
@@ -218,8 +228,17 @@ export default function StaffRevenueTab() {
         <br />· 기간의 기본은 <b>사업연도(7월~익년 6월)</b>입니다. 취소분은 빼고 <b>공급가액(부가세 별도)</b> 기준입니다.
         <br />· <b>요약표</b>는 행을 두 단계로 펼치고 값을 여러 개 보여 줍니다 — 엑셀에서 쓰시던 <b>회계사 › 담당직원 × (거래처수·기장료·조정료·합계)</b> 모양입니다. <b>교차표</b>는 행×열에 한 값으로 추이를 봅니다.
         <br />· 앱을 쓰기 전 기간(FY2025)은 <b>2025실적 자료</b>를, 그 뒤는 <b>앱의 청구기록</b>을 씁니다. 한 사업연도 안에서는 한 원천만 써서 이중으로 세지 않습니다.
+        <br />· <b>예상</b>으로 바꾸면 <b>매출계약대로라면 나올 금액</b>을 같은 모양으로 봅니다(미확정 예정계약 포함).
+        담당직원은 <b>지금 배정</b> 기준이고 공동담당은 <b>균등으로 나눕니다</b> — 실적처럼 청구별 배분이 아직 없기 때문입니다.
         <br />· 미래 예상(연환산·추이·예산)은 거래처관리 › <b>현황및예산조회</b>에서 봅니다. 여기는 <b>실제 매출</b>만 셉니다.
       </div>
+
+      {basis === 'forecast' && (
+        <div className="alert-w" style={{ fontSize: 11.5 }}>
+          🔮 <b>예상</b>입니다 — 실제로 청구한 것이 아니라 <b>매출계약대로라면 나올 금액</b>입니다.
+          미확정(예정) 계약도 넣었습니다. 담당직원은 <b>지금 배정</b> 기준이라 그 사이 담당이 바뀌었으면 과거 실적과 다르게 보입니다.
+        </div>
+      )}
 
       {mode === 'summary' ? (
         <div className="tbl-scroll" style={{ maxHeight: '58vh' }}>
