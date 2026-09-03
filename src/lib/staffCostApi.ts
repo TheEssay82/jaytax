@@ -9,6 +9,17 @@ import { supabase } from './supabase';
 /** 자기 급여가 걸려 볼 수 없는 사람들. DB 의 can_see_staff_cost() 와 같은 목록이어야 한다. */
 export const COST_HIDDEN_FOR = ['김민섭', '김동주', '정남지'] as const;
 
+/**
+ * **인건비 대상이 아닌 사람** — 수입은 잡히지만 인건비·기여를 따지지 않는다.
+ * 급여를 받는 자리가 아니어서 인건비를 넣어 봐야 뜻이 없는 경우다.
+ * 이 사람들은 표에 남되 합계(수입·인건비·기여)에서는 빠진다 — 섞으면 배수가 왜곡된다.
+ */
+export const COST_EXEMPT = ['송현주'] as const;
+
+/** 인건비를 따지지 않는 사람인가. */
+export const isCostExempt = (name: string): boolean =>
+  COST_EXEMPT.includes(name as typeof COST_EXEMPT[number]);
+
 /** 이 사람이 예산(인건비·손익)을 볼 수 있는가 — 화면 쪽 판정. */
 export function canSeeStaffCost(role: string, profileName: string): boolean {
   if (COST_HIDDEN_FOR.includes(profileName as typeof COST_HIDDEN_FOR[number])) return false;

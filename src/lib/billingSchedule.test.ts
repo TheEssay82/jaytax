@@ -77,12 +77,51 @@ test('분할 우선: 연 계약이라도 회차 due월·금액으로 청구', ()
   assert.deepEqual(bill, [{ month: '2026-03', net: 20_000_000 }, { month: '2026-09', net: 30_000_000 }]);
 });
 
-test('발생시·건: 분할 없으면 스케줄 없음, 분할 있으면 due월 인식', () => {
-  const none = mk({ billingCycle: '건', amount: 5_000_000, startDate: '2026-05' });
-  assert.equal(monthlyRevenue(none, 'billing', '2026-01', '2026-12').length, 0);
-  assert.equal(monthlyRevenue(none, 'accrual', '2026-01', '2026-12').length, 0);
-  const withInst = mk({ billingCycle: '건', amount: 5_000_000, isInstallment: true, installments: [inst('2026-05-10', 5_000_000)] });
-  assert.deepEqual(monthlyRevenue(withInst, 'billing', '2026-01', '2026-12'), [{ month: '2026-05', net: 5_000_000 }]);
+// ── 단발 계약: 월할하지 않는다 ──────────────────────────
+//   금액이 '주기당'이 아니라 **그 건의 총액**인 계약들. 월할하면 예상이 1/12 로 쪼그라든다.
+
+test("주기 '건': 개시월에 전액 — 청구·발생 둘 다", () => {
+  const c = mk({ billingCycle: '건', amount: 5_000_000, startDate: '2026-05', endDate: '2026-06' });
+  for (const basis of ['billing', 'accrual'] as Basis[]) {
+    assert.deepEqual(monthlyRevenue(c, basis, '2026-01', '2026-12'), [{ month: '2026-05', net: 5_000_000 }], basis);
+  }
+});
+
+test("주기 '건': 분할이 있으면 분할이 우선 — due월에 회차금액", () => {
+  const c = mk({ billingCycle: '건', amount: 5_000_000, startDate: '2026-05', isInstallment: true, installments: [inst('2026-08-10', 5_000_000)] });
+  assert.deepEqual(monthlyRevenue(c, 'billing', '2026-01', '2026-12'), [{ month: '2026-08', net: 5_000_000 }]);
+  assert.deepEqual(monthlyRevenue(c, 'accrual', '2026-01', '2026-12'), [{ month: '2026-08', net: 5_000_000 }]);
+});
+
+test("'발생시'는 그대로 스케줄 없음 — 언제 몇 번 일어날지 모른다", () => {
+  const c = mk({ billingCycle: '발생시', amount: 5_000_000, startDate: '2026-05', endDate: '2026-06' });
+  assert.equal(monthlyRevenue(c, 'billing', '2026-01', '2026-12').length, 0);
+  assert.equal(monthlyRevenue(c, 'accrual', '2026-01', '2026-12').length, 0);
+});
+
+test('연 계약인데 기간이 한 달 — 1/12 가 아니라 전액이다 (연건아트레지던스)', () => {
+  const c = mk({ billingCycle: '연', amount: 500_000, startDate: '2026-07-01', endDate: '2026-07-31' });
+  assert.equal(periodRevenue(c, 'accrual', '2026-07', '2027-06'), 500_000, '41,667 이 되면 안 된다');
+  assert.equal(periodRevenue(c, 'billing', '2026-07', '2027-06'), 500_000);
+});
+
+test('연 계약이 12개월이면 종전대로 월할 — 단발로 오인하지 않는다', () => {
+  const c = mk({ billingCycle: '연', amount: 1_200_000, startDate: '2026-07', endDate: '2027-06' });
+  assert.equal(monthlyRevenue(c, 'accrual', '2026-07', '2027-06').length, 12);
+  assert.equal(periodRevenue(c, 'accrual', '2026-07', '2026-07'), 100_000);
+});
+
+test('종료일이 없는 계속계약은 단발이 아니다', () => {
+  const c = mk({ billingCycle: '연', amount: 1_200_000, startDate: '2026-07' });
+  assert.equal(monthlyRevenue(c, 'accrual', '2026-07', '2027-06').length, 12);
+});
+
+test('단발에도 할인·무료가 그대로 먹는다', () => {
+  const c = mk({
+    billingCycle: '건', amount: 1_000_000, startDate: '2026-05',
+    discounts: [disc({ discType: '할인', rate: 30 })],
+  });
+  assert.deepEqual(monthlyRevenue(c, 'accrual', '2026-01', '2026-12'), [{ month: '2026-05', net: 700_000 }]);
 });
 
 test('회계감사(AUD.AUDIT): 매출은 회계연도(fy-07~fy+1-06) 월할, 청구는 개시월 그대로', () => {

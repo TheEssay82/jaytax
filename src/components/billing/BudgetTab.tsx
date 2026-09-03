@@ -7,22 +7,38 @@
 // 양쪽에서 막는다. 배부는 **직접비(인건비)만** 한다 — 공통비는 결산 시스템을 만들 때 붙인다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { listForecastFacts, listRevenueAll, fyOf, fyLabel, fyRange } from '../../lib/revenueStatsApi';
+import {
+  listBudgetFacts, listForecastFacts, listRevenueAll, fyOf, fyLabel, fyRange, kstYm,
+} from '../../lib/revenueStatsApi';
 import {
   listStaffCost, saveStaffCost, deleteStaffCost, copyStaffCostFrom, totalCost, canSeeStaffCost,
-  type StaffCost,
+  isCostExempt, type StaffCost,
 } from '../../lib/staffCostApi';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
-const curFy = fyOf(new Date().toISOString().slice(0, 7));
+const curFy = fyOf(kstYm());
 const num = (s: string) => Number(String(s).replace(/[^\d-]/g, '')) || 0;
+
+/** 수입을 무엇으로 볼지. 기본은 **예산(혼합)** — 예산은 원래 이렇게 굴러간다. */
+type Basis = 'budget' | 'forecast' | 'actual';
+const BASIS_LABEL: Record<Basis, string> = {
+  budget: '예산(지난 달 실적 + 남은 달 예상)',
+  forecast: '예상만(계약 기준)',
+  actual: '실적만(청구 기준)',
+};
+
+/** 'YYYY-MM' 한 달 앞 — 안내 문구에만 쓴다. */
+function prevOf(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
 
 export default function BudgetTab() {
   const { role, profileName, readonly } = useAuth();
   const allowed = canSeeStaffCost(role, profileName);
 
   const [fy, setFy] = useState(curFy);
-  const [basis, setBasis] = useState<'forecast' | 'actual'>('forecast');
+  const [basis, setBasis] = useState<Basis>('budget');
   const [team, setTeam] = useState('taxteam');
   const [costs, setCosts] = useState<StaffCost[]>([]);
   const [income, setIncome] = useState<Map<string, { supply: number; clients: Set<string> }>>(new Map());
@@ -35,11 +51,12 @@ export default function BudgetTab() {
     setLoading(true); setErr('');
     try {
       const { from, to } = fyRange(fy);
+      const t = team || undefined;
       const [cs, facts] = await Promise.all([
         listStaffCost(fy),
-        basis === 'forecast'
-          ? listForecastFacts(from, to, team || undefined, { includeDraft: true })
-          : listRevenueAll(from, to, team || undefined),
+        basis === 'budget' ? listBudgetFacts(fy, t, { includeDraft: true })
+          : basis === 'forecast' ? listForecastFacts(from, to, t, { includeDraft: true })
+            : listRevenueAll(from, to, t),
       ]);
       const m = new Map<string, { supply: number; clients: Set<string> }>();
       for (const f of facts) {
@@ -64,14 +81,19 @@ export default function BudgetTab() {
     return [...names].map((name) => {
       const c = costs.find((x) => x.staffName === name);
       const inc = income.get(name);
-      const cost = c ? totalCost(c) : 0;
+      const exempt = isCostExempt(name);
+      const cost = exempt ? 0 : c ? totalCost(c) : 0;
       const supply = inc?.supply ?? 0;
-      return { name, cost, supply, clients: inc?.clients.size ?? 0, c, margin: supply - cost };
-    }).sort((a, b) => b.margin - a.margin);
+      return { name, exempt, cost, supply, clients: inc?.clients.size ?? 0, c, margin: supply - cost };
+    }).sort((a, b) => Number(a.exempt) - Number(b.exempt) || b.margin - a.margin);
   }, [costs, income]);
 
-  const sum = (f: (r: typeof rows[number]) => number) => rows.reduce((s, r) => s + f(r), 0);
+  // 합계는 **인건비 대상만** 센다 — 대상 아닌 사람의 수입이 섞이면 배수가 부풀려진다.
+  const counted = rows.filter((r) => !r.exempt);
+  const sum = (f: (r: typeof rows[number]) => number) => counted.reduce((s, r) => s + f(r), 0);
+  const exempted = rows.filter((r) => r.exempt && r.supply > 0);
   const unassigned = income.get('(미지정)');
+  const cut = kstYm();
 
   if (!allowed) {
     return (
@@ -95,10 +117,12 @@ export default function BudgetTab() {
             <option key={y} value={y}>{fyLabel(y)}</option>
           ))}
         </select>
-        <select value={basis} onChange={(e) => setBasis(e.target.value as 'forecast' | 'actual')}
-          style={{ fontWeight: 700, color: basis === 'forecast' ? '#92400E' : undefined }}>
-          <option value="forecast">예상(계약 기준)</option>
-          <option value="actual">실적(청구 기준)</option>
+        <select value={basis} onChange={(e) => setBasis(e.target.value as Basis)}
+          style={{ fontWeight: 700, color: basis === 'budget' ? '#1A2B52' : '#92400E' }}
+          title={BASIS_LABEL[basis]}>
+          {(Object.keys(BASIS_LABEL) as Basis[]).map((b) => (
+            <option key={b} value={b}>{BASIS_LABEL[b]}</option>
+          ))}
         </select>
         <select value={team} onChange={(e) => setTeam(e.target.value)}>
           <option value="taxteam">taxteam</option>
@@ -110,10 +134,19 @@ export default function BudgetTab() {
 
       <div className="alert-i" style={{ fontSize: 11.5 }}>
         <b>수입 − 인건비 = 기여</b>. 직원이 맡은 거래처에서 나오는(나올) 매출에서 그 사람의 총부담비용을 뺀 것입니다.
+        <br />· <b>배수 = 수입 ÷ 인건비</b> — 인건비 1원당 얼마를 벌어들였는가입니다. <b>2.00×</b> 면 인건비의
+        두 배를 벌어온 것입니다. 기여 금액만 보면 사람마다 인건비 규모가 달라 비교가 어긋나는데, 배수는 그 차이를 지웁니다.
         <br />· 배부는 <b>직접비(인건비)만</b> 합니다. 임차료·관리비 같은 공통비는 결산 시스템을 만들 때 붙입니다.
         <br />· 공동담당은 <b>배분 비율만큼</b> 나눠 더합니다 — 한 거래처가 두 사람에게 통째로 잡히지 않습니다.
         <br />· 이 화면은 <b>급여 자료</b>라 김민섭·김동주·정남지에게는 열리지 않습니다.
       </div>
+      {basis === 'budget' && (
+        <div style={{ fontSize: 11.5, color: '#555', margin: '6px 0' }}>
+          📐 수입 기준 — <b>{fyRange(fy).from} ~ {prevOf(cut)}</b> 은 실제로 청구한 <b>실적</b>,
+          {' '}<b>{cut} 이후</b>는 계약에서 뽑은 <b>예상</b>입니다.
+          {' '}달이 갈수록 실적이 예상을 밀어냅니다. 이번 달은 아직 청구가 끝나지 않았을 수 있어 예상 쪽에 둡니다.
+        </div>
+      )}
       {err && <div className="alert-e" style={{ fontSize: 11.5 }}>{err}</div>}
 
       <table className="tbl" style={{ fontSize: 11.5 }}>
@@ -124,7 +157,7 @@ export default function BudgetTab() {
             <th className="r" style={{ minWidth: 120 }}>수입</th>
             <th className="r" style={{ minWidth: 120 }}>인건비(총부담)</th>
             <th className="r" style={{ minWidth: 120 }}>기여</th>
-            <th className="r" style={{ width: 70 }}>배수</th>
+            <th className="r" style={{ width: 70 }} title="수입 ÷ 인건비 — 인건비 1원당 벌어들인 수입">배수</th>
             <th style={{ width: 90 }}>인건비 입력</th>
           </tr>
         </thead>
@@ -135,34 +168,40 @@ export default function BudgetTab() {
             </td></tr>
           )}
           {rows.map((r) => (
-            <tr key={r.name} style={r.cost === 0 ? { background: '#FFFBEB' } : undefined}>
-              <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.name}</td>
+            <tr key={r.name}
+              style={r.exempt ? { color: '#999' } : r.cost === 0 ? { background: '#FFFBEB' } : undefined}>
+              <td style={{ fontWeight: 700, color: r.exempt ? '#999' : '#1A2B52' }}>{r.name}</td>
               <td className="r" style={{ color: '#666' }}>{r.clients}</td>
               <td className="r">{won(r.supply)}</td>
-              <td className="r" style={{ color: r.cost ? '#666' : '#c33' }}>
-                {r.cost ? won(r.cost) : '미등록'}
+              <td className="r" style={{ color: r.exempt ? '#999' : r.cost ? '#666' : '#c33' }}>
+                {r.exempt ? '대상 아님' : r.cost ? won(r.cost) : '미등록'}
               </td>
-              <td className="r" style={{ fontWeight: 700, color: r.margin >= 0 ? '#065F46' : '#991B1B' }}>
-                {won(r.margin)}
+              <td className="r" style={{
+                fontWeight: 700,
+                color: r.exempt ? '#999' : r.margin >= 0 ? '#065F46' : '#991B1B',
+              }}>
+                {r.exempt ? '—' : won(r.margin)}
               </td>
               <td className="r" style={{ color: '#666' }}>
-                {r.cost ? `${(r.supply / r.cost).toFixed(2)}×` : '—'}
+                {r.exempt || !r.cost ? '—' : `${(r.supply / r.cost).toFixed(2)}×`}
               </td>
               <td>
-                <button className="btn-sm" disabled={readonly}
-                  onClick={() => setEdit(r.c ?? {
-                    id: '', fy, staffName: r.name, monthly: 0, annual: 0, bonus: 0,
-                    severance: 0, insurance: 0, etcCost: 0, note: '',
-                  })}>
-                  {r.c ? '수정' : '입력'}
-                </button>
+                {!r.exempt && (
+                  <button className="btn-sm" disabled={readonly}
+                    onClick={() => setEdit(r.c ?? {
+                      id: '', fy, staffName: r.name, monthly: 0, annual: 0, bonus: 0,
+                      severance: 0, insurance: 0, etcCost: 0, note: '',
+                    })}>
+                    {r.c ? '수정' : '입력'}
+                  </button>
+                )}
               </td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
-            <td>합계</td>
+            <td>합계<span style={{ fontWeight: 400, fontSize: 10.5, color: '#666' }}> (인건비 대상)</span></td>
             <td className="r">{sum((r) => r.clients)}</td>
             <td className="r">{won(sum((r) => r.supply))}</td>
             <td className="r">{won(sum((r) => r.cost))}</td>
@@ -176,6 +215,14 @@ export default function BudgetTab() {
           </tr>
         </tfoot>
       </table>
+
+      {exempted.length > 0 && (
+        <div style={{ fontSize: 11.5, color: '#666', marginTop: 8 }}>
+          ℹ️ {exempted.map((r) => r.name).join('·')} 님의 수입{' '}
+          <b>{won(exempted.reduce((s, r) => s + r.supply, 0))}</b> 은 <b>인건비 대상이 아니어서</b> 위 합계에서
+          뺐습니다 — 인건비 없이 합치면 배수가 부풀려집니다.
+        </div>
+      )}
 
       {unassigned && unassigned.supply > 0 && (
         <div className="alert-w" style={{ fontSize: 11.5, marginTop: 8 }}>

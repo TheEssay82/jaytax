@@ -191,6 +191,46 @@ export async function listRevenueAll(
   return [...act, ...req.filter((f) => !actualFys.has(f.fy))];
 }
 
+/** 오늘이 속한 달('YYYY-MM') — **한국 표준시**로. UTC 로 재면 매달 1일 새벽에 앞 달로 샌다. */
+export function kstYm(): string {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit',
+  }).format(new Date()).slice(0, 7);
+}
+/** 'YYYY-MM' 한 달 앞. */
+function prevYm(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+// 'YYYY-MM' 은 자릿수가 고정이라 문자열 비교가 곧 날짜 비교다.
+const min = (a: string, b: string) => (a < b ? a : b);
+const max = (a: string, b: string) => (a > b ? a : b);
+
+/**
+ * **예산용 한 해치 매출 — 지난 달은 실적, 이번 달부터는 예상.**
+ *
+ * 예산은 원래 이렇게 굴러간다. 연초엔 전부 예상이고, 달이 갈수록 실적이 예상을 밀어낸다.
+ * 계약만으로 뽑은 예상에는 구조적인 빈 자리가 있는데(단발 계약, 계약에 안 잡힌 수시 매출),
+ * **이미 지나간 달을 실적으로 덮으면 그 자리가 통째로 메워진다.**
+ *
+ * 이번 달은 아직 청구가 끝나지 않았을 수 있어 **예상 쪽**에 둔다 — 실적으로 당기면
+ * 월 중에는 덜 잡힌 금액이 그대로 한 해 합계가 되어 예산을 과소평가한다.
+ * 두 구간은 달이 겹치지 않으므로 이중계상이 없다.
+ */
+export async function listBudgetFacts(
+  fy: number, team?: string, opts: { includeDraft?: boolean } = {},
+): Promise<RevenueFact[]> {
+  const { from, to } = fyRange(fy);
+  const cut = kstYm();                        // 이번 달 = 예상이 시작되는 달
+  const actualTo = min(prevYm(cut), to);      // 실적은 지난 달까지
+  const forecastFrom = max(cut, from);        // 예상은 이번 달부터
+
+  const parts: Promise<RevenueFact[]>[] = [];
+  if (actualTo >= from) parts.push(listRevenueAll(from, actualTo, team));
+  if (forecastFrom <= to) parts.push(listForecastFacts(forecastFrom, to, team, opts));
+  return (await Promise.all(parts)).flat();
+}
+
 // ── 피벗 ────────────────────────────────────────────────
 
 /** 축 하나 — 사실 한 줄을 어떤 이름으로 묶을지. */

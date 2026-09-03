@@ -91,6 +91,28 @@ function billingAnchor(c: SalesContract): number | null {
 }
 
 /**
+ * **단발 계약**인가 — 그 금액이 '주기당'이 아니라 **그 건의 총액**인 계약.
+ *
+ *   · 주기 '건'  — 한 번 하고 끝나는 일(용역 15,000,000 같은 것)
+ *   · 주기계약인데 **계약기간이 한 주기보다 짧은 것** — 예: 연 계약 500,000 · 2026-07 한 달
+ *
+ * 이런 계약을 월할하면 1/12 만 잡혀 예상이 크게 빈다
+ * (연건아트레지던스 800,000 → 66,667 로 잡히던 자리다).
+ * 이미 벌어진 일이라 확정인 셈이므로 **개시월에 전액** 인식한다.
+ *
+ * 분할회차가 있으면 그쪽이 우선(분할 우선 규칙)이라 단발로 보지 않는다.
+ * '발생시'는 언제 몇 번 일어날지 모르므로 여기에 넣지 않는다 — 스케줄 없음 그대로다.
+ */
+export function isOneOff(c: SalesContract): boolean {
+  if (c.installments.length) return false;
+  if (c.billingCycle === '건') return true;
+  const step = CYCLE_STEP[c.billingCycle];
+  if (step == null) return false;
+  const s = monthIndex(c.startDate), e = monthIndex(c.endDate);
+  return s != null && e != null && e - s + 1 < step;
+}
+
+/**
  * 계약의 월별 순매출을 [fromMonth, toMonth] 창구 안에서 전개.
  * fromMonth/toMonth = 'YYYY-MM'(포함). 종료 없는 계속계약은 창구 상한까지만 생성.
  */
@@ -112,6 +134,10 @@ export function monthlyRevenue(c: SalesContract, basis: Basis, fromMonth: string
         if (mi == null || !inWin(mi)) continue;
         out.push({ month: indexToMonth(mi), net: net(mi, it.amount) });
       }
+    } else if (isOneOff(c)) {
+      // 단발: 개시월(연 1회 계약은 지정 청구월)에 계약금액 전액.
+      const mi = billingAnchor(c);
+      if (mi != null && inWin(mi)) out.push({ month: indexToMonth(mi), net: net(mi, c.amount) });
     } else if (step) {
       // 정기: 첫 청구월(연 1회는 청구월 지정 반영)부터 주기마다 계약금액(주기당) 청구.
       const start = billingAnchor(c);
@@ -126,7 +152,13 @@ export function monthlyRevenue(c: SalesContract, basis: Basis, fromMonth: string
     return out;
   }
 
-  // 발생주의: 주기계약은 연환산/12를 활성월(인식구간)마다 균등배분. 감사는 회계연도로 remap.
+  // 발생주의: 단발은 월할하지 않고 인식구간 첫 달에 전액.
+  if (isOneOff(c)) {
+    const mi = monthIndex(recognitionSpan(c).from);
+    if (mi != null && inWin(mi)) out.push({ month: indexToMonth(mi), net: net(mi, c.amount) });
+    return out;
+  }
+  // 주기계약은 연환산/12를 활성월(인식구간)마다 균등배분. 감사는 회계연도로 remap.
   if (step) {
     const span = recognitionSpan(c);
     const start = monthIndex(span.from);
@@ -176,7 +208,10 @@ export function billingItemsForMonth(c: SalesContract, ym: string): BillingItem[
       .map((it) => ({ installmentId: it.id ?? null, label: it.label || '', net: net(it.amount) }));
   }
   const step = CYCLE_STEP[c.billingCycle];
-  if (!step) return [];                       // 발생시·건 = 예측 스케줄 없음
+  // 발생시·건 = 발행요청 후보를 자동으로 만들지 않는다. monthlyRevenue 는 단발('건')을 개시월에
+  // 전액 인식하지만(예산·예상용), 여기는 **세금계산서를 실제로 끊는 자리**라 자동 제안하지 않는다 —
+  // 이미 수기로 발행한 건이 후보로 되살아나 이중발행이 될 수 있다. 건별은 손으로 요청한다.
+  if (!step) return [];
   const start = billingAnchor(c);
   if (start == null || mi < start) return [];
   const end = monthIndex(c.endDate);
