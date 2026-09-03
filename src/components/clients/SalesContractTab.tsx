@@ -12,6 +12,7 @@ import { ColFilter, scrollBox, stickyTop, useTableView, ColumnSettings, ResizeHa
 import { VIEW_KEYS } from '../../lib/tableViewApi';
 import { exportContractTemplate, parseContractExcelFile, applyContractExcel, type ContractExcelResult } from '../../lib/bizContractExcel';
 import { periodRevenue, defaultWindow, monthIndex } from '../../lib/billingSchedule';
+import { listInvoiceRequests } from '../../lib/invoiceRequestApi';
 import {
   listSalesContracts, createSalesContract, updateSalesContract, deleteSalesContract, backfillContractCodes,
   saveInstallments, saveDiscounts, saveContractStaff, listContractStaffProfiles, setInstallmentBilled,
@@ -140,12 +141,18 @@ export default function SalesContractTab() {
   const [periodTo, setPeriodTo] = useState<string>('');     // 특정기간 종료월
   const [periodMonth, setPeriodMonth] = useState<string>(''); // 특정월
   const [capToday, setCapToday] = useState<boolean>(true);  // 경과분(오늘까지 상한)
+  /** 발행요청(취소 제외)이 이미 걸린 회차 id — 알람을 자동으로 닫는 근거. */
+  const [billedKeys, setBilledKeys] = useState<Set<string>>(new Set());
 
   async function load() {
     try {
       setError(null);
-      const [ents, stf, cons] = await Promise.all([listBizEntities(), listContractStaffProfiles(), listSalesContracts()]);
+      const [ents, stf, cons, reqs] = await Promise.all([
+        listBizEntities(), listContractStaffProfiles(), listSalesContracts(), listInvoiceRequests(),
+      ]);
       setEntities(ents); setStaff(stf); setContracts(cons);
+      // 이미 발행요청이 걸린 회차 — 알람에서 뺀다(취소된 것은 걸린 것으로 치지 않는다).
+      setBilledKeys(new Set(reqs.filter((r) => r.status !== '취소' && r.installmentId).map((r) => r.installmentId!)));
     } catch (e) { setError(e instanceof Error ? e.message : '불러오지 못했습니다.'); }
     finally { setLoading(false); }
   }
@@ -313,7 +320,16 @@ export default function SalesContractTab() {
     return `전체(${w})`;
   }, [periodMode, pivotYear, periodFrom, periodTo, periodMonth, win]);
 
-  // 청구예정일 경과 알람 — 로그인한 담당CPA 본인 계약의 분할 회차 중 예정일이 지난 것
+  /**
+   * 청구예정일 경과 알람 — 로그인한 담당CPA 본인 계약의 분할 회차 중 예정일이 지난 것.
+   *
+   * 알람이 닫히는 길은 **둘**이다(사용자 확정 2026-09-03):
+   *   ① 그 회차에 발행요청이 걸렸다(취소 제외) — **자동**
+   *   ② 사람이 '✓ 청구확인'을 눌렀다(billedAt) — ERP 에서 직접 발행한 경우
+   *
+   * ①이 없던 시절에는 손으로만 닫을 수 있었고, 그래서 실제 발행과 어긋난 적이 있다 —
+   * 감사팀 착수금 3건(23,000,000)이 청구는 됐는데 계약에 연결되지 않아 알람만 손으로 껐다.
+   */
   const myOverdue = useMemo(() => {
     if (!profileName) return [];
     const today = todayYmd();   // UTC 로 찍으면 오전 9시 이전에 기한 지난 건이 안 잡힌다
@@ -321,11 +337,13 @@ export default function SalesContractTab() {
     for (const c of contracts) {
       if (c.effectiveCpa !== profileName) continue;
       for (const it of c.installments) {
-        if (it.id && it.dueDate && it.dueDate < today && !it.billedAt) out.push({ id: it.id, name: entName(c.entityId), label: it.label, due: it.dueDate, amount: it.amount });
+        if (!it.id || !it.dueDate || it.dueDate >= today) continue;
+        if (it.billedAt || billedKeys.has(it.id)) continue;
+        out.push({ id: it.id, name: entName(c.entityId), label: it.label, due: it.dueDate, amount: it.amount });
       }
     }
     return out.sort((a, b) => a.due.localeCompare(b.due));
-  }, [contracts, profileName]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [contracts, profileName, billedKeys]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function confirmBilled(id: string) {
     try { await setInstallmentBilled(id, true); await load(); flash('청구완료 확인됨'); }
