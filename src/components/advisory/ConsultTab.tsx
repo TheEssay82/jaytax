@@ -263,6 +263,14 @@ export default function ConsultTab() {
 
         <div className="frow" style={{ gridTemplateColumns: '1fr' }}>
           <label className="fl">질문 · 사실관계</label>
+          {/* 상담기록은 보존기간을 따로 두지 않고 영구보관한다(사용자 결정 2026-09-03).
+              그 전제가 '의뢰인 개인정보를 적지 않는다'이므로, 적는 자리에서 그렇게 안내한다.
+              혹시 적더라도 API 로 나가기 전에 마스킹되지만(pii.ts), 저장되는 본문에는 남는다. */}
+          <div style={{ fontSize: 10.5, color: '#92400E', background: '#FEF3C7',
+            border: '1px solid #FCD34D', borderRadius: 4, padding: '5px 8px', marginBottom: 5 }}>
+            ⚠️ <b>의뢰인의 실명·주민번호·연락처는 적지 마세요.</b> 상담기록은 지우지 않고 계속 남습니다.
+            쟁점만 적으시면 됩니다 (예: “A법인”, “개인사업자 갑”).
+          </div>
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}

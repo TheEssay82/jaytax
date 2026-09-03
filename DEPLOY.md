@@ -66,11 +66,31 @@ Vercel 이 HTTPS 자체는 강제하지만 **헤더는 명시해야 붙는다**.
 (제거 신청 후 수개월). 하위 도메인 중 http 로만 열리는 것이 하나라도 생기면 접속이 막힌다.
 지금은 `includeSubDomains` 까지만 두고, 하위 도메인 구성이 확정된 뒤에 판단한다.
 
-### CSP(Content-Security-Policy) 는 아직 없다
+### CSP(Content-Security-Policy) — 지금은 Report-Only
 
-넣으면 가장 강한 방어가 되지만 지금 화면이 부르는 곳이 여럿이다 — Supabase(REST·Edge Function),
-esm.sh, 법제처(`law.go.kr` 조문 이미지). 목록을 빠뜨리면 **조용히 화면 일부가 깨진다**.
-먼저 `Content-Security-Policy-Report-Only` 로 한동안 관찰해 실제 호출처를 모은 뒤 적용한다. (미착수)
+소스를 훑어 **바깥으로 나가는 곳을 전부 세었다.** 넷뿐이다.
+
+| 어디 | 무엇 | 어느 지시어 |
+|---|---|---|
+| `cdn.jsdelivr.net` | Tabler 아이콘 웹폰트 CSS + 폰트 파일 (`index.html`) | style-src · font-src |
+| `fonts.googleapis.com` / `fonts.gstatic.com` | 습작(`/essay`) 화면 폰트 (`essayTheme.ts`) | style-src · font-src |
+| `*.supabase.co` | REST·Auth·Storage·Edge Function·Realtime(wss) | connect-src |
+| `data:` / `blob:` | 2차 인증 QR(SVG data URI), 엑셀 내려받기 | img-src · font-src · worker-src |
+
+`db.kasb.or.kr` · `law.go.kr` · `service.epost.go.kr` 은 **`<a href>` 링크**라 리소스를 불러오지
+않는다 — CSP 대상이 아니다. 상담 회신의 마크다운은 자체 렌더러(`Markdown.tsx`)라 원문의
+`<img>` 태그를 그리지 않으므로 법제처 이미지도 뜨지 않는다.
+
+`style-src` 에 `'unsafe-inline'` 이 필요한 이유: React 의 `style={{…}}` 이 인라인 style
+속성으로 나간다. 빼면 화면 전체의 스타일이 사라진다. 스타일 인라인은 스크립트 실행과 달라
+위험이 크지 않다.
+
+**검증**: 운영 번들(`npm run build`)에 같은 정책을 meta 로 걸고 `vite preview` 로 띄워
+로그인 화면·습작 화면을 열어 위반 0건을 확인했다(폰트 5종·jsdelivr CSS·Supabase 연결 모두 통과).
+
+**지금은 `Content-Security-Policy-Report-Only`** 다. 로그인 뒤 화면들(거래처·청구·상담 등)은
+아직 실사용으로 훑지 못했으므로, 한동안 관찰해 브라우저 콘솔에 위반이 없으면
+헤더 이름에서 `-Report-Only` 를 떼어 **강제**로 바꾼다.
 
 ### 배포 후 확인
 
