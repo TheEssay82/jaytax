@@ -20,6 +20,7 @@ export const ACTIONS = {
   download_hometax_pw_all: '홈택스PW 일괄 열람',
   export: '자료 내려받기',
   purge: '파기',
+  reveal_denied: '열람 거부됨',
 } as const;
 export type ActionKey = keyof typeof ACTIONS;
 export const actionLabel = (a: string) => (ACTIONS as Record<string, string>)[a] ?? a;

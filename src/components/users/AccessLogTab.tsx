@@ -16,7 +16,7 @@ const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 const monthStart = () => { const d = new Date(); d.setDate(1); return ymd(d); };
 
 /** 열람 성격의 행위 — 점검할 때 가장 먼저 봐야 하는 것들. */
-const SENSITIVE = new Set(['reveal_resident', 'reveal_hometax_pw', 'download_resident_all', 'download_hometax_pw_all']);
+const SENSITIVE = new Set(['reveal_resident', 'reveal_hometax_pw', 'download_resident_all', 'download_hometax_pw_all', 'reveal_denied']);
 
 export default function AccessLogTab() {
   const [from, setFrom] = useState(monthStart());
