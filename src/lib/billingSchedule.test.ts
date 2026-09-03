@@ -58,6 +58,11 @@ test('연 계약(감사): 청구주의=개시월 1회 전액, 발생주의=12개
   assert.ok(Math.abs(periodRevenue(c, 'accrual', '2026-01', '2026-12') - 50_000_000) <= 12); // 반올림 오차 허용
 });
 
+test('분기 계약이 한 달만 있어도 1/3 로 월할한다 — 단발로 보지 않는다', () => {
+  const c = mk({ billingCycle: '분기', amount: 3_000_000, startDate: '2026-07-01', endDate: '2026-07-31' });
+  assert.equal(periodRevenue(c, 'accrual', '2026-07', '2027-06'), 1_000_000);
+});
+
 test('분기 계약: 청구주의는 3개월마다, 발생주의는 매월 1/3', () => {
   const c = mk({ billingCycle: '분기', amount: 3_000_000, startDate: '2026-01', endDate: '2026-12' });
   const bill = monthlyRevenue(c, 'billing', '2026-01', '2026-12');
@@ -99,9 +104,19 @@ test("'발생시'는 그대로 스케줄 없음 — 언제 몇 번 일어날지 
   assert.equal(monthlyRevenue(c, 'accrual', '2026-01', '2026-12').length, 0);
 });
 
-test('연 계약인데 기간이 한 달 — 1/12 가 아니라 전액이다 (연건아트레지던스)', () => {
-  const c = mk({ billingCycle: '연', amount: 500_000, startDate: '2026-07-01', endDate: '2026-07-31' });
-  assert.equal(periodRevenue(c, 'accrual', '2026-07', '2027-06'), 500_000, '41,667 이 되면 안 된다');
+test('연 계약은 기간이 짧아도 단발로 넘겨짚지 않는다 — 종료일 오타가 12배가 되면 안 된다', () => {
+  // 한때 '기간 < 한 주기'를 단발로 추론했다. 그 추론은 종료일 오타를 12배 과대계상으로
+  // 키운다 — 연 12,000,000 의 종료일을 잘못 눌러 1개월이 되면 전액이 한 달에 잡혔다.
+  // 단발은 주기 '건' 으로 **명시**하기로 했으므로(사용자 확정 2026-09-03) 추론을 뺐다.
+  const c = mk({ billingCycle: '연', amount: 12_000_000, startDate: '2026-07-01', endDate: '2026-07-31' });
+  assert.equal(periodRevenue(c, 'accrual', '2026-07', '2027-06'), 1_000_000, '전액(12,000,000)이 잡히면 안 된다');
+  // 청구주의는 원래 개시월 1회 전액이다(현금이 그때 들어오므로) — 이건 그대로.
+  assert.equal(periodRevenue(c, 'billing', '2026-07', '2027-06'), 12_000_000);
+});
+
+test('그 단발을 제대로 넣는 법은 주기 「건」 이다', () => {
+  const c = mk({ billingCycle: '건', amount: 500_000, startDate: '2026-07-01', endDate: '2026-07-31' });
+  assert.equal(periodRevenue(c, 'accrual', '2026-07', '2027-06'), 500_000);
   assert.equal(periodRevenue(c, 'billing', '2026-07', '2027-06'), 500_000);
 });
 
