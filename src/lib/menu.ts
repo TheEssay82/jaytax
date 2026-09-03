@@ -24,7 +24,10 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'biz-register', label: '🏢 거래처등록' },
       { id: 'biz-contract', label: '📄 매출계약등록' },
       { id: 'biz-contacts', label: '👤 거래처담당자등록' },
-      { id: 'biz-status', label: '📈 현황및예산조회' },
+      // 전사 매출·계약 금액을 통째로 보는 자리다. 매출통계와 같은 성격이라
+      // 실무 담당자에게는 내놓지 않는다(사용자 확정 2026-09-03).
+      // 매출통계(통계)보다 한 사람 더 막는다 — 이쪽은 예산까지 함께 보이기 때문이다.
+      { id: 'biz-status', label: '📈 현황및예산조회', hideFor: ['김민섭', '김동주', '정남지'] },
     ],
   },
   {
