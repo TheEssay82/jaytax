@@ -102,8 +102,8 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340
   const allPicked = !!select && headKeys.length > 0 && headKeys.every((k) => select.picked.has(k));
 
   return (
-    <div style={{ overflow: 'auto', maxHeight, border: '1px solid #eee', borderRadius: 6 }}>
-      <table className="tbl" style={{ tableLayout: 'fixed', width: '100%', fontSize: 11.5 }}>
+    <div style={{ overflow: 'auto', maxHeight, border: '1px solid var(--rule-2)', borderRadius: 6 }}>
+      <table className="tbl" style={{ tableLayout: 'fixed', width: '100%', fontSize: 'var(--fs-1)' }}>
         <colgroup>
           {select && <col style={{ width: 30 }} />}
           {shown.map((c) => <col key={c.key} style={{ width: view.widthOf(c.key, c.width ?? 90) }} />)}
@@ -140,7 +140,7 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340
         </thead>
         <tbody>
           {rowsView.length === 0 && (
-            <tr><td colSpan={shown.length + (select ? 1 : 0)} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+            <tr><td colSpan={shown.length + (select ? 1 : 0)} style={{ textAlign: 'center', padding: 20, color: 'var(--ink-4)' }}>
               {empty}
             </td></tr>
           )}
@@ -183,6 +183,6 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340
 }
 
 const thc: React.CSSProperties = {
-  padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: '#555',
+  padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: 'var(--ink-2)',
   whiteSpace: 'nowrap', position: 'relative',
 };

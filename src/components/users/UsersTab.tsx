@@ -110,7 +110,7 @@ export default function UsersTab() {
     return (
       <div className="card">
         <div className="chdr">👤 사용자 관리</div>
-        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
       </div>
     );
   }
@@ -119,13 +119,13 @@ export default function UsersTab() {
     <div className="card">
       <div className="chdr">
         사용자 / 계정 관리 (총 {rows.length}명)
-        {msg && <span style={{ marginLeft: 'auto', fontSize: 11, color: '#059669' }}>{msg}</span>}
+        {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: '#059669' }}>{msg}</span>}
       </div>
 
       {error && <div className="alert-w">{error}</div>}
 
       <div className="card" style={{ background: '#F5F1EB' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>＋ 직원 추가 (계정 생성)</div>
+        <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 8 }}>＋ 직원 추가 (계정 생성)</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
           <div className="frow">
             <span className="fl">이메일<span className="req">*</span></span>
@@ -144,7 +144,7 @@ export default function UsersTab() {
             <select
               value={nRole}
               onChange={(e) => setNRole(e.target.value as Role)}
-              style={{ padding: '4px 7px', fontSize: 12 }}
+              style={{ padding: '4px 7px', fontSize: 'var(--fs-2)' }}
             >
               {ROLES.map((r) => (
                 <option key={r} value={r}>
@@ -157,7 +157,7 @@ export default function UsersTab() {
         <button className="btn-p" style={{ marginTop: 7 }} onClick={addEmployee} disabled={adding}>
           {adding ? '생성 중…' : '직원 계정 생성'}
         </button>
-        <div style={{ fontSize: 11, color: '#888', marginTop: 6 }}>
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 6 }}>
           ※ 담당자명은 통계 본인필터·청구서 담당자와 매칭되니 정확히 입력하세요.
         </div>
       </div>
@@ -190,14 +190,14 @@ export default function UsersTab() {
                       placeholder="예: 김동주"
                     />
                   </td>
-                  <td style={{ fontSize: 11, color: '#666' }}>{r.email || '-'}</td>
+                  <td style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>{r.email || '-'}</td>
                   <td>
                     <select
                       value={e.role}
                       onChange={(ev) =>
                         setEdits((p) => ({ ...p, [r.id]: { ...e, role: ev.target.value as Role } }))
                       }
-                      style={{ width: '100%', padding: '4px 6px', fontSize: 12 }}
+                      style={{ width: '100%', padding: '4px 6px', fontSize: 'var(--fs-2)' }}
                       disabled={isMe}
                       title={isMe ? '본인 역할은 변경할 수 없습니다' : ''}
                     >
@@ -221,18 +221,18 @@ export default function UsersTab() {
                       }
                       onClick={() => void toggleLock(r)}
                       style={{
-                        fontSize: 10.5,
+                        fontSize: 'var(--fs-0)',
                         padding: '2px 8px',
                         fontWeight: 700,
                         ...(r.readonly
-                          ? { background: '#FEE2E2', color: '#B91C1C' }
+                          ? { background: '#FEE2E2', color: 'var(--bad)' }
                           : { background: '#D1FAE5', color: '#065F46' }),
                       }}
                     >
                       {lockingId === r.id ? '…' : r.readonly ? '🔒 잠김' : '🔓 쓰기가능'}
                     </button>
                   </td>
-                  <td style={{ fontSize: 10, color: '#999', whiteSpace: 'nowrap' }}>
+                  <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
                     {r.createdAt ? r.createdAt.split('T')[0].replace(/-/g, '.') : ''}
                     {isMe && <span className="bdg b-on" style={{ marginLeft: 5, fontSize: 9 }}>나</span>}
                   </td>

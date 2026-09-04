@@ -181,7 +181,7 @@ function Shell() {
           title="개발노트 보기"
           onClick={() => setShowDevNotes(true)}
           style={{
-            fontSize: 11, color: '#9aa0ad', fontWeight: 600, marginLeft: 6,
+            fontSize: 'var(--fs-1)', color: 'var(--ink-3)', fontWeight: 600, marginLeft: 6,
             background: 'none', border: 'none', cursor: 'pointer', padding: 0,
           }}
         >
@@ -216,7 +216,7 @@ function Shell() {
                           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%' }}
                         >
                           <span>{it.label}</span>
-                          <span style={{ color: '#9aa0ad', fontSize: 11 }}>{openSub === it.id ? '▾' : '▸'}</span>
+                          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>{openSub === it.id ? '▾' : '▸'}</span>
                         </button>
                         {openSub === it.id &&
                           it.children.map((c) => (
@@ -225,7 +225,7 @@ function Shell() {
                               className={`h-dropdown-item${cur === c.id ? ' on' : ''}`}
                               role="menuitem"
                               onClick={() => goTab(c.id)}
-                              style={{ paddingLeft: 28, fontSize: 12 }}
+                              style={{ paddingLeft: 28, fontSize: 'var(--fs-2)' }}
                             >
                               {c.label}
                             </button>
@@ -264,7 +264,7 @@ function Shell() {
           {role !== 'external' && <NotificationBell onNavigate={goTab} />}
           <span className="h-title">
             <span className="h-email">{user?.email}</span>
-            <span className="bdg b-on" style={{ marginLeft: 6, fontSize: 10 }}>
+            <span className="bdg b-on" style={{ marginLeft: 6, fontSize: 'var(--fs-0)' }}>
               {ROLE_LABELS[role]}
             </span>
           </span>
@@ -289,7 +289,7 @@ function Shell() {
           role="status"
           style={{
             background: '#fff4e5', borderBottom: '1px solid #f0c98a', color: '#8a5a00',
-            padding: '8px 16px', fontSize: 12.5, fontWeight: 600, textAlign: 'center',
+            padding: '8px 16px', fontSize: 'var(--fs-2)', fontWeight: 600, textAlign: 'center',
           }}
         >
           🔒 읽기 전용 테스트 계정입니다 — 모든 기능을 열람·사용할 수 있으나 저장·변경·삭제는 서버에서 차단됩니다.

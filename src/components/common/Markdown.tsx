@@ -83,20 +83,20 @@ export default function Markdown({ text, style, boxed = false, hideFirstH1 = fal
   return <div style={{ ...rootStyle, ...style }}>{nodes}</div>;
 }
 
-const rootStyle: CSSProperties = { color: '#1f2937', fontSize: 14, lineHeight: 1.75 };
+const rootStyle: CSSProperties = { color: 'var(--ink-2)', fontSize: 14, lineHeight: 1.75 };
 const pStyle: CSSProperties = { margin: '0 0 12px', lineHeight: 1.75 };
 const ulStyle: CSSProperties = { margin: '0 0 12px', paddingLeft: 20 };
 const olStyle: CSSProperties = { margin: '0 0 12px', paddingLeft: 22 };
 const liStyle: CSSProperties = { margin: '0 0 6px', lineHeight: 1.7 };
-const hrStyle: CSSProperties = { border: 'none', borderTop: '1px solid #ece8e0', margin: '18px 0' };
+const hrStyle: CSSProperties = { border: 'none', borderTop: '1px solid var(--rule-2)', margin: '18px 0' };
 const boxStyle: CSSProperties = {
-  background: '#faf9f4', border: '1px solid #ece7dd', borderRadius: 12, padding: '14px 18px 4px', marginBottom: 12,
+  background: '#faf9f4', border: '1px solid var(--rule-2)', borderRadius: 12, padding: '14px 18px 4px', marginBottom: 12,
 };
 
 function headingStyle(lvl: number, boxed: boolean): CSSProperties {
-  if (lvl === 1) return { fontSize: 18, fontWeight: 800, color: '#1A2B52', margin: '4px 0 14px', lineHeight: 1.4, letterSpacing: '-0.01em' };
+  if (lvl === 1) return { fontSize: 18, fontWeight: 800, color: 'var(--navy)', margin: '4px 0 14px', lineHeight: 1.4, letterSpacing: '-0.01em' };
   if (lvl === 2) return boxed
-    ? { fontSize: 14.5, fontWeight: 700, color: '#1A2B52', margin: '0 0 10px' }
-    : { fontSize: 14.5, fontWeight: 700, color: '#1A2B52', margin: '20px 0 8px', paddingBottom: 5, borderBottom: '1.5px solid #ece7dd' };
+    ? { fontSize: 14.5, fontWeight: 700, color: 'var(--navy)', margin: '0 0 10px' }
+    : { fontSize: 14.5, fontWeight: 700, color: 'var(--navy)', margin: '20px 0 8px', paddingBottom: 5, borderBottom: '1.5px solid var(--rule-2)' };
   return { fontSize: 13.5, fontWeight: 700, color: '#3a4a6b', margin: '14px 0 6px' };
 }

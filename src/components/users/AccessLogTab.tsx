@@ -56,7 +56,7 @@ export default function AccessLogTab() {
     <div className="card">
       <div className="chdr">🔎 접속기록 점검</div>
 
-      <div className="alert-i" style={{ fontSize: 11.5 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
         「개인정보의 안전성 확보조치 기준」 <b>제8조</b> — 누가·언제·<b>어디서(IP)</b> 접속해
         <b> 누구의</b> 개인정보를 <b>무엇을</b> 했는지 남깁니다.
         주민등록번호를 다루므로 <b>2년 이상 보관</b>해야 합니다(제8조제1항 단서 제2호).
@@ -66,22 +66,22 @@ export default function AccessLogTab() {
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-end', margin: '10px 0' }}>
-        <label style={{ fontSize: 11.5 }}>기간<br />
+        <label style={{ fontSize: 'var(--fs-1)' }}>기간<br />
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         </label>
-        <label style={{ fontSize: 11.5 }}>~<br />
+        <label style={{ fontSize: 'var(--fs-1)' }}>~<br />
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
-        <label style={{ fontSize: 11.5 }}>사용자<br />
+        <label style={{ fontSize: 'var(--fs-1)' }}>사용자<br />
           <input value={actor} onChange={(e) => setActor(e.target.value)} placeholder="이름 일부" style={{ width: 110 }} />
         </label>
-        <label style={{ fontSize: 11.5 }}>수행업무<br />
+        <label style={{ fontSize: 'var(--fs-1)' }}>수행업무<br />
           <select value={action} onChange={(e) => setAction(e.target.value)}>
             <option value="">전체</option>
             {Object.entries(ACTIONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </label>
-        <label style={{ fontSize: 11.5 }}>정보주체<br />
+        <label style={{ fontSize: 'var(--fs-1)' }}>정보주체<br />
           <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="거래처·대표자" style={{ width: 130 }} />
         </label>
         <button className="btn-p" disabled={busy} onClick={() => void load()}>{busy ? '조회 중…' : '조회'}</button>
@@ -90,26 +90,26 @@ export default function AccessLogTab() {
       </div>
 
       {verify && (
-        <div className={verify.ok ? 'alert-s' : 'alert-e'} style={{ fontSize: 11.5 }}>
+        <div className={verify.ok ? 'alert-s' : 'alert-e'} style={{ fontSize: 'var(--fs-1)' }}>
           {verify.ok
             ? `✅ ${verify.checked.toLocaleString('ko-KR')}건 검증 — 고쳐지거나 빠진 줄이 없습니다.`
             : `⚠️ ${verify.checked.toLocaleString('ko-KR')}건 중 id ${verify.firstBadId} (${kstDateTime(verify.firstBadAt)}) 부터 어긋납니다 — 그 줄이 고쳐졌거나, 그 앞줄이 지워졌습니다.`}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11.5, margin: '8px 0' }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 'var(--fs-1)', margin: '8px 0' }}>
         <span className="bdg b-on">전체 {rows.length.toLocaleString('ko-KR')}건</span>
         <span className="bdg" style={{ background: sensitiveCount ? '#FEF3C7' : undefined, borderColor: sensitiveCount ? '#FCD34D' : undefined }}>
           민감정보 열람 {sensitiveCount}건
         </span>
         {noIp > 0 && <span className="bdg" style={{ background: '#fee', borderColor: '#fbb' }}>접속지 없음 {noIp}건</span>}
-        {summary.map(([a, n]) => <span key={a} className="bdg" style={{ color: '#666' }}>{actionLabel(a)} {n}</span>)}
+        {summary.map(([a, n]) => <span key={a} className="bdg" style={{ color: 'var(--ink-2)' }}>{actionLabel(a)} {n}</span>)}
       </div>
 
-      {err && <div className="alert-e" style={{ fontSize: 11.5 }}>{err}</div>}
+      {err && <div className="alert-e" style={{ fontSize: 'var(--fs-1)' }}>{err}</div>}
 
       <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
-        <table className="tbl" style={{ fontSize: 11.5 }}>
+        <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
           <thead>
             <tr>
               <th style={{ minWidth: 130 }}>접속일시</th>
@@ -123,7 +123,7 @@ export default function AccessLogTab() {
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: 'center', color: '#888', padding: 14 }}>
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-3)', padding: 14 }}>
                 이 기간에 기록이 없습니다.
               </td></tr>
             )}
@@ -132,20 +132,20 @@ export default function AccessLogTab() {
                 <td style={{ whiteSpace: 'nowrap' }}>{kstDateTime(r.at)}</td>
                 <td>
                   {r.actorName}
-                  <div style={{ fontSize: 10, color: '#888' }}>{r.actorEmail}</div>
+                  <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{r.actorEmail}</div>
                 </td>
-                <td style={{ fontFamily: 'monospace', fontSize: 11 }} title={r.userAgent}>
-                  {r.ip || <span style={{ color: '#c33' }}>—</span>}
+                <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-1)' }} title={r.userAgent}>
+                  {r.ip || <span style={{ color: 'var(--bad)' }}>—</span>}
                 </td>
-                <td style={SENSITIVE.has(r.action) ? { fontWeight: 700, color: '#92400E' } : undefined}>
+                <td style={SENSITIVE.has(r.action) ? { fontWeight: 700, color: 'var(--warn)' } : undefined}>
                   {actionLabel(r.action)}
                 </td>
                 <td>{r.subjectName || '—'}</td>
-                <td style={{ fontSize: 10.5, color: '#666' }}>{r.target || '—'}</td>
-                <td style={{ fontSize: 10.5 }}>
+                <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-2)' }}>{r.target || '—'}</td>
+                <td style={{ fontSize: 'var(--fs-0)' }}>
                   {r.reason}
                   {r.detail?.count != null && (
-                    <span style={{ color: '#92400E', fontWeight: 700 }}> ({String(r.detail.count)}건)</span>
+                    <span style={{ color: 'var(--warn)', fontWeight: 700 }}> ({String(r.detail.count)}건)</span>
                   )}
                 </td>
               </tr>

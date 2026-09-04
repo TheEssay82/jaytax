@@ -56,7 +56,7 @@ export default function RetentionTab() {
           onClick={() => void load()}>{busy ? '조회 중…' : '새로고침'}</button>
       </div>
 
-      <div className="alert-i" style={{ fontSize: 11.5 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
         <b>개인정보 보호법 제21조</b> — 보유기간이 지나거나 목적을 달성해 불필요해진 개인정보는
         <b> 지체 없이 파기</b>합니다. 다만 <b>다른 법령에 따라 보존해야 하는 경우</b>는 그 기간까지 남깁니다.
         <br />파기는 <b>되돌릴 수 없습니다</b>(같은 조 제2항 “복구 또는 재생되지 아니하도록” — 지움 표시가 아니라 실제로 지웁니다).
@@ -70,18 +70,18 @@ export default function RetentionTab() {
       </div>
 
       {dueTotal === 0 ? (
-        <div className="alert-s" style={{ fontSize: 11.5 }}>
+        <div className="alert-s" style={{ fontSize: 'var(--fs-1)' }}>
           ✅ 지금 파기해야 할 자료가 없습니다. (시스템 가동이 2026년이라 5년·10년 항목은 한참 뒤에 도래합니다)
         </div>
       ) : (
-        <div className="alert-w" style={{ fontSize: 11.5 }}>
+        <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
           ⚠️ 보존기한이 지난 자료가 <b>{dueTotal.toLocaleString('ko-KR')}건</b> 있습니다 — 지체 없이 파기해야 합니다.
         </div>
       )}
-      {msg && <div className="alert-s" style={{ fontSize: 11.5 }}>{msg}</div>}
-      {err && <div className="alert-e" style={{ fontSize: 11.5 }}>{err}</div>}
+      {msg && <div className="alert-s" style={{ fontSize: 'var(--fs-1)' }}>{msg}</div>}
+      {err && <div className="alert-e" style={{ fontSize: 'var(--fs-1)' }}>{err}</div>}
 
-      <table className="tbl" style={{ fontSize: 11.5, marginTop: 8 }}>
+      <table className="tbl" style={{ fontSize: 'var(--fs-1)', marginTop: 8 }}>
         <thead>
           <tr>
             <th style={{ minWidth: 130 }}>자료</th>
@@ -97,38 +97,38 @@ export default function RetentionTab() {
         <tbody>
           {rows.map((r) => (
             <tr key={r.key} style={r.due > 0 && r.destroyOk ? { background: '#FFFBEB' } : undefined}>
-              <td style={{ fontWeight: 700, color: '#1A2B52' }}>
+              <td style={{ fontWeight: 700, color: 'var(--navy)' }}>
                 {r.label}
-                <div style={{ fontSize: 10, fontWeight: 400, color: '#888' }}>{r.tableName}</div>
+                <div style={{ fontSize: 'var(--fs-0)', fontWeight: 400, color: 'var(--ink-3)' }}>{r.tableName}</div>
               </td>
               <td style={{ whiteSpace: 'nowrap' }}>{periodLabel(r.months)}</td>
-              <td style={{ fontSize: 10.5, color: '#555' }}>
+              <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-2)' }}>
                 {r.basis}
-                {r.note && <div style={{ color: '#888', marginTop: 2 }}>· {r.note}</div>}
+                {r.note && <div style={{ color: 'var(--ink-3)', marginTop: 2 }}>· {r.note}</div>}
               </td>
-              <td style={{ fontSize: 10.5 }}>
+              <td style={{ fontSize: 'var(--fs-0)' }}>
                 {r.mode === 'keep'
-                  ? <span className="bdg" style={{ fontSize: 10, background: '#EEF2FF', borderColor: '#C7D2FE', color: '#3730A3' }}>영구보관</span>
+                  ? <span className="bdg" style={{ fontSize: 'var(--fs-0)', background: '#EEF2FF', borderColor: '#C7D2FE', color: '#3730A3' }}>영구보관</span>
                   : r.mode === 'columns'
-                    ? <><span className="bdg" style={{ fontSize: 10, background: '#FEF3C7', borderColor: '#FCD34D', color: '#92400E' }}>개인정보만 비움</span>
-                        <div style={{ color: '#888', marginTop: 2 }}>{r.piiCols.join(', ')}</div></>
-                    : <span className="bdg" style={{ fontSize: 10 }}>행 삭제</span>}
+                    ? <><span className="bdg" style={{ fontSize: 'var(--fs-0)', background: '#FEF3C7', borderColor: '#FCD34D', color: 'var(--warn)' }}>개인정보만 비움</span>
+                        <div style={{ color: 'var(--ink-3)', marginTop: 2 }}>{r.piiCols.join(', ')}</div></>
+                    : <span className="bdg" style={{ fontSize: 'var(--fs-0)' }}>행 삭제</span>}
               </td>
-              <td style={{ whiteSpace: 'nowrap', color: '#666' }}>{r.mode === 'keep' ? '—' : r.cutoff}</td>
-              <td className="r" style={r.due > 0 ? { fontWeight: 700, color: '#92400E' } : { color: '#bbb' }}>
+              <td style={{ whiteSpace: 'nowrap', color: 'var(--ink-2)' }}>{r.mode === 'keep' ? '—' : r.cutoff}</td>
+              <td className="r" style={r.due > 0 ? { fontWeight: 700, color: 'var(--warn)' } : { color: 'var(--ink-4)' }}>
                 {r.due.toLocaleString('ko-KR')}
               </td>
-              <td className="r" style={{ color: '#666' }}>{r.total.toLocaleString('ko-KR')}</td>
+              <td className="r" style={{ color: 'var(--ink-2)' }}>{r.total.toLocaleString('ko-KR')}</td>
               <td>
                 {!r.destroyOk ? (
-                  <span className="bdg" style={{ fontSize: 10, background: '#FEE2E2', borderColor: '#FCA5A5', color: '#991B1B' }}
+                  <span className="bdg" style={{ fontSize: 'var(--fs-0)', background: '#FEE2E2', borderColor: '#FCA5A5', color: 'var(--bad)' }}
                     title="외부감사법 제19조제3항 — 감사조서의 파기를 금지한다">파기 금지</span>
                 ) : r.mode === 'keep' ? (
-                  <span style={{ color: '#bbb' }}>—</span>
+                  <span style={{ color: 'var(--ink-4)' }}>—</span>
                 ) : r.due > 0 ? (
                   <button className="btn-sm btn-sm-del" disabled={busy} onClick={() => void purge(r)}>파기</button>
                 ) : (
-                  <span style={{ color: '#bbb' }}>—</span>
+                  <span style={{ color: 'var(--ink-4)' }}>—</span>
                 )}
               </td>
             </tr>
@@ -137,7 +137,7 @@ export default function RetentionTab() {
       </table>
 
       <div className="chdr" style={{ marginTop: 16 }}>📜 파기 이력</div>
-      <table className="tbl" style={{ fontSize: 11.5 }}>
+      <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
         <thead>
           <tr>
             <th style={{ minWidth: 130 }}>일시</th><th style={{ width: 80 }}>처리자</th>
@@ -148,7 +148,7 @@ export default function RetentionTab() {
         </thead>
         <tbody>
           {log.length === 0 && (
-            <tr><td colSpan={7} style={{ textAlign: 'center', color: '#888', padding: 12 }}>
+            <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-3)', padding: 12 }}>
               파기한 이력이 없습니다.
             </td></tr>
           )}
@@ -156,17 +156,17 @@ export default function RetentionTab() {
             <tr key={l.id}>
               <td style={{ whiteSpace: 'nowrap' }}>{kstDateTime(l.at)}</td>
               <td>{l.actorName}</td>
-              <td>{l.policyKey}<div style={{ fontSize: 10, color: '#888' }}>{l.tableName}</div></td>
-              <td style={{ color: '#666' }}>{l.cutoff}</td>
+              <td>{l.policyKey}<div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{l.tableName}</div></td>
+              <td style={{ color: 'var(--ink-2)' }}>{l.cutoff}</td>
               <td className="r" style={{ fontWeight: 700 }}>{l.deleted.toLocaleString('ko-KR')}</td>
-              <td style={{ fontSize: 10.5 }}>{l.reason}</td>
-              <td style={{ fontSize: 10.5, color: '#666' }}>{l.method}</td>
+              <td style={{ fontSize: 'var(--fs-0)' }}>{l.reason}</td>
+              <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-2)' }}>{l.method}</td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <div className="alert-s" style={{ fontSize: 11, marginTop: 12 }}>
+      <div className="alert-s" style={{ fontSize: 'var(--fs-1)', marginTop: 12 }}>
         <b>분리 저장·관리 (법 제21조제3항)</b> — 거래가 끝난 거래처의 <b>주민등록번호·홈택스 비밀번호</b>는
         <b> 최고관리자만 열람</b>할 수 있습니다. 목적을 다한 개인정보가 계속 열람되지 않게 접근을 가른 것입니다.
         시도하면 거부되고 그 사실이 접속기록에 남습니다.

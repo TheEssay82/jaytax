@@ -120,7 +120,7 @@ export default function Step3FeeReview({ clients, records }: WizardStepProps) {
           <span className="fk">② 규모가산</span>
           <span className="fv">{won(c.scale)}</span>
         </div>
-        <div className="fr2" style={{ borderTop: '2px solid #E0DCD4', marginTop: 2, paddingTop: 5 }}>
+        <div className="fr2" style={{ borderTop: '2px solid var(--rule)', marginTop: 2, paddingTop: 5 }}>
           <span className="fk" style={{ fontWeight: 700 }}>
             A) 기본업무보수
           </span>
@@ -138,23 +138,23 @@ export default function Step3FeeReview({ clients, records }: WizardStepProps) {
         )}
         <div className="fr2">
           <span className="fk">
-            ④ 기장·결산·상담 <small style={{ color: '#AAA' }}>(A × {pct(c.r4)})</small>
+            ④ 기장·결산·상담 <small style={{ color: 'var(--ink-4)' }}>(A × {pct(c.r4)})</small>
           </span>
           <span className="fv">{won(c.f4)}</span>
         </div>
         <div className="fr2">
           <span className="fk">
-            ⑤ 원가계산 <small style={{ color: '#AAA' }}>(A × {pct(c.r5)})</small>
+            ⑤ 원가계산 <small style={{ color: 'var(--ink-4)' }}>(A × {pct(c.r5)})</small>
           </span>
           <span className="fv">{won(c.f5)}</span>
         </div>
         <div className="fr2">
           <span className="fk">
-            ⑥ 세무조정 <small style={{ color: '#AAA' }}>(A × {pct(c.r6)})</small>
+            ⑥ 세무조정 <small style={{ color: 'var(--ink-4)' }}>(A × {pct(c.r6)})</small>
           </span>
           <span className="fv">{won(c.f6)}</span>
         </div>
-        <div className="fr2" style={{ borderTop: '2px solid #E0DCD4', marginTop: 2, paddingTop: 5 }}>
+        <div className="fr2" style={{ borderTop: '2px solid var(--rule)', marginTop: 2, paddingTop: 5 }}>
           <span className="fk" style={{ fontWeight: 700 }}>
             B) 추가업무보수
           </span>
@@ -174,7 +174,7 @@ export default function Step3FeeReview({ clients, records }: WizardStepProps) {
             <span className="fv">{won(c.otherFee)}</span>
           </div>
         )}
-        <div className="fr2" style={{ borderTop: '2px solid #E0DCD4', marginTop: 2, paddingTop: 5 }}>
+        <div className="fr2" style={{ borderTop: '2px solid var(--rule)', marginTop: 2, paddingTop: 5 }}>
           <span className="fk" style={{ fontWeight: 700 }}>
             ⑦) 소계
           </span>
@@ -216,7 +216,7 @@ export default function Step3FeeReview({ clients, records }: WizardStepProps) {
           className="fr2"
           style={{ borderTop: '1px solid rgba(255,255,255,.2)', paddingTop: 7, marginTop: 3 }}
         >
-          <span className="fk" style={{ fontSize: 13, fontWeight: 600 }}>
+          <span className="fk" style={{ fontSize: 'var(--fs-3)', fontWeight: 600 }}>
             최종 청구금액
           </span>
           <span className="fv" style={{ fontSize: 19 }}>

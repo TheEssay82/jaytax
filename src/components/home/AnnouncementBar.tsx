@@ -57,10 +57,10 @@ export default function AnnouncementBar() {
           marginBottom: 14,
         }}
       >
-        <span style={{ fontSize: 13, flexShrink: 0 }} aria-hidden>📢</span>
+        <span style={{ fontSize: 'var(--fs-3)', flexShrink: 0 }} aria-hidden>📢</span>
         <span
           style={{
-            fontSize: 11,
+            fontSize: 'var(--fs-1)',
             fontWeight: 800,
             color: '#8a5a00',
             flexShrink: 0,
@@ -73,7 +73,7 @@ export default function AnnouncementBar() {
         {active.length > 0 ? (
           <Marquee text={active.map((a) => a.message).join(SEP)} />
         ) : (
-          <span style={{ flex: 1, fontSize: 12, color: '#B08C4F' }}>
+          <span style={{ flex: 1, fontSize: 'var(--fs-2)', color: '#B08C4F' }}>
             게시중인 공지가 없습니다.
           </span>
         )}
@@ -83,7 +83,7 @@ export default function AnnouncementBar() {
             className="btn-sm"
             onClick={() => setManage(true)}
             title="공지사항 등록·수정·삭제 (최고관리자)"
-            style={{ fontSize: 10.5, padding: '2px 8px', flexShrink: 0, color: '#8a5a00' }}
+            style={{ fontSize: 'var(--fs-0)', padding: '2px 8px', flexShrink: 0, color: '#8a5a00' }}
           >
             ✏️ 공지관리
           </button>
@@ -155,7 +155,7 @@ function Marquee({ text }: { text: string }) {
           style={{
             display: 'inline-block',
             whiteSpace: 'nowrap',
-            fontSize: 12.5,
+            fontSize: 'var(--fs-2)',
             color: '#6b4b00',
             fontWeight: 600,
             animationDuration: duration ? `${duration}s` : undefined,
@@ -213,13 +213,13 @@ function ManageModal({
         onClick={(e) => e.stopPropagation()}
         style={{ background: '#fff', borderRadius: 10, maxWidth: 640, width: '100%', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff' }}>
-          <span style={{ fontWeight: 700, color: '#1A2B52' }}>📢 공지사항 관리</span>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--rule-2)', position: 'sticky', top: 0, background: '#fff' }}>
+          <span style={{ fontWeight: 700, color: 'var(--navy)' }}>📢 공지사항 관리</span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
 
         <div style={{ padding: 14 }}>
-          <div className="alert-i" style={{ fontSize: 11, marginBottom: 10 }}>
+          <div className="alert-i" style={{ fontSize: 'var(--fs-1)', marginBottom: 10 }}>
             한 줄로 짧게 쓰는 것이 좋습니다. 여러 건을 게시하면 전광판에서 이어서 흐릅니다.
             <b> 게시중지</b>하면 내용은 남고 화면에서만 내려갑니다.
           </div>
@@ -228,7 +228,7 @@ function ManageModal({
           <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
             <input
               className="inp"
-              style={{ flex: 1, fontSize: 12.5 }}
+              style={{ flex: 1, fontSize: 'var(--fs-2)' }}
               placeholder="예: 2026-08-01 기존 EXCEL버젼 문서발송업무 Jaytax로 완전이관 예정"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -240,7 +240,7 @@ function ManageModal({
             />
             <button
               className="btn-p"
-              style={{ fontSize: 11.5 }}
+              style={{ fontSize: 'var(--fs-1)' }}
               disabled={busy || !draft.trim()}
               onClick={() => void run(async () => { await createAnnouncement(draft); setDraft(''); })}
             >
@@ -248,10 +248,10 @@ function ManageModal({
             </button>
           </div>
 
-          {err && <div className="alert-w" style={{ fontSize: 11.5, marginBottom: 10 }}>{err}</div>}
+          {err && <div className="alert-w" style={{ fontSize: 'var(--fs-1)', marginBottom: 10 }}>{err}</div>}
 
           {items.length === 0 ? (
-            <div style={{ padding: 16, color: '#888', fontSize: 12.5, textAlign: 'center' }}>등록된 공지가 없습니다.</div>
+            <div style={{ padding: 16, color: 'var(--ink-3)', fontSize: 'var(--fs-2)', textAlign: 'center' }}>등록된 공지가 없습니다.</div>
           ) : (
             <table className="tbl">
               <thead>
@@ -268,20 +268,20 @@ function ManageModal({
                       <span
                         className="bdg"
                         style={{
-                          fontSize: 10,
+                          fontSize: 'var(--fs-0)',
                           ...(a.isActive
                             ? { background: '#D1FAE5', color: '#065F46' }
-                            : { background: '#F3F4F6', color: '#6B7280' }),
+                            : { background: '#F3F4F6', color: 'var(--ink-3)' }),
                         }}
                       >
                         {a.isActive ? '게시중' : '중지'}
                       </span>
                     </td>
-                    <td style={{ fontSize: 12.5 }}>
+                    <td style={{ fontSize: 'var(--fs-2)' }}>
                       {editId === a.id ? (
                         <input
                           className="inp"
-                          style={{ width: '100%', fontSize: 12.5 }}
+                          style={{ width: '100%', fontSize: 'var(--fs-2)' }}
                           value={editText}
                           autoFocus
                           onChange={(e) => setEditText(e.target.value)}

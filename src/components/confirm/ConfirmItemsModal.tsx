@@ -129,26 +129,26 @@ export default function ConfirmItemsModal({
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, maxWidth: 1180, width: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
         {/* 머리말 — 조서 상단과 같은 정보 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff', zIndex: 2, flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 700, color: '#1A2B52' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--rule-2)', position: 'sticky', top: 0, background: '#fff', zIndex: 2, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 700, color: 'var(--navy)' }}>
             📮 {confirmation.companyName}
           </span>
-          <span style={{ fontSize: 11.5, color: '#666' }}>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
             {confirmation.fiscalYear}년 · 기준일 {confirmation.baseDate?.replace(/-/g, '.')} · 담당 {confirmation.accountantName || '—'}
           </span>
-          <span style={{ fontSize: 11.5, color: '#1A2B52', fontWeight: 700 }}>조회처 {items.length}건</span>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--navy)', fontWeight: 700 }}>조회처 {items.length}건</span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
 
         <div style={{ padding: 14 }}>
-          {err && <div className="alert-w" style={{ fontSize: 11.5 }}>{err}</div>}
-          {msg && <div className="alert-s" style={{ fontSize: 11.5, whiteSpace: 'pre-wrap' }}>{msg}</div>}
+          {err && <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>{err}</div>}
+          {msg && <div className="alert-s" style={{ fontSize: 'var(--fs-1)', whiteSpace: 'pre-wrap' }}>{msg}</div>}
 
           {/* 양식 도구 */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
             <button
               className="btn-sm btn-sm-blue"
-              style={{ fontSize: 11 }}
+              style={{ fontSize: 'var(--fs-1)' }}
               disabled={busy}
               onClick={() => fileRef.current?.click()}
               title="작성한 엑셀 양식을 올려 조회처를 한 번에 채웁니다"
@@ -167,7 +167,7 @@ export default function ConfirmItemsModal({
             />
             <button
               className="btn-sm"
-              style={{ fontSize: 11 }}
+              style={{ fontSize: 'var(--fs-1)' }}
               disabled={busy || items.length === 0}
               onClick={() => void downloadItems(confirmation.companyName, confirmation.fiscalYear, items.map(toInput))}
               title="현재 명세를 엑셀로 내려받아 수정 후 다시 올릴 수 있습니다"
@@ -176,7 +176,7 @@ export default function ConfirmItemsModal({
             </button>
             <button
               className="btn-sm"
-              style={{ fontSize: 11 }}
+              style={{ fontSize: 'var(--fs-1)' }}
               disabled={busy}
               onClick={() => void downloadBlankTemplate(confirmation.companyName)}
               title="거래처에 보내 조회처 목록을 받아오는 빈 양식"
@@ -188,17 +188,17 @@ export default function ConfirmItemsModal({
               <span
                 className="bdg"
                 style={{
-                  fontSize: 10,
+                  fontSize: 'var(--fs-0)',
                   ...(status === '등록완료'
                     ? { background: '#D1FAE5', color: '#065F46' }
-                    : { background: '#FEF3C7', color: '#92400E' }),
+                    : { background: '#FEF3C7', color: 'var(--warn)' }),
                 }}
               >
                 {status}
               </span>
               <button
                 className="btn-p"
-                style={{ fontSize: 11 }}
+                style={{ fontSize: 'var(--fs-1)' }}
                 disabled={busy || !canComplete}
                 title={canComplete ? undefined : '조회처를 1건 이상 등록해야 완료할 수 있습니다'}
                 onClick={() => {
@@ -217,13 +217,13 @@ export default function ConfirmItemsModal({
             </span>
           </div>
 
-          <div className="alert-i" style={{ fontSize: 11, marginBottom: 10 }}>
+          <div className="alert-i" style={{ fontSize: 'var(--fs-1)', marginBottom: 10 }}>
             <b>전자조회</b>는 주소·우편번호가 필요 없어 입력칸이 잠깁니다. 담당자명은 기본값 <b>{DEFAULT_CONTACT}</b>이며 부서·직책은 비워 두어도 됩니다.
             기관별 신청 방법(예: 홈페이지 신청, 착불 수령)은 <b>비고</b>에 적어 두면 다음 해에 그대로 따라옵니다.
           </div>
 
           {loading ? (
-            <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
           ) : (
             <div className="tbl-scroll">
               <table className="tbl">
@@ -245,7 +245,7 @@ export default function ConfirmItemsModal({
                 </thead>
                 <tbody>
                   {items.length === 0 && (
-                    <tr><td colSpan={12} style={{ textAlign: 'center', color: '#BBB', padding: 20 }}>
+                    <tr><td colSpan={12} style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 20 }}>
                       조회처가 없습니다. 아래에서 한 줄씩 추가하거나 엑셀 양식을 업로드하세요.
                     </td></tr>
                   )}
@@ -263,32 +263,32 @@ export default function ConfirmItemsModal({
                       />
                     ) : (
                       <tr key={it.id}>
-                        <td style={{ textAlign: 'center', fontSize: 11.5, color: '#888' }}>{idx + 1}</td>
-                        <td style={{ fontSize: 12 }}>{it.kind}</td>
-                        <td style={{ fontSize: 12.5 }}><b>{it.institution}</b></td>
+                        <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{idx + 1}</td>
+                        <td style={{ fontSize: 'var(--fs-2)' }}>{it.kind}</td>
+                        <td style={{ fontSize: 'var(--fs-2)' }}><b>{it.institution}</b></td>
                         <td style={{ textAlign: 'center' }}>
                           <span
                             className="bdg"
                             style={{
-                              fontSize: 10,
+                              fontSize: 'var(--fs-0)',
                               ...(it.isElectronic
                                 ? { background: '#DBEAFE', color: '#1E40AF' }
-                                : { background: '#F3F4F6', color: '#6B7280' }),
+                                : { background: '#F3F4F6', color: 'var(--ink-3)' }),
                             }}
                           >
                             {it.isElectronic ? '전자조회' : '우편'}
                           </span>
                         </td>
-                        <td style={{ fontSize: 11.5 }}>
-                          {it.isElectronic ? <span style={{ color: '#93a3b8' }}>—</span> : it.address || <span style={{ color: '#CCC' }}>미입력</span>}
+                        <td style={{ fontSize: 'var(--fs-1)' }}>
+                          {it.isElectronic ? <span style={{ color: '#93a3b8' }}>—</span> : it.address || <span style={{ color: 'var(--ink-4)' }}>미입력</span>}
                         </td>
-                        <td style={{ fontSize: 11.5 }}>{it.postalCode || <span style={{ color: '#CCC' }}>—</span>}</td>
-                        <td style={{ fontSize: 11.5 }}>{it.phone || <span style={{ color: '#CCC' }}>—</span>}</td>
-                        <td style={{ fontSize: 11.5 }}>{it.dept || <span style={{ color: '#CCC' }}>—</span>}</td>
-                        <td style={{ fontSize: 11.5 }}>{it.contactName || <span style={{ color: '#CCC' }}>—</span>}</td>
-                        <td style={{ fontSize: 11.5 }}>{it.contactTitle || <span style={{ color: '#CCC' }}>—</span>}</td>
-                        <td style={{ fontSize: 11 }} title={it.note}>
-                          {it.note ? (it.note.length > 14 ? `${it.note.slice(0, 14)}…` : it.note) : <span style={{ color: '#CCC' }}>—</span>}
+                        <td style={{ fontSize: 'var(--fs-1)' }}>{it.postalCode || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                        <td style={{ fontSize: 'var(--fs-1)' }}>{it.phone || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                        <td style={{ fontSize: 'var(--fs-1)' }}>{it.dept || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                        <td style={{ fontSize: 'var(--fs-1)' }}>{it.contactName || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                        <td style={{ fontSize: 'var(--fs-1)' }}>{it.contactTitle || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                        <td style={{ fontSize: 'var(--fs-1)' }} title={it.note}>
+                          {it.note ? (it.note.length > 14 ? `${it.note.slice(0, 14)}…` : it.note) : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 3 }}>
@@ -352,11 +352,11 @@ function ItemFormRow({
   isNew?: boolean;
 }) {
   const set = (patch: Partial<ItemInput>) => onChange({ ...value, ...patch });
-  const cell: React.CSSProperties = { width: '100%', fontSize: 11.5 };
+  const cell: React.CSSProperties = { width: '100%', fontSize: 'var(--fs-1)' };
 
   return (
     <tr style={{ background: isNew ? '#F7FBF7' : '#EEF6FF' }}>
-      <td style={{ textAlign: 'center', fontSize: 11.5, color: '#888' }}>{seq}</td>
+      <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{seq}</td>
       <td>
         <select value={value.kind} onChange={(e) => set({ kind: e.target.value as ItemKind })} style={cell}>
           {ITEM_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
@@ -405,10 +405,10 @@ function ItemFormRow({
       <td><input value={value.note} onChange={(e) => set({ note: e.target.value })} placeholder="신청방법 등" style={cell} /></td>
       <td>
         <div style={{ display: 'flex', gap: 3 }}>
-          <button className={isNew ? 'btn-sm btn-p' : 'btn-sm btn-p'} disabled={busy} onClick={onSubmit} style={{ fontSize: 10.5, whiteSpace: 'nowrap' }}>
+          <button className={isNew ? 'btn-sm btn-p' : 'btn-sm btn-p'} disabled={busy} onClick={onSubmit} style={{ fontSize: 'var(--fs-0)', whiteSpace: 'nowrap' }}>
             {submitLabel}
           </button>
-          {onCancel && <button className="btn-sm" disabled={busy} onClick={onCancel} style={{ fontSize: 10.5 }}>취소</button>}
+          {onCancel && <button className="btn-sm" disabled={busy} onClick={onCancel} style={{ fontSize: 'var(--fs-0)' }}>취소</button>}
         </div>
       </td>
     </tr>

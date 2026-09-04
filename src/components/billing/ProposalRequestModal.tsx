@@ -107,13 +107,13 @@ ${approver}에게 바로 알림이 갑니다. 진행할까요?`)) return;
       <div className="card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 980, width: '100%' }}>
         <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           ✅ 발행요청으로 넘기기
-          <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
+          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
             {rows.length}건 · 공급가액 {won(total)}
           </span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
 
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           제안은 <b>알림</b>입니다 — 계약에 적힌 대로 그대로 나가면 안 됩니다.
           넘기기 전에 <b>작성일·금액·적요</b>를 이 자리에서 고치세요.
           <br /><b>작성일(발행기준일)</b>이 실제 세금계산서 날짜입니다. 계약의 청구기한이 아니라
@@ -122,7 +122,7 @@ ${approver}에게 바로 알림이 갑니다. 진행할까요?`)) return;
           여러 곳이면 쉼표로 이으세요. <b>청구서</b>는 서면 청구서를 따로 보내야 하는 건에 체크합니다.
         </div>
         {stale.length > 0 && (
-          <div className="alert-w" style={{ fontSize: 11.5 }}>
+          <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
             ⚠️ 청구기한이 <b>60일 넘게 지난 건이 {stale.length}건</b> 있습니다
             ({stale.slice(0, 3).map((r) => `${r.companyName} ${r.overdueDays}일`).join(', ')}{stale.length > 3 ? ' 외' : ''}).
             작성일을 오늘 날짜로 두는 것이 맞는지 확인해 주세요.
@@ -130,20 +130,20 @@ ${approver}에게 바로 알림이 갑니다. 진행할까요?`)) return;
         )}
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-          <b style={{ fontSize: 12, color: '#1A2B52' }}>작성일(발행기준일)</b>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ fontSize: 12 }} />
-          <span style={{ fontSize: 11, color: '#888' }}>고른 건 모두에 같은 날짜로 들어갑니다.</span>
+          <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>작성일(발행기준일)</b>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>고른 건 모두에 같은 날짜로 들어갑니다.</span>
         </div>
 
         <div style={{ maxHeight: '50vh', overflow: 'auto' }}>
-          <table className="tbl" style={{ fontSize: 11.5 }}>
+          <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
             <thead>
               <tr>
                 <th>거래처</th><th>회차</th><th>청구기한</th>
                 <th className="r" style={{ minWidth: 120 }}>공급가액</th>
                 <th style={{ minWidth: 120 }}>매출계정</th><th style={{ minWidth: 80 }}>구분</th>
                 <th style={{ minWidth: 180 }}>발행 시 적요</th>
-                <th style={{ minWidth: 190 }}>발송 e-mail <span style={{ color: '#c33' }}>*</span></th>
+                <th style={{ minWidth: 190 }}>발송 e-mail <span style={{ color: 'var(--bad)' }}>*</span></th>
                 <th style={{ width: 56 }}>청구서</th>
               </tr>
             </thead>
@@ -153,44 +153,44 @@ ${approver}에게 바로 알림이 갑니다. 진행할까요?`)) return;
                 const changed = Math.round(e.supplyAmount) !== Math.round(r.supplyAmount);
                 return (
                   <tr key={r.key}>
-                    <td style={{ fontWeight: 700, color: '#1A2B52' }}>
+                    <td style={{ fontWeight: 700, color: 'var(--navy)' }}>
                       {r.companyName}
-                      <div style={{ fontSize: 10.5, fontWeight: 400, color: '#888' }}>{r.placeName}</div>
+                      <div style={{ fontSize: 'var(--fs-0)', fontWeight: 400, color: 'var(--ink-3)' }}>{r.placeName}</div>
                     </td>
                     <td>{r.label}</td>
                     <td style={{ color: r.overdueDays > 60 ? '#c33' : '#888', whiteSpace: 'nowrap' }}>
                       {r.dueDate}
-                      <div style={{ fontSize: 10.5 }}>{r.overdueDays >= 0 ? `${r.overdueDays}일 지남` : `${-r.overdueDays}일 뒤`}</div>
+                      <div style={{ fontSize: 'var(--fs-0)' }}>{r.overdueDays >= 0 ? `${r.overdueDays}일 지남` : `${-r.overdueDays}일 뒤`}</div>
                     </td>
                     <td className="r">
                       <input value={String(Math.round(e.supplyAmount))}
                         onChange={(ev) => set(r.key, { supplyAmount: Number(ev.target.value.replace(/[^\d]/g, '')) || 0 })}
                         style={{ width: '100%', textAlign: 'right', fontWeight: changed ? 700 : 400, color: changed ? '#c33' : undefined }} />
                       {changed && (
-                        <div style={{ fontSize: 10, color: '#888' }}>계약 {won(r.supplyAmount)}</div>
+                        <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>계약 {won(r.supplyAmount)}</div>
                       )}
                     </td>
                     <td>
                       <select value={e.erpAccount} onChange={(ev) => set(r.key, { erpAccount: ev.target.value })}
-                        style={{ width: '100%', fontSize: 11 }}>
+                        style={{ width: '100%', fontSize: 'var(--fs-1)' }}>
                         {ERP_ACCOUNTS.map((a) => <option key={a} value={a}>{a}</option>)}
                       </select>
                     </td>
                     <td>
                       <select value={e.phase} onChange={(ev) => set(r.key, { phase: ev.target.value })}
-                        style={{ width: '100%', fontSize: 11 }}>
+                        style={{ width: '100%', fontSize: 'var(--fs-1)' }}>
                         {PHASES.map((p) => <option key={p} value={p}>{p}</option>)}
                       </select>
                     </td>
                     <td>
                       <input value={e.summary} onChange={(ev) => set(r.key, { summary: ev.target.value })}
-                        style={{ width: '100%', fontSize: 11 }} />
+                        style={{ width: '100%', fontSize: 'var(--fs-1)' }} />
                     </td>
                     <td>
                       <input value={e.docEmail} onChange={(ev) => set(r.key, { docEmail: ev.target.value })}
                         placeholder="여러 개면 쉼표로"
                         style={{
-                          width: '100%', fontSize: 10.5,
+                          width: '100%', fontSize: 'var(--fs-0)',
                           borderColor: e.docEmail.trim() ? undefined : '#c33',
                           background: e.docEmail.trim() ? undefined : '#fff5f5',
                         }} />

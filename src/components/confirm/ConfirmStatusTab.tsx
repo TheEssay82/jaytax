@@ -67,7 +67,7 @@ export default function ConfirmStatusTab() {
     return (
       <div className="card">
         <div className="chdr">📊 조회현황</div>
-        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
       </div>
     );
   }
@@ -115,7 +115,7 @@ export default function ConfirmStatusTab() {
         />
       </div>
 
-      <div className="alert-i" style={{ fontSize: 11 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
         📊 조회처 한 건씩의 발송·회수 기록에서 <b>자동 집계</b>한 현황입니다(조회 전용).
         회수율은 <b>발송한 건</b>을 분모로 계산합니다. 거래처 행의 <b>⬇</b> 버튼으로 조서를 엑셀로 내려받을 수 있습니다.
       </div>
@@ -124,10 +124,10 @@ export default function ConfirmStatusTab() {
         <select value={year} onChange={(e) => { setYear(Number(e.target.value)); setOpenId(null); }}>
           {yearOptions.map((y) => <option key={y} value={y}>{y}년</option>)}
         </select>
-        <button className="btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => void load()}>🔄 새로고침</button>
+        <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }} onClick={() => void load()}>🔄 새로고침</button>
         <button
           className="btn-sm btn-sm-blue"
-          style={{ fontSize: 11, padding: '2px 8px' }}
+          style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }}
           disabled={rows.length === 0}
           onClick={() => void exportYearSummary(year, perClient)}
           title="연도 총괄을 엑셀로 저장합니다"
@@ -136,7 +136,7 @@ export default function ConfirmStatusTab() {
         </button>
         <button
           className="btn-sm"
-          style={{ fontSize: 11, padding: '2px 8px' }}
+          style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }}
           onClick={() => setAuditFor({ title: `${year}년 전체` })}
           title="발송·회수 처리 기록(감사증빙)"
         >
@@ -162,35 +162,35 @@ export default function ConfirmStatusTab() {
           </thead>
           <tbody>
             {perClient.length === 0 && (
-              <tr><td colSpan={9} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>
+              <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 24 }}>
                 {year}년에 등록된 조회서가 없습니다.
               </td></tr>
             )}
             {perClient.map(({ conf: c, progress: p }) => (
               <tr key={c.id}>
-                <td style={{ fontSize: 12.5 }}><b style={{ color: '#1A2B52' }}>{c.companyName}</b></td>
-                <td style={{ textAlign: 'center', fontSize: 11.5 }}>{p.total}</td>
-                <td style={{ textAlign: 'center', fontSize: 11, color: '#1E40AF' }}>
-                  {p.elecTotal ? `${p.elecSent} / ${p.elecCollected}` : <span style={{ color: '#CCC' }}>—</span>}
+                <td style={{ fontSize: 'var(--fs-2)' }}><b style={{ color: 'var(--navy)' }}>{c.companyName}</b></td>
+                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{p.total}</td>
+                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: '#1E40AF' }}>
+                  {p.elecTotal ? `${p.elecSent} / ${p.elecCollected}` : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                 </td>
-                <td style={{ textAlign: 'center', fontSize: 11, color: '#92400E' }}>
-                  {p.postTotal ? `${p.postSent} / ${p.postCollected}` : <span style={{ color: '#CCC' }}>—</span>}
+                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: 'var(--warn)' }}>
+                  {p.postTotal ? `${p.postSent} / ${p.postCollected}` : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                 </td>
                 <td><Meter value={pct(p.sent, p.total)} label={`${p.sent}/${p.total}`} color="#1E40AF" /></td>
                 <td><Meter value={pct(p.collected, p.sent)} label={`${p.collected}/${p.sent}`} color="#059669" /></td>
                 <td style={{ textAlign: 'center' }}>
                   {p.returned > 0
-                    ? <b style={{ color: '#B91C1C', fontSize: 12 }}>{p.returned}</b>
-                    : <span style={{ color: '#CCC' }}>—</span>}
+                    ? <b style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)' }}>{p.returned}</b>
+                    : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                 </td>
-                <td style={{ textAlign: 'center', fontSize: 11 }}>
-                  {p.firstSentDate ? p.firstSentDate.replace(/-/g, '.') : <span style={{ color: '#CCC' }}>—</span>}
+                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>
+                  {p.firstSentDate ? p.firstSentDate.replace(/-/g, '.') : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                 </td>
                 <td style={{ textAlign: 'center' }}>
                   <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
                     <button
                       className="btn-sm"
-                      style={{ fontSize: 10.5, padding: '1px 6px' }}
+                      style={{ fontSize: 'var(--fs-0)', padding: '1px 6px' }}
                       title="이 거래처의 진행현황 조서를 엑셀로 내려받습니다"
                       onClick={() => void exportConfirmationSheet(c, items[c.id] ?? [])}
                     >
@@ -198,7 +198,7 @@ export default function ConfirmStatusTab() {
                     </button>
                     <button
                       className="btn-sm"
-                      style={{ fontSize: 10.5, padding: '1px 6px' }}
+                      style={{ fontSize: 'var(--fs-0)', padding: '1px 6px' }}
                       title="이 거래처의 발송·회수 처리 기록"
                       onClick={() => setAuditFor({ id: c.id, title: c.companyName })}
                     >
@@ -210,10 +210,10 @@ export default function ConfirmStatusTab() {
             ))}
             {perClient.length > 0 && (
               <tr style={{ background: '#FaF8F4', fontWeight: 700 }}>
-                <td style={{ fontSize: 12 }}>합계</td>
-                <td style={{ textAlign: 'center', fontSize: 11.5 }}>{total.total}</td>
-                <td style={{ textAlign: 'center', fontSize: 11, color: '#1E40AF' }}>{total.elecSent} / {total.elecCollected}</td>
-                <td style={{ textAlign: 'center', fontSize: 11, color: '#92400E' }}>{total.postSent} / {total.postCollected}</td>
+                <td style={{ fontSize: 'var(--fs-2)' }}>합계</td>
+                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{total.total}</td>
+                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: '#1E40AF' }}>{total.elecSent} / {total.elecCollected}</td>
+                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: 'var(--warn)' }}>{total.postSent} / {total.postCollected}</td>
                 <td><Meter value={pct(total.sent, total.total)} label={`${total.sent}/${total.total}`} color="#1E40AF" /></td>
                 <td><Meter value={pct(total.collected, total.sent)} label={`${total.collected}/${total.sent}`} color="#059669" /></td>
                 <td style={{ textAlign: 'center', color: total.returned ? '#B91C1C' : '#CCC' }}>{total.returned || '—'}</td>
@@ -235,7 +235,7 @@ export default function ConfirmStatusTab() {
       {/* 반송 목록 — 조치가 필요한 건 */}
       {returnedList.length > 0 && (
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#B91C1C', marginBottom: 6 }}>
+          <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--bad)', marginBottom: 6 }}>
             ↪ 반송 — 조치가 필요한 거래처 {returnedList.length}곳 / {total.returned}건
           </div>
           <table className="tbl">
@@ -256,22 +256,22 @@ export default function ConfirmStatusTab() {
                       <td style={{ textAlign: 'center' }}>
                         <button
                           className="btn-sm"
-                          style={{ fontSize: 10, padding: '1px 5px' }}
+                          style={{ fontSize: 'var(--fs-0)', padding: '1px 5px' }}
                           onClick={() => setOpenId(open ? null : c.id)}
                           title="반송 사유 보기"
                         >
                           {open ? '▾' : '▸'}
                         </button>
                       </td>
-                      <td style={{ fontSize: 12.5 }}>
-                        <b style={{ color: '#1A2B52', cursor: 'pointer' }} onClick={() => setOpenId(open ? null : c.id)}>
+                      <td style={{ fontSize: 'var(--fs-2)' }}>
+                        <b style={{ color: 'var(--navy)', cursor: 'pointer' }} onClick={() => setOpenId(open ? null : c.id)}>
                           {c.companyName}
                         </b>
                       </td>
                       <td style={{ textAlign: 'center' }}>
-                        <b style={{ color: '#B91C1C' }}>{its.length}</b>
+                        <b style={{ color: 'var(--bad)' }}>{its.length}</b>
                       </td>
-                      <td style={{ fontSize: 11.5, color: '#666' }}>
+                      <td style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
                         {its.map((i) => i.institution).join(', ')}
                       </td>
                     </tr>
@@ -293,26 +293,26 @@ export default function ConfirmStatusTab() {
                             <tbody>
                               {its.map((it) => (
                                 <tr key={it.id}>
-                                  <td style={{ fontSize: 11.5 }}>{it.kind}</td>
-                                  <td style={{ fontSize: 12 }}><b>{it.institution}</b></td>
+                                  <td style={{ fontSize: 'var(--fs-1)' }}>{it.kind}</td>
+                                  <td style={{ fontSize: 'var(--fs-2)' }}><b>{it.institution}</b></td>
                                   <td style={{ textAlign: 'center' }}>
                                     <span
                                       className="bdg"
                                       style={{
-                                        fontSize: 10,
+                                        fontSize: 'var(--fs-0)',
                                         ...(it.isElectronic
                                           ? { background: '#DBEAFE', color: '#1E40AF' }
-                                          : { background: '#FEF3C7', color: '#92400E' }),
+                                          : { background: '#FEF3C7', color: 'var(--warn)' }),
                                       }}
                                     >
                                       {it.isElectronic ? '전자조회' : '실물발송'}
                                     </span>
                                   </td>
-                                  <td>{it.isElectronic ? <span style={{ color: '#CCC', fontSize: 11 }}>—</span> : <TrackingLink no={it.trackingNo} />}</td>
-                                  <td style={{ textAlign: 'center', fontSize: 11 }}>{it.sentDate?.replace(/-/g, '.') || '—'}</td>
-                                  <td style={{ textAlign: 'center', fontSize: 11 }}>{it.collectDate?.replace(/-/g, '.') || '—'}</td>
-                                  <td style={{ fontSize: 11.5, color: '#B91C1C' }}>
-                                    {it.returnReason || <span style={{ color: '#CCC' }}>사유 미기재</span>}
+                                  <td>{it.isElectronic ? <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>—</span> : <TrackingLink no={it.trackingNo} />}</td>
+                                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{it.sentDate?.replace(/-/g, '.') || '—'}</td>
+                                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{it.collectDate?.replace(/-/g, '.') || '—'}</td>
+                                  <td style={{ fontSize: 'var(--fs-1)', color: 'var(--bad)' }}>
+                                    {it.returnReason || <span style={{ color: 'var(--ink-4)' }}>사유 미기재</span>}
                                   </td>
                                 </tr>
                               ))}
@@ -336,10 +336,10 @@ function Tile({ label, main, sub, color, ratio }: {
   label: string; main: string; sub: string; color: string; ratio?: number;
 }) {
   return (
-    <div style={{ flex: '1 1 150px', minWidth: 140, border: '1px solid #E3DED3', borderRadius: 8, padding: '9px 12px', background: '#fff' }}>
-      <div style={{ fontSize: 11, color: '#888' }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 800, color }}>{main}</div>
-      <div style={{ fontSize: 10.5, color: '#999' }}>{sub}</div>
+    <div style={{ flex: '1 1 150px', minWidth: 140, border: '1px solid var(--rule)', borderRadius: 8, padding: '9px 12px', background: '#fff' }}>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{label}</div>
+      <div style={{ fontSize: 'var(--fs-5)', fontWeight: 800, color }}>{main}</div>
+      <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{sub}</div>
       {ratio !== undefined && (
         <div style={{ height: 4, background: '#E9EDF3', borderRadius: 3, overflow: 'hidden', marginTop: 5 }}>
           <div style={{ width: `${ratio}%`, height: '100%', background: color }} />
@@ -355,7 +355,7 @@ function Meter({ value, label, color }: { value: number; label: string; color: s
       <div style={{ flex: 1, height: 7, background: '#E9EDF3', borderRadius: 4, overflow: 'hidden', minWidth: 40 }}>
         <div style={{ width: `${value}%`, height: '100%', background: color }} />
       </div>
-      <span style={{ fontSize: 10, color: '#555', whiteSpace: 'nowrap', minWidth: 62 }}>
+      <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-2)', whiteSpace: 'nowrap', minWidth: 62 }}>
         {label} ({value}%)
       </span>
     </div>

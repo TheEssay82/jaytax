@@ -160,9 +160,20 @@ function StatsPanel() {
   if (loading) return <div className="card">불러오는 중…</div>;
 
   return (
-    <div className="card">
-      <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+    <div className="card rep">
+      <div className="rep-title">
         📊 매출통계
+        <span className="sub">
+          {fy === '' ? `${from} ~ ${to}` : fyLabel(Number(fy))}
+          {' · '}{team === '' ? '전체 팀' : team === 'taxteam' ? 'taxteam' : '감사팀'}
+          {' · '}{basis === 'forecast' ? '예상' : '실적'}
+        </span>
+      </div>
+      <div className="rep-sub">
+        {filtered.length}건 · 공급가액 {won(filtered.reduce((s, f) => s + f.supply, 0))}
+      </div>
+
+      <div className="rep-controls">
         <select value={fy === '' ? '' : String(fy)} onChange={(e) => pickFy(e.target.value)} style={{ fontWeight: 700 }}
           title="사업연도를 고르면 기간이 7월~익년 6월로 맞춰집니다">
           {fyOpts.map((y) => <option key={y} value={y}>{fyLabel(y)}</option>)}
@@ -170,7 +181,7 @@ function StatsPanel() {
         </select>
         <input type="month" value={from} onChange={(e) => { if (e.target.value) { setFrom(e.target.value); setFy(''); } }}
           style={{ fontWeight: 700 }} />
-        <span style={{ color: '#999' }}>~</span>
+        <span style={{ color: 'var(--ink-3)' }}>~</span>
         <input type="month" value={to} onChange={(e) => { if (e.target.value) { setTo(e.target.value); setFy(''); } }}
           style={{ fontWeight: 700 }} />
         <select value={team} onChange={(e) => setTeam(e.target.value)}>
@@ -184,22 +195,19 @@ function StatsPanel() {
           <option value="actual">실적</option>
           <option value="forecast">예상</option>
         </select>
-        <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
-          {filtered.length}건 · 공급가액 {won(filtered.reduce((s, f) => s + f.supply, 0))}
-        </span>
       </div>
       {err && <div className="alert-w">{err}</div>}
 
       {/* ── 피벗 조건 ── */}
       <div style={{
-        border: '1px solid #e2d9c6', background: '#fdfaf3', borderRadius: 6,
+        border: '1px solid #E1E8F1', background: '#F8FAFD', borderRadius: 7,
         padding: '8px 10px', marginBottom: 10, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center',
       }}>
-        <span style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 5, overflow: 'hidden' }}>
+        <span style={{ display: 'inline-flex', border: '1px solid #D5DDE7', borderRadius: 5, overflow: 'hidden' }}>
           {([['cross', '교차표'], ['summary', '요약표']] as const).map(([k, lbl]) => (
             <button key={k} onClick={() => setMode(k)}
               style={{
-                fontSize: 11.5, padding: '3px 9px', border: 0, cursor: 'pointer',
+                fontSize: 'var(--fs-1)', padding: '3px 9px', border: 0, cursor: 'pointer',
                 background: mode === k ? '#1A2B52' : '#fff', color: mode === k ? '#fff' : '#555', fontWeight: 700,
               }}
               title={k === 'cross' ? '행 × 열 한 값 — 추이·교차 보기' : '행을 두 단계로 펼치고 값을 여러 개 — 엑셀 시트 모양'}>
@@ -207,22 +215,22 @@ function StatsPanel() {
             </button>
           ))}
         </span>
-        <label style={{ fontSize: 11.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-          <b style={{ color: '#1A2B52' }}>행</b>
+        <label style={{ fontSize: 'var(--fs-1)', display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+          <b style={{ color: 'var(--navy)' }}>행</b>
           <select value={rowKey} onChange={(e) => setRowKey(e.target.value)} style={{ fontWeight: 700 }}>
             {DIMS.filter((d) => d.key !== 'none').map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
           </select>
         </label>
         {mode === 'cross' ? (
           <>
-            <label style={{ fontSize: 11.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-              <b style={{ color: '#1A2B52' }}>열</b>
+            <label style={{ fontSize: 'var(--fs-1)', display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+              <b style={{ color: 'var(--navy)' }}>열</b>
               <select value={colKey} onChange={(e) => setColKey(e.target.value)} style={{ fontWeight: 700 }}>
                 {DIMS.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
               </select>
             </label>
-            <label style={{ fontSize: 11.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-              <b style={{ color: '#1A2B52' }}>값</b>
+            <label style={{ fontSize: 'var(--fs-1)', display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+              <b style={{ color: 'var(--navy)' }}>값</b>
               <select value={value} onChange={(e) => setValue(e.target.value as 'supply' | 'count')}>
                 <option value="supply">공급가액</option>
                 <option value="count">건수</option>
@@ -230,8 +238,8 @@ function StatsPanel() {
             </label>
           </>
         ) : (
-          <label style={{ fontSize: 11.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-            <b style={{ color: '#1A2B52' }}>하위</b>
+          <label style={{ fontSize: 'var(--fs-1)', display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+            <b style={{ color: 'var(--navy)' }}>하위</b>
             <select value={subKey} onChange={(e) => setSubKey(e.target.value)} style={{ fontWeight: 700 }}
               title="행 아래에 한 단계 더 펼칩니다 (엑셀의 회계사 > 담당직원)">
               <option value="none">(펼치지 않음)</option>
@@ -256,21 +264,27 @@ function StatsPanel() {
         </button>
       </div>
 
-      <div className="alert-i" style={{ fontSize: 11 }}>
-        청구할 때 굳혀 둔 <b>그 시점의 담당·금액</b>을 더한 것입니다. 계약이 나중에 바뀌어도 지난 통계는 변하지 않습니다.
-        <br />· <b>행·열</b>에 원하는 구분자를 놓으면 엑셀 피벗처럼 잘라 볼 수 있습니다(담당직원 × 귀속월, 매출유형 × 담당회계사 …).
-        <br />· <b>담당직원</b>은 배분 비율만큼 쪼개 더합니다 — 공동담당 건도 합계가 부풀지 않습니다.
-        <b> 감사팀은 회계사 단위</b>로만 보므로, 팀을 감사팀으로 좁히면 행이 담당회계사로 바뀝니다.
-        <br />· 기간의 기본은 <b>사업연도(7월~익년 6월)</b>입니다. 취소분은 빼고 <b>공급가액(부가세 별도)</b> 기준입니다.
-        <br />· <b>요약표</b>는 행을 두 단계로 펼치고 값을 여러 개 보여 줍니다 — 엑셀에서 쓰시던 <b>회계사 › 담당직원 × (거래처수·기장료·조정료·합계)</b> 모양입니다. <b>교차표</b>는 행×열에 한 값으로 추이를 봅니다.
-        <br />· 앱을 쓰기 전 기간(FY2025)은 <b>2025실적 자료</b>를, 그 뒤는 <b>앱의 청구기록</b>을 씁니다. 한 사업연도 안에서는 한 원천만 써서 이중으로 세지 않습니다.
-        <br />· <b>예상</b>으로 바꾸면 <b>매출계약대로라면 나올 금액</b>을 같은 모양으로 봅니다(미확정 예정계약 포함).
-        담당직원은 <b>지금 배정</b> 기준이고 공동담당은 <b>균등으로 나눕니다</b> — 실적처럼 청구별 배분이 아직 없기 때문입니다.
-        <br />· 미래 예상(연환산·추이·예산)은 거래처관리 › <b>현황및예산조회</b>에서 봅니다. 여기는 <b>실제 매출</b>만 셉니다.
+      {/* 한 줄만 내놓고 나머지는 접는다 — 처음 보는 사람은 펼치고, 매달 보는 사람은 표부터 본다. */}
+      <div className="rep-hint">
+        💡 청구할 때 굳혀 둔 <b>그 시점의 담당·금액</b>을 더한 것입니다. 계약이 나중에 바뀌어도 지난 통계는 변하지 않습니다.
+        <details style={{ marginTop: 6 }}>
+          <summary style={{ cursor: 'pointer', color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>보는 법 자세히</summary>
+          <div style={{ marginTop: 6, color: 'var(--ink-2)' }}>
+            · <b>행·열</b>에 원하는 구분자를 놓으면 엑셀 피벗처럼 잘라 볼 수 있습니다(담당직원 × 귀속월, 매출유형 × 담당회계사 …).
+            <br />· <b>담당직원</b>은 배분 비율만큼 쪼개 더합니다 — 공동담당 건도 합계가 부풀지 않습니다.
+            <b> 감사팀은 회계사 단위</b>로만 보므로, 팀을 감사팀으로 좁히면 행이 담당회계사로 바뀝니다.
+            <br />· 기간의 기본은 <b>사업연도(7월~익년 6월)</b>입니다. 취소분은 빼고 <b>공급가액(부가세 별도)</b> 기준입니다.
+            <br />· <b>요약표</b>는 행을 두 단계로 펼치고 값을 여러 개 보여 줍니다 — 엑셀에서 쓰시던 <b>회계사 › 담당직원 × (거래처수·기장료·조정료·합계)</b> 모양입니다. <b>교차표</b>는 행×열에 한 값으로 추이를 봅니다.
+            <br />· 앱을 쓰기 전 기간(FY2025)은 <b>2025실적 자료</b>를, 그 뒤는 <b>앱의 청구기록</b>을 씁니다. 한 사업연도 안에서는 한 원천만 써서 이중으로 세지 않습니다.
+            <br />· <b>예상</b>으로 바꾸면 <b>매출계약대로라면 나올 금액</b>을 같은 모양으로 봅니다(미확정 예정계약 포함).
+            담당직원은 <b>지금 배정</b> 기준이고 공동담당은 <b>균등으로 나눕니다</b> — 실적처럼 청구별 배분이 아직 없기 때문입니다.
+            <br />· 미래 예상(연환산·추이·예산)은 거래처관리 › <b>현황및예산조회</b>에서 봅니다. 여기는 <b>실제 매출</b>만 셉니다.
+          </div>
+        </details>
       </div>
 
       {basis === 'forecast' && (
-        <div className="alert-w" style={{ fontSize: 11.5 }}>
+        <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
           🔮 <b>예상</b>입니다 — 실제로 청구한 것이 아니라 <b>매출계약대로라면 나올 금액</b>입니다.
           미확정(예정) 계약도 넣었습니다. 담당직원은 <b>지금 배정</b> 기준이라 그 사이 담당이 바뀌었으면 과거 실적과 다르게 보입니다.
         </div>
@@ -278,7 +292,7 @@ function StatsPanel() {
 
       {mode === 'summary' ? (
         <div className="tbl-scroll" style={{ maxHeight: '58vh' }}>
-          <table className="tbl" style={{ fontSize: 11.5 }}>
+          <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
             <thead>
               <tr>
                 <th style={{ minWidth: 160 }}>
@@ -289,16 +303,16 @@ function StatsPanel() {
             </thead>
             <tbody>
               {sum2.rows.length === 0 && (
-                <tr><td colSpan={1 + MEASURES.length} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+                <tr><td colSpan={1 + MEASURES.length} style={{ textAlign: 'center', padding: 20, color: 'var(--ink-4)' }}>
                   조건에 맞는 매출이 없습니다.
                 </td></tr>
               )}
               {sum2.rows.map((r) => (
                 <tr key={`${r.key}|${r.sub ?? ''}`}
-                  style={r.sub ? undefined : { background: '#f8f5ec' }}>
+                  style={r.sub ? undefined : { background: '#EEF4FB' }}>
                   <td style={r.sub
-                    ? { paddingLeft: 22, color: '#444' }
-                    : { fontWeight: 700, color: '#1A2B52' }}>
+                    ? { paddingLeft: 22, color: 'var(--ink-2)' }
+                    : { fontWeight: 700, color: 'var(--navy)' }}>
                     {r.sub ?? (sum2.rows.some((x) => x.sub) ? `▾ ${r.key}` : r.key)}
                   </td>
                   {MEASURES.map((m) => (
@@ -313,7 +327,7 @@ function StatsPanel() {
               ))}
             </tbody>
             <tfoot>
-              <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
+              <tr style={{ background: '#EEF4FB', fontWeight: 700, color: 'var(--navy)' }}>
                 <td>총합계</td>
                 {MEASURES.map((m) => (
                   <td key={m.key} className="r">
@@ -326,7 +340,7 @@ function StatsPanel() {
         </div>
       ) : (
       <div className="tbl-scroll" style={{ maxHeight: '58vh' }}>
-        <table className="tbl" style={{ fontSize: 11.5 }}>
+        <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
           <thead>
             <tr>
               <th style={{ minWidth: 120 }}>{dimOf(rowKey).label}</th>
@@ -338,26 +352,26 @@ function StatsPanel() {
           </thead>
           <tbody>
             {p.rows.length === 0 && (
-              <tr><td colSpan={4 + p.cols.length} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+              <tr><td colSpan={4 + p.cols.length} style={{ textAlign: 'center', padding: 20, color: 'var(--ink-4)' }}>
                 조건에 맞는 청구가 없습니다.
               </td></tr>
             )}
             {p.rows.map((r) => (
               <tr key={r}>
-                <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r}</td>
-                <td className="r" style={{ color: '#888' }}>{p.counts.get(r) ?? 0}</td>
+                <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{r}</td>
+                <td className="r" style={{ color: 'var(--ink-3)' }}>{p.counts.get(r) ?? 0}</td>
                 <td className="r" style={{ fontWeight: 700 }}>{fmt(p.rowTotal.get(r) ?? 0)}</td>
                 <td>
                   <span style={{
                     display: 'block', height: 10, borderRadius: 5,
                     width: `${Math.max(2, ((p.rowTotal.get(r) ?? 0) / max) * 100)}%`,
-                    background: '#1A2B52', opacity: 0.75,
+                    background: 'var(--navy)', opacity: 0.75,
                   }} />
                 </td>
                 {p.cols.map((c) => {
                   const v = p.cell.get(`${r}|${c}`);
                   return (
-                    <td key={c} className="r" style={{ color: '#666' }}>
+                    <td key={c} className="r" style={{ color: 'var(--ink-2)' }}>
                       {v ? fmt(v) : <span style={{ color: '#DDD' }}>—</span>}
                     </td>
                   );
@@ -366,7 +380,7 @@ function StatsPanel() {
             ))}
           </tbody>
           <tfoot>
-            <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
+            <tr style={{ background: '#EEF4FB', fontWeight: 700, color: 'var(--navy)' }}>
               <td>합계</td>
               <td className="r">{filtered.length}</td>
               <td className="r">{fmt(p.grand)}</td>
@@ -384,12 +398,12 @@ function StatsPanel() {
         </button>
         {showLog && (
           <>
-            <div className="alert-i" style={{ fontSize: 11, marginTop: 8 }}>
+            <div className="alert-i" style={{ fontSize: 'var(--fs-1)', marginTop: 8 }}>
               발행요청 화면에서 담당직원을 바꾼 기록입니다. <b>계약반영</b>이 <b>예</b>이면 매출계약의 담당직원도
               그 달부터 함께 바뀐 것이고, <b>아니오</b>면 그 달 청구 한 건만 바뀐 것입니다.
             </div>
             <div className="tbl-scroll" style={{ maxHeight: '40vh', marginTop: 6 }}>
-              <table className="tbl" style={{ fontSize: 11.5 }}>
+              <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
                 <thead>
                   <tr>
                     <th>적용월</th><th>거래처</th><th>이전</th><th>이후</th>
@@ -398,7 +412,7 @@ function StatsPanel() {
                 </thead>
                 <tbody>
                   {logs.length === 0 && (
-                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: 16, color: '#BBB' }}>
+                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: 16, color: 'var(--ink-4)' }}>
                       아직 변경 이력이 없습니다.
                     </td></tr>
                   )}
@@ -406,13 +420,13 @@ function StatsPanel() {
                     <tr key={l.id}>
                       <td style={{ fontWeight: 700 }}>{l.ym || '—'}</td>
                       <td>{l.company || '—'}</td>
-                      <td style={{ color: '#888' }}>{l.before || '(없음)'}</td>
-                      <td style={{ fontWeight: 700, color: '#1A2B52' }}>{l.after || '(없음)'}</td>
+                      <td style={{ color: 'var(--ink-3)' }}>{l.before || '(없음)'}</td>
+                      <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{l.after || '(없음)'}</td>
                       <td style={{ color: l.propagated ? '#2a7' : '#999', fontWeight: l.propagated ? 700 : 400 }}>
                         {l.propagated ? '예' : '아니오'}
                       </td>
                       <td>{l.changedBy || '—'}</td>
-                      <td style={{ color: '#888' }}>{kstDateTime(l.changedAt)}</td>
+                      <td style={{ color: 'var(--ink-3)' }}>{kstDateTime(l.changedAt)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -433,7 +447,7 @@ function Filter({ label, value, onChange, opts }: {
 }) {
   if (!opts.length) return null;
   return (
-    <label style={{ fontSize: 11.5, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+    <label style={{ fontSize: 'var(--fs-1)', display: 'inline-flex', gap: 4, alignItems: 'center' }}>
       {label}
       <select value={value} onChange={(e) => onChange(e.target.value)}
         style={{ fontWeight: value ? 700 : 400, color: value ? '#1A2B52' : undefined }}>

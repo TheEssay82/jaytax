@@ -40,7 +40,7 @@ import { listSalesContracts, type SalesContract } from '../../lib/salesContractA
 import { VIEW_KEYS } from '../../lib/tableViewApi';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
-const dash = <span style={{ color: '#CCC' }}>—</span>;
+const dash = <span style={{ color: 'var(--ink-4)' }}>—</span>;
 const TEAM = AUDIT_TEAM;
 /** 발행체크 시트의 '구분' — 감사 용역은 계약금·중도금·잔금으로 나눠 청구한다. */
 const PHASES = ['계약금', '중도금', '잔금', '총액'] as const;
@@ -157,13 +157,13 @@ export default function AuditInvoiceTab() {
       ) },
     { key: 'over', label: '경과', width: 68, num: true, value: (p) => p.overdueDays,
       cell: (p) => (p.overdueDays >= 0
-        ? <span style={{ color: '#991B1B', fontWeight: 700 }}>{p.overdueDays}일 지남</span>
-        : <span style={{ color: '#888' }}>{-p.overdueDays}일 뒤</span>) },
-    { key: 'company', label: '거래처', width: 160, value: (p) => p.companyName, style: { fontWeight: 700, color: '#1A2B52' } },
+        ? <span style={{ color: 'var(--bad)', fontWeight: 700 }}>{p.overdueDays}일 지남</span>
+        : <span style={{ color: 'var(--ink-3)' }}>{-p.overdueDays}일 뒤</span>) },
+    { key: 'company', label: '거래처', width: 160, value: (p) => p.companyName, style: { fontWeight: 700, color: 'var(--navy)' } },
     { key: 'place', label: '사업장', width: 110, value: (p) => p.placeName },
     { key: 'type', label: '매출유형', width: 120, value: (p) => pathLabel(p.typeLabel) },
     { key: 'round', label: '회차', width: 84, value: (p) => p.label },
-    { key: 'code', label: '계약코드', width: 100, value: (p) => p.contractCode, style: { fontFamily: 'monospace', fontSize: 10.5 } },
+    { key: 'code', label: '계약코드', width: 100, value: (p) => p.contractCode, style: { fontFamily: 'monospace', fontSize: 'var(--fs-0)' } },
     { key: 'supply', label: '공급가액', width: 108, num: true, value: (p) => p.supplyAmount,
       cell: (p) => won(p.supplyAmount), sum: (p) => p.supplyAmount },
     { key: 'cpa', label: '담당회계사', width: 82, value: (p) => p.cpa, cell: (p) => p.cpa || dash },
@@ -171,7 +171,7 @@ export default function AuditInvoiceTab() {
     { key: 'notified', label: '알림', width: 60, value: (p) => (p.notified ? '보냄' : '아직'),
       opts: ['보냄', '아직'],
       cell: (p) => (p.notified
-        ? <span style={{ color: '#2a7' }}>✓ 보냄</span>
+        ? <span style={{ color: 'var(--good)' }}>✓ 보냄</span>
         : <span style={{ color: '#C99' }}>아직</span>) },
   ];
   const propGrid = useGrid(VIEW_KEYS.auditProposal, propCols, propView, { key: 'due', dir: 'asc' });
@@ -336,7 +336,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
     const c = r.status === '발행완료' ? { bg: '#D1FAE5', fg: '#065F46' }
       : r.status === '취소' ? { bg: '#F3F4F6', fg: '#6B7280' }
         : r.status === '수정발행' ? { bg: '#FEE2E2', fg: '#991B1B' } : { bg: '#DBEAFE', fg: '#1E3A8A' };
-    return <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.status}</span>;
+    return <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 'var(--fs-0)', fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.status}</span>;
   };
   const reqCols = (withStatus: boolean): GridCol<InvoiceRequest>[] => [
     ...(withStatus ? [{
@@ -344,7 +344,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       opts: ['요청', '발행완료', '취소', '수정발행'], cell: statusCell,
     } as GridCol<InvoiceRequest>] : []),
     { key: 'ym', label: '귀속월', width: 74, value: (r) => r.ym },
-    { key: 'company', label: '거래처', width: 160, value: (r) => r.companyName, style: { fontWeight: 700, color: '#1A2B52' } },
+    { key: 'company', label: '거래처', width: 160, value: (r) => r.companyName, style: { fontWeight: 700, color: 'var(--navy)' } },
     { key: 'place', label: '사업장', width: 110, value: (r) => r.placeName },
     { key: 'erp', label: '매출계정', width: 118, value: (r) => r.erpAccount, opts: ERP_ACCOUNTS, cell: (r) => r.erpAccount || dash },
     { key: 'phase', label: '구분', width: 66, value: (r) => r.phase, opts: PHASES, cell: (r) => r.phase || dash },
@@ -352,7 +352,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
     { key: 'supply', label: '공급가액', width: 108, num: true, value: (r) => r.supplyAmount,
       cell: (r) => won(r.supplyAmount), sum: (r) => (r.status === '취소' ? 0 : r.supplyAmount) },
     { key: 'vat', label: 'VAT', width: 92, num: true, value: (r) => r.vat,
-      cell: (r) => won(r.vat), sum: (r) => (r.status === '취소' ? 0 : r.vat), style: { color: '#888' } },
+      cell: (r) => won(r.vat), sum: (r) => (r.status === '취소' ? 0 : r.vat), style: { color: 'var(--ink-3)' } },
     { key: 'total', label: '합계', width: 108, num: true, value: (r) => r.total,
       cell: (r) => won(r.total), sum: (r) => (r.status === '취소' ? 0 : r.total), style: { fontWeight: 700 } },
     { key: 'summary', label: '발행 시 적요', width: 150, value: (r) => r.summary || r.note,
@@ -370,10 +370,10 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
     { key: 'doc', label: '청구서', width: 60, value: (r) => (r.needsInvoiceDoc ? '필요' : ''),
       opts: ['필요'],
       cell: (r) => (r.needsInvoiceDoc
-        ? <span style={{ fontSize: 10.5, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>필요</span>
+        ? <span style={{ fontSize: 'var(--fs-0)', fontWeight: 700, color: 'var(--warn)', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>필요</span>
         : dash) },
     { key: 'email', label: '발송 e-mail', width: 170, value: (r) => r.docEmail, cell: (r) => r.docEmail || dash,
-      style: { fontSize: 10.5, color: '#666' } },
+      style: { fontSize: 'var(--fs-0)', color: 'var(--ink-2)' } },
     { key: 'issueDate', label: '작성일', width: 88, value: (r) => r.issueDate ?? '', cell: (r) => r.issueDate ?? dash },
     { key: 'requestedBy', label: '요청자', width: 76, value: (r) => r.requestedByName, cell: (r) => r.requestedByName || dash },
     { key: 'invoiceNo', label: '승인번호', width: 110, value: (r) => r.invoiceNo,
@@ -389,13 +389,13 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
         </>
       ) },
     { key: 'issuedDate', label: '발행일', width: 88, value: (r) => r.issuedDate ?? '', cell: (r) => r.issuedDate ?? dash },
-    { key: 'issuedBy', label: '처리자', width: 76, value: (r) => r.issuedByName, cell: (r) => r.issuedByName || dash, style: { color: '#666' } },
+    { key: 'issuedBy', label: '처리자', width: 76, value: (r) => r.issuedByName, cell: (r) => r.issuedByName || dash, style: { color: 'var(--ink-2)' } },
     ...(withStatus ? [{
       key: 'cancel', label: '취소 사유 · 다시요청', width: 200,
       value: (r: InvoiceRequest) => r.cancelReason,
       cell: (r: InvoiceRequest) => (r.status === '취소' ? (
         <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <span style={{ fontSize: 10.5, color: '#c33', flex: 1 }} title={r.cancelReason}>
+          <span style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)', flex: 1 }} title={r.cancelReason}>
             {r.cancelReason || '(사유 없음)'}
           </span>
           {canWrite && (
@@ -527,11 +527,11 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
     <div className="card">
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         🧾 세금계산서 발행요청 · 감사팀
-        <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
+        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
           제안 {overdue.length} · 처리 중 {working.length} · 발행완료 {reqs.filter((r) => r.status === '발행완료').length}
         </span>
         {amCpa && (
-          <label style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
+          <label style={{ fontSize: 'var(--fs-1)', display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
             title="담당 회계사가 나인 건만 봅니다">
             <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} />
             내 담당만
@@ -539,7 +539,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
         )}
         <button className="btn-sm" onClick={() => setManual(true)}
           title="내 자리에서 무엇을 언제 하는지 — 김민섭·담당직원·회계사별로">📖 업무 매뉴얼</button>
-        {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
+        {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
       </div>
       {err && <div className="alert-w">{err}</div>}
 
@@ -557,7 +557,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       </div>
 
       {pane === 'request' && (
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           감사 용역은 계약금·중도금·잔금이 <b>건별로</b> 생기므로 달로 묶지 않습니다. 이 자리는 <b>회계사가 청구를 올리는 곳</b>입니다.
           <br />① <b>제안</b> — 매출계약의 분할회차 중 <b>청구기한이 지난 것</b>입니다. <b>알림일 뿐</b>이라 그대로 넘어가지 않습니다 —
           고른 뒤 창에서 <b>작성일·금액·적요를 고쳐</b> 발행요청으로 보냅니다.
@@ -566,13 +566,13 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
         </div>
       )}
       {pane === 'issue' && (
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           {withJosa(FINAL_APPROVER, '이', '가')} <b>세금계산서를 끊는 자리</b>입니다. 발행요청에서 올라온 건이 여기 모입니다.
           ERP에서 발행한 뒤 <b>발행완료</b>를 누르면 요청한 회계사에게 알림이 갑니다.
         </div>
       )}
       {pane === 'history' && (
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           발행이 끝난 건을 기간으로 조회합니다(기본 최근 3개월). 잘못 나간 건은 여기서 <b>수정발행</b>으로 되돌립니다.
         </div>
       )}
@@ -581,10 +581,10 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       {pane === 'request' && (<>
       <div style={{ marginTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
+          <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>
             ① 청구할 때가 된 계약 — 알림 ({propGrid.rowsView.length}건 · 공급가액 {won(propGrid.rowsView.reduce((s, p) => s + p.supplyAmount, 0))})
           </b>
-          <label style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
+          <label style={{ fontSize: 'var(--fs-1)', display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
             title="아직 기한이 오지 않았지만 30일 안에 다가오는 것도 함께 봅니다">
             <input type="checkbox" checked={soon} onChange={(e) => setSoon(e.target.checked)} />
             30일 내 다가오는 것도
@@ -629,26 +629,26 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       {/* ══ 2층 — 건별 발행요청 ═════════════════════ */}
       <div style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>② 세금계산서 발행요청</b>
+          <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>② 세금계산서 발행요청</b>
           {canWrite && (
             // 이 화면에서 가장 자주 누르는 단추다 — 제목 바로 옆에, 눈에 띄는 색으로 둔다.
             <button onClick={() => setShowForm((v) => !v)}
               style={showForm ? undefined : {
-                background: '#C8963C', color: '#fff', border: 'none', borderRadius: 5,
-                padding: '5px 14px', fontWeight: 700, fontSize: 12.5, cursor: 'pointer',
+                background: 'var(--gold)', color: '#fff', border: 'none', borderRadius: 5,
+                padding: '5px 14px', fontWeight: 700, fontSize: 'var(--fs-2)', cursor: 'pointer',
                 boxShadow: '0 1px 3px rgba(0,0,0,.18)',
               }}
               className={showForm ? 'btn-sm' : undefined}>
               {showForm ? '닫기' : '＋ 건별 발행요청'}
             </button>
           )}
-          <span style={{ fontSize: 11, color: '#888' }}>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
             계약에 없거나 분할회차를 등록해 두지 않은 건을 한 줄로 적습니다 —
             등록하면 {FINAL_APPROVER}에게 바로 알림이 갑니다.
           </span>
         </div>
         {showForm && canWrite && (
-          <div id="audit-newform" style={{ border: '1px solid #e2d9c6', background: '#fdfaf3', borderRadius: 6, padding: 10, marginBottom: 10 }}>
+          <div id="audit-newform" style={{ border: '1px solid var(--rule)', background: '#fdfaf3', borderRadius: 6, padding: 10, marginBottom: 10 }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <Field label="거래처" width={230}>
                 <input list="audit-companies" value={f.company} placeholder="코드 또는 상호로 찾기"
@@ -697,7 +697,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
             </div>
             {cum && (
               <div style={{
-                marginTop: 6, fontSize: 11.5, padding: '6px 9px', borderRadius: 4,
+                marginTop: 6, fontSize: 'var(--fs-1)', padding: '6px 9px', borderRadius: 4,
                 background: cum.after < 0 ? '#FDECEA' : '#F2F6F2',
                 color: cum.after < 0 ? '#9B3527' : '#33553F',
               }}>
@@ -706,7 +706,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
                 {!!f.amount && <> → 이 건({won(Number(f.amount.replace(/[^\d-]/g, '')) || 0)}) 반영 후 <b>{won(cum.after)}</b></>}
                 {cum.after < 0 && <> · <b>계약금액을 넘습니다</b> — 금액이나 계약을 다시 보세요.</>}
                 {!cum.hasInstallments && (
-                  <><br /><span style={{ color: '#666' }}>
+                  <><br /><span style={{ color: 'var(--ink-2)' }}>
                     이 계약에는 분할회차가 없습니다 — 회차 대신 <b>누적</b>으로 따집니다.
                   </span></>
                 )}
@@ -719,7 +719,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
               </Field>
               {suggestions.length > 0 && (
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4, alignItems: 'center' }}>
-                  <span style={{ fontSize: 10.5, color: '#888' }}>매출계약에서 추천 —</span>
+                  <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>매출계약에서 추천 —</span>
                   {suggestions.map((g, i) => (
                     <button key={i} className="btn-sm" title={g.label}
                       onClick={() => { set('summary', g.summary); set('account', g.account); }}>
@@ -746,13 +746,13 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
             </div>
 
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
-              <label style={{ fontSize: 11.5, display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}>
+              <label style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}>
                 <input type="checkbox" checked={needsDoc} onChange={(e) => setNeedsDoc(e.target.checked)} />
                 <b>청구서(서면)도 보내야 함</b> — 목록에 표시되어 빠뜨리지 않습니다.
               </label>
               <button className="btn-p" style={{ marginLeft: 'auto' }} disabled={busy}
                 onClick={() => void add()}>＋ 발행요청 등록</button>
-              {f.amount && <span style={{ fontSize: 11.5, color: '#666' }}>
+              {f.amount && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
                 합계 {won(Math.round(Number(f.amount.replace(/[^\d-]/g, '') || 0) * 1.1))}
               </span>}
             </div>
@@ -767,16 +767,16 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       {pane === 'issue' && (
       <div style={{ marginTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
+          <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>
             ③ 발행 처리 — {withJosa(FINAL_APPROVER, '이', '가')} 끊을 건 ({workGrid.rowsView.length}건 · 공급가액 {won(workGrid.rowsView.reduce((s, r) => s + r.supplyAmount, 0))})
           </b>
           {canWrite && (
             <>
               <button className="btn-sm" onClick={() => setPickR(new Set(workGrid.rowsView.map((r) => r.id)))}>전체선택</button>
               <button className="btn-sm" onClick={() => setPickR(new Set())}>선택해제</button>
-              <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{pickedR.length}</b>건</span>
-              <span style={{ fontSize: 11.5, color: '#666' }}>발행일</span>
-              <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 12 }} />
+              <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>선택 <b>{pickedR.length}</b>건</span>
+              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>발행일</span>
+              <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
               <button className="btn-p" disabled={busy || !pickedR.length || !isApprover} onClick={() => void issuePicked()}
                 title={isApprover ? '' : `발행완료는 ${FINAL_APPROVER}(부재 시 기장팀장·최고관리자)만 처리합니다`}>
                 발행완료 처리
@@ -816,7 +816,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       {pane === 'history' && (
       <div style={{ marginTop: 4 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
+          <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>
             ④ 발행 이력 ({histGrid.rowsView.length}건)
           </b>
           <select value={year ? '' : range} onChange={(e) => { setRange(e.target.value); setYear(''); }}
@@ -829,7 +829,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           </select>
           <input placeholder="🔍 거래처·적요·계정·승인번호·회계사" value={q} onChange={(e) => setQ(e.target.value)}
             style={{ minWidth: 220, flex: '0 1 300px' }} />
-          <span style={{ fontSize: 11.5, color: '#666' }}>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
             공급가액 {won(histGrid.rowsView.filter((r) => r.status !== '취소').reduce((s, r) => s + r.supplyAmount, 0))}
           </span>
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
@@ -882,7 +882,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
 function Field({ label, width, children }: { label: string; width: number; children: React.ReactNode }) {
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 2, width }}>
-      <span style={{ fontSize: 10.5, color: '#888' }}>{label}</span>
+      <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{label}</span>
       {children}
     </span>
   );

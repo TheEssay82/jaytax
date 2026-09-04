@@ -35,17 +35,17 @@ export default function Login() {
               fontSize: 42,
               fontWeight: 500,
               letterSpacing: 12,
-              color: '#1A2B52',
+              color: 'var(--navy)',
               paddingLeft: 12,
               lineHeight: 1.1,
             }}
           >
             JAY
           </div>
-          <div style={{ height: 1, background: '#C8963C', width: '86%', margin: '8px auto 11px' }} />
-          <div style={{ fontSize: 10, letterSpacing: 4, color: '#1A2B52' }}>JIWON ACCOUNTING</div>
-          <div style={{ fontSize: 10, letterSpacing: 4, color: '#1A2B52', marginTop: 3 }}>FOR YOU</div>
-          <div style={{ fontSize: 12, letterSpacing: 2, color: '#555', marginTop: 7 }}>
+          <div style={{ height: 1, background: 'var(--gold)', width: '86%', margin: '8px auto 11px' }} />
+          <div style={{ fontSize: 'var(--fs-0)', letterSpacing: 4, color: 'var(--navy)' }}>JIWON ACCOUNTING</div>
+          <div style={{ fontSize: 'var(--fs-0)', letterSpacing: 4, color: 'var(--navy)', marginTop: 3 }}>FOR YOU</div>
+          <div style={{ fontSize: 'var(--fs-2)', letterSpacing: 2, color: 'var(--ink-2)', marginTop: 7 }}>
             세무회계사무소 지원
           </div>
         </div>
@@ -77,9 +77,9 @@ export default function Login() {
         <div style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid #ece7dc', textAlign: 'center' }}>
           <a
             href="/e"
-            style={{ fontSize: 12.5, color: '#8a8170', textDecoration: 'none', letterSpacing: '0.02em' }}
+            style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', textDecoration: 'none', letterSpacing: '0.02em' }}
           >
-            습작 읽기 <span style={{ color: '#C8963C' }}>→</span>
+            습작 읽기 <span style={{ color: 'var(--gold)' }}>→</span>
           </a>
         </div>
       </form>

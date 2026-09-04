@@ -30,7 +30,7 @@ const CAP_LABELS: Record<Capability, string> = {
 };
 const CAPS = Object.keys(CAP_LABELS) as Capability[];
 
-const O = <span style={{ color: '#2a7', fontWeight: 700 }}>●</span>;
+const O = <span style={{ color: 'var(--good)', fontWeight: 700 }}>●</span>;
 const X = <span style={{ color: '#DDD' }}>·</span>;
 
 export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
@@ -68,7 +68,7 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
           <button className={tab === 'user' ? 'btn-p' : 'btn-sm'} onClick={() => setTab('user')}>사용자별</button>
         </span>
         {tab === 'menu' && (
-          <label style={{ fontSize: 11.5, marginLeft: 'auto' }}>
+          <label style={{ fontSize: 'var(--fs-1)', marginLeft: 'auto' }}>
             이름으로 갈리는 메뉴 확인{' '}
             <select value={who} onChange={(e) => setWho(e.target.value)}>
               <option value="">(이름 무관)</option>
@@ -78,7 +78,7 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
         )}
       </div>
 
-      <div className="alert-i" style={{ fontSize: 11 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
         여기 보이는 것은 설명이 아니라 <b>화면이 실제로 쓰는 규칙</b>입니다(<code>lib/menu.ts</code>·<code>lib/roles.ts</code>).
         메뉴나 권한을 고치면 이 표가 저절로 따라옵니다.
         <br />● = 메뉴가 보이고 접근 가능 · · = 보이지 않음. <b>메뉴가 보인다고 다 쓸 수 있는 것은 아닙니다</b> —
@@ -89,7 +89,7 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
 
       {tab === 'menu' && (
         <div className="tbl-scroll" style={{ maxHeight: '62vh' }}>
-          <table className="tbl" style={{ fontSize: 11.5 }}>
+          <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
             <thead>
               <tr>
                 <th style={{ minWidth: 110 }}>대분류</th>
@@ -101,13 +101,13 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
             <tbody>
               {rows.map((r, i) => (
                 <tr key={`${r.item.id}:${i}`}>
-                  <td style={{ color: '#888' }}>{i === 0 || rows[i - 1].group !== r.group ? r.group : ''}</td>
-                  <td style={{ fontWeight: r.depth ? 400 : 700, color: '#1A2B52', paddingLeft: r.depth ? 18 : undefined }}>
+                  <td style={{ color: 'var(--ink-3)' }}>{i === 0 || rows[i - 1].group !== r.group ? r.group : ''}</td>
+                  <td style={{ fontWeight: r.depth ? 400 : 700, color: 'var(--navy)', paddingLeft: r.depth ? 18 : undefined }}>
                     {r.depth ? '└ ' : ''}{r.item.label}
                     {r.item.hideFor && <Tag>제외 {r.item.hideFor.join('·')}</Tag>}
                     {r.item.onlyFor && <Tag>{r.item.onlyFor.join('·')}·관리자만</Tag>}
                   </td>
-                  <td style={{ fontSize: 10.5, color: '#888' }}>
+                  <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>
                     {r.item.cap ? CAP_LABELS[r.item.cap] : '—'}
                   </td>
                   {ROLES.map((role) => (
@@ -124,19 +124,19 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
 
       {tab === 'cap' && (
         <div className="tbl-scroll" style={{ maxHeight: '62vh' }}>
-          <table className="tbl" style={{ fontSize: 11.5 }}>
+          <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
             <thead>
               <tr>
                 <th style={{ minWidth: 220 }}>권한</th>
-                <th style={{ minWidth: 130, color: '#888' }}>코드</th>
+                <th style={{ minWidth: 130, color: 'var(--ink-3)' }}>코드</th>
                 {ROLES.map((r) => <th key={r} style={{ textAlign: 'center' }}>{ROLE_LABELS[r]}</th>)}
               </tr>
             </thead>
             <tbody>
               {CAPS.map((c) => (
                 <tr key={c}>
-                  <td style={{ fontWeight: 700, color: '#1A2B52' }}>{CAP_LABELS[c]}</td>
-                  <td style={{ fontFamily: 'monospace', fontSize: 10.5, color: '#888' }}>{c}</td>
+                  <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{CAP_LABELS[c]}</td>
+                  <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{c}</td>
                   {ROLES.map((role) => (
                     <td key={role} style={{ textAlign: 'center' }}>{can(role, c) ? O : X}</td>
                   ))}
@@ -149,7 +149,7 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
 
       {tab === 'user' && (
         <div className="tbl-scroll" style={{ maxHeight: '62vh' }}>
-          <table className="tbl" style={{ fontSize: 11.5 }}>
+          <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
             <thead>
               <tr>
                 <th>이름</th><th>이메일</th><th>등급</th><th className="r">보이는 메뉴</th>
@@ -158,7 +158,7 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
             </thead>
             <tbody>
               {users.length === 0 && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', padding: 16, color: '#BBB' }}>사용자가 없습니다.</td></tr>
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: 16, color: 'var(--ink-4)' }}>사용자가 없습니다.</td></tr>
               )}
               {users.map((u) => {
                 const role = u.role as Role;
@@ -166,14 +166,14 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
                 const caps = CAPS.filter((c) => can(role, c));
                 return (
                   <tr key={u.id} style={{ opacity: u.readonly ? 0.6 : 1 }}>
-                    <td style={{ fontWeight: 700, color: '#1A2B52' }}>{u.name || '—'}</td>
-                    <td style={{ fontSize: 11, color: '#666' }}>{u.email}</td>
+                    <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{u.name || '—'}</td>
+                    <td style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>{u.email}</td>
                     <td style={{ fontWeight: 700 }}>{ROLE_LABELS[role] ?? u.role}</td>
                     <td className="r">{seen} / {rows.length}</td>
-                    <td style={{ fontSize: 10.5, color: '#666' }}>
+                    <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-2)' }}>
                       {caps.length ? caps.map((c) => CAP_LABELS[c]).join(' · ') : '없음'}
                     </td>
-                    <td>{u.readonly ? <span style={{ color: '#c33', fontWeight: 700 }}>잠김(조회만)</span> : '—'}</td>
+                    <td>{u.readonly ? <span style={{ color: 'var(--bad)', fontWeight: 700 }}>잠김(조회만)</span> : '—'}</td>
                   </tr>
                 );
               })}

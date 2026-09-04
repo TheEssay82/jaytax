@@ -114,7 +114,7 @@ export default function Step1BasicInfo({ clients, profiles }: WizardStepProps) {
         </div>
         <div className="frow">
           <span className="fl">귀속연도</span>
-          <strong style={{ fontSize: 14, color: '#1A2B52' }}>{S.fiscalYear}년</strong>
+          <strong style={{ fontSize: 14, color: 'var(--navy)' }}>{S.fiscalYear}년</strong>
         </div>
         <div className="frow">
           <span className="fl">발송일</span>
@@ -152,7 +152,7 @@ export default function Step1BasicInfo({ clients, profiles }: WizardStepProps) {
           <span className="fl">
             당기 매출액<span className="req">*</span>
             <br />
-            <small style={{ color: '#999' }}>{S.fiscalYear}년 귀속</small>
+            <small style={{ color: 'var(--ink-3)' }}>{S.fiscalYear}년 귀속</small>
           </span>
           <input
             value={revDisplay}
@@ -195,7 +195,7 @@ export default function Step1BasicInfo({ clients, profiles }: WizardStepProps) {
               placeholder="월"
               onChange={(e) => setS({ payMonth: e.target.value })}
             />
-            <span style={{ fontSize: 11, color: '#888' }}>월</span>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>월</span>
             <input
               type="number"
               style={{ width: 52 }}
@@ -205,7 +205,7 @@ export default function Step1BasicInfo({ clients, profiles }: WizardStepProps) {
               placeholder="일"
               onChange={(e) => setS({ payDay: e.target.value })}
             />
-            <span style={{ fontSize: 11, color: '#888' }}>일까지</span>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>일까지</span>
           </div>
         </div>
       </div>

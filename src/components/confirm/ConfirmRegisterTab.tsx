@@ -157,7 +157,7 @@ export default function ConfirmRegisterTab() {
     return (
       <div className="card">
         <div className="chdr">📮 조회서등록</div>
-        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
       </div>
     );
   }
@@ -167,21 +167,21 @@ export default function ConfirmRegisterTab() {
       <div className="chdr">조회서등록</div>
 
       {error && <div className="alert-w">{error}</div>}
-      {msg && <div className="alert-s" style={{ fontSize: 12 }}>{msg}</div>}
+      {msg && <div className="alert-s" style={{ fontSize: 'var(--fs-2)' }}>{msg}</div>}
 
-      <div className="alert-i" style={{ fontSize: 11 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
         📮 감사 <b>기준일</b> 현재의 잔액 확인을 위해 보낼 <b>금융기관조회서</b>를 거래처·회계연도별로 등록합니다.
         먼저 아래에서 <b>회계연도·거래처·기준일·담당회계사</b>를 등록한 뒤, 목록에서 <b>조회처(금융기관) 명세</b>를 입력합니다.
         전년도에 보낸 적이 있으면 <b>‘전기 조회서 가져오기’</b>로 거래처를 골라 통째로 복사한 뒤 증감분만 고치는 편이 빠릅니다.
       </div>
 
       {/* ── 신규 등록 ── */}
-      <div style={{ background: '#FaF8F4', border: '1px solid #E3DED3', borderRadius: 10, padding: 12, marginBottom: 14 }}>
+      <div style={{ background: '#FaF8F4', border: '1px solid var(--rule)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>＋ 새 조회서 등록</b>
+          <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>＋ 새 조회서 등록</b>
           <button
             className="btn-sm btn-sm-blue"
-            style={{ marginLeft: 'auto', fontSize: 11 }}
+            style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)' }}
             onClick={() => setImportOpen(true)}
             title="전기에 등록한 조회서를 거래처 단위로 골라 당기로 복사합니다"
           >
@@ -240,8 +240,8 @@ export default function ConfirmRegisterTab() {
             <option key={y} value={y}>{y}년</option>
           ))}
         </select>
-        <span style={{ fontSize: 11, color: '#888' }}>{view.length}건</span>
-        <button className="btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => void load()}>🔄 새로고침</button>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{view.length}건</span>
+        <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }} onClick={() => void load()}>🔄 새로고침</button>
       </div>
 
       <div className="tbl-scroll">
@@ -259,7 +259,7 @@ export default function ConfirmRegisterTab() {
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>등록된 조회서가 없습니다.</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 24 }}>등록된 조회서가 없습니다.</td></tr>
             )}
             {view.map((r) =>
               editId === r.id ? (
@@ -272,14 +272,14 @@ export default function ConfirmRegisterTab() {
                 />
               ) : (
                 <tr key={r.id}>
-                  <td style={{ textAlign: 'center', fontSize: 12 }}>{r.fiscalYear}</td>
-                  <td style={{ fontSize: 12.5 }}><b style={{ color: '#1A2B52' }}>{r.companyName}</b></td>
-                  <td style={{ textAlign: 'center', fontSize: 11.5 }}>{r.baseDate?.replace(/-/g, '.')}</td>
-                  <td style={{ fontSize: 12 }}>{r.accountantName || <span style={{ color: '#CCC' }}>—</span>}</td>
+                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-2)' }}>{r.fiscalYear}</td>
+                  <td style={{ fontSize: 'var(--fs-2)' }}><b style={{ color: 'var(--navy)' }}>{r.companyName}</b></td>
+                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{r.baseDate?.replace(/-/g, '.')}</td>
+                  <td style={{ fontSize: 'var(--fs-2)' }}>{r.accountantName || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
                   <td style={{ textAlign: 'center' }}>
                     <button
                       className="btn-sm btn-sm-blue"
-                      style={{ fontSize: 11, padding: '2px 8px' }}
+                      style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }}
                       onClick={() => setItemsFor(r)}
                       title="조회처(금융기관) 명세 입력·수정"
                     >
@@ -290,10 +290,10 @@ export default function ConfirmRegisterTab() {
                     <span
                       className="bdg"
                       style={{
-                        fontSize: 10,
+                        fontSize: 'var(--fs-0)',
                         ...(r.status === '등록완료'
                           ? { background: '#D1FAE5', color: '#065F46' }
-                          : { background: '#FEF3C7', color: '#92400E' }),
+                          : { background: '#FEF3C7', color: 'var(--warn)' }),
                       }}
                     >
                       {r.status}
@@ -366,12 +366,12 @@ function ClientPicker({
         <div
           style={{
             position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30,
-            background: '#fff', border: '1px solid #ddd', borderRadius: 8,
+            background: '#fff', border: '1px solid var(--rule)', borderRadius: 8,
             maxHeight: 260, overflowY: 'auto', boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
           }}
         >
           {suggestions.length === 0 ? (
-            <div style={{ padding: 10, fontSize: 12, color: '#888' }}>
+            <div style={{ padding: 10, fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>
               일치하는 거래처가 없습니다. 조회서는 <b>회계감사 계약이 등록된 거래처</b>만 고를 수 있습니다 — 거래처관리 › 매출계약등록에서 회계감사 계약을 먼저 등록해 주세요.
             </div>
           ) : (
@@ -382,14 +382,14 @@ function ClientPicker({
                 onClick={() => { onSelect(c); setOpen(false); }}
                 style={{
                   display: 'block', width: '100%', textAlign: 'left', border: 'none',
-                  background: 'transparent', padding: '6px 10px', fontSize: 12.5,
+                  background: 'transparent', padding: '6px 10px', fontSize: 'var(--fs-2)',
                   cursor: c.already ? 'not-allowed' : 'pointer', color: c.already ? '#BBB' : '#333',
                 }}
                 title={c.already ? '이 회계연도에 이미 등록된 거래처입니다' : undefined}
               >
-                {priorIds.has(c.id) && <span style={{ color: '#2563eb', fontSize: 10 }}>전기 ﹒ </span>}
+                {priorIds.has(c.id) && <span style={{ color: '#2563eb', fontSize: 'var(--fs-0)' }}>전기 ﹒ </span>}
                 {c.companyName}
-                {c.already && <span style={{ fontSize: 10, color: '#B91C1C' }}> (등록됨)</span>}
+                {c.already && <span style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)' }}> (등록됨)</span>}
               </button>
             ))
           )}
@@ -432,18 +432,18 @@ function EditRow({
 
   return (
     <tr style={{ background: '#EEF6FF' }}>
-      <td style={{ textAlign: 'center', fontSize: 12 }}>{row.fiscalYear}</td>
-      <td style={{ fontSize: 12.5 }}>{row.companyName}</td>
-      <td><input type="date" value={baseDate} onChange={(e) => setBaseDate(e.target.value)} style={{ width: '100%', fontSize: 11.5 }} /></td>
+      <td style={{ textAlign: 'center', fontSize: 'var(--fs-2)' }}>{row.fiscalYear}</td>
+      <td style={{ fontSize: 'var(--fs-2)' }}>{row.companyName}</td>
+      <td><input type="date" value={baseDate} onChange={(e) => setBaseDate(e.target.value)} style={{ width: '100%', fontSize: 'var(--fs-1)' }} /></td>
       <td>
-        <select value={acctId} onChange={(e) => setAcctId(e.target.value)} style={{ width: '100%', fontSize: 12 }}>
+        <select value={acctId} onChange={(e) => setAcctId(e.target.value)} style={{ width: '100%', fontSize: 'var(--fs-2)' }}>
           <option value="">선택</option>
           {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </td>
-      <td style={{ textAlign: 'center', fontSize: 11, color: '#888' }}>{row.itemCount}건</td>
+      <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{row.itemCount}건</td>
       <td>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: '100%', fontSize: 11.5 }}>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: '100%', fontSize: 'var(--fs-1)' }}>
           <option value="작성중">작성중</option>
           <option value="등록완료">등록완료</option>
         </select>
@@ -503,37 +503,37 @@ function ImportModal({
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, maxWidth: 620, width: '100%', maxHeight: '82vh', overflow: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff' }}>
-          <span style={{ fontWeight: 700, color: '#1A2B52' }}>📋 전기 조회서 가져오기 → {targetYear}년</span>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--rule-2)', position: 'sticky', top: 0, background: '#fff' }}>
+          <span style={{ fontWeight: 700, color: 'var(--navy)' }}>📋 전기 조회서 가져오기 → {targetYear}년</span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
 
         <div style={{ padding: 14 }}>
           {years.length === 0 ? (
-            <div style={{ padding: 16, color: '#888', fontSize: 12.5, textAlign: 'center' }}>
+            <div style={{ padding: 16, color: 'var(--ink-3)', fontSize: 'var(--fs-2)', textAlign: 'center' }}>
               가져올 다른 연도의 등록분이 없습니다.
             </div>
           ) : (
             <>
-              <div className="alert-i" style={{ fontSize: 11, marginBottom: 10 }}>
+              <div className="alert-i" style={{ fontSize: 'var(--fs-1)', marginBottom: 10 }}>
                 선택한 거래처의 <b>조회처 명세가 그대로 복사</b>되고, 기준일은 <b>{targetYear}-12-31</b>로 바뀝니다.
                 발송·회수 기록은 따라오지 않습니다. 이미 {targetYear}년에 등록된 거래처는 건너뜁니다.
               </div>
 
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
-                <span style={{ fontSize: 12, color: '#555' }}>원본 연도</span>
+                <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>원본 연도</span>
                 <select value={from ?? ''} onChange={(e) => { setFrom(Number(e.target.value)); setSel(new Set()); }}>
                   {years.map((y) => <option key={y} value={y}>{y}년</option>)}
                 </select>
                 <button
                   className="btn-sm"
-                  style={{ fontSize: 11 }}
+                  style={{ fontSize: 'var(--fs-1)' }}
                   onClick={() => setSel(new Set(copyable.map((s) => s.id)))}
                 >
                   전체선택 ({copyable.length})
                 </button>
-                <button className="btn-sm" style={{ fontSize: 11 }} onClick={() => setSel(new Set())}>해제</button>
-                <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#1A2B52', fontWeight: 700 }}>{sel.size}건 선택</span>
+                <button className="btn-sm" style={{ fontSize: 'var(--fs-1)' }} onClick={() => setSel(new Set())}>해제</button>
+                <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--navy)', fontWeight: 700 }}>{sel.size}건 선택</span>
               </div>
 
               <table className="tbl">
@@ -549,7 +549,7 @@ function ImportModal({
                   {sources.map((s) => {
                     const taken = takenClients.has(s.clientId);
                     return (
-                      <tr key={s.id} style={taken ? { color: '#BBB' } : undefined}>
+                      <tr key={s.id} style={taken ? { color: 'var(--ink-4)' } : undefined}>
                         <td style={{ textAlign: 'center' }}>
                           <input
                             type="checkbox"
@@ -564,19 +564,19 @@ function ImportModal({
                             }
                           />
                         </td>
-                        <td style={{ fontSize: 12.5 }}>
+                        <td style={{ fontSize: 'var(--fs-2)' }}>
                           {s.companyName}
-                          {taken && <span style={{ fontSize: 10, color: '#B91C1C' }}> · {targetYear}년 등록됨</span>}
+                          {taken && <span style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)' }}> · {targetYear}년 등록됨</span>}
                         </td>
-                        <td style={{ textAlign: 'center', fontSize: 11.5 }}>{s.itemCount}건</td>
-                        <td style={{ fontSize: 12 }}>{s.accountantName}</td>
+                        <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{s.itemCount}건</td>
+                        <td style={{ fontSize: 'var(--fs-2)' }}>{s.accountantName}</td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
 
-              {err && <div className="alert-w" style={{ fontSize: 11.5, marginTop: 10 }}>{err}</div>}
+              {err && <div className="alert-w" style={{ fontSize: 'var(--fs-1)', marginTop: 10 }}>{err}</div>}
 
               <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 12 }}>
                 <button className="btn-sm" onClick={onClose} disabled={busy}>취소</button>

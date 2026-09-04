@@ -2,8 +2,8 @@
 import { useState } from 'react';
 
 const chip: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 600,
-  color: '#1A2B52', background: '#eef1f7', border: '1px solid #d6ddec', borderRadius: 12, padding: '2px 8px',
+  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-1)', fontWeight: 600,
+  color: 'var(--navy)', background: '#eef1f7', border: '1px solid #d6ddec', borderRadius: 12, padding: '2px 8px',
 };
 
 /** 정규화: 앞 #/공백 제거, 20자 제한. */
@@ -30,12 +30,12 @@ export function TagEditor({ value, onChange }: { value: string[]; onChange: (tag
   }
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', border: '1px solid #e4e0d8', borderRadius: 8, padding: '6px 8px', background: '#fff' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', border: '1px solid var(--rule)', borderRadius: 8, padding: '6px 8px', background: '#fff' }}>
       {value.map((t) => (
         <span key={t} style={chip}>
           #{t}
           <button type="button" onClick={() => onChange(value.filter((x) => x !== t))} aria-label="제거"
-            style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9aa0ad', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+            style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-3)', fontSize: 'var(--fs-3)', lineHeight: 1, padding: 0 }}>×</button>
         </span>
       ))}
       <input
@@ -45,7 +45,7 @@ export function TagEditor({ value, onChange }: { value: string[]; onChange: (tag
         onKeyDown={onKey}
         onBlur={() => draft && add(draft)}
         placeholder={value.length ? '태그 추가…' : '예: 수익인식, 매입세액공제 (Enter로 추가)'}
-        style={{ flex: 1, minWidth: 140, border: 'none', outline: 'none', fontSize: 12.5, background: 'transparent', padding: '2px 0' }}
+        style={{ flex: 1, minWidth: 140, border: 'none', outline: 'none', fontSize: 'var(--fs-2)', background: 'transparent', padding: '2px 0' }}
       />
     </div>
   );
@@ -65,7 +65,7 @@ export function TagList({ tags, onSelect, active }: { tags: string[]; onSelect?:
             style={{
               ...chip,
               cursor: onSelect ? 'pointer' : 'default',
-              ...(on ? { background: '#1A2B52', color: '#fff', borderColor: '#1A2B52' } : null),
+              ...(on ? { background: 'var(--navy)', color: '#fff', borderColor: 'var(--navy)' } : null),
             }}
           >
             #{t}

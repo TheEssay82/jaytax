@@ -170,7 +170,7 @@ export default function EssayReader() {
     return (
       <Plain>
         <form onSubmit={submitName} style={{ width: '100%', maxWidth: 380, textAlign: 'center' }}>
-          <div style={{ fontSize: 13, letterSpacing: '0.22em', color: '#9c8f7a', marginBottom: 10 }}>습작 읽기</div>
+          <div style={{ fontSize: 'var(--fs-3)', letterSpacing: '0.22em', color: '#9c8f7a', marginBottom: 10 }}>습작 읽기</div>
           <h1 style={{ ...headline, fontSize: 26 }}>읽어 주셔서 고맙습니다</h1>
           <p style={{ ...sub, fontSize: 14, margin: '0 0 26px' }}>
             글을 한 편씩 보여 드립니다.
@@ -187,7 +187,7 @@ export default function EssayReader() {
               width: '100%',
               padding: '13px 14px',
               fontSize: 16,
-              border: '1px solid #ddd2bb',
+              border: '1px solid var(--rule)',
               borderRadius: 10,
               background: 'rgba(255,255,255,0.8)',
               color: '#332c20',
@@ -199,11 +199,11 @@ export default function EssayReader() {
           <div
             style={{
               marginTop: 12,
-              fontSize: 12.5,
+              fontSize: 'var(--fs-2)',
               lineHeight: 1.7,
               color: '#8b7c63',
               background: 'rgba(255,255,255,0.55)',
-              border: '1px solid #e6ddc9',
+              border: '1px solid var(--rule)',
               borderRadius: 10,
               padding: '10px 12px',
               textAlign: 'left',
@@ -213,7 +213,7 @@ export default function EssayReader() {
             <br />
             중간에 다른 앱이나 다른 기기로 옮기면 이어서 볼 수 없습니다. 카카오톡으로 링크를 받으셨다면 카카오톡 안에서 그대로 읽으시면 됩니다.
           </div>
-          {msg && <div style={{ marginTop: 10, fontSize: 13, color: '#b04a3a' }}>{msg}</div>}
+          {msg && <div style={{ marginTop: 10, fontSize: 'var(--fs-3)', color: '#b04a3a' }}>{msg}</div>}
           {suggestions.length > 0 && (
             <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
               {suggestions.map((s) => (
@@ -230,7 +230,7 @@ export default function EssayReader() {
                     fontSize: 14,
                     color: '#5c4a2e',
                     background: 'rgba(255,255,255,0.85)',
-                    border: '1px solid #ddd2bb',
+                    border: '1px solid var(--rule)',
                     borderRadius: 999,
                     cursor: 'pointer',
                   }}
@@ -247,7 +247,7 @@ export default function EssayReader() {
               marginTop: 16,
               width: '100%',
               padding: '13px 14px',
-              fontSize: 15,
+              fontSize: 'var(--fs-4)',
               fontWeight: 700,
               color: '#fff',
               background: '#5c4a2e',
@@ -259,7 +259,7 @@ export default function EssayReader() {
           >
             {busy ? '들어가는 중…' : '시작하기'}
           </button>
-          <div style={{ marginTop: 14, fontSize: 12, color: '#a3947c' }}>다른 분과 겹치지 않는 이름으로 적어 주세요.</div>
+          <div style={{ marginTop: 14, fontSize: 'var(--fs-2)', color: '#a3947c' }}>다른 분과 겹치지 않는 이름으로 적어 주세요.</div>
         </form>
       </Plain>
     );
@@ -312,7 +312,7 @@ export default function EssayReader() {
                   gap: 10,
                   padding: '10px 14px',
                   background: 'rgba(255,252,244,0.75)',
-                  border: '1px solid #e6ddc9',
+                  border: '1px solid var(--rule)',
                   borderRadius: 10,
                   marginBottom: 6,
                 }}
@@ -324,7 +324,7 @@ export default function EssayReader() {
                     borderRadius: '50%',
                     background: i === 0 ? '#5c4a2e' : '#cdc0a6',
                     color: '#fff',
-                    fontSize: 12.5,
+                    fontSize: 'var(--fs-2)',
                     fontWeight: 700,
                     display: 'grid',
                     placeItems: 'center',
@@ -352,7 +352,7 @@ export default function EssayReader() {
                 fontSize: 13.5,
                 color: '#5c4a2e',
                 background: 'rgba(255,255,255,0.8)',
-                border: '1px solid #ddd2bb',
+                border: '1px solid var(--rule)',
                 borderRadius: 999,
                 cursor: 'pointer',
               }}
@@ -405,7 +405,7 @@ export default function EssayReader() {
             style={{
               minWidth: 200,
               padding: '13px 22px',
-              fontSize: 15,
+              fontSize: 'var(--fs-4)',
               fontWeight: 700,
               color: '#fff',
               background: theme.accent,
@@ -417,7 +417,7 @@ export default function EssayReader() {
           >
             {busy ? '넘어가는 중…' : last ? '순위 정하러 가기' : '다 읽었습니다'}
           </button>
-          {msg && <div style={{ marginTop: 10, fontSize: 13, color: '#d05a4a' }}>{msg}</div>}
+          {msg && <div style={{ marginTop: 10, fontSize: 'var(--fs-3)', color: '#d05a4a' }}>{msg}</div>}
         </div>
       }
     />
@@ -431,7 +431,7 @@ const headline: React.CSSProperties = {
   margin: '0 0 12px',
   fontWeight: 700,
 };
-const sub: React.CSSProperties = { fontSize: 15, color: '#8b7c63', lineHeight: 1.9, margin: 0 };
+const sub: React.CSSProperties = { fontSize: 'var(--fs-4)', color: '#8b7c63', lineHeight: 1.9, margin: 0 };
 
 function Plain({ children }: { children: React.ReactNode }) {
   useEffect(ensureEssayFonts, []);

@@ -41,11 +41,11 @@ const dtTime = (s?: string): string => {
 const statusStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
   if (s === '재발송완료') return { background: '#CFFAFE', color: '#155E75' };
-  if (s === '반송') return { background: '#FEE2E2', color: '#B91C1C' };
-  if (s === '재발송요청') return { background: '#FEF3C7', color: '#92400E' };
-  if (s === '취소') return { background: '#E5E7EB', color: '#6B7280' };
+  if (s === '반송') return { background: '#FEE2E2', color: 'var(--bad)' };
+  if (s === '재발송요청') return { background: '#FEF3C7', color: 'var(--warn)' };
+  if (s === '취소') return { background: '#E5E7EB', color: 'var(--ink-3)' };
   if (s === '진행중') return { background: '#DBEAFE', color: '#1E40AF' };
-  return { background: '#F3F4F6', color: '#6B7280' }; // 미접수
+  return { background: '#F3F4F6', color: 'var(--ink-3)' }; // 미접수
 };
 
 const emptyCommon = (requester: string): SendCommon => ({
@@ -234,7 +234,7 @@ export default function DocSendRequestTab() {
     return (
       <div className="card">
         <div className="chdr">✉️ 발송요청</div>
-        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
       </div>
     );
   }
@@ -252,14 +252,14 @@ export default function DocSendRequestTab() {
     <div className="card">
       <div className="chdr">
         발송요청 (총 {reqs.length}건)
-        <span style={{ marginLeft: 10, fontSize: 11, color: '#888' }}>
+        <span style={{ marginLeft: 10, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
           {counts.map((c) => `${c.s} ${c.n}`).join(' · ')}
         </span>
-        {msg && <span style={{ marginLeft: 12, fontSize: 11, color: '#059669' }}>{msg}</span>}
+        {msg && <span style={{ marginLeft: 12, fontSize: 'var(--fs-1)', color: '#059669' }}>{msg}</span>}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 5, alignItems: 'center' }}>
           <button className="btn-sm btn-sm-blue" onClick={openLog}>📜 변경 로그</button>
           {isSuper && <button className="btn-sm" onClick={openTrash} title="삭제된(휴지통) 발송요청 복원">🗑 휴지통</button>}
-          <button className="btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => void refresh()} disabled={busy} title="최신 내역을 다시 불러옵니다">{busy ? '⏳' : '🔄'} 새로고침</button>
+          <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }} onClick={() => void refresh()} disabled={busy} title="최신 내역을 다시 불러옵니다">{busy ? '⏳' : '🔄'} 새로고침</button>
           {canWrite && (
             <button className="btn-sm" onClick={() => { setShowAdd((v) => !v); setEditId(null); }}>
               + 새 발송요청
@@ -269,7 +269,7 @@ export default function DocSendRequestTab() {
       </div>
 
       {error && <div className="alert-w">{error}</div>}
-      <div className="alert-i" style={{ fontSize: 11 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
         ✉️ 거래처 담당자를 선택하면 회사명·주소·연락처가 <b>그 시점 값으로 저장(스냅샷)</b>되어, 이후 담당자 정보가 바뀌어도 과거 요청은 유지됩니다. 한 문서를 <b>여러 수신자</b>에게 한 번에 요청할 수 있습니다. 처리 전 <b>‘미접수’</b> 건만 수정·삭제할 수 있습니다. <b style={{ color: '#b45309' }}>⚡ 업무구분이 ‘퀵서비스’면 수신자 연락처가 필수</b>입니다.
         {!canWrite && <span style={{ color: '#8a5a00' }}> · 🔒 읽기전용 계정은 조회만 가능합니다.</span>}
       </div>
@@ -280,11 +280,11 @@ export default function DocSendRequestTab() {
 
       <div className="sbar">
         <input placeholder="🔍 거래처·수신자·문서명·송부종류·의뢰인 (전체에서 검색)" value={q} onChange={(e) => setQ(e.target.value)} />
-        <span style={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
           {searching ? `${view.length}건 검색됨` : `최근 ${view.length}건 표시`}
         </span>
         {!searching && (
-          <span style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap' }}>· 전체 내역·처리현황은 ‘발송업무 현황’에서</span>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', whiteSpace: 'nowrap' }}>· 전체 내역·처리현황은 ‘발송업무 현황’에서</span>
         )}
       </div>
 
@@ -310,7 +310,7 @@ export default function DocSendRequestTab() {
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={canWrite ? 14 : 13} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>발송요청이 없습니다.</td></tr>
+              <tr><td colSpan={canWrite ? 14 : 13} style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 24 }}>발송요청이 없습니다.</td></tr>
             )}
             {view.map((r) =>
               editId === r.id ? (
@@ -321,40 +321,40 @@ export default function DocSendRequestTab() {
                 </tr>
               ) : (
                 <tr key={r.id}>
-                  <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.requestDate?.replace(/-/g, '.')}</td>
-                  <td style={{ fontSize: 12 }}>{r.requester}</td>
-                  <td style={{ fontSize: 12 }}>
-                    <b style={{ color: '#1A2B52' }}>{r.companyName}</b>
-                    {r.recipientName && <span style={{ color: '#555' }}> · {r.recipientName} {r.recipientTitle}</span>}
+                  <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.requestDate?.replace(/-/g, '.')}</td>
+                  <td style={{ fontSize: 'var(--fs-2)' }}>{r.requester}</td>
+                  <td style={{ fontSize: 'var(--fs-2)' }}>
+                    <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
+                    {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {r.recipientName} {r.recipientTitle}</span>}
                     {r.batchId && batchCounts[r.batchId] > 1 && (
                       <span className="bdg b-on" style={{ marginLeft: 5, fontSize: 9 }} title="여러 수신자 묶음">묶음 {batchCounts[r.batchId]}</span>
                     )}
                   </td>
-                  <td style={{ fontSize: 12 }}>{r.workType}</td>
-                  <td style={{ fontSize: 12 }}>{r.sendKind}</td>
-                  <td className="doc-name" style={{ fontSize: 12 }} title={r.docName || undefined}>{r.docName || <span style={{ color: '#CCC' }}>—</span>}</td>
-                  <td style={{ textAlign: 'center', fontSize: 12 }}>{r.copies}</td>
-                  <td style={{ textAlign: 'center', fontSize: 11 }}>{r.sealRequired ? '🔖 날인요' : '—'}</td>
-                  <td style={{ textAlign: 'center', fontSize: 11 }}>{r.deadline === '긴급' ? <b style={{ color: '#dc2626' }}>긴급</b> : r.deadline}</td>
+                  <td style={{ fontSize: 'var(--fs-2)' }}>{r.workType}</td>
+                  <td style={{ fontSize: 'var(--fs-2)' }}>{r.sendKind}</td>
+                  <td className="doc-name" style={{ fontSize: 'var(--fs-2)' }} title={r.docName || undefined}>{r.docName || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-2)' }}>{r.copies}</td>
+                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{r.sealRequired ? '🔖 날인요' : '—'}</td>
+                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{r.deadline === '긴급' ? <b style={{ color: '#dc2626' }}>긴급</b> : r.deadline}</td>
                   <td style={{ textAlign: 'center' }}>
                     <button
                       className="btn-sm"
-                      style={{ fontSize: 11, padding: '1px 7px', color: attCount(r) ? '#1A2B52' : '#bbb' }}
+                      style={{ fontSize: 'var(--fs-1)', padding: '1px 7px', color: attCount(r) ? '#1A2B52' : '#bbb' }}
                       title={attCount(r) ? '첨부파일 보기/다운로드' : '첨부 없음 (클릭해 추가)'}
                       onClick={() => setAttachFor(r)}
                     >
                       📎 {attCount(r) || ''}
                     </button>
                   </td>
-                  <td style={{ textAlign: 'center', fontSize: 11, whiteSpace: 'nowrap' }}>
-                    {r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: '#CCC' }}>—</span>}
+                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>
+                    {r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                   </td>
                   <td style={{ textAlign: 'center' }}><TrackingLink no={r.trackingNo} /></td>
                   <td style={{ textAlign: 'center' }}>
-                    <span className="bdg" style={{ fontSize: 10, ...statusStyle(r.status) }}>{r.status}</span>
+                    <span className="bdg" style={{ fontSize: 'var(--fs-0)', ...statusStyle(r.status) }}>{r.status}</span>
                     {r.statusNote && (
                       <div
-                        style={{ fontSize: 10, color: '#B91C1C', marginTop: 2, maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                        style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)', marginTop: 2, maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                         title={`사유: ${r.statusNote}`}
                       >
                         {r.statusNote}
@@ -371,7 +371,7 @@ export default function DocSendRequestTab() {
                       ) : r.status === '반송' && isMine(r) ? (
                         <button
                           className="btn-sm"
-                          style={{ fontSize: 10, padding: '2px 6px', background: '#FEF3C7', color: '#92400E', fontWeight: 700 }}
+                          style={{ fontSize: 'var(--fs-0)', padding: '2px 6px', background: '#FEF3C7', color: 'var(--warn)', fontWeight: 700 }}
                           title="주소 등을 확인한 뒤 재발송을 요청합니다"
                           onClick={() => setResendFor(r)}
                         >
@@ -381,7 +381,7 @@ export default function DocSendRequestTab() {
                         <div style={{ display: 'flex', gap: 4 }}>
                           <button
                             className="btn-sm"
-                            style={{ fontSize: 10.5, color: '#6B7280' }}
+                            style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}
                             title="필요 없어졌거나 잘못 처리된 요청을 취소합니다(기록은 남습니다)"
                             onClick={() => void handleCancel(r)}
                           >
@@ -400,7 +400,7 @@ export default function DocSendRequestTab() {
                       ) : (
                         // 취소된 건 — 최고관리자만 완전 삭제 가능
                         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                          <span style={{ fontSize: 10, color: '#AAA' }}>취소됨</span>
+                          <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)' }}>취소됨</span>
                           {isSuper && (
                             <button
                               className="btn-sm btn-sm-del"
@@ -460,20 +460,20 @@ function CommonFields({ c, setC }: { c: SendCommon; setC: (patch: Partial<SendCo
       </div>
       <div className="frow">
         <span className="fl">의뢰인<span className="req">*</span></span>
-        <select value={c.requester} onChange={(e) => setC({ requester: e.target.value })} style={{ padding: '4px 7px', fontSize: 12 }}>
+        <select value={c.requester} onChange={(e) => setC({ requester: e.target.value })} style={{ padding: '4px 7px', fontSize: 'var(--fs-2)' }}>
           {DOC_REQUESTERS.map((r) => <option key={r} value={r}>{r}</option>)}
           {!(DOC_REQUESTERS as readonly string[]).includes(c.requester) && <option value={c.requester}>{c.requester}</option>}
         </select>
       </div>
       <div className="frow">
         <span className="fl">업무구분<span className="req">*</span></span>
-        <select value={c.workType} onChange={(e) => setC({ workType: e.target.value })} style={{ padding: '4px 7px', fontSize: 12 }}>
+        <select value={c.workType} onChange={(e) => setC({ workType: e.target.value })} style={{ padding: '4px 7px', fontSize: 'var(--fs-2)' }}>
           {WORK_TYPES.map((w) => <option key={w} value={w}>{w}</option>)}
         </select>
       </div>
       <div className="frow">
         <span className="fl">송부종류<span className="req">*</span></span>
-        <select value={c.sendKind} onChange={(e) => setC({ sendKind: e.target.value })} style={{ padding: '4px 7px', fontSize: 12 }}>
+        <select value={c.sendKind} onChange={(e) => setC({ sendKind: e.target.value })} style={{ padding: '4px 7px', fontSize: 'var(--fs-2)' }}>
           {SEND_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
         </select>
       </div>
@@ -487,14 +487,14 @@ function CommonFields({ c, setC }: { c: SendCommon; setC: (patch: Partial<SendCo
       </div>
       <div className="frow">
         <span className="fl">날인필요</span>
-        <select value={c.sealRequired ? 'Y' : 'N'} onChange={(e) => setC({ sealRequired: e.target.value === 'Y' })} style={{ padding: '4px 7px', fontSize: 12 }}>
+        <select value={c.sealRequired ? 'Y' : 'N'} onChange={(e) => setC({ sealRequired: e.target.value === 'Y' })} style={{ padding: '4px 7px', fontSize: 'var(--fs-2)' }}>
           <option value="N">X (불필요)</option>
           <option value="Y">🔖 날인요</option>
         </select>
       </div>
       <div className="frow">
         <span className="fl">발송기한</span>
-        <select value={c.deadline} onChange={(e) => setC({ deadline: e.target.value })} style={{ padding: '4px 7px', fontSize: 12 }}>
+        <select value={c.deadline} onChange={(e) => setC({ deadline: e.target.value })} style={{ padding: '4px 7px', fontSize: 'var(--fs-2)' }}>
           {DEADLINES.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
       </div>
@@ -563,13 +563,13 @@ function ContactSearch({
     <div style={{ position: 'relative', flex: 1, minWidth: 300, maxWidth: 560 }}>
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder || '🔍 담당자명 또는 거래처명 입력…'} style={{ width: '100%' }} />
       {q.trim() && (
-        <div style={{ position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #D0CCC4', borderRadius: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 6px 18px rgba(0,0,0,0.15)' }}>
-          {matches.length === 0 && <div style={{ padding: 8, color: '#999', fontSize: 12 }}>일치하는 담당자가 없습니다. 거래처관리 › 거래처담당자등록에서 먼저 등록해 주세요.</div>}
+        <div style={{ position: 'absolute', zIndex: 50, top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--rule)', borderRadius: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 6px 18px rgba(0,0,0,0.15)' }}>
+          {matches.length === 0 && <div style={{ padding: 8, color: 'var(--ink-3)', fontSize: 'var(--fs-2)' }}>일치하는 담당자가 없습니다. 거래처관리 › 거래처담당자등록에서 먼저 등록해 주세요.</div>}
           {soleCompany && (
             <button
               type="button"
               onClick={() => { onPickAll!(soleCompany); setQ(''); }}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', border: 'none', borderBottom: '1px solid #E3DED3', background: '#F5F1EB', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#345' }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', border: 'none', borderBottom: '1px solid var(--rule)', background: '#F5F1EB', cursor: 'pointer', fontSize: 'var(--fs-2)', fontWeight: 700, color: '#345' }}
             >
               ＋ {soleCompany.companyName} 전체 담당자 추가 ({matches.length}명)
             </button>
@@ -579,9 +579,9 @@ function ContactSearch({
               key={ct.id}
               type="button"
               onClick={() => { onPick(cl, ct); setQ(''); }}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', border: 'none', borderBottom: '1px solid #F0ECE4', background: '#fff', cursor: 'pointer', fontSize: 12.5 }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', border: 'none', borderBottom: '1px solid #F0ECE4', background: '#fff', cursor: 'pointer', fontSize: 'var(--fs-2)' }}
             >
-              <b>{ct.contactName}</b> <span style={{ color: '#888' }}>{ct.honorific}</span> · <span style={{ color: '#1A2B52' }}>{cl.companyName}</span> <span style={{ color: '#aaa', fontSize: 11 }}>({cl.accountant})</span>
+              <b>{ct.contactName}</b> <span style={{ color: 'var(--ink-3)' }}>{ct.honorific}</span> · <span style={{ color: 'var(--navy)' }}>{cl.companyName}</span> <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>({cl.accountant})</span>
             </button>
           ))}
         </div>
@@ -658,11 +658,11 @@ function AddRequestForm({
 
   return (
     <div className="card" style={{ background: '#F5F1EB' }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>＋ 새 발송요청</div>
+      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 8 }}>＋ 새 발송요청</div>
       <CommonFields c={c} setC={setC} />
 
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#345', margin: '10px 0 6px' }}>
-        · 수신자 <span style={{ fontWeight: 400, color: '#888' }}>— 담당자명 또는 거래처명을 입력해 검색 후 클릭하면 추가됩니다.</span>
+      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#345', margin: '10px 0 6px' }}>
+        · 수신자 <span style={{ fontWeight: 400, color: 'var(--ink-3)' }}>— 담당자명 또는 거래처명을 입력해 검색 후 클릭하면 추가됩니다.</span>
       </div>
       <ContactSearch
         clients={clients}
@@ -674,12 +674,12 @@ function AddRequestForm({
       {recipients.length > 0 && (
         <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
           {isQuick && (
-            <div style={{ fontSize: 11, color: '#b45309', fontWeight: 600 }}>⚡ 퀵서비스는 수신자 연락처가 필수입니다.</div>
+            <div style={{ fontSize: 'var(--fs-1)', color: '#b45309', fontWeight: 600 }}>⚡ 퀵서비스는 수신자 연락처가 필수입니다.</div>
           )}
           {recipients.map((r) => {
             const missing = isQuick && !r.phone?.trim();
             return (
-              <div key={r.contactId} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: `1px solid ${missing ? '#e11d48' : '#D0CCC4'}`, borderRadius: 8, padding: '4px 10px', fontSize: 11.5, flexWrap: 'wrap' }}>
+              <div key={r.contactId} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: `1px solid ${missing ? '#e11d48' : '#D0CCC4'}`, borderRadius: 8, padding: '4px 10px', fontSize: 'var(--fs-1)', flexWrap: 'wrap' }}>
                 <span><b>{r.companyName}</b> · {r.recipientName} {r.recipientTitle}</span>
                 {isQuick ? (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -688,11 +688,11 @@ function AddRequestForm({
                       value={r.phone}
                       onChange={(e) => updateRecipientPhone(r.contactId, e.target.value)}
                       placeholder="연락처 필수"
-                      style={{ width: 150, fontSize: 11.5, padding: '2px 6px', borderColor: missing ? '#e11d48' : undefined }}
+                      style={{ width: 150, fontSize: 'var(--fs-1)', padding: '2px 6px', borderColor: missing ? '#e11d48' : undefined }}
                     />
                   </span>
                 ) : (
-                  r.phone && <span style={{ color: '#888' }}>📞 {r.phone}</span>
+                  r.phone && <span style={{ color: 'var(--ink-3)' }}>📞 {r.phone}</span>
                 )}
                 <button onClick={() => setRecipients((p) => p.filter((x) => x.contactId !== r.contactId))} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#c00', fontWeight: 700 }} title="제거">×</button>
               </div>
@@ -702,8 +702,8 @@ function AddRequestForm({
       )}
 
       {/* 첨부파일 (인쇄·발송용) — 선택. 대부분은 사무실에서 인쇄본 전달이라 생략. */}
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#345', margin: '12px 0 6px' }}>
-        · 첨부파일 <span style={{ fontWeight: 400, color: '#888' }}>— 인쇄해서 발송할 문서가 있으면 첨부(docx·hwp·pdf 등, 20MB 이하). 없으면 생략.</span>
+      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#345', margin: '12px 0 6px' }}>
+        · 첨부파일 <span style={{ fontWeight: 400, color: 'var(--ink-3)' }}>— 인쇄해서 발송할 문서가 있으면 첨부(docx·hwp·pdf 등, 20MB 이하). 없으면 생략.</span>
       </div>
       <label className="btn-sm btn-sm-blue" style={{ cursor: 'pointer', display: 'inline-block' }}>
         📎 파일 선택
@@ -722,8 +722,8 @@ function AddRequestForm({
       {files.length > 0 && (
         <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {files.map((f, i) => (
-            <span key={f.name + i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #D0CCC4', borderRadius: 6, padding: '3px 8px', fontSize: 11.5 }}>
-              📄 {f.name} <span style={{ color: '#999' }}>({fmtSize(f.size)})</span>
+            <span key={f.name + i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid var(--rule)', borderRadius: 6, padding: '3px 8px', fontSize: 'var(--fs-1)' }}>
+              📄 {f.name} <span style={{ color: 'var(--ink-3)' }}>({fmtSize(f.size)})</span>
               <button onClick={() => setFiles((p) => p.filter((_, j) => j !== i))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#c00', fontWeight: 700 }} title="제거">×</button>
             </span>
           ))}
@@ -786,13 +786,13 @@ function EditRequestForm({
 
   return (
     <div style={{ padding: 4 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>✏️ 발송요청 수정 (미접수)</div>
+      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 8 }}>✏️ 발송요청 수정 (미접수)</div>
       <CommonFields c={c} setC={setC} />
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#345', margin: '10px 0 6px' }}>
-        · 수신자 <span style={{ fontWeight: 400, color: '#888' }}>(현재: {req.companyName} · {req.recipientName} {req.recipientTitle} — 바꾸려면 검색해 선택, 미선택 시 유지)</span>
+      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#345', margin: '10px 0 6px' }}>
+        · 수신자 <span style={{ fontWeight: 400, color: 'var(--ink-3)' }}>(현재: {req.companyName} · {req.recipientName} {req.recipientTitle} — 바꾸려면 검색해 선택, 미선택 시 유지)</span>
       </div>
       {picked && (
-        <div style={{ fontSize: 12, color: '#059669', marginBottom: 6 }}>
+        <div style={{ fontSize: 'var(--fs-2)', color: '#059669', marginBottom: 6 }}>
           → 변경: <b>{picked.companyName}</b> · {picked.recipientName} {picked.recipientTitle}
         </div>
       )}
@@ -832,23 +832,23 @@ function ResendModal({ req, onClose, onDone }: { req: SendRequest; onClose: () =
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, maxWidth: 480, width: '100%', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #eee' }}>
-          <span style={{ fontWeight: 700, color: '#92400E' }}>🔄 재발송요청</span>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--rule-2)' }}>
+          <span style={{ fontWeight: 700, color: 'var(--warn)' }}>🔄 재발송요청</span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
         <div style={{ padding: 16 }}>
-          <div style={{ fontSize: 12.5, marginBottom: 10 }}>
+          <div style={{ fontSize: 'var(--fs-2)', marginBottom: 10 }}>
             <b>{req.companyName}</b> · {req.docName || req.workType}
-            <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>
+            <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)', marginTop: 2 }}>
               {req.recipientName} {req.recipientTitle} · {req.address || '주소 없음'}
             </div>
           </div>
           {req.statusNote && (
-            <div style={{ background: '#FEE2E2', color: '#B91C1C', fontSize: 11.5, padding: '7px 10px', borderRadius: 6, marginBottom: 10 }}>
+            <div style={{ background: '#FEE2E2', color: 'var(--bad)', fontSize: 'var(--fs-1)', padding: '7px 10px', borderRadius: 6, marginBottom: 10 }}>
               반송 사유: {req.statusNote}
             </div>
           )}
-          <div style={{ fontSize: 11.5, color: '#666', marginBottom: 6 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginBottom: 6 }}>
             ⚠️ 주소·수신자가 잘못되었다면 <b>거래처관리 › 거래처담당자등록</b>에서 먼저 정보를 고친 뒤 요청하세요.
             (이 건의 수신자 정보는 발송 당시 스냅샷이라 자동으로 바뀌지 않습니다.)
           </div>
@@ -858,9 +858,9 @@ function ResendModal({ req, onClose, onDone }: { req: SendRequest; onClose: () =
             placeholder="재발송 사유·조치 내용 (예: 주소 확인함 — 3층 → 5층으로 정정, 수신자 변경 등)"
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
-            style={{ width: '100%', fontSize: 12.5 }}
+            style={{ width: '100%', fontSize: 'var(--fs-2)' }}
           />
-          {err && <div style={{ color: '#dc2626', fontSize: 11.5, marginTop: 6 }}>{err}</div>}
+          {err && <div style={{ color: '#dc2626', fontSize: 'var(--fs-1)', marginTop: 6 }}>{err}</div>}
           <div style={{ display: 'flex', gap: 6, marginTop: 12, justifyContent: 'flex-end' }}>
             <button className="btn-sm" onClick={onClose} disabled={busy}>취소</button>
             <button className="btn-sm btn-sm-blue" onClick={() => void submit()} disabled={busy}>
@@ -880,25 +880,25 @@ function TrashModal({ rows, busy, onRestore, onHardDelete, onClose }: {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, maxWidth: 900, width: '100%', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff' }}>
-          <span style={{ fontWeight: 700, color: '#1A2B52' }}>🗑 휴지통 — 삭제된 발송요청</span>
-          <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>복원하면 원래 상태 그대로 목록에 돌아옵니다.</span>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--rule-2)', position: 'sticky', top: 0, background: '#fff' }}>
+          <span style={{ fontWeight: 700, color: 'var(--navy)' }}>🗑 휴지통 — 삭제된 발송요청</span>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginLeft: 8 }}>복원하면 원래 상태 그대로 목록에 돌아옵니다.</span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
         <div style={{ padding: 12 }}>
           {rows.length === 0 ? (
-            <div style={{ padding: 16, color: '#888', fontSize: 12.5 }}>휴지통이 비어 있습니다.</div>
+            <div style={{ padding: 16, color: 'var(--ink-3)', fontSize: 'var(--fs-2)' }}>휴지통이 비어 있습니다.</div>
           ) : (
             <table className="tbl">
               <thead><tr><th style={{ minWidth: 88 }}>의뢰일</th><th>거래처·수신자</th><th>문서명</th><th>상태</th><th style={{ minWidth: 110 }}>삭제일</th><th style={{ minWidth: 130 }}>관리</th></tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id}>
-                    <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.requestDate}</td>
-                    <td style={{ fontSize: 12 }}><b>{r.companyName}</b>{r.recipientName ? ` · ${r.recipientName} ${r.recipientTitle}` : ''}</td>
-                    <td style={{ fontSize: 12, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.docName}>{r.docName || r.sendKind}</td>
-                    <td style={{ fontSize: 11 }}>{r.status}</td>
-                    <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.deletedAt ? dtTime(r.deletedAt) : ''}</td>
+                    <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.requestDate}</td>
+                    <td style={{ fontSize: 'var(--fs-2)' }}><b>{r.companyName}</b>{r.recipientName ? ` · ${r.recipientName} ${r.recipientTitle}` : ''}</td>
+                    <td style={{ fontSize: 'var(--fs-2)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.docName}>{r.docName || r.sendKind}</td>
+                    <td style={{ fontSize: 'var(--fs-1)' }}>{r.status}</td>
+                    <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.deletedAt ? dtTime(r.deletedAt) : ''}</td>
                     <td>
                       <span style={{ display: 'flex', gap: 4 }}>
                         <button className="btn-sm btn-sm-blue" disabled={busy} onClick={() => onRestore(r)}>↩ 복원</button>
@@ -923,26 +923,26 @@ function LogModal({ rows, onClose }: { rows: DocAudit[]; onClose: () => void }) 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, maxWidth: 820, width: '100%', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff' }}>
-          <span style={{ fontWeight: 700, color: '#1A2B52' }}>📜 발송요청 변경 로그 (최근순)</span>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--rule-2)', position: 'sticky', top: 0, background: '#fff' }}>
+          <span style={{ fontWeight: 700, color: 'var(--navy)' }}>📜 발송요청 변경 로그 (최근순)</span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
         <div style={{ padding: 12 }}>
           {rows.length === 0 ? (
-            <div style={{ padding: 16, color: '#888', fontSize: 12.5 }}>기록이 없습니다.</div>
+            <div style={{ padding: 16, color: 'var(--ink-3)', fontSize: 'var(--fs-2)' }}>기록이 없습니다.</div>
           ) : (
             <table className="tbl">
               <thead><tr><th style={{ minWidth: 120 }}>일시</th><th>담당자</th><th>작업</th><th>내용</th></tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id}>
-                    <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{dtTime(r.at)}</td>
+                    <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{dtTime(r.at)}</td>
                     <td style={{ fontWeight: 600 }}>{r.actorName}</td>
-                    <td style={{ color: actColor(r.action), fontWeight: 700, fontSize: 11 }}>{actLabel(r.action)}</td>
-                    <td style={{ fontSize: 12 }}>
+                    <td style={{ color: actColor(r.action), fontWeight: 700, fontSize: 'var(--fs-1)' }}>{actLabel(r.action)}</td>
+                    <td style={{ fontSize: 'var(--fs-2)' }}>
                       {r.summary}
                       {auditChanges(r).map((c, i) => (
-                        <div key={i} style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>↳ {c}</div>
+                        <div key={i} style={{ fontSize: 'var(--fs-1)', color: '#B45309', marginTop: 2 }}>↳ {c}</div>
                       ))}
                     </td>
                   </tr>

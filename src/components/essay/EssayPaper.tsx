@@ -83,7 +83,7 @@ export default function EssayPaper({ title, body, bgKey, bgImageUrl, fontKey, co
       )}
       <div style={{ maxWidth: 720, margin: '0 auto', position: 'relative', zIndex: 1 }}>
         {corner && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10, color: theme.soft, fontSize: 12.5 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10, color: theme.soft, fontSize: 'var(--fs-2)' }}>
             {corner}
           </div>
         )}

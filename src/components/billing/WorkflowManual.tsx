@@ -39,7 +39,7 @@ export function WorkflowManual({ initial = 'approver', onClose }: {
             </button>
           ))}
         </div>
-        <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 10 }}>
           {TABS.find((t) => t.key === tab)?.who}
         </div>
 
@@ -47,7 +47,7 @@ export function WorkflowManual({ initial = 'approver', onClose }: {
         {tab === 'staff' && <Staff />}
         {tab === 'cpa' && <Cpa />}
 
-        <div className="alert-i" style={{ fontSize: 11, marginTop: 12 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)', marginTop: 12 }}>
           <b>공통으로 기억할 것</b>
           <br />· <b>jaytax는 세금계산서를 발행하지 않습니다.</b> 발행은 인덕 ERP에서 하고, jaytax는
           <b> 요청을 모으고 결과를 대사</b>합니다.
@@ -211,7 +211,7 @@ function Cpa() {
 function Lead({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      fontSize: 12, lineHeight: 1.8, background: '#fdfaf3', border: '1px solid #e2d9c6',
+      fontSize: 'var(--fs-2)', lineHeight: 1.8, background: '#fdfaf3', border: '1px solid var(--rule)',
       borderRadius: 6, padding: '8px 10px', marginBottom: 10,
     }}>{children}</div>
   );
@@ -219,8 +219,8 @@ function Lead({ children }: { children: React.ReactNode }) {
 function H({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      fontSize: 12.5, fontWeight: 700, color: '#1A2B52', margin: '14px 0 6px',
-      borderBottom: '2px solid #e2d9c6', paddingBottom: 3,
+      fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--navy)', margin: '14px 0 6px',
+      borderBottom: '2px solid var(--rule)', paddingBottom: 3,
     }}>{children}</div>
   );
 }
@@ -230,18 +230,18 @@ function Step({ n, t, where, children }: {
   return (
     <div style={{ display: 'flex', gap: 8, marginBottom: 9 }}>
       <span style={{
-        flexShrink: 0, width: 22, height: 22, borderRadius: 11, background: '#1A2B52', color: '#fff',
-        fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, width: 22, height: 22, borderRadius: 11, background: 'var(--navy)', color: '#fff',
+        fontSize: 'var(--fs-1)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>{n}</span>
-      <div style={{ fontSize: 11.5, lineHeight: 1.85 }}>
-        <b style={{ fontSize: 12.5, color: '#1A2B52' }}>{t}</b>
+      <div style={{ fontSize: 'var(--fs-1)', lineHeight: 1.85 }}>
+        <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>{t}</b>
         {where && (
           <span style={{
-            marginLeft: 5, fontSize: 10, color: '#5B21B6', background: '#EDE9FE',
+            marginLeft: 5, fontSize: 'var(--fs-0)', color: '#5B21B6', background: '#EDE9FE',
             border: '1px solid #C4B5FD', padding: '1px 5px', borderRadius: 3, whiteSpace: 'nowrap',
           }}>{where}</span>
         )}
-        <div style={{ color: '#444' }}>{children}</div>
+        <div style={{ color: 'var(--ink-2)' }}>{children}</div>
       </div>
     </div>
   );
@@ -249,7 +249,7 @@ function Step({ n, t, where, children }: {
 function Tip({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      marginTop: 3, fontSize: 11, color: '#7a5', background: '#fbfdf7',
+      marginTop: 3, fontSize: 'var(--fs-1)', color: '#7a5', background: '#fbfdf7',
       borderLeft: '3px solid #cfe0b8', padding: '3px 8px',
     }}>{children}</div>
   );

@@ -84,14 +84,14 @@ export default function StatsTab() {
     return (
       <div className="card">
         <div className="chdr">📊 통계</div>
-        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
       </div>
     );
   }
 
   const yearSelect = (
     <select
-      style={{ marginLeft: 6, padding: '3px 7px', fontSize: 12 }}
+      style={{ marginLeft: 6, padding: '3px 7px', fontSize: 'var(--fs-2)' }}
       value={year ?? ''}
       onChange={(e) => setStatYear(parseInt(e.target.value))}
     >
@@ -117,7 +117,7 @@ export default function StatsTab() {
       <div className="chdr">담당자별 통계 — {yearSelect}</div>
 
       {ownOnly && (
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           🔒 본인(담당자: {profileName || '미지정'}) 청구건만 표시됩니다.
         </div>
       )}
@@ -130,23 +130,23 @@ export default function StatsTab() {
         </div>
         <div className="stat-card">
           <div className="label">총 매출액</div>
-          <div className="value" style={{ fontSize: 13 }}>{(tot.rev / 1e8).toFixed(1)}억</div>
+          <div className="value" style={{ fontSize: 'var(--fs-3)' }}>{(tot.rev / 1e8).toFixed(1)}억</div>
         </div>
         <div className="stat-card">
           <div className="label">보수총계(C)</div>
-          <div className="value" style={{ fontSize: 13 }}>{(tot.C / 1e6).toFixed(0)}백만</div>
+          <div className="value" style={{ fontSize: 'var(--fs-3)' }}>{(tot.C / 1e6).toFixed(0)}백만</div>
         </div>
         <div className="stat-card">
           <div className="label">할인 합계</div>
-          <div className="value" style={{ fontSize: 13, color: '#DC2626' }}>-{(tot.disc / 1e6).toFixed(0)}백만</div>
+          <div className="value" style={{ fontSize: 'var(--fs-3)', color: '#DC2626' }}>-{(tot.disc / 1e6).toFixed(0)}백만</div>
         </div>
         <div className="stat-card">
           <div className="label">최종청구금액(VAT제외)</div>
-          <div className="value" style={{ fontSize: 13, color: '#1A2B52' }}>{(tot.D / 1e6).toFixed(0)}백만</div>
+          <div className="value" style={{ fontSize: 'var(--fs-3)', color: 'var(--navy)' }}>{(tot.D / 1e6).toFixed(0)}백만</div>
         </div>
         <div className="stat-card">
           <div className="label">VAT포함 공급금액</div>
-          <div className="value" style={{ fontSize: 13, color: '#555' }}>{(tot.grand / 1e6).toFixed(0)}백만</div>
+          <div className="value" style={{ fontSize: 'var(--fs-3)', color: 'var(--ink-2)' }}>{(tot.grand / 1e6).toFixed(0)}백만</div>
         </div>
       </div>
 
@@ -161,9 +161,9 @@ export default function StatsTab() {
               <th className="r">총매출액</th>
               <th className="r">보수총계C)</th>
               <th className="r">할인</th>
-              <th className="r">최종청구금액<br /><small style={{ color: '#999', fontWeight: 400 }}>(VAT제외)</small></th>
+              <th className="r">최종청구금액<br /><small style={{ color: 'var(--ink-3)', fontWeight: 400 }}>(VAT제외)</small></th>
               <th className="r">VAT포함<br />공급금액</th>
-              <th className="r">평균<br /><small style={{ color: '#999', fontWeight: 400 }}>(VAT제외)</small></th>
+              <th className="r">평균<br /><small style={{ color: 'var(--ink-3)', fontWeight: 400 }}>(VAT제외)</small></th>
             </tr>
           </thead>
           <tbody>
@@ -176,8 +176,8 @@ export default function StatsTab() {
                 <td className="r" style={{ fontFamily: 'monospace' }}>{(g.rev / 1e8).toFixed(2)}억</td>
                 <td className="r" style={{ fontFamily: 'monospace' }}>{fm(g.C)}</td>
                 <td className="r" style={{ fontFamily: 'monospace', color: '#DC2626' }}>{g.disc ? '-' + fm(g.disc) : '-'}</td>
-                <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1A2B52' }}>{fm(g.D)}</td>
-                <td className="r" style={{ fontFamily: 'monospace', color: '#555' }}>{fm(g.grand)}</td>
+                <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--navy)' }}>{fm(g.D)}</td>
+                <td className="r" style={{ fontFamily: 'monospace', color: 'var(--ink-2)' }}>{fm(g.grand)}</td>
                 <td className="r" style={{ fontFamily: 'monospace' }}>{fm(Math.round(g.D / g.cnt))}</td>
               </tr>
             ))}
@@ -189,15 +189,15 @@ export default function StatsTab() {
               <td className="r" style={{ fontFamily: 'monospace' }}>{(tot.rev / 1e8).toFixed(2)}억</td>
               <td className="r" style={{ fontFamily: 'monospace' }}>{fm(tot.C)}</td>
               <td className="r" style={{ fontFamily: 'monospace', color: '#DC2626' }}>-{fm(tot.disc)}</td>
-              <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1A2B52' }}>{fm(tot.D)}</td>
-              <td className="r" style={{ fontFamily: 'monospace', color: '#555' }}>{fm(tot.grand)}</td>
+              <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--navy)' }}>{fm(tot.D)}</td>
+              <td className="r" style={{ fontFamily: 'monospace', color: 'var(--ink-2)' }}>{fm(tot.grand)}</td>
               <td className="r" style={{ fontFamily: 'monospace' }}>{fm(Math.round(tot.D / recs.length))}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 7 }}>업무량 현황 (담당자별)</div>
+      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 7 }}>업무량 현황 (담당자별)</div>
       <div style={{ overflowX: 'auto' }}>
         <table className="tbl">
           <thead>
@@ -233,7 +233,7 @@ export default function StatsTab() {
         </table>
       </div>
 
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#555', margin: '16px 0 4px' }}>
+      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', margin: '16px 0 4px' }}>
         담당자별 연도별 추이 (최종청구금액 · VAT제외)
       </div>
       <StatsChart records={ownRecords} />

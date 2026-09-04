@@ -121,12 +121,12 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
                 : '✓ 임시저장 완료! (기장팀장 확정 대기)'}
           </div>
           {taxSync?.action === 'updated' && (
-            <div className="alert-i no-print" style={{ fontSize: 11 }}>
+            <div className="alert-i no-print" style={{ fontSize: 'var(--fs-1)' }}>
               🔗 매출계약 <b>{taxSync.contractCode}</b> 금액을 {fm(taxSync.amount ?? 0)}원(공급가액)으로 맞췄습니다.
             </div>
           )}
           {taxSync?.action === 'skipped' && taxSync.reason && !/금액 동일/.test(taxSync.reason) && (
-            <div className="alert-w no-print" style={{ fontSize: 11 }}>
+            <div className="alert-w no-print" style={{ fontSize: 'var(--fs-1)' }}>
               🔗 매출계약 금액 반영 안 됨 — {taxSync.reason}
             </div>
           )}

@@ -27,7 +27,7 @@ export function sendStage(sent: number, total: number): '미발송' | '발송중
 export const stageStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
   if (s === '발송중') return { background: '#DBEAFE', color: '#1E40AF' };
-  return { background: '#F3F4F6', color: '#6B7280' };
+  return { background: '#F3F4F6', color: 'var(--ink-3)' };
 };
 
 export default function ConfirmDispatchTab() {
@@ -91,7 +91,7 @@ export default function ConfirmDispatchTab() {
     return (
       <div className="card">
         <div className="chdr">📮 조회서 발송및진행</div>
-        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
       </div>
     );
   }
@@ -101,9 +101,9 @@ export default function ConfirmDispatchTab() {
       <div className="chdr">조회서 발송및진행</div>
 
       {error && <div className="alert-w">{error}</div>}
-      {msg && <div className="alert-s" style={{ fontSize: 12 }}>{msg}</div>}
+      {msg && <div className="alert-s" style={{ fontSize: 'var(--fs-2)' }}>{msg}</div>}
 
-      <div className="alert-i" style={{ fontSize: 11 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
         📮 <b>전자조회</b>는 발송 버튼을 눌러 처리하고, <b>실물발송</b>은 <b>등기번호를 입력</b>하면 발송 처리됩니다.
         등기번호를 클릭하면 우체국 배달조회가 새 창으로 열립니다. 조회처를 모두 발송하면 거래처가 <b>발송완료</b>가 되고 발송일이 표시됩니다.
       </div>
@@ -112,11 +112,11 @@ export default function ConfirmDispatchTab() {
         <select value={year} onChange={(e) => { setYear(Number(e.target.value)); setOpenId(null); }}>
           {yearOptions.map((y) => <option key={y} value={y}>{y}년</option>)}
         </select>
-        <span style={{ fontSize: 11, color: '#888' }}>거래처 {rows.length}곳 · 조회처 {totals.total}건</span>
-        <span style={{ fontSize: 11.5, color: '#1A2B52', fontWeight: 700 }}>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>거래처 {rows.length}곳 · 조회처 {totals.total}건</span>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--navy)', fontWeight: 700 }}>
           발송 {totals.sent}/{totals.total}
         </span>
-        <button className="btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => void load()}>🔄 새로고침</button>
+        <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }} onClick={() => void load()}>🔄 새로고침</button>
       </div>
 
       <div className="tbl-scroll">
@@ -135,7 +135,7 @@ export default function ConfirmDispatchTab() {
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>
+              <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 24 }}>
                 {year}년에 등록된 조회서가 없습니다. ‘조회서등록’에서 먼저 등록하세요.
               </td></tr>
             )}
@@ -185,32 +185,32 @@ function ClientRows({
     <>
       <tr style={open ? { background: '#EEF6FF' } : undefined}>
         <td style={{ textAlign: 'center' }}>
-          <button className="btn-sm" style={{ fontSize: 10, padding: '1px 5px' }} onClick={onToggle} title="조회처 펼치기">
+          <button className="btn-sm" style={{ fontSize: 'var(--fs-0)', padding: '1px 5px' }} onClick={onToggle} title="조회처 펼치기">
             {open ? '▾' : '▸'}
           </button>
         </td>
-        <td style={{ fontSize: 12.5 }}>
-          <b style={{ color: '#1A2B52', cursor: 'pointer' }} onClick={onToggle}>{conf.companyName}</b>
+        <td style={{ fontSize: 'var(--fs-2)' }}>
+          <b style={{ color: 'var(--navy)', cursor: 'pointer' }} onClick={onToggle}>{conf.companyName}</b>
         </td>
-        <td style={{ textAlign: 'center', fontSize: 11.5 }}>{conf.baseDate?.replace(/-/g, '.')}</td>
-        <td style={{ fontSize: 12 }}>{conf.accountantName || <span style={{ color: '#CCC' }}>—</span>}</td>
+        <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{conf.baseDate?.replace(/-/g, '.')}</td>
+        <td style={{ fontSize: 'var(--fs-2)' }}>{conf.accountantName || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
         <td>
           <Bar done={p.sent} total={p.total} color="#1E40AF" />
         </td>
-        <td style={{ textAlign: 'center', fontSize: 11 }}>
+        <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>
           <span style={{ color: '#1E40AF' }}>전자 {p.elecSent}/{p.elecTotal}</span>
-          <span style={{ color: '#CCC' }}> · </span>
+          <span style={{ color: 'var(--ink-4)' }}> · </span>
           <span style={{ color: '#8a5a00' }}>실물 {p.postSent}/{p.postTotal}</span>
         </td>
         <td style={{ textAlign: 'center' }}>
-          <span className="bdg" style={{ fontSize: 10, ...stageStyle(stage) }}>{stage}</span>
+          <span className="bdg" style={{ fontSize: 'var(--fs-0)', ...stageStyle(stage) }}>{stage}</span>
         </td>
-        <td style={{ textAlign: 'center', fontSize: 11 }}>
+        <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>
           {stage === '발송완료' && p.lastSentDate
             ? p.lastSentDate.replace(/-/g, '.')
             : p.firstSentDate
-              ? <span style={{ color: '#888' }}>{p.firstSentDate.replace(/-/g, '.')}~</span>
-              : <span style={{ color: '#CCC' }}>—</span>}
+              ? <span style={{ color: 'var(--ink-3)' }}>{p.firstSentDate.replace(/-/g, '.')}~</span>
+              : <span style={{ color: 'var(--ink-4)' }}>—</span>}
         </td>
       </tr>
 
@@ -219,13 +219,13 @@ function ClientRows({
           <td colSpan={8} style={{ background: '#F7FAFF', padding: 10 }}>
             {/* 일괄 처리 바 */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-              <label style={{ fontSize: 11.5, color: '#555', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <label style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 발송일
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ fontSize: 12 }} />
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
               </label>
               <button
                 className="btn-sm btn-p"
-                style={{ fontSize: 11 }}
+                style={{ fontSize: 'var(--fs-1)' }}
                 disabled={busy || unsentElecIds.length === 0}
                 title="아직 발송하지 않은 전자조회 건을 한 번에 발송 처리합니다"
                 onClick={() =>
@@ -237,10 +237,10 @@ function ClientRows({
               >
                 ⚡ 전자조회 일괄발송 ({unsentElecIds.length})
               </button>
-              <span style={{ fontSize: 10.5, color: '#8a5a00' }}>
+              <span style={{ fontSize: 'var(--fs-0)', color: '#8a5a00' }}>
                 실물발송은 등기번호가 건마다 달라 개별로 입력합니다.
               </span>
-              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#666' }}>
+              <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
                 미발송 {unsentIds.length}건
               </span>
             </div>
@@ -260,7 +260,7 @@ function ClientRows({
               </thead>
               <tbody>
                 {items.length === 0 && (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', color: '#BBB', padding: 16 }}>
+                  <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 16 }}>
                     조회처가 없습니다. ‘조회서등록’에서 명세를 입력하세요.
                   </td></tr>
                 )}
@@ -289,33 +289,33 @@ function ItemRow({
 
   return (
     <tr style={it.sent ? { background: '#F6FBF7' } : undefined}>
-      <td style={{ textAlign: 'center', fontSize: 11, color: '#888' }}>{seq}</td>
-      <td style={{ fontSize: 11.5 }}>{it.kind}</td>
-      <td style={{ fontSize: 12 }}><b>{it.institution}</b></td>
+      <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{seq}</td>
+      <td style={{ fontSize: 'var(--fs-1)' }}>{it.kind}</td>
+      <td style={{ fontSize: 'var(--fs-2)' }}><b>{it.institution}</b></td>
       <td style={{ textAlign: 'center' }}>
         <span
           className="bdg"
           style={{
-            fontSize: 10,
-            ...(it.isElectronic ? { background: '#DBEAFE', color: '#1E40AF' } : { background: '#FEF3C7', color: '#92400E' }),
+            fontSize: 'var(--fs-0)',
+            ...(it.isElectronic ? { background: '#DBEAFE', color: '#1E40AF' } : { background: '#FEF3C7', color: 'var(--warn)' }),
           }}
         >
           {it.isElectronic ? '전자조회' : '실물발송'}
         </span>
       </td>
-      <td style={{ fontSize: 11 }}>
+      <td style={{ fontSize: 'var(--fs-1)' }}>
         {it.isElectronic ? (
           <span style={{ color: '#93a3b8' }}>—</span>
         ) : (
           <>
-            {it.address || <span style={{ color: '#CCC' }}>주소 미입력</span>}
-            {it.contactName && <span style={{ color: '#888' }}> · {it.contactName}</span>}
+            {it.address || <span style={{ color: 'var(--ink-4)' }}>주소 미입력</span>}
+            {it.contactName && <span style={{ color: 'var(--ink-3)' }}> · {it.contactName}</span>}
           </>
         )}
       </td>
       <td>
         {it.isElectronic ? (
-          <span style={{ color: '#CCC', fontSize: 11 }}>해당 없음</span>
+          <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>해당 없음</span>
         ) : it.sent && it.trackingNo ? (
           <TrackingLink no={it.trackingNo} />
         ) : (
@@ -323,7 +323,7 @@ function ItemRow({
             value={tn}
             onChange={(e) => setTn(e.target.value)}
             placeholder="등기번호 입력 후 발송"
-            style={{ width: '100%', fontSize: 11.5 }}
+            style={{ width: '100%', fontSize: 'var(--fs-1)' }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && tn.trim() && !busy) {
                 void onRun(() => setSent(it.id, { sent: true, sentDate: date, trackingNo: tn }), '📮 발송 처리');
@@ -332,14 +332,14 @@ function ItemRow({
           />
         )}
       </td>
-      <td style={{ textAlign: 'center', fontSize: 11 }}>
-        {it.sentDate ? it.sentDate.replace(/-/g, '.') : <span style={{ color: '#CCC' }}>—</span>}
+      <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>
+        {it.sentDate ? it.sentDate.replace(/-/g, '.') : <span style={{ color: 'var(--ink-4)' }}>—</span>}
       </td>
       <td style={{ textAlign: 'center' }}>
         {it.sent ? (
           <button
             className="btn-sm"
-            style={{ fontSize: 10.5, background: '#D1FAE5', color: '#065F46', fontWeight: 700 }}
+            style={{ fontSize: 'var(--fs-0)', background: '#D1FAE5', color: '#065F46', fontWeight: 700 }}
             disabled={busy}
             title="발송을 취소하고 미발송으로 되돌립니다"
             onClick={() => {
@@ -352,7 +352,7 @@ function ItemRow({
         ) : (
           <button
             className="btn-sm btn-p"
-            style={{ fontSize: 10.5 }}
+            style={{ fontSize: 'var(--fs-0)' }}
             disabled={busy || (!it.isElectronic && !tn.trim())}
             title={!it.isElectronic && !tn.trim() ? '실물발송은 등기번호를 먼저 입력하세요' : undefined}
             onClick={() =>
@@ -378,7 +378,7 @@ export function Bar({ done, total, color }: { done: number; total: number; color
       <div style={{ flex: 1, height: 7, background: '#E9EDF3', borderRadius: 4, overflow: 'hidden', minWidth: 52 }}>
         <div style={{ width: `${r}%`, height: '100%', background: color, transition: 'width .2s' }} />
       </div>
-      <span style={{ fontSize: 10.5, color: '#555', whiteSpace: 'nowrap', minWidth: 52 }}>
+      <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-2)', whiteSpace: 'nowrap', minWidth: 52 }}>
         {done}/{total} ({Math.round(r)}%)
       </span>
     </div>

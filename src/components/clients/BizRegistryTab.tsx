@@ -382,14 +382,14 @@ export default function BizRegistryTab() {
     <div className="card">
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         🏢 거래처등록
-        <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
+        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
           법인 {stats.corp} · 개인 {stats.person} · 사업장 {stats.places}(매출 {stats.sales})
         </span>
         <button className="btn-sm btn-sm-blue" onClick={() => setShowHelp(true)} style={{ marginLeft: 8 }}>❓ 도움말</button>
-        {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
+        {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
       </div>
 
-      {error && <div style={{ color: '#c33', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)', marginBottom: 8 }}>{error}</div>}
 
       {/* 필터 바 */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
@@ -403,12 +403,12 @@ export default function BizRegistryTab() {
         <select value={natureFilter} onChange={(e) => setNatureFilter(e.target.value as '' | BizNature)} style={selStyle}>
           <option value="">성격 전체</option><option value="매출">매출</option><option value="일반">일반(비매출)</option>
         </select>
-        <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <label style={{ fontSize: 'var(--fs-2)', display: 'flex', alignItems: 'center', gap: 4 }}>
           <input type="checkbox" checked={noBizOnly} onChange={(e) => setNoBizOnly(e.target.checked)} /> 사업자없음만
         </label>
         <input placeholder="🔍 코드·법인명·성명·사업장·사업자번호" value={q} onChange={(e) => setQ(e.target.value)}
           style={{ flex: 1, minWidth: 200 }} />
-        {viewMode === 'table' && <span style={{ fontSize: 11, color: '#888' }}>컬럼 아래 칸 필터 ({tableRows.length}행)</span>}
+        {viewMode === 'table' && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>컬럼 아래 칸 필터 ({tableRows.length}행)</span>}
         {viewMode === 'table' && Object.keys(colF).length > 0 && <button className="btn-sm" onClick={() => setColF({})}>필터 초기화</button>}
         {viewMode === 'table' && (
           <button
@@ -432,19 +432,19 @@ export default function BizRegistryTab() {
       {/* 목록(박스) */}
       {viewMode === 'box' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {view.length === 0 && <div style={{ color: '#999', fontSize: 12, padding: 12 }}>거래처가 없습니다.</div>}
+        {view.length === 0 && <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-2)', padding: 12 }}>거래처가 없습니다.</div>}
         {view.map((e) => (
-          <div key={e.id} style={{ border: '1px solid #e6e0d8', borderRadius: 6, padding: '8px 10px' }}>
+          <div key={e.id} style={{ border: '1px solid var(--rule)', borderRadius: 6, padding: '8px 10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button className="btn-sm" onClick={() => toggleExpand(e.id)} style={{ minWidth: 26 }}>
                 {expanded.has(e.id) ? '▾' : '▸'}
               </button>
               <span style={codeBadge(e.kind)}>{e.code}</span>
-              <b style={{ fontSize: 13 }}>{corpDisplayName(e.name, e.corpForm, e.corpFormPosition)}</b>
-              <span style={{ fontSize: 11, color: '#888' }}>
+              <b style={{ fontSize: 'var(--fs-3)' }}>{corpDisplayName(e.name, e.corpForm, e.corpFormPosition)}</b>
+              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
                 {e.kind === '법인' ? (e.corpRegNo ? `법인번호 ${e.corpRegNo}` : '법인번호 미입력') : (e.hasResidentNo ? '주민번호 등록됨' : '주민번호 미입력')}
               </span>
-              <span style={{ fontSize: 11, color: '#aaa' }}>· 사업장 {e.places.length}</span>
+              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)' }}>· 사업장 {e.places.length}</span>
               {canWrite && (
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                   <button className="btn-sm btn-sm-blue" onClick={() => setEditEntity(e)}>수정</button>
@@ -463,11 +463,11 @@ export default function BizRegistryTab() {
                       <span style={placeCodeBadge}>{e.code}-{String(p.placeNo).padStart(2, '0')}</span>
                       {p.isHeadquarters && <span style={hqBadge}>본사</span>}
                       {p.branchType && <span style={branchBadge(p.branchType)}>{p.branchType}</span>}
-                      <b style={{ fontSize: 12 }}>{p.placeName}</b>
+                      <b style={{ fontSize: 'var(--fs-2)' }}>{p.placeName}</b>
                       {p.unitTaxation && <span style={unitBadge} title={p.filingPlaceId ? '사업자단위과세(지점)' : '사업자단위과세'}>단위과세</span>}
                       <span style={natureBadge(p.nature)}>{p.nature}</span>
                       {p.nature === '매출' && p.salesTeams.map((t) => <span key={t} style={teamBadge}>{t}</span>)}
-                      <span style={{ fontSize: 11, color: '#888' }}>
+                      <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
                         {p.noBiz ? '🚫 사업자없음' : p.bizRegNo || '사업자번호 미입력'}
                       </span>
                       {p.status !== '정상' && (
@@ -477,7 +477,7 @@ export default function BizRegistryTab() {
                         </span>
                       )}
                       {p.salesTeams.includes('taxteam') && (p.taxType || p.withholding) && (
-                        <span style={{ fontSize: 11, color: '#a66' }}>
+                        <span style={{ fontSize: 'var(--fs-1)', color: '#a66' }}>
                           {p.taxType}{p.taxType && p.withholding ? ' · ' : ''}{p.withholding && `원천 ${p.withholding}`}
                         </span>
                       )}
@@ -489,7 +489,7 @@ export default function BizRegistryTab() {
                         </span>
                       )}
                     </div>
-                    <div style={{ fontSize: 11, color: '#777', marginTop: 3 }}>
+                    <div style={{ fontSize: 'var(--fs-1)', color: '#777', marginTop: 3 }}>
                       {p.address && <span>📮 {p.address} · </span>}
                       {p.cpa && <span>CPA {p.cpa} · </span>}
                       {p.hometaxId && <span>홈텍스 {p.hometaxId} · </span>}
@@ -497,14 +497,14 @@ export default function BizRegistryTab() {
                     </div>
                     {/* 매출계약이 있으면 최근 계약의 담당직원이 실제 담당(등록 담당보다 우선 표시) */}
                     {(contractStaff.get(p.id)?.length ?? 0) > 0 && (
-                      <div style={{ marginTop: 4, fontSize: 11, color: '#175' }}>
+                      <div style={{ marginTop: 4, fontSize: 'var(--fs-1)', color: '#175' }}>
                         📄 <b>계약 담당직원: {contractStaff.get(p.id)!.join(', ')}</b>
-                        <span style={{ fontSize: 10, color: '#999' }}> (최근 매출계약 기준)</span>
+                        <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}> (최근 매출계약 기준)</span>
                       </div>
                     )}
                     {/* 등록 담당직원 배정 (배정예정/N/A 상태 + 실제 직원, 배타적) */}
                     <div style={{ marginTop: 5, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ fontSize: 10.5, color: '#999' }}>{(contractStaff.get(p.id)?.length ?? 0) > 0 ? '등록 담당:' : '담당직원:'}</span>
+                      <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{(contractStaff.get(p.id)?.length ?? 0) > 0 ? '등록 담당:' : '담당직원:'}</span>
                       {STAFF_STATUSES.map((st) => (
                         <button key={st} disabled={!canWrite} onClick={() => setPlaceStaffStatus(p, st)}
                           style={statusChip(p.staffStatus === st)}>{st}</button>
@@ -521,7 +521,7 @@ export default function BizRegistryTab() {
                   </div>
                 ))}
                 {e.places.length === 0 && (
-                  <div style={{ fontSize: 11, color: '#c80' }}>⚠️ 사업장이 없습니다 — 법인/개인 본체만 등록된 상태입니다.</div>
+                  <div style={{ fontSize: 'var(--fs-1)', color: '#c80' }}>⚠️ 사업장이 없습니다 — 법인/개인 본체만 등록된 상태입니다.</div>
                 )}
 
                 {/* 대표이사(법인) / 공동사업자·개인관계(개인) */}
@@ -545,14 +545,14 @@ export default function BizRegistryTab() {
         <>
         {canWrite && selected.size > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fbecec', border: '1px solid #e6b8b8', borderRadius: 6, padding: '6px 10px', marginBottom: 8 }}>
-            <b style={{ fontSize: 12.5, color: '#a33' }}>✔ {selected.size}개 거래처 선택됨</b>
+            <b style={{ fontSize: 'var(--fs-2)', color: 'var(--bad)' }}>✔ {selected.size}개 거래처 선택됨</b>
             <button className="btn-sm btn-sm-del" onClick={bulkDeleteSelected}>🗑 선택 일괄삭제</button>
             <button className="btn-sm" onClick={() => setSelected(new Set())}>선택 해제</button>
           </div>
         )}
         {/* 세로·가로 스크롤 영역 — 헤더(제목·필터) 고정(sticky) 상태로 본문만 스크롤 */}
-        <div style={{ overflow: 'auto', maxHeight: '68vh', border: '1px solid #eee', borderRadius: 6 }}>
-          <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5 }}>
+        <div style={{ overflow: 'auto', maxHeight: '68vh', border: '1px solid var(--rule-2)', borderRadius: 6 }}>
+          <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
             <colgroup>
               {canWrite && <col style={{ width: 26 }} />}
               {shownCols.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}
@@ -582,19 +582,19 @@ export default function BizRegistryTab() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + (canWrite ? 2 : 1)} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 거래처가 없습니다.</td></tr>}
+              {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + (canWrite ? 2 : 1)} style={{ ...tdc, color: 'var(--ink-3)', padding: 12 }}>조건에 맞는 거래처가 없습니다.</td></tr>}
               {sortedRows.map(({ e, p }) => (
                 <tr key={p ? p.id : e.id} style={{ background: selected.has(e.id) ? '#fdf3f3' : undefined }}>
-                  {canWrite && <td style={{ ...tdc, textAlign: 'center', borderTop: '1px solid #eee' }}><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSelect(e.id)} /></td>}
+                  {canWrite && <td style={{ ...tdc, textAlign: 'center', borderTop: '1px solid var(--rule-2)' }}><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSelect(e.id)} /></td>}
                   {shownCols.map((col) => (
-                    <td key={col.key} style={{ ...tdc, ...clip, fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }} title={col.val(e, p)}>
+                    <td key={col.key} style={{ ...tdc, ...clip, fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid var(--rule-2)' }} title={col.val(e, p)}>
                       {col.key === 'htpw' && !hometaxPws
                         ? (p?.hasHometaxPw ? <button className="btn-sm btn-sm-blue" onClick={() => reveal('hometax', p.id, '홈텍스PW')}>🔒 보기</button> : '')
                         : col.val(e, p)}
                     </td>
                   ))}
                   {canWrite && (
-                    <td style={{ ...tdc, borderTop: '1px solid #eee' }}>
+                    <td style={{ ...tdc, borderTop: '1px solid var(--rule-2)' }}>
                       <span style={{ display: 'flex', gap: 3 }}>
                         <button className="btn-sm btn-sm-blue" onClick={() => setEditEntity(e)}>거래처</button>
                         {p && <button className="btn-sm btn-sm-blue" onClick={() => setEditPlace({ place: p, entity: e })}>사업장</button>}
@@ -696,7 +696,7 @@ function RegisterForm({
 
   return (
     <div className="card" style={{ background: '#F5F1EB', marginBottom: 10 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>＋ 새 거래처 등록</div>
+      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 8 }}>＋ 새 거래처 등록</div>
       {/* 구분 토글 */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
         {(['법인', '개인'] as BizKind[]).map((k) => (
@@ -719,7 +719,7 @@ function RegisterForm({
                 <select value={corpFormPosition} onChange={(e) => setCorpFormPosition(e.target.value as '앞' | '뒤')} style={selStyle} disabled={!corpForm}>
                   <option value="앞">앞</option><option value="뒤">뒤</option>
                 </select>
-                {corpForm && name && <span style={{ fontSize: 11, color: '#2a6' }}>→ {corpDisplayName(name, corpForm, corpFormPosition)}</span>}
+                {corpForm && name && <span style={{ fontSize: 'var(--fs-1)', color: '#2a6' }}>→ {corpDisplayName(name, corpForm, corpFormPosition)}</span>}
               </span></div>
             <div className="frow"><span className="fl">법인등록번호</span>
               <input value={corpRegNo} onChange={(e) => setCorpRegNo(e.target.value)} placeholder="000000-0000000" /></div>
@@ -734,7 +734,7 @@ function RegisterForm({
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="(선택)" /></div>
       </div>
 
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#345', margin: '12px 0 6px' }}>
+      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#345', margin: '12px 0 6px' }}>
         · 본사 사업장 (필수 — 법인·개인 모두 최소 1개 사업장을 함께 등록합니다)
       </div>
       <PlaceFieldsInline d={hq} setD={setHq} staff={staff} />
@@ -769,7 +769,7 @@ function PlaceFieldsInline({ d, setD, staff, siblings = [] }: { d: PlaceDraft; s
         <input value={d.bizRegNo} disabled={d.noBiz} onChange={(e) => setD((p) => ({ ...p, bizRegNo: e.target.value }))} placeholder={d.noBiz ? '사업자없음' : '000-00-00000'} /></div>
       <div className="frow"><span className="fl">사업자단위과세</span>
         <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ fontSize: 11.5, display: 'flex', gap: 4, alignItems: 'center' }}>
+          <label style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 4, alignItems: 'center' }}>
             <input type="checkbox" checked={d.unitTaxation} onChange={(e) => setD((p) => ({ ...p, unitTaxation: e.target.checked }))} /> 적용
           </label>
           {d.unitTaxation && d.branchType === '지점' && (
@@ -778,12 +778,12 @@ function PlaceFieldsInline({ d, setD, staff, siblings = [] }: { d: PlaceDraft; s
                 <option value="">신고기준(본점) 선택</option>
                 {siblings.map((s) => <option key={s.id} value={s.id}>{s.placeName}</option>)}
               </select>
-            ) : <span style={{ fontSize: 10.5, color: '#a80' }}>신고기준(본점)은 사업장 추가/수정에서 선택</span>
+            ) : <span style={{ fontSize: 'var(--fs-0)', color: '#a80' }}>신고기준(본점)은 사업장 추가/수정에서 선택</span>
           )}
         </span></div>
       <div className="frow" style={{ gridColumn: '1 / -1' }}>
         <span className="fl"> </span>
-        <label style={{ fontSize: 11.5, display: 'flex', gap: 4, alignItems: 'center' }}>
+        <label style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 4, alignItems: 'center' }}>
           <input type="checkbox" checked={d.noBiz} onChange={(e) => setD((p) => ({ ...p, noBiz: e.target.checked }))} />
           사업자없음(무사업자·폐업) — 개인은 주민번호가 식별값이 됩니다
         </label>
@@ -797,7 +797,7 @@ function PlaceFieldsInline({ d, setD, staff, siblings = [] }: { d: PlaceDraft; s
       <div className="frow"><span className="fl">매출팀</span>
         <span style={{ display: 'flex', gap: 8 }}>
           {SALES_TEAMS.map((t) => (
-            <label key={t} style={{ fontSize: 11.5, display: 'flex', gap: 3, alignItems: 'center', opacity: d.nature === '매출' ? 1 : 0.4 }}>
+            <label key={t} style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 3, alignItems: 'center', opacity: d.nature === '매출' ? 1 : 0.4 }}>
               <input type="checkbox" disabled={d.nature !== '매출'} checked={d.salesTeams.includes(t)} onChange={() => toggleTeam(t)} />{t}
             </label>
           ))}
@@ -855,7 +855,7 @@ function PlaceFieldsInline({ d, setD, staff, siblings = [] }: { d: PlaceDraft; s
           {staff.map((s) => (
             <button key={s.id} type="button" disabled={!!d.staffStatus} onClick={() => toggleStaff(s.id)} style={staffChip(d.staffIds.includes(s.id))}>{s.name}</button>
           ))}
-          {staff.length === 0 && <span style={{ fontSize: 11, color: '#999' }}>내부 직원 없음</span>}
+          {staff.length === 0 && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>내부 직원 없음</span>}
         </span></div>
     </div>
   );
@@ -908,7 +908,7 @@ function EntityEditForm({ entity, allEntities, canWrite, onChanged, onReveal, on
                 <select value={corpFormPosition} onChange={(e) => setCorpFormPosition(e.target.value as '앞' | '뒤')} style={selStyle} disabled={!corpForm}>
                   <option value="앞">앞</option><option value="뒤">뒤</option>
                 </select>
-                {corpForm && name && <span style={{ fontSize: 11, color: '#2a6' }}>→ {corpDisplayName(name, corpForm, corpFormPosition)}</span>}
+                {corpForm && name && <span style={{ fontSize: 'var(--fs-1)', color: '#2a6' }}>→ {corpDisplayName(name, corpForm, corpFormPosition)}</span>}
               </span></div>
             <div className="frow"><span className="fl">법인등록번호</span>
               <input value={corpRegNo} onChange={(e) => setCorpRegNo(e.target.value)} placeholder="000000-0000000" /></div>
@@ -1007,12 +1007,12 @@ function RepEditor({ entity, allEntities, canWrite, onChanged, onReveal }: {
 
   return (
     <div style={{ borderTop: '1px dashed #ddd', paddingTop: 8, marginTop: 8 }}>
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>
-        대표이사 <span style={{ color: '#aaa' }}>· 주민번호는 암호화 저장됩니다. 이미 등록된 번호는 빈칸으로 두면 그대로 유지됩니다.</span>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 5 }}>
+        대표이사 <span style={{ color: 'var(--ink-4)' }}>· 주민번호는 암호화 저장됩니다. 이미 등록된 번호는 빈칸으로 두면 그대로 유지됩니다.</span>
       </div>
 
       {reps.length === 0 && !adding && (
-        <div style={{ fontSize: 11.5, color: '#c80', marginBottom: 4 }}>등록된 대표이사가 없습니다.</div>
+        <div style={{ fontSize: 'var(--fs-1)', color: '#c80', marginBottom: 4 }}>등록된 대표이사가 없습니다.</div>
       )}
 
       {reps.map((r) => {
@@ -1081,15 +1081,15 @@ function PartnerSection({ entity, allEntities, canWrite, onChanged }: {
 
   return (
     <div style={{ borderTop: '1px dashed #ddd', paddingTop: 6 }}>
-      <div style={{ fontSize: 10.5, color: '#999', marginBottom: 3 }}>공동사업자 (개인 귀속 → 소득세 매출단위 연결)</div>
+      <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginBottom: 3 }}>공동사업자 (개인 귀속 → 소득세 매출단위 연결)</div>
       {entity.partners.map((pt) => {
         const person = allEntities.find((e) => e.id === pt.partnerEntityId);
         const place = entity.places.find((pl) => pl.id === pt.placeId);
         return (
-          <div key={pt.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginBottom: 2 }}>
+          <div key={pt.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--fs-2)', marginBottom: 2 }}>
             <b>{person ? `${person.code} ${person.name}` : '(삭제된 개인)'}</b>
-            <span style={{ fontSize: 10.5, color: '#47a' }}>🏢 {place ? place.placeName : '(사업장?)'}</span>
-            {pt.sharePct != null && <span style={{ fontSize: 10.5, color: '#888' }}>지분 {pt.sharePct}%</span>}
+            <span style={{ fontSize: 'var(--fs-0)', color: '#47a' }}>🏢 {place ? place.placeName : '(사업장?)'}</span>
+            {pt.sharePct != null && <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>지분 {pt.sharePct}%</span>}
             {canWrite && <button className="btn-sm btn-sm-del" onClick={() => del(pt.id)}>삭제</button>}
           </div>
         );
@@ -1132,25 +1132,25 @@ function RelationSection({ entity, allEntities, canWrite, onChanged }: {
 
   return (
     <div style={{ borderTop: '1px dashed #ddd', paddingTop: 6 }}>
-      <div style={{ fontSize: 10.5, color: '#999', marginBottom: 3 }}>개인 관계 (가족·동업 — 예: 이도현 → 이소미 의 부)</div>
+      <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginBottom: 3 }}>개인 관계 (가족·동업 — 예: 이도현 → 이소미 의 부)</div>
       {entity.relations.map((r) => {
         const to = allEntities.find((e) => e.id === r.toEntityId);
         return (
-          <div key={r.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginBottom: 2 }}>
+          <div key={r.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--fs-2)', marginBottom: 2 }}>
             <span><b>{entity.name}</b> → <b>{to ? `${to.code} ${to.name}` : '(삭제된 개인)'}</b> 의 <span style={{ color: '#a55' }}>{r.relationType}</span></span>
-            {r.note && <span style={{ fontSize: 10.5, color: '#888' }}>({r.note})</span>}
+            {r.note && <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>({r.note})</span>}
             {canWrite && <button className="btn-sm btn-sm-del" onClick={() => del(r.id)}>삭제</button>}
           </div>
         );
       })}
       {canWrite && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
-          <span style={{ fontSize: 11, color: '#777' }}>이 사람은</span>
+          <span style={{ fontSize: 'var(--fs-1)', color: '#777' }}>이 사람은</span>
           <select value={toId} onChange={(e) => setToId(e.target.value)} style={selStyle}>
             <option value="">대상 개인 선택</option>
             {persons.map((p) => <option key={p.id} value={p.id}>{p.code} {p.name}</option>)}
           </select>
-          <span style={{ fontSize: 11, color: '#777' }}>의</span>
+          <span style={{ fontSize: 'var(--fs-1)', color: '#777' }}>의</span>
           <select value={type} onChange={(e) => setType(e.target.value)} style={selStyle}>{RELATION_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
           <input placeholder="비고(선택)" value={note} onChange={(e) => setNote(e.target.value)} style={{ width: 120 }} />
           <button className="btn-p" onClick={add}>관계 추가</button>
@@ -1175,12 +1175,12 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
 
 // ── 도움말 내용 ────────────────────────────────────────────
 function BizHelpContent() {
-  const h: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: '#2a4d69', margin: '12px 0 5px' };
-  const li: React.CSSProperties = { fontSize: 12, lineHeight: 1.7, color: '#444' };
+  const h: React.CSSProperties = { fontSize: 'var(--fs-2)', fontWeight: 700, color: '#2a4d69', margin: '12px 0 5px' };
+  const li: React.CSSProperties = { fontSize: 'var(--fs-2)', lineHeight: 1.7, color: 'var(--ink-2)' };
   const b: React.CSSProperties = { color: '#c8541e' };
   return (
     <div style={{ maxHeight: '68vh', overflow: 'auto', padding: '2px 4px' }}>
-      <div style={{ fontSize: 12, color: '#666', background: '#f5f1eb', padding: '8px 10px', borderRadius: 6 }}>
+      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', background: '#f5f1eb', padding: '8px 10px', borderRadius: 6 }}>
         거래처는 <b style={b}>귀속주체(법인/개인)</b> 아래 <b style={b}>사업장</b>이 매달리는 2계층 구조입니다.
         법인·개인 모두 <b style={b}>최소 1개 사업장(본사)</b>을 함께 등록해야 하며, 매출·담당자·향후 매출계약은 사업장 단위로 연결됩니다.
       </div>
@@ -1228,11 +1228,11 @@ function BizHelpContent() {
 }
 
 // ── 스타일 헬퍼 ────────────────────────────────────────────
-const selStyle: React.CSSProperties = { padding: '4px 7px', fontSize: 12 };
-const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: '#555', whiteSpace: 'nowrap' };
+const selStyle: React.CSSProperties = { padding: '4px 7px', fontSize: 'var(--fs-2)' };
+const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: 'var(--ink-2)', whiteSpace: 'nowrap' };
 const tdc: React.CSSProperties = { padding: '4px 6px', whiteSpace: 'nowrap' };
 const codeBadge = (k: BizKind): React.CSSProperties => ({
-  fontSize: 10.5, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: '#fff',
+  fontSize: 'var(--fs-0)', fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: '#fff',
   background: k === '법인' ? '#4a6fa5' : '#7a9a4a',
 });
 const hqBadge: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: '#c8541e', color: '#fff' };
@@ -1249,11 +1249,11 @@ const statusBadge = (s: PlaceStatus): React.CSSProperties => ({
   background: s === '폐업' ? '#888' : s === '이관' ? '#d1791f' : '#2a8',
 });
 const staffChip = (on: boolean): React.CSSProperties => ({
-  fontSize: 10.5, padding: '2px 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid',
+  fontSize: 'var(--fs-0)', padding: '2px 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid',
   borderColor: on ? '#2a7' : '#ccc', background: on ? '#e3f5ec' : '#fff', color: on ? '#175' : '#888',
 });
 // 담당직원 상태 칩(배정예정/N/A) — 선택 시 주황 계열, 실제 직원 칩과 구분.
 const statusChip = (on: boolean): React.CSSProperties => ({
-  fontSize: 10.5, padding: '2px 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid',
+  fontSize: 'var(--fs-0)', padding: '2px 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid',
   borderColor: on ? '#c88a2a' : '#ddd', background: on ? '#fbf0dc' : '#fff', color: on ? '#8a5d13' : '#999',
 });

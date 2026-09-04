@@ -125,14 +125,14 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
               {y}년
             </span>
           ))}
-          <span style={{ fontSize: 11, color: '#888', marginLeft: 4 }}>← 먼저 귀속연도를 선택하세요</span>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginLeft: 4 }}>← 먼저 귀속연도를 선택하세요</span>
         </div>
       </div>
 
       <div className="card">
         <div className="chdr">
           거래처 선택
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#1A2B52', fontWeight: 700 }}>
+          <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--navy)', fontWeight: 700 }}>
             {S.fiscalYear}년 귀속
           </span>
         </div>
@@ -149,7 +149,7 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
             flexWrap: 'wrap',
           }}
         >
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#555', marginRight: 4 }}>청구 현황:</span>
+          <span style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginRight: 4 }}>청구 현황:</span>
           {(
             [
               ['unbilled', '📋 미청구만'],
@@ -161,31 +161,31 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
             <span
               key={v}
               className={`pill${billedFilter === v ? ' on' : ''}`}
-              style={{ fontSize: 11 }}
+              style={{ fontSize: 'var(--fs-1)' }}
               onClick={() => setBilledFilter(v)}
             >
               {lbl}
             </span>
           ))}
           <label
-            style={{ fontSize: 11, color: '#555', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}
+            style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}
             title="확정하지 않은 거래처까지 모두 봅니다"
           >
             <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
             전체 보기
           </label>
-          <span style={{ fontSize: 11, color: '#888' }}>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
             미청구: {unbilledCnt}개 · 작성중: {draftingCnt}개 · 완료: {billedCnt}개
           </span>
         </div>
 
         {!showAll && hasTargets && (
-          <div className="alert-i" style={{ fontSize: 11 }}>
+          <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
             🎯 <b>{S.fiscalYear}년 청구대상으로 확정된 {targetIds.length}개</b> 거래처만 보입니다. 확정 전 거래처까지 보려면 위 <b>전체 보기</b>를 켜세요.
           </div>
         )}
         {!hasTargets && (
-          <div className="alert-w" style={{ fontSize: 11 }}>
+          <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
             {S.fiscalYear}년 청구대상으로 확정된 거래처가 없습니다 — <b>세무조정 대상선정</b>에서 먼저 확정하세요. (지금은 전체 거래처가 보입니다)
           </div>
         )}
@@ -256,22 +256,22 @@ export default function Step0SelectClient({ clients, records, targets, profiles 
               </div>
             );
           })}
-          {!shown.length && <div style={{ textAlign: 'center', padding: 24, color: '#BBB' }}>검색 결과 없음</div>}
+          {!shown.length && <div style={{ textAlign: 'center', padding: 24, color: 'var(--ink-4)' }}>검색 결과 없음</div>}
         </div>
 
         <div
           style={{
             marginTop: 9,
             paddingTop: 9,
-            borderTop: '1px solid #EDE9E2',
+            borderTop: '1px solid var(--rule-2)',
             display: 'flex',
             justifyContent: 'flex-end',
           }}
         >
-          <span style={{ fontSize: 11, color: '#a55', marginRight: 'auto' }}>
+          <span style={{ fontSize: 'var(--fs-1)', color: '#a55', marginRight: 'auto' }}>
             ⚠ 직접 입력 건은 거래처에 붙지 않아 <b>매출계약에 잡히지 않습니다</b> — 매출집계에서 빠집니다.
           </span>
-          <button className="btn-s" onClick={directInput} style={{ fontSize: 12 }}>
+          <button className="btn-s" onClick={directInput} style={{ fontSize: 'var(--fs-2)' }}>
             직접 입력 (DB 없이) →
           </button>
         </div>

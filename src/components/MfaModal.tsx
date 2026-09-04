@@ -57,26 +57,26 @@ export default function MfaModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {factors === null ? (
-          <div style={{ fontSize: 12, color: '#888', padding: '12px 0' }}>불러오는 중…</div>
+          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', padding: '12px 0' }}>불러오는 중…</div>
         ) : active.length && !enroll ? (
           <>
-            <div className="alert-s" style={{ fontSize: 11.5 }}>
+            <div className="alert-s" style={{ fontSize: 'var(--fs-1)' }}>
               ✅ <b>2차 인증이 켜져 있습니다.</b> 로그인할 때마다 인증 앱의 숫자 6자리를 묻습니다.
             </div>
             {active.map((f) => (
               <div key={f.id} style={{
-                display: 'flex', alignItems: 'center', gap: 8, fontSize: 12,
-                border: '1px solid #e2d9c6', borderRadius: 6, padding: '8px 10px', marginTop: 8,
+                display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-2)',
+                border: '1px solid var(--rule)', borderRadius: 6, padding: '8px 10px', marginTop: 8,
               }}>
                 <span>📱 {f.friendlyName}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 10.5, color: '#888' }}>
+                <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>
                   {f.createdAt?.slice(0, 10)} 등록
                 </span>
                 <button className="btn-sm btn-sm-del" disabled={busy} onClick={() => void remove(f)}>해제</button>
               </div>
             ))}
             {aal !== 'aal2' && (
-              <div className="alert-w" style={{ fontSize: 11, marginTop: 8 }}>
+              <div className="alert-w" style={{ fontSize: 'var(--fs-1)', marginTop: 8 }}>
                 해제는 <b>2차 인증을 통과한 세션에서만</b> 됩니다. 지금 세션은 통과 전이라 해제가 막힙니다 —
                 로그아웃 후 다시 로그인해 6자리를 입력하고 오세요. (기기를 잃은 사람이 아니라 남이 풀어 버리는 일을 막습니다)
               </div>
@@ -84,7 +84,7 @@ export default function MfaModal({ onClose }: { onClose: () => void }) {
           </>
         ) : enroll ? (
           <>
-            <div className="alert-i" style={{ fontSize: 11.5 }}>
+            <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
               인증 앱(Google Authenticator·Authy 등)으로 <b>아래 QR을 찍으세요.</b>
               그런 다음 앱에 뜬 <b>숫자 6자리</b>를 입력하면 켜집니다.
             </div>
@@ -96,12 +96,12 @@ export default function MfaModal({ onClose }: { onClose: () => void }) {
                 src={enroll.qrSvg.startsWith('data:')
                   ? enroll.qrSvg
                   : `data:image/svg+xml;utf8,${encodeURIComponent(enroll.qrSvg)}`}
-                style={{ width: 190, height: 190, border: '1px solid #e2d9c6', borderRadius: 6, background: '#fff' }}
+                style={{ width: 190, height: 190, border: '1px solid var(--rule)', borderRadius: 6, background: '#fff' }}
               />
             </div>
-            <div style={{ fontSize: 11, color: '#666', marginBottom: 8 }}>
+            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginBottom: 8 }}>
               QR을 못 찍으면 앱에 이 키를 직접 넣으세요 —{' '}
-              <code style={{ fontSize: 11, background: '#f5efdd', padding: '1px 4px', borderRadius: 3, wordBreak: 'break-all' }}>
+              <code style={{ fontSize: 'var(--fs-1)', background: '#f5efdd', padding: '1px 4px', borderRadius: 3, wordBreak: 'break-all' }}>
                 {enroll.secret}
               </code>
             </div>
@@ -123,13 +123,13 @@ export default function MfaModal({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <>
-            <div className="alert-w" style={{ fontSize: 11.5 }}>
+            <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
               ⚠️ <b>2차 인증이 꺼져 있습니다.</b> 비밀번호가 새면 그것만으로 들어올 수 있습니다.
               <br />「개인정보의 안전성 확보조치 기준」 제6조제2항 — 외부에서 접속하는 경우
               <b>안전한 인증수단(2차 인증)</b> 또는 <b>안전한 접속수단(VPN 등)</b> 중 하나를 갖춰야 하며,
               <b>2026-10-31부터 시행</b>됩니다(부칙 제2025-9호).
             </div>
-            <div style={{ fontSize: 11.5, color: '#444', margin: '10px 0' }}>
+            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', margin: '10px 0' }}>
               휴대폰의 인증 앱이 30초마다 바꿔 주는 숫자 6자리를 로그인할 때 함께 묻습니다.
               문자(SMS)를 쓰지 않는 이유는 번호를 또 받아 보관해야 하고 가로채기에도 약하기 때문입니다.
             </div>
@@ -139,8 +139,8 @@ export default function MfaModal({ onClose }: { onClose: () => void }) {
           </>
         )}
 
-        {done && <div className="alert-s" style={{ fontSize: 11.5, marginTop: 8 }}>✅ 켜졌습니다.</div>}
-        {err && <div className="alert-e" style={{ fontSize: 11.5, marginTop: 8 }}>{err}</div>}
+        {done && <div className="alert-s" style={{ fontSize: 'var(--fs-1)', marginTop: 8 }}>✅ 켜졌습니다.</div>}
+        {err && <div className="alert-e" style={{ fontSize: 'var(--fs-1)', marginTop: 8 }}>{err}</div>}
       </div>
     </div>
   );

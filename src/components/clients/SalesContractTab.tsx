@@ -476,7 +476,7 @@ export default function SalesContractTab() {
     <div className="card">
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         📄 매출계약등록
-        <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
+        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
           총 {stats.total} · 감사 {stats.aud} · tax {stats.tax}
           {stats.pending > 0 && <span style={{ color: '#b45309', fontWeight: 700 }}> · 미계약 {stats.pending}</span>}
         </span>
@@ -496,13 +496,13 @@ export default function SalesContractTab() {
             {codeFixing ? '부여 중…' : `🏷 코드없는 ${contracts.filter((c) => !c.contractCode).length}건 코드부여`}
           </button>
         )}
-        {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
+        {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
       </div>
-      {error && <div style={{ color: '#c33', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)', marginBottom: 8 }}>{error}</div>}
 
       {myOverdue.length > 0 && (
-        <div style={{ fontSize: 12, background: '#fbecec', border: '1px solid #e6b8b8', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: '#a33' }}>
-          <b>⏰ 청구예정일 경과 {myOverdue.length}건</b> <span style={{ color: '#c66', fontSize: 11 }}>(내 담당 {profileName})</span>
+        <div style={{ fontSize: 'var(--fs-2)', background: '#fbecec', border: '1px solid #e6b8b8', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: 'var(--bad)' }}>
+          <b>⏰ 청구예정일 경과 {myOverdue.length}건</b> <span style={{ color: '#c66', fontSize: 'var(--fs-1)' }}>(내 담당 {profileName})</span>
           <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
             {myOverdue.slice(0, 12).map((o) => (
               <li key={o.id} style={{ marginBottom: 2 }}>
@@ -528,7 +528,7 @@ export default function SalesContractTab() {
             <input placeholder="🔍 거래처·매출유형·CPA" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
           </>
         )}
-        {viewMode === 'table' && <span style={{ fontSize: 11, color: '#888' }}>각 컬럼 아래 칸에 입력해 필터 ({tableRows.length}건)</span>}
+        {viewMode === 'table' && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>각 컬럼 아래 칸에 입력해 필터 ({tableRows.length}건)</span>}
         {viewMode === 'table' && canPivot && (
           <span style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 'auto' }}>
             <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)} style={selStyle} title="피봇 행 기준">
@@ -568,7 +568,7 @@ export default function SalesContractTab() {
             {groupBy && periodMode === 'range' && (
               <>
                 <input type="month" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} style={selStyle} title="시작월" />
-                <span style={{ fontSize: 11, color: '#888' }}>~</span>
+                <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>~</span>
                 <input type="month" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} style={selStyle} title="종료월" />
               </>
             )}
@@ -576,7 +576,7 @@ export default function SalesContractTab() {
               <input type="month" value={periodMonth} onChange={(e) => setPeriodMonth(e.target.value)} style={selStyle} title="대상월" />
             )}
             {groupBy && periodMode !== 'month' && (
-              <label style={{ fontSize: 11, color: '#667', display: 'flex', alignItems: 'center', gap: 3 }} title="집계 상한을 이번 달까지로 제한(경과분만)">
+              <label style={{ fontSize: 'var(--fs-1)', color: '#667', display: 'flex', alignItems: 'center', gap: 3 }} title="집계 상한을 이번 달까지로 제한(경과분만)">
                 <input type="checkbox" checked={capToday} onChange={(e) => setCapToday(e.target.checked)} /> 경과분
               </label>
             )}
@@ -594,17 +594,17 @@ export default function SalesContractTab() {
       {taxOffer && (
         <div className="modal-overlay" onClick={() => setTaxOffer(null)}>
           <div className="modal-box" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontWeight: 700, color: '#1A2B52', marginBottom: 8 }}>세무조정 계약도 함께 등록할까요?</div>
-            <div style={{ fontSize: 12.5, color: '#444', lineHeight: 1.6, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>세무조정 계약도 함께 등록할까요?</div>
+            <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.6, marginBottom: 10 }}>
               방금 등록한 계약이 <b>taxteam · 담당 {TAX_ADJ_CPA}</b> 이라, 같은 거래처의{' '}
               <b>{taxOffer.code === 'TAX.FILING.CORP' ? '법인세' : '종합소득세'}</b> 계약도 대개 함께 생깁니다.
               여기서 등록해 두면 <b>세무조정 대상선정</b>에서 바로 가져올 수 있습니다.
-              <div style={{ marginTop: 6, color: '#6B7280', fontSize: 11.5 }}>
+              <div style={{ marginTop: 6, color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>
                 금액은 비워둡니다 — 세무조정수수료관리에서 청구서를 확정하면 그 공급가액으로 자동으로 채워집니다.
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#555' }}>귀속연도</span>
+              <span style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)' }}>귀속연도</span>
               <select
                 value={taxOffer.year}
                 onChange={(e) => setTaxOffer({ ...taxOffer, year: Number(e.target.value) })}
@@ -614,7 +614,7 @@ export default function SalesContractTab() {
                   <option key={y} value={y}>{y}년 귀속</option>
                 ))}
               </select>
-              <span style={{ fontSize: 11, color: '#888' }}>정산기간 {taxOffer.year}-07 ~ {taxOffer.year + 1}-06</span>
+              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>정산기간 {taxOffer.year}-07 ~ {taxOffer.year + 1}-06</span>
             </div>
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
               <button className="btn-sm" onClick={() => setTaxOffer(null)}>나중에</button>
@@ -628,40 +628,40 @@ export default function SalesContractTab() {
 
       {viewMode === 'box' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {view.length === 0 && <div style={{ color: '#999', fontSize: 12, padding: 12 }}>매출계약이 없습니다.</div>}
+        {view.length === 0 && <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-2)', padding: 12 }}>매출계약이 없습니다.</div>}
         {view.map((c) => {
           const leaf = leafOf(c.categoryCode);
           return (
             <div key={c.id} id={`contract-${c.id}`} style={{
-              border: editId === c.id ? '2px solid #c9a54a' : '1px solid #e6e0d8',
+              border: editId === c.id ? '2px solid #c9a54a' : '1px solid var(--rule)',
               borderRadius: 6, padding: '8px 10px', marginLeft: c.parentContractId ? 24 : 0,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                {c.parentContractId && <span style={{ fontSize: 10, color: '#a80' }}>↳종속</span>}
-                {c.contractCode && <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#667', background: '#f2f0ea', padding: '1px 5px', borderRadius: 3 }}>{c.contractCode}{c.dateEstimated && ' ·추정'}</span>}
-                {!c.confirmed && <span style={{ fontSize: 10, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '1px 5px', borderRadius: 3 }}>미계약</span>}
+                {c.parentContractId && <span style={{ fontSize: 'var(--fs-0)', color: '#a80' }}>↳종속</span>}
+                {c.contractCode && <span style={{ fontSize: 'var(--fs-0)', fontFamily: 'monospace', color: '#667', background: '#f2f0ea', padding: '1px 5px', borderRadius: 3 }}>{c.contractCode}{c.dateEstimated && ' ·추정'}</span>}
+                {!c.confirmed && <span style={{ fontSize: 'var(--fs-0)', fontWeight: 700, color: 'var(--warn)', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '1px 5px', borderRadius: 3 }}>미계약</span>}
                 <span style={teamBadge(c.team)}>{c.team}</span>
-                <b style={{ fontSize: 12.5 }}>{entName(c.entityId)}</b>
-                {c.placeId && <span style={{ fontSize: 11, color: '#777' }}>· {placeName(c.entityId, c.placeId)}</span>}
-                <span style={{ fontSize: 11.5, color: '#456' }}>{pathLabel(c.categoryCode)}{c.categoryEtcName && ` (${c.categoryEtcName})`}</span>
-                {c.includedCodes.length > 0 && <span style={{ fontSize: 10, color: '#786', background: '#eef3ea', padding: '1px 5px', borderRadius: 3 }} title={c.includedCodes.map((cc) => pathLabel(cc)).join(', ')}>＋포함 {c.includedCodes.length}</span>}
-                {leaf?.jangbuOptions && (c.includesVat || c.includesWht) && <span style={{ fontSize: 10.5, color: '#a66' }}>{[c.includesVat && '부가', c.includesWht && '원천'].filter(Boolean).join('·')} 포함</span>}
-                {c.advisoryType && <span style={{ fontSize: 10.5, color: '#a66' }}>{c.advisoryType}</span>}
-                <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#245' }}>{won(c.amount)}원</span>
-                <span style={{ fontSize: 10.5, color: '#888' }}>/{c.billingCycle}{c.isInstallment ? '·분할' : ''}</span>
+                <b style={{ fontSize: 'var(--fs-2)' }}>{entName(c.entityId)}</b>
+                {c.placeId && <span style={{ fontSize: 'var(--fs-1)', color: '#777' }}>· {placeName(c.entityId, c.placeId)}</span>}
+                <span style={{ fontSize: 'var(--fs-1)', color: '#456' }}>{pathLabel(c.categoryCode)}{c.categoryEtcName && ` (${c.categoryEtcName})`}</span>
+                {c.includedCodes.length > 0 && <span style={{ fontSize: 'var(--fs-0)', color: '#786', background: '#eef3ea', padding: '1px 5px', borderRadius: 3 }} title={c.includedCodes.map((cc) => pathLabel(cc)).join(', ')}>＋포함 {c.includedCodes.length}</span>}
+                {leaf?.jangbuOptions && (c.includesVat || c.includesWht) && <span style={{ fontSize: 'var(--fs-0)', color: '#a66' }}>{[c.includesVat && '부가', c.includesWht && '원천'].filter(Boolean).join('·')} 포함</span>}
+                {c.advisoryType && <span style={{ fontSize: 'var(--fs-0)', color: '#a66' }}>{c.advisoryType}</span>}
+                <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', fontWeight: 700, color: '#245' }}>{won(c.amount)}원</span>
+                <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>/{c.billingCycle}{c.isInstallment ? '·분할' : ''}</span>
               </div>
-              <div style={{ fontSize: 11, color: '#777', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 'var(--fs-1)', color: '#777', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <span>발생 {c.occurrenceUnit}</span>
                 {c.billingUnit && <span>청구단위 {c.billingUnit}</span>}
                 {c.fiscalYear && <span>귀속 {c.fiscalYear}</span>}
                 {c.billingMonth && <span>청구 {c.billingMonth}월</span>}
-                {c.effectiveCpa && <span>CPA {c.effectiveCpa}{c.cpaInherited && <span style={{ color: '#aaa' }}> (거래처)</span>}</span>}
-                {c.effectiveStaff.length > 0 && <span>담당 {c.effectiveStaff.map((s) => s.staffName).join('·')}{c.staffInherited && <span style={{ color: '#aaa' }}> (거래처)</span>}</span>}
+                {c.effectiveCpa && <span>CPA {c.effectiveCpa}{c.cpaInherited && <span style={{ color: 'var(--ink-4)' }}> (거래처)</span>}</span>}
+                {c.effectiveStaff.length > 0 && <span>담당 {c.effectiveStaff.map((s) => s.staffName).join('·')}{c.staffInherited && <span style={{ color: 'var(--ink-4)' }}> (거래처)</span>}</span>}
                 <span>{dateToMonth(c.startDate) || '개시?'} ~ {dateToMonth(c.endDate) || '계속'}</span>
                 {c.contractDate && <span>계약일 {c.contractDate}</span>}
                 {c.installments.length > 0 && <span style={{ color: '#a60' }}>분할 {c.installments.length}회</span>}
                 {c.discounts.length > 0 && <span style={{ color: '#c80' }}>무료/할인 {c.discounts.length}건</span>}
-                {c.note && <span style={{ color: '#999' }}>· {c.note}</span>}
+                {c.note && <span style={{ color: 'var(--ink-3)' }}>· {c.note}</span>}
                 {canWrite && (
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                     <button className="btn-sm btn-sm-blue" onClick={() => { setEditId(c.id); setShowAdd(false); }}>수정</button>
@@ -684,11 +684,11 @@ export default function SalesContractTab() {
         <>
         {canPivot && groupBy && !groupBy2 && (
           <div style={{ overflowX: 'auto', border: '1px solid #d8cfa0', borderRadius: 6, marginBottom: 8, background: '#fbf8ef' }}>
-            <div style={{ fontSize: 11, color: '#846', padding: '5px 8px' }}>
+            <div style={{ fontSize: 'var(--fs-1)', color: '#846', padding: '5px 8px' }}>
               📊 <b>{GROUP_OPTS.find((g) => g.key === groupBy)?.label}</b>별 집계 · 대상기간: <b>{periodLabel}</b> · 필터 반영
               <span style={{ color: '#a98', marginLeft: 6 }}>매출=월할 인식(회계감사는 회계연도 7/1~6/30 균등) · 청구액=현금 청구(선수금) · 모두 공급가액(순액) · 강조열=선택값</span>
             </div>
-            <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: 640 }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: 'var(--fs-2)', minWidth: 640 }}>
               {(() => { const hi = (m: Measure) => (measure === m ? { background: '#efe7c8' } : undefined); return (<>
               <thead><tr style={{ background: '#f0e9d2' }}>
                 <th style={thc}>{GROUP_OPTS.find((g) => g.key === groupBy)?.label}별</th>
@@ -701,7 +701,7 @@ export default function SalesContractTab() {
               </tr></thead>
               <tbody>
                 {pivot.map((g) => (
-                  <tr key={g.key} style={{ borderTop: '1px solid #eadfbf' }}>
+                  <tr key={g.key} style={{ borderTop: '1px solid var(--rule-2)' }}>
                     <td style={{ ...tdc, fontWeight: 600 }}>{g.key}</td>
                     <td style={{ ...tdc, textAlign: 'right' }}>{g.cnt}</td>
                     <td style={{ ...tdc, textAlign: 'right', ...hi('acc') }}>{won(g.acc)}</td>
@@ -727,10 +727,10 @@ export default function SalesContractTab() {
         )}
         {canPivot && matrix && (
           <div style={{ overflowX: 'auto', border: '1px solid #d8cfa0', borderRadius: 6, marginBottom: 8, background: '#fbf8ef' }}>
-            <div style={{ fontSize: 11, color: '#846', padding: '5px 8px' }}>
+            <div style={{ fontSize: 'var(--fs-1)', color: '#846', padding: '5px 8px' }}>
               📊 <b>{GROUP_OPTS.find((g) => g.key === groupBy)?.label}</b>(행) × <b>{GROUP_OPTS.find((g) => g.key === groupBy2)?.label}</b>(열) · 값: <b>{measLabel}</b> · 대상기간: <b>{periodLabel}</b> · 필터 반영
             </div>
-            <table style={{ borderCollapse: 'collapse', fontSize: 11.5 }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: 'var(--fs-1)' }}>
               <thead><tr style={{ background: '#f0e9d2' }}>
                 <th style={{ ...thc, position: 'sticky', left: 0, background: '#f0e9d2' }}>{GROUP_OPTS.find((g) => g.key === groupBy)?.label} \ {GROUP_OPTS.find((g) => g.key === groupBy2)?.label}</th>
                 {matrix.colKeys.map((ck) => <th key={ck} style={{ ...thc, textAlign: 'right' }}>{ck}</th>)}
@@ -738,7 +738,7 @@ export default function SalesContractTab() {
               </tr></thead>
               <tbody>
                 {matrix.rowKeys.map((rk) => (
-                  <tr key={rk} style={{ borderTop: '1px solid #eadfbf' }}>
+                  <tr key={rk} style={{ borderTop: '1px solid var(--rule-2)' }}>
                     <td style={{ ...tdc, fontWeight: 600, position: 'sticky', left: 0, background: '#fbf8ef' }}>{rk}</td>
                     {matrix.colKeys.map((ck) => { const v = mval(matrix.cells.get(`${rk}\0${ck}`)); return <td key={ck} style={{ ...tdc, textAlign: 'right', color: v ? '#245' : '#ccc' }}>{v ? mfmt(v) : '·'}</td>; })}
                     <td style={{ ...tdc, textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #c9a54a' }}>{mfmt(mval(matrix.rowTot.get(rk)))}</td>
@@ -754,7 +754,7 @@ export default function SalesContractTab() {
           </div>
         )}
         <div style={scrollBox()}>
-          <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5 }}>
+          <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
             <colgroup>
               {shownCols.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}
               {canWrite && <col style={{ width: 96 }} />}
@@ -779,12 +779,12 @@ export default function SalesContractTab() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + 1} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 매출계약이 없습니다.</td></tr>}
+              {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + 1} style={{ ...tdc, color: 'var(--ink-3)', padding: 12 }}>조건에 맞는 매출계약이 없습니다.</td></tr>}
               {sortedRows.map((c) => (
                 <tr key={c.id}>
-                  {shownCols.map((col) => <td key={col.key} style={{ ...tdc, ...clip, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid #eee' }} title={col.val(c)}>{col.val(c)}</td>)}
+                  {shownCols.map((col) => <td key={col.key} style={{ ...tdc, ...clip, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid var(--rule-2)' }} title={col.val(c)}>{col.val(c)}</td>)}
                   {canWrite && (
-                    <td style={{ ...tdc, borderTop: '1px solid #eee' }}>
+                    <td style={{ ...tdc, borderTop: '1px solid var(--rule-2)' }}>
                       <span style={{ display: 'flex', gap: 3 }}>
                         <button className="btn-sm btn-sm-blue" onClick={() => { setViewMode('box'); setEditId(c.id); setShowAdd(false); }}>수정</button>
                         <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
@@ -831,7 +831,7 @@ function CodeHelpModal({ onClose }: { onClose: () => void }) {
   const aud = table.filter((t) => t.team === '감사team');
   const tax = table.filter((t) => t.team === 'taxteam');
   const Row = ({ t }: { t: { label: string; mnemonic: string } }) => (
-    <tr style={{ borderTop: '1px solid #eee' }}><td style={{ padding: '2px 6px' }}>{t.label}</td><td style={{ padding: '2px 6px', fontWeight: 700, fontFamily: 'monospace' }}>{t.mnemonic}</td></tr>
+    <tr style={{ borderTop: '1px solid var(--rule-2)' }}><td style={{ padding: '2px 6px' }}>{t.label}</td><td style={{ padding: '2px 6px', fontWeight: 700, fontFamily: 'monospace' }}>{t.mnemonic}</td></tr>
   );
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', overflow: 'auto', padding: 24 }}>
@@ -840,8 +840,8 @@ function CodeHelpModal({ onClose }: { onClose: () => void }) {
           <b style={{ fontSize: 14 }}>📖 매출계약코드 규칙</b>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
-        <div style={{ fontSize: 12.5, lineHeight: 1.6, marginBottom: 10 }}>
-          <div style={{ fontFamily: 'monospace', fontSize: 13, background: '#f6f4ef', padding: '6px 8px', borderRadius: 5, marginBottom: 8 }}>
+        <div style={{ fontSize: 'var(--fs-2)', lineHeight: 1.6, marginBottom: 10 }}>
+          <div style={{ fontFamily: 'monospace', fontSize: 'var(--fs-3)', background: '#f6f4ef', padding: '6px 8px', borderRadius: 5, marginBottom: 8 }}>
             거래처코드 - 사업장코드 - 자동갱신 - 유형코드 - 팀코드 - 시작연도 - 순번
           </div>
           예) <b style={{ fontFamily: 'monospace' }}>I0002-01-R-BK-T-2026-01</b>
@@ -855,12 +855,12 @@ function CodeHelpModal({ onClose }: { onClose: () => void }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 4 }}>🅰 감사team (팀코드 A)</div>
-            <table style={{ width: '100%', fontSize: 11.5, borderCollapse: 'collapse' }}><tbody>{aud.map((t) => <Row key={t.mnemonic + t.label} t={t} />)}</tbody></table>
+            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 4 }}>🅰 감사team (팀코드 A)</div>
+            <table style={{ width: '100%', fontSize: 'var(--fs-1)', borderCollapse: 'collapse' }}><tbody>{aud.map((t) => <Row key={t.mnemonic + t.label} t={t} />)}</tbody></table>
           </div>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 4 }}>🆃 taxteam (팀코드 T)</div>
-            <table style={{ width: '100%', fontSize: 11.5, borderCollapse: 'collapse' }}><tbody>{tax.map((t) => <Row key={t.mnemonic + t.label} t={t} />)}</tbody></table>
+            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 4 }}>🆃 taxteam (팀코드 T)</div>
+            <table style={{ width: '100%', fontSize: 'var(--fs-1)', borderCollapse: 'collapse' }}><tbody>{tax.map((t) => <Row key={t.mnemonic + t.label} t={t} />)}</tbody></table>
           </div>
         </div>
       </div>
@@ -868,7 +868,7 @@ function CodeHelpModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: '#555', whiteSpace: 'nowrap' };
+const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: 'var(--ink-2)', whiteSpace: 'nowrap' };
 const tdc: React.CSSProperties = { padding: '4px 6px', whiteSpace: 'nowrap' };
 
 // ── 매출계약 일괄등록 패널(최고관리자) ──────────────────────
@@ -897,13 +897,13 @@ function ContractImportPanel({ entities, contracts, onImported }: { entities: Bi
   return (
     <div style={{ border: '1px dashed #c9a54a', borderRadius: 6, background: '#fdfaf1', marginBottom: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6d1f' }}>📥 매출계약 일괄등록 (Excel)</span>
-        <span style={{ fontSize: 11, color: '#a88' }}>최고관리자 · 거래처코드+사업장명으로 매칭</span>
-        <span style={{ marginLeft: 'auto', fontSize: 12 }}>{open ? '▾' : '▸'}</span>
+        <span style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: '#8a6d1f' }}>📥 매출계약 일괄등록 (Excel)</span>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>최고관리자 · 거래처코드+사업장명으로 매칭</span>
+        <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)' }}>{open ? '▾' : '▸'}</span>
       </div>
       {open && (
         <div style={{ padding: '0 10px 10px' }}>
-          <div style={{ fontSize: 11.5, color: '#777', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: '#777', marginBottom: 8 }}>
             <b>양식 내보내기</b> → <b>회색 열</b>=매출계약코드·거래처·사업장(키/참고, 수정금지),
             <b>노란 칸</b>=입력·수정(매출유형·금액·주기·담당 등) → <b>업로드</b>.
             <b>매출계약코드 있는 행</b>=그 계약 <b>수정</b>, <b>없는 행</b>=신규(행 복사). <b>매출유형 빈 행 제외</b>,
@@ -919,10 +919,10 @@ function ContractImportPanel({ entities, contracts, onImported }: { entities: Bi
             </label>
           </div>
           {result && (
-            <div style={{ fontSize: 12, background: result.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${result.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
-              <div>✓ 완료 — 신규 {result.created} · 수정 {result.updated} · 스킵(중복) {result.skipped} {result.failed.length > 0 && <span style={{ color: '#c33' }}>· 실패 {result.failed.length}</span>}</div>
+            <div style={{ fontSize: 'var(--fs-2)', background: result.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${result.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
+              <div>✓ 완료 — 신규 {result.created} · 수정 {result.updated} · 스킵(중복) {result.skipped} {result.failed.length > 0 && <span style={{ color: 'var(--bad)' }}>· 실패 {result.failed.length}</span>}</div>
               {result.failed.length > 0 && (
-                <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#a33' }}>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: 'var(--bad)' }}>
                   {result.failed.slice(0, 12).map((f, i) => <li key={i}><b>{f.ref}</b>: {f.error}</li>)}
                   {result.failed.length > 12 && <li>… 외 {result.failed.length - 12}건</li>}
                 </ul>
@@ -1011,7 +1011,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
 
   return (
     <div className="card" style={{ background: '#F5F1EB', marginBottom: 10 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>{initial ? '✏️ 매출계약 수정' : '＋ 새 매출계약'}</div>
+      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 8 }}>{initial ? '✏️ 매출계약 수정' : '＋ 새 매출계약'}</div>
 
       {/* 거래처 · 발생단위 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
@@ -1035,14 +1035,14 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
       </div>
 
       {/* 매출유형 트리 */}
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#345', margin: '10px 0 4px' }}>· 매출유형</div>
+      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#345', margin: '10px 0 4px' }}>· 매출유형</div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         {(['감사team', 'taxteam'] as Team[]).map((t) => (
           <button key={t} type="button" onClick={() => setF((p) => ({ ...p, team: t, categoryCode: '' }))} className={f.team === t ? 'btn-p' : 'btn-sm'}>{t}</button>
         ))}
         <TaxonomyPicker team={f.team} code={f.categoryCode} onPick={pickCategory} />
       </div>
-      {leaf && <div style={{ fontSize: 11, color: '#2a6', marginTop: 3 }}>선택: {pathLabel(f.categoryCode)}</div>}
+      {leaf && <div style={{ fontSize: 'var(--fs-1)', color: '#2a6', marginTop: 3 }}>선택: {pathLabel(f.categoryCode)}</div>}
 
       {/* leaf 플래그 조건입력 */}
       {leaf?.needsEtcName && (
@@ -1052,25 +1052,25 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
       {leaf?.jangbuOptions && (
         <div className="frow" style={{ marginTop: 6 }}><span className="fl">기장 포함</span>
           <span style={{ display: 'flex', gap: 12 }}>
-            <label style={{ fontSize: 11.5, display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={f.includesVat} onChange={(e) => set('includesVat', e.target.checked)} /> 부가가치세</label>
-            <label style={{ fontSize: 11.5, display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={f.includesWht} onChange={(e) => set('includesWht', e.target.checked)} /> 원천세</label>
+            <label style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={f.includesVat} onChange={(e) => set('includesVat', e.target.checked)} /> 부가가치세</label>
+            <label style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={f.includesWht} onChange={(e) => set('includesWht', e.target.checked)} /> 원천세</label>
           </span></div>
       )}
       {leaf?.advisoryType && (
         <div className="frow" style={{ marginTop: 6 }}><span className="fl">자문구분</span>
           <span style={{ display: 'flex', gap: 12 }}>
             {(['일반', '전문'] as AdvisoryType[]).map((a) => (
-              <label key={a} style={{ fontSize: 11.5, display: 'flex', gap: 4, alignItems: 'center' }}>
+              <label key={a} style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 4, alignItems: 'center' }}>
                 <input type="radio" name="adv" checked={f.advisoryType === a} onChange={() => set('advisoryType', a)} /> {a}자문{a === '전문' ? '(letter)' : ''}
               </label>
             ))}
           </span></div>
       )}
       {leaf?.filingAgentEligible && (
-        <div style={{ fontSize: 10.5, color: '#a80', marginTop: 4 }}>※ 기장 없이 이 신고만 하면 '신고대리'입니다.</div>
+        <div style={{ fontSize: 'var(--fs-0)', color: '#a80', marginTop: 4 }}>※ 기장 없이 이 신고만 하면 '신고대리'입니다.</div>
       )}
       {leaf?.linksConfirmation && (
-        <div style={{ fontSize: 10.5, color: '#47a', marginTop: 4 }}>※ 회계감사 계약은 조회서발송관리에서 발송대상으로 참조됩니다.</div>
+        <div style={{ fontSize: 'var(--fs-0)', color: '#47a', marginTop: 4 }}>※ 회계감사 계약은 조회서발송관리에서 발송대상으로 참조됩니다.</div>
       )}
 
       {/* 청구주기 · 계약금액 · 귀속연도 */}
@@ -1083,23 +1083,23 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
           <select value={f.billingUnit} onChange={(e) => set('billingUnit', e.target.value as BillingUnit | '')} style={selStyle}>
             <option value="">(선택)</option>{BILL_UNITS.map((u) => <option key={u}>{u}</option>)}
           </select></div>
-        <div className="frow"><span className="fl">{f.isInstallment ? '계약금액(총액)' : '계약금액'} <span style={{ fontSize: 10, color: '#a55' }}>VAT별도</span></span>
+        <div className="frow"><span className="fl">{f.isInstallment ? '계약금액(총액)' : '계약금액'} <span style={{ fontSize: 'var(--fs-0)', color: '#a55' }}>VAT별도</span></span>
           <input value={f.amount} onChange={(e) => set('amount', e.target.value)} placeholder={f.billingCycle === '월' ? '월 금액 (예: 150000)' : f.billingCycle === '건' ? '건당 금액' : '1회 금액'} /></div>
         {f.billingCycle === '연' && (
-          <div className="frow"><span className="fl">청구월 <span style={{ fontSize: 10, color: '#999' }}>(연 1회)</span></span>
+          <div className="frow"><span className="fl">청구월 <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>(연 1회)</span></span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <select value={f.billingMonth} onChange={(e) => set('billingMonth', e.target.value)} style={selStyle}>
                 <option value="">개시월에 청구</option>
                 {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={String(m)}>{m}월</option>)}
               </select>
-              <span style={{ fontSize: 11, color: '#888' }}>
+              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
                 정산기간 안에서 실제 청구하는 달. 세무조정은 신고 뒤에 청구하므로 <b>법인세 3월 · 소득세 5월(성실신고 6월)</b>입니다.
                 지난 실적에서 잡은 <b>예상치</b>이며, 발행요청을 실제로 내면 <b>그 달로 자동으로 맞춰집니다</b>.
               </span>
             </span></div>
         )}
         {(f.categoryCode === 'TAX.FILING.CORP' || f.categoryCode === 'TAX.FILING.INCOME') && f.cpa === '정우철' && (
-          <div style={{ gridColumn: '1 / -1', fontSize: 11, color: '#8a6d1f', background: '#fdfaf1', border: '1px dashed #c9a54a', borderRadius: 5, padding: '5px 8px' }}>
+          <div style={{ gridColumn: '1 / -1', fontSize: 'var(--fs-1)', color: '#8a6d1f', background: '#fdfaf1', border: '1px dashed #c9a54a', borderRadius: 5, padding: '5px 8px' }}>
             🔗 정우철 담당 세무조정입니다 — 이 계약금액은 <b>세무조정수수료관리</b>에서 청구서를 확정할 때
             그 청구총액의 공급가액(÷1.1)으로 <b>자동 갱신</b>됩니다. 여기서 적은 값은 다음 청구 때 덮어써집니다.
           </div>
@@ -1110,12 +1110,12 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
           </></div>
         {canInstallment && (
           <div className="frow"><span className="fl">분할청구</span>
-            <label style={{ fontSize: 11.5, display: 'flex', gap: 4, alignItems: 'center' }}>
+            <label style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 4, alignItems: 'center' }}>
               <input type="checkbox" checked={f.isInstallment} onChange={(e) => set('isInstallment', e.target.checked)} /> 계약금/중도금/잔금 분할
             </label></div>
         )}
       </div>
-      <div style={{ fontSize: 10.5, color: '#999', marginTop: 2 }}>※ 귀속연도 = 정산기간(<b>7/1~익년 6/30</b>) 기준. <b>종료월을 넣으면 자동</b>(종료 7~12월→그 해, 1~6월→전년). 월 기장 등 계속거래는 비워둡니다.</div>
+      <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 2 }}>※ 귀속연도 = 정산기간(<b>7/1~익년 6/30</b>) 기준. <b>종료월을 넣으면 자동</b>(종료 7~12월→그 해, 1~6월→전년). 월 기장 등 계속거래는 비워둡니다.</div>
 
       {f.isInstallment && <InstallmentsEditor rows={f.installments} onChange={(r) => set('installments', r)} sum={instSum} target={amountNum} />}
 
@@ -1127,13 +1127,13 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
             <datalist id="sc-cpa">{CPA_LIST.map((c) => <option key={c} value={c} />)}</datalist>
           </></div>
         {f.categoryCode !== 'AUD.AUDIT' && (
-        <div className="frow"><span className="fl">담당직원 <span style={{ fontSize: 10, color: '#999' }}>({f.team})</span></span>
+        <div className="frow"><span className="fl">담당직원 <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>({f.team})</span></span>
           <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {staffCands.map((s) => {
               const on = f.staffIds.includes(s.id);
               return <button key={s.id} type="button" onClick={() => set('staffIds', on ? f.staffIds.filter((x) => x !== s.id) : [...f.staffIds, s.id])} style={chip(on)}>{s.name}</button>;
             })}
-            {staffCands.length === 0 && <span style={{ fontSize: 11, color: '#999' }}>후보 계정 없음</span>}
+            {staffCands.length === 0 && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>후보 계정 없음</span>}
           </span></div>
         )}
         {f.categoryCode !== 'AUD.AUDIT' && staffHistoryApplies({ team: f.team, billingCycle: f.billingCycle }) && initial && (
@@ -1141,7 +1141,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
             <span className="fl">담당 변경 적용월</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
               <input type="month" value={f.staffApplyMonth} onChange={(e) => set('staffApplyMonth', e.target.value)} style={{ width: 150 }} />
-              <span style={{ fontSize: 11, color: '#888' }}>
+              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
                 매월 청구하는 계약이라 <b>담당이 바뀐 달</b>을 적어야 그 전 달 청구가 누구 담당이었는지 남습니다.
                 비우면 이력 없이 지금 담당을 통째로 바꿉니다.
               </span>
@@ -1151,7 +1151,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
         {initial && initial.staffHistory.length > 0 && (
           <div className="frow" style={{ gridColumn: '1 / -1' }}>
             <span className="fl">담당 이력</span>
-            <span style={{ fontSize: 11, color: '#666', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', display: 'flex', flexDirection: 'column', gap: 2 }}>
               {[...initial.staffHistory]
                 .sort((a, b) => (a.fromMonth ?? '').localeCompare(b.fromMonth ?? ''))
                 .map((h) => (
@@ -1173,7 +1173,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
         <div className="frow"><span className="fl">종료월(비움=계속)</span>
           <input type="month" value={f.endDate} onChange={(e) => pickEndMonth(e.target.value)} /></div>
         <label
-          style={{ gridColumn: '1 / -1', fontSize: 11.5, color: f.confirmed ? '#666' : '#92400E', display: 'flex', alignItems: 'center', gap: 5, marginTop: 4, fontWeight: f.confirmed ? 400 : 700 }}
+          style={{ gridColumn: '1 / -1', fontSize: 'var(--fs-1)', color: f.confirmed ? '#666' : '#92400E', display: 'flex', alignItems: 'center', gap: 5, marginTop: 4, fontWeight: f.confirmed ? 400 : 700 }}
           title="아직 체결되지 않은(예산·검토용) 계약이면 체크를 해제하세요. 목록에서 '미계약'으로 걸러볼 수 있습니다."
         >
           <input type="checkbox" checked={f.confirmed} onChange={(e) => set('confirmed', e.target.checked)} />
@@ -1182,7 +1182,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
             : '미계약 — 예산·검토용으로만 잡힌 계약입니다 (체결되면 체크하세요)'}
         </label>
         <label
-          style={{ gridColumn: '1 / -1', fontSize: 11.5, color: '#666', display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}
+          style={{ gridColumn: '1 / -1', fontSize: 'var(--fs-1)', color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}
           title="정보관리 시작(2026-07) 이전 계약은 날짜를 규칙으로 채워 넣어 추정으로 표시합니다. 실제 계약서 날짜를 넣었으면 해제하세요."
         >
           <input type="checkbox" checked={f.dateEstimated} onChange={(e) => set('dateEstimated', e.target.checked)} />
@@ -1204,7 +1204,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
           <DiscountsEditor rows={f.discounts} onChange={(r) => set('discounts', r)} />
           <div className="frow" style={{ marginTop: 8, alignItems: 'flex-start' }}><span className="fl">포함유형(복합)</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 10.5, color: '#999', marginBottom: 3 }}>이 계약이 함께 커버하는 세부 유형(예: 기장검토→원천·부가). 대표유형·코드·금액과 무관</div>
+              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginBottom: 3 }}>이 계약이 함께 커버하는 세부 유형(예: 기장검토→원천·부가). 대표유형·코드·금액과 무관</div>
               <div style={{ maxHeight: 116, overflow: 'auto', border: '1px solid #e2ddd2', borderRadius: 5, padding: 4, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                 {contractTypeOptions().filter((o) => o.code !== f.categoryCode).map((o) => {
                   const on = f.includedCodes.includes(o.code);
@@ -1248,14 +1248,14 @@ function InstallmentsEditor({ rows, onChange, sum, target }: { rows: Installment
   const upd = (i: number, patch: Partial<Installment>) => onChange(rows.map((r, j) => j === i ? { ...r, ...patch } : r));
   return (
     <div style={{ background: '#fbf7ee', borderRadius: 5, padding: 8, marginTop: 6 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#845', marginBottom: 4 }}>분할 회차 (합계 {won(sum)} / 계약금액 {won(target)} {sum === target ? '✓' : '⚠불일치'})</div>
+      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#845', marginBottom: 4 }}>분할 회차 (합계 {won(sum)} / 계약금액 {won(target)} {sum === target ? '✓' : '⚠불일치'})</div>
       {rows.map((r, i) => (
         <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 3, flexWrap: 'wrap', alignItems: 'center' }}>
           <input value={r.label} onChange={(e) => upd(i, { label: e.target.value })} placeholder="명칭(계약금/중도금1차/잔금)" style={{ width: 160 }} />
           <input value={r.amount ? String(r.amount) : ''} onChange={(e) => upd(i, { amount: Number(e.target.value.replace(/\D/g, '')) })} placeholder="금액" style={{ width: 110 }} />
           <input type="date" value={r.dueDate ?? ''} onChange={(e) => upd(i, { dueDate: e.target.value || null })} />
           <input value={r.conditionNote} onChange={(e) => upd(i, { conditionNote: e.target.value })} placeholder="조건메모(착수 시 등)" style={{ width: 150 }} />
-          <label style={{ fontSize: 10.5, display: 'flex', gap: 3, alignItems: 'center', color: r.billedAt ? '#2a7' : '#999' }}>
+          <label style={{ fontSize: 'var(--fs-0)', display: 'flex', gap: 3, alignItems: 'center', color: r.billedAt ? '#2a7' : '#999' }}>
             <input type="checkbox" checked={!!r.billedAt} onChange={(e) => upd(i, { billedAt: e.target.checked ? new Date().toISOString() : null })} /> 청구완료
           </label>
           <button type="button" className="btn-sm btn-sm-del" onClick={() => onChange(rows.filter((_, j) => j !== i))}>×</button>
@@ -1271,12 +1271,12 @@ function DiscountsEditor({ rows, onChange }: { rows: Discount[]; onChange: (r: D
   const upd = (i: number, patch: Partial<Discount>) => onChange(rows.map((r, j) => j === i ? { ...r, ...patch } : r));
   return (
     <div style={{ background: '#f6f0f8', borderRadius: 5, padding: 8, marginTop: 8 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#658', marginBottom: 4 }}>무료 / 할인 구간</div>
+      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#658', marginBottom: 4 }}>무료 / 할인 구간</div>
       {rows.map((r, i) => (
         <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 3, flexWrap: 'wrap', alignItems: 'center' }}>
           <select value={r.discType} onChange={(e) => upd(i, { discType: e.target.value as '무료' | '할인' })} style={selStyle}><option>무료</option><option>할인</option></select>
           <input type="date" value={r.startDate ?? ''} onChange={(e) => upd(i, { startDate: e.target.value || null })} />
-          <span style={{ fontSize: 11 }}>~</span>
+          <span style={{ fontSize: 'var(--fs-1)' }}>~</span>
           <input type="date" value={r.endDate ?? ''} onChange={(e) => upd(i, { endDate: e.target.value || null })} />
           {r.discType === '할인' && <input value={r.rate != null ? String(r.rate) : ''} onChange={(e) => upd(i, { rate: e.target.value ? Number(e.target.value) : null })} placeholder="할인율%" style={{ width: 70 }} />}
           {r.discType === '할인' && <input value={r.amount != null ? String(r.amount) : ''} onChange={(e) => upd(i, { amount: e.target.value ? Number(e.target.value.replace(/\D/g, '')) : null })} placeholder="또는 할인액" style={{ width: 100 }} />}
@@ -1301,9 +1301,9 @@ function fromContract(c: SalesContract): FormState {
   };
 }
 
-const selStyle: React.CSSProperties = { padding: '4px 7px', fontSize: 12 };
+const selStyle: React.CSSProperties = { padding: '4px 7px', fontSize: 'var(--fs-2)' };
 const teamBadge = (t: Team): React.CSSProperties => ({ fontSize: 9.5, fontWeight: 700, padding: '1px 6px', borderRadius: 4, color: '#fff', background: t === '감사team' ? '#4a6fa5' : '#7a9a4a' });
-const chip = (on: boolean): React.CSSProperties => ({ fontSize: 10.5, padding: '2px 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid', borderColor: on ? '#2a7' : '#ccc', background: on ? '#e3f5ec' : '#fff', color: on ? '#175' : '#888' });
+const chip = (on: boolean): React.CSSProperties => ({ fontSize: 'var(--fs-0)', padding: '2px 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid', borderColor: on ? '#2a7' : '#ccc', background: on ? '#e3f5ec' : '#fff', color: on ? '#175' : '#888' });
 
 // ── 전년 세무조정 계약 갱신 ────────────────────────────────
 // 세무조정은 귀속연도가 고정된 재계약형이라 해마다 새로 등록해야 한다. 전년 계약을 띄워
@@ -1356,8 +1356,8 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box" style={{ maxWidth: 1000 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-          <b style={{ color: '#1A2B52' }}>세무조정 계약 갱신</b>
-          <span style={{ fontSize: 11.5, color: '#666' }}>
+          <b style={{ color: 'var(--navy)' }}>세무조정 계약 갱신</b>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
             {toYear - 1}년 귀속 계약을
             <select value={toYear} onChange={(e) => setToYear(Number(e.target.value))} style={{ margin: '0 4px', fontWeight: 700 }}>
               {[thisYear + 1, thisYear, thisYear - 1].map((y) => <option key={y} value={y}>{y}년 귀속</option>)}
@@ -1368,12 +1368,12 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
         </div>
 
         {err && <div className="alert-w">{err}</div>}
-        {!rows && !err && <div style={{ padding: 20, color: '#888', fontSize: 12.5 }}>불러오는 중…</div>}
+        {!rows && !err && <div style={{ padding: 20, color: 'var(--ink-3)', fontSize: 'var(--fs-2)' }}>불러오는 중…</div>}
 
         {rows && (
           <>
-            <div className="alert-i" style={{ fontSize: 11 }}>
-              갱신분은 <b style={{ color: '#92400E' }}>미계약</b> 상태로 만들어집니다 — 연말이 지나기 전에는 매출확정으로 보지 않기 때문입니다.
+            <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
+              갱신분은 <b style={{ color: 'var(--warn)' }}>미계약</b> 상태로 만들어집니다 — 연말이 지나기 전에는 매출확정으로 보지 않기 때문입니다.
               체결되면 계약을 열어 '계약 확정'에 체크하세요(목록에서 계약상태로 걸러볼 수 있습니다).
               계약금액·담당CPA·담당직원을 그대로 이어받습니다. 정우철 담당분은 세무조정수수료관리에서 청구를 확정하면
               그 금액으로 다시 맞춰집니다. <b>올해 세무조정을 하지 않는 거래처는 체크를 빼세요.</b>
@@ -1387,14 +1387,14 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
               <input placeholder="🔍 코드·거래처·담당CPA·유형" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
               <button className="btn-sm" onClick={() => setPick(new Set(view.filter((r) => !r.alreadyRenewed && !r.blocked).map((r) => r.id)))}>보이는 건 전체선택</button>
               <button className="btn-sm" onClick={() => setPick(new Set())}>전체해제</button>
-              <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{target.length}</b>건 · 합계 {won(sum)}</span>
+              <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>선택 <b>{target.length}</b>건 · 합계 {won(sum)}</span>
               <button className="btn-p" disabled={busy || target.length === 0} onClick={() => void run()}>
                 {busy ? '처리 중…' : `${toYear}년 귀속으로 갱신`}
               </button>
             </div>
 
-            <div style={{ maxHeight: '55vh', overflow: 'auto', border: '1px solid #E5E1D8', borderRadius: 6 }}>
-              <table className="tbl" style={{ fontSize: 11.5 }}>
+            <div style={{ maxHeight: '55vh', overflow: 'auto', border: '1px solid var(--rule)', borderRadius: 6 }}>
+              <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
                 <thead>
                   <tr>
                     <th style={{ width: 32 }}></th>
@@ -1403,7 +1403,7 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
                 </thead>
                 <tbody>
                   {view.length === 0 && (
-                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20, color: 'var(--ink-4)' }}>
                       {toYear - 1}년 귀속 세무조정 계약이 없습니다.
                     </td></tr>
                   )}
@@ -1422,16 +1422,16 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
                           })}
                         />
                       </td>
-                      <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.code}</td>
-                      <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.companyName}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-1)' }}>{r.code}</td>
+                      <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{r.companyName}</td>
                       <td>{r.taxType}</td>
                       <td className="r">{won(r.amount)}</td>
-                      <td>{r.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
+                      <td>{r.cpa || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
                       <td style={{ color: r.blocked ? '#9B3527' : undefined, fontWeight: r.blocked ? 700 : 400 }}>
                         {r.placeStatus}
                       </td>
                       <td>
-                        {r.alreadyRenewed ? <span style={{ color: '#888' }}>이미 갱신됨</span>
+                        {r.alreadyRenewed ? <span style={{ color: 'var(--ink-3)' }}>이미 갱신됨</span>
                           : r.blocked ? <span style={{ color: '#9B3527' }}>갱신 안 함</span> : ''}
                       </td>
                     </tr>

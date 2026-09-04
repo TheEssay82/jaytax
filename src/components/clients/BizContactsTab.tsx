@@ -161,13 +161,13 @@ export default function BizContactsTab() {
     <div className="card">
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         👤 거래처담당자등록
-        <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
+        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
           거래처 {groups.length} · 담당자 {liveContacts.length}
-          {leftCount > 0 && <span style={{ color: '#bbb' }}> (이직·퇴사 {leftCount} 제외)</span>}
+          {leftCount > 0 && <span style={{ color: 'var(--ink-4)' }}> (이직·퇴사 {leftCount} 제외)</span>}
         </span>
-        {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
+        {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
       </div>
-      {error && <div style={{ color: '#c33', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)', marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <span style={{ display: 'inline-flex', gap: 4 }}>
@@ -176,7 +176,7 @@ export default function BizContactsTab() {
         </span>
         <input placeholder="🔍 거래처·담당자명·연락처·이메일·수령지" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
         {leftCount > 0 && (
-          <label style={{ fontSize: 11.5, whiteSpace: 'nowrap', cursor: 'pointer' }}
+          <label style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap', cursor: 'pointer' }}
             title="이직·퇴사로 접어 둔 연락처까지 함께 봅니다">
             <input type="checkbox" checked={showLeft} onChange={(e) => setShowLeft(e.target.checked)} />
             {' '}이직·퇴사 포함 ({leftCount})
@@ -193,7 +193,7 @@ export default function BizContactsTab() {
 
       {viewMode === 'table' && (
         <div style={scrollBox()}>
-          <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5 }}>
+          <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
             <colgroup>
               {shownCols.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}
               {canWrite && <col style={{ width: 96 }} />}
@@ -218,12 +218,12 @@ export default function BizContactsTab() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + (canWrite ? 1 : 0)} style={{ ...tdc, color: '#999', padding: 12 }}>조건에 맞는 담당자가 없습니다.</td></tr>}
+              {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + (canWrite ? 1 : 0)} style={{ ...tdc, color: 'var(--ink-3)', padding: 12 }}>조건에 맞는 담당자가 없습니다.</td></tr>}
               {sortedRows.map(({ c, e }) => (
                 <tr key={c.id} style={{ opacity: c.active ? 1 : 0.5 }}>
-                  {shownCols.map((col) => <td key={col.key} style={{ ...tdc, ...clip, fontWeight: col.key === 'name' || col.key === 'contact' ? 600 : 400, borderTop: '1px solid #eee' }} title={col.val({ c, e })}>{col.val({ c, e })}</td>)}
+                  {shownCols.map((col) => <td key={col.key} style={{ ...tdc, ...clip, fontWeight: col.key === 'name' || col.key === 'contact' ? 600 : 400, borderTop: '1px solid var(--rule-2)' }} title={col.val({ c, e })}>{col.val({ c, e })}</td>)}
                   {canWrite && (
-                    <td style={{ ...tdc, borderTop: '1px solid #eee' }}>
+                    <td style={{ ...tdc, borderTop: '1px solid var(--rule-2)' }}>
                       <span style={{ display: 'flex', gap: 3 }}>
                         <button className="btn-sm btn-sm-blue" onClick={() => { setViewMode('box'); setEditId(c.id); setShowAdd(false); }}>수정</button>
                         <button className="btn-sm" title={c.active ? '이직·퇴사로 더 이상 쓰지 않는 연락처로 접습니다(기록은 남습니다)' : '다시 유효한 담당자로'}
@@ -241,29 +241,29 @@ export default function BizContactsTab() {
 
       {viewMode === 'box' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {groups.length === 0 && <div style={{ color: '#999', fontSize: 12, padding: 12 }}>등록된 담당자가 없습니다.</div>}
+        {groups.length === 0 && <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-2)', padding: 12 }}>등록된 담당자가 없습니다.</div>}
         {groups.map(({ entity, contacts: cs }) => (
-          <div key={entity?.id ?? Math.random()} style={{ border: '1px solid #e6e0d8', borderRadius: 6, padding: '8px 10px' }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#345', marginBottom: 4 }}>
-              {entity ? entLabel(entity) : '(삭제된 거래처)'} <span style={{ fontSize: 10.5, fontWeight: 400, color: '#999' }}>담당자 {cs.length}</span>
+          <div key={entity?.id ?? Math.random()} style={{ border: '1px solid var(--rule)', borderRadius: 6, padding: '8px 10px' }}>
+            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: '#345', marginBottom: 4 }}>
+              {entity ? entLabel(entity) : '(삭제된 거래처)'} <span style={{ fontSize: 'var(--fs-0)', fontWeight: 400, color: 'var(--ink-3)' }}>담당자 {cs.length}</span>
             </div>
             {cs.map((c) => (
               <div key={c.id} id={`contact-${c.id}`}
                 style={editId === c.id ? { outline: '2px solid #c9a54a', borderRadius: 4 } : undefined}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 11.5, flexWrap: 'wrap', padding: '2px 0' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--fs-1)', flexWrap: 'wrap', padding: '2px 0' }}>
                   <b style={{ textDecoration: c.active ? undefined : 'line-through' }}>{c.contactName} {c.honorific}</b>
                   {!c.active && (
-                    <span style={{ fontSize: 9.5, background: '#999', color: '#fff', padding: '1px 5px', borderRadius: 3 }}
+                    <span style={{ fontSize: 9.5, background: 'var(--ink-3)', color: '#fff', padding: '1px 5px', borderRadius: 3 }}
                       title={`${c.leftAt ?? ''} ${c.leftNote ?? ''}`.trim()}>이직·퇴사</span>
                   )}
-                  {c.position && <span style={{ color: '#888' }}>{c.position}</span>}
+                  {c.position && <span style={{ color: 'var(--ink-3)' }}>{c.position}</span>}
                   {c.isPrimary && <span style={{ fontSize: 9.5, background: '#2a8', color: '#fff', padding: '1px 5px', borderRadius: 3 }}>대표</span>}
                   {c.phone && <span>☎ {c.phone}</span>}
                   {c.fax && <span>📠 {c.fax}</span>}
                   {c.email && <span>✉ {c.email}</span>}
                   {c.placeId && entity && <span style={{ color: '#77a' }}>[{placeName(entity, c.placeId)}]</span>}
                   {c.address && <span style={{ color: '#777' }}>📮 {c.address}</span>}
-                  {c.note && <span style={{ color: '#999' }}>· {c.note}</span>}
+                  {c.note && <span style={{ color: 'var(--ink-3)' }}>· {c.note}</span>}
                   {canWrite && (
                     <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                       <button className="btn-sm btn-sm-blue" onClick={() => { setEditId(c.id); setShowAdd(false); }}>수정</button>
@@ -313,7 +313,7 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
 
   return (
     <div className="card" style={{ background: '#F5F1EB', marginBottom: 10 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>{initial ? '✏️ 담당자 수정' : '＋ 새 거래처담당자'}</div>
+      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 8 }}>{initial ? '✏️ 담당자 수정' : '＋ 새 거래처담당자'}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px' }}>
         <div className="frow"><span className="fl">거래처<span className="req">*</span></span>
           <>
@@ -321,7 +321,7 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
             <datalist id="bc-entity">{entities.map((e) => <option key={e.id} value={entLabel(e)} />)}</datalist>
           </></div>
         <div className="frow"><span className="fl">사업장(선택)</span>
-          <select value={placeId} onChange={(e) => setPlaceId(e.target.value)} style={{ padding: '4px 7px', fontSize: 12 }} disabled={!entity}>
+          <select value={placeId} onChange={(e) => setPlaceId(e.target.value)} style={{ padding: '4px 7px', fontSize: 'var(--fs-2)' }} disabled={!entity}>
             <option value="">전체(거래처 단위)</option>
             {entity?.places.map((p) => <option key={p.id} value={p.id}>{p.placeName}</option>)}
           </select></div>
@@ -343,7 +343,7 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
         <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">비고 · 대표</span>
           <span style={{ display: 'flex', gap: 10, alignItems: 'center', width: '100%' }}>
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="(선택)" style={{ flex: 1 }} />
-            <label style={{ fontSize: 11.5, display: 'flex', gap: 4, alignItems: 'center', whiteSpace: 'nowrap' }}>
+            <label style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 4, alignItems: 'center', whiteSpace: 'nowrap' }}>
               <input type="checkbox" checked={isPrimary} onChange={(e) => setIsPrimary(e.target.checked)} /> 대표 연락처
             </label>
           </span></div>
@@ -356,7 +356,7 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
   );
 }
 
-const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: '#555', whiteSpace: 'nowrap' };
+const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: 'var(--ink-2)', whiteSpace: 'nowrap' };
 const tdc: React.CSSProperties = { padding: '4px 6px', whiteSpace: 'nowrap' };
 
 // ── 거래처담당자 일괄등록 패널(최고관리자) ──────────────────
@@ -387,13 +387,13 @@ function ContactImportPanel({ entities, contacts, onImported }: { entities: BizE
   return (
     <div style={{ border: '1px dashed #c9a54a', borderRadius: 6, background: '#fdfaf1', marginBottom: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6d1f' }}>📥 거래처담당자 일괄등록 (Excel)</span>
-        <span style={{ fontSize: 11, color: '#a88' }}>최고관리자 · 거래처코드로 매칭</span>
-        <span style={{ marginLeft: 'auto', fontSize: 12 }}>{open ? '▾' : '▸'}</span>
+        <span style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: '#8a6d1f' }}>📥 거래처담당자 일괄등록 (Excel)</span>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>최고관리자 · 거래처코드로 매칭</span>
+        <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)' }}>{open ? '▾' : '▸'}</span>
       </div>
       {open && (
         <div style={{ padding: '0 10px 10px' }}>
-          <div style={{ fontSize: 11.5, color: '#777', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: '#777', marginBottom: 8 }}>
             <b>양식 내보내기</b> → <b>회색 열</b>=담당자ID·거래처코드·거래처명(키/참고, 수정금지),
             <b>노란 칸</b>=입력·수정(담당자명·호칭·직책·연락처·이메일·수령지 등) → <b>업로드</b>.
             <b>담당자ID 있는 행</b>=그 담당자 <b>수정</b>, <b>없는 행</b>=신규(한 거래처에 여럿이면 행 복사·ID 는 비움).
@@ -410,10 +410,10 @@ function ContactImportPanel({ entities, contacts, onImported }: { entities: BizE
             </label>
           </div>
           {result && (
-            <div style={{ fontSize: 12, background: result.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${result.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
-              <div>✓ 완료 — 신규 {result.created} · 수정 {result.updated} · 스킵(중복) {result.skipped} {result.failed.length > 0 && <span style={{ color: '#c33' }}>· 실패 {result.failed.length}</span>}</div>
+            <div style={{ fontSize: 'var(--fs-2)', background: result.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${result.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
+              <div>✓ 완료 — 신규 {result.created} · 수정 {result.updated} · 스킵(중복) {result.skipped} {result.failed.length > 0 && <span style={{ color: 'var(--bad)' }}>· 실패 {result.failed.length}</span>}</div>
               {result.failed.length > 0 && (
-                <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#a33' }}>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: 'var(--bad)' }}>
                   {result.failed.slice(0, 12).map((f, i) => <li key={i}><b>{f.ref}</b>: {f.error}</li>)}
                   {result.failed.length > 12 && <li>… 외 {result.failed.length - 12}건</li>}
                 </ul>

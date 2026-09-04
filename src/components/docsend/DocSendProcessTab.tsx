@@ -19,11 +19,11 @@ import TrackingLink from './TrackingLink';
 const statusStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
   if (s === '재발송완료') return { background: '#CFFAFE', color: '#155E75' };
-  if (s === '반송') return { background: '#FEE2E2', color: '#B91C1C' };
-  if (s === '재발송요청') return { background: '#FEF3C7', color: '#92400E' };
-  if (s === '취소') return { background: '#E5E7EB', color: '#6B7280' };
+  if (s === '반송') return { background: '#FEE2E2', color: 'var(--bad)' };
+  if (s === '재발송요청') return { background: '#FEF3C7', color: 'var(--warn)' };
+  if (s === '취소') return { background: '#E5E7EB', color: 'var(--ink-3)' };
   if (s === '진행중') return { background: '#DBEAFE', color: '#1E40AF' };
-  return { background: '#F3F4F6', color: '#6B7280' };
+  return { background: '#F3F4F6', color: 'var(--ink-3)' };
 };
 const isClosed = (s: string) => s === '발송완료' || s === '재발송완료'; // 완결계열(반송은 후속조치 필요라 제외)
 
@@ -237,7 +237,7 @@ export default function DocSendProcessTab() {
     return (
       <div className="card">
         <div className="chdr">🖨️ 발송요청 처리</div>
-        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
       </div>
     );
   }
@@ -246,33 +246,33 @@ export default function DocSendProcessTab() {
     <div className="card">
       <div className="chdr">
         발송요청 처리
-        <span style={{ marginLeft: 10, fontSize: 11, color: '#888' }}>
+        <span style={{ marginLeft: 10, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
           미접수 {counts.미접수} · 진행중 {counts.진행중} · 발송완료 {counts.발송완료}
-          {counts.반송 > 0 && <span style={{ color: '#B91C1C', fontWeight: 700 }}> · 반송 {counts.반송}</span>}
-          {counts.재발송요청 > 0 && <span style={{ color: '#92400E', fontWeight: 700 }}> · 재발송요청 {counts.재발송요청}</span>}
+          {counts.반송 > 0 && <span style={{ color: 'var(--bad)', fontWeight: 700 }}> · 반송 {counts.반송}</span>}
+          {counts.재발송요청 > 0 && <span style={{ color: 'var(--warn)', fontWeight: 700 }}> · 재발송요청 {counts.재발송요청}</span>}
         </span>
-        {msg && <span style={{ marginLeft: 12, fontSize: 11, color: '#059669' }}>{msg}</span>}
+        {msg && <span style={{ marginLeft: 12, fontSize: 'var(--fs-1)', color: '#059669' }}>{msg}</span>}
       </div>
 
       {error && <div className="alert-w">{error}</div>}
       {canProcess ? (
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           🖨️ 요청된 발송 건이 여기 모입니다. <b>‘처리 시작’</b>을 누르면 상태가 <b>진행중</b>으로 바뀝니다. 발송일(등기면 등기번호)을 입력하고 <b>‘완료’</b>를 누르면 <b>발송완료</b>됩니다. 발송완료 후에는 <b>반송·재발송완료</b>(사유 기재)로 후속 처리할 수 있습니다. 반송 건은 <b>요청자가 ‘재발송요청’</b>을 올리면 다시 대기열 상단에 나타나며, 발송일·등기번호를 입력해 <b>재발송완료</b>로 마감합니다. 등기번호를 클릭하면 우체국 배달조회가 새 창으로 열립니다. <b style={{ color: '#8a5a00' }}>잘못 처리한 건을 되돌리려면 아래 ‘발송완료 포함’을 켜면 나타납니다</b>(되돌리기·취소 가능).
         </div>
       ) : (
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           👁️ <b>조회 전용</b>입니다(회계사). 발송 진행현황을 열람할 수 있으며, 상태 변경 등 처리는 최고관리자·기장팀장·기장팀원만 가능합니다.
         </div>
       )}
 
       <div className="sbar">
         <input placeholder="🔍 거래처·수신자·문서명·등기번호" value={q} onChange={(e) => setQ(e.target.value)} />
-        <label style={{ fontSize: 12, color: '#555', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+        <label style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} />
           발송완료 포함 (되돌리기·취소하려면 켜세요)
         </label>
-        <span style={{ fontSize: 11, color: '#888' }}>{view.length}건</span>
-        <button className="btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => void refresh()} disabled={busy} title="최신 내역을 다시 불러옵니다">
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{view.length}건</span>
+        <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }} onClick={() => void refresh()} disabled={busy} title="최신 내역을 다시 불러옵니다">
           {busy ? '⏳' : '🔄'} 새로고침
         </button>
       </div>
@@ -286,8 +286,8 @@ export default function DocSendProcessTab() {
             padding: '8px 12px', marginBottom: 8,
           }}
         >
-          <b style={{ fontSize: 12, color: '#1A2B52' }}>☑ {selected.length}건 선택</b>
-          <button className="btn-sm" style={{ fontSize: 11 }} onClick={() => setSel(new Set())} disabled={bulkBusy}>
+          <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>☑ {selected.length}건 선택</b>
+          <button className="btn-sm" style={{ fontSize: 'var(--fs-1)' }} onClick={() => setSel(new Set())} disabled={bulkBusy}>
             선택해제
           </button>
 
@@ -295,7 +295,7 @@ export default function DocSendProcessTab() {
 
           <button
             className="btn-sm btn-p"
-            style={{ fontSize: 11 }}
+            style={{ fontSize: 'var(--fs-1)' }}
             disabled={bulkBusy || selStartable.length === 0}
             title="선택한 미접수 건을 한 번에 진행중으로 바꿉니다"
             onClick={() => void runBulk(selStartable, (r) => setProcessing(r.id, { status: '진행중' }), '처리 시작')}
@@ -305,13 +305,13 @@ export default function DocSendProcessTab() {
 
           <span style={{ width: 1, height: 18, background: '#BFD4F2' }} />
 
-          <label style={{ fontSize: 11, color: '#555', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <label style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 4 }}>
             발송일
-            <input type="date" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} style={{ fontSize: 12 }} />
+            <input type="date" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
           </label>
           <button
             className="btn-p"
-            style={{ fontSize: 11 }}
+            style={{ fontSize: 'var(--fs-1)' }}
             disabled={bulkBusy || selCompletable.length === 0 || !bulkDate}
             title="선택한 진행중·재발송요청 건을 이 발송일로 한 번에 완료 처리합니다 (등기번호는 건별로 입력)"
             onClick={() =>
@@ -325,8 +325,8 @@ export default function DocSendProcessTab() {
             ✅ 완료 {selCompletable.length > 0 && `(${selCompletable.length})`}
           </button>
 
-          {bulkBusy && <span style={{ fontSize: 11, color: '#888' }}>처리 중…</span>}
-          <span style={{ fontSize: 10.5, color: '#8a5a00', marginLeft: 'auto' }}>
+          {bulkBusy && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>처리 중…</span>}
+          <span style={{ fontSize: 'var(--fs-0)', color: '#8a5a00', marginLeft: 'auto' }}>
             ⚠️ 등기번호는 건마다 달라 일괄 입력되지 않습니다 — 각 행에서 개별 입력하세요.
           </span>
         </div>
@@ -355,7 +355,7 @@ export default function DocSendProcessTab() {
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={canProcess ? 15 : 14} style={{ textAlign: 'center', color: '#BBB', padding: 24 }}>처리할 발송요청이 없습니다.</td></tr>
+              <tr><td colSpan={canProcess ? 15 : 14} style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 24 }}>처리할 발송요청이 없습니다.</td></tr>
             )}
             {view.map((r) => (
               <ProcessRow
@@ -451,65 +451,65 @@ function ProcessRow({
           </td>
         )}
         <td style={{ textAlign: 'center' }}>
-          <span className="bdg" style={{ fontSize: 10, ...statusStyle(r.status) }}>{r.status}</span>
+          <span className="bdg" style={{ fontSize: 'var(--fs-0)', ...statusStyle(r.status) }}>{r.status}</span>
           {r.statusNote && (
-            <div style={{ fontSize: 10, color: '#B91C1C', marginTop: 2, maxWidth: 96, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.statusNote}>
+            <div style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)', marginTop: 2, maxWidth: 96, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.statusNote}>
               {r.statusNote}
             </div>
           )}
         </td>
-        <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.requestDate?.replace(/-/g, '.')}</td>
-        <td style={{ fontSize: 12 }}>{r.requester}</td>
+        <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.requestDate?.replace(/-/g, '.')}</td>
+        <td style={{ fontSize: 'var(--fs-2)' }}>{r.requester}</td>
         {/* 발송담당자가 봉투를 쓸 수 있도록 주소·우편번호·연락처를 함께 보여준다.
             전자 발송이 아니라 실제 우편이므로 수취인 주소가 이 화면의 핵심 정보다. */}
-        <td style={{ fontSize: 12, minWidth: 200 }}>
-          <b style={{ color: '#1A2B52' }}>{r.companyName}</b>
-          {r.recipientName && <span style={{ color: '#555' }}> · {r.recipientName} {r.recipientTitle}</span>}
+        <td style={{ fontSize: 'var(--fs-2)', minWidth: 200 }}>
+          <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
+          {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {r.recipientName} {r.recipientTitle}</span>}
           {r.address ? (
-            <div style={{ fontSize: 11, color: '#333', marginTop: 2, whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>
+            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink)', marginTop: 2, whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>
               📮 {r.address}
-              {r.phone && <span style={{ color: '#888' }}>　☎ {r.phone}</span>}
+              {r.phone && <span style={{ color: 'var(--ink-3)' }}>　☎ {r.phone}</span>}
             </div>
           ) : (
             r.workType === '퀵서비스' && (
-              <div style={{ fontSize: 10.5, color: '#b45309', marginTop: 2 }}>⚠️ 주소 미입력</div>
+              <div style={{ fontSize: 'var(--fs-0)', color: '#b45309', marginTop: 2 }}>⚠️ 주소 미입력</div>
             )
           )}
         </td>
-        <td style={{ fontSize: 12 }}>{r.workType}</td>
-        <td style={{ fontSize: 12 }}>{r.sendKind}</td>
-        <td className="doc-name" style={{ fontSize: 12 }} title={r.docName || undefined}>
-          {r.docName || <span style={{ color: '#CCC' }}>—</span>}
+        <td style={{ fontSize: 'var(--fs-2)' }}>{r.workType}</td>
+        <td style={{ fontSize: 'var(--fs-2)' }}>{r.sendKind}</td>
+        <td className="doc-name" style={{ fontSize: 'var(--fs-2)' }} title={r.docName || undefined}>
+          {r.docName || <span style={{ color: 'var(--ink-4)' }}>—</span>}
           {r.etcRequest && (
-            <div style={{ fontSize: 10.5, color: '#8a5a00', marginTop: 2, whiteSpace: 'pre-wrap' }} title="기타요청사항">📝 {r.etcRequest}</div>
+            <div style={{ fontSize: 'var(--fs-0)', color: '#8a5a00', marginTop: 2, whiteSpace: 'pre-wrap' }} title="기타요청사항">📝 {r.etcRequest}</div>
           )}
         </td>
-        <td style={{ textAlign: 'center', fontSize: 12 }}>{r.copies}</td>
-        <td style={{ textAlign: 'center', fontSize: 11 }}>{r.sealRequired ? '🔖' : '—'}</td>
-        <td style={{ textAlign: 'center', fontSize: 11 }}>{r.deadline === '긴급' ? <b style={{ color: '#dc2626' }}>긴급</b> : r.deadline}</td>
+        <td style={{ textAlign: 'center', fontSize: 'var(--fs-2)' }}>{r.copies}</td>
+        <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{r.sealRequired ? '🔖' : '—'}</td>
+        <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{r.deadline === '긴급' ? <b style={{ color: '#dc2626' }}>긴급</b> : r.deadline}</td>
         <td style={{ textAlign: 'center' }}>
-          <button className="btn-sm" style={{ fontSize: 11, padding: '1px 7px', color: attCount ? '#1A2B52' : '#bbb' }} title="첨부파일 보기/다운로드" onClick={onOpenAttach}>📎 {attCount || ''}</button>
+          <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '1px 7px', color: attCount ? '#1A2B52' : '#bbb' }} title="첨부파일 보기/다운로드" onClick={onOpenAttach}>📎 {attCount || ''}</button>
         </td>
-        <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: '#CCC' }}>—</span>}</td>
+        <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
         <td><TrackingLink no={r.trackingNo} /></td>
         <td>
           {!canProcess ? (
-            <span style={{ color: '#bbb', fontSize: 11 }}>조회전용</span>
+            <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>조회전용</span>
           ) : (
             <>
               {r.status === '미접수' && (
-                <button className="btn-sm btn-p" style={{ fontSize: 11, padding: '2px 8px' }} onClick={onStart}>▶ 처리 시작</button>
+                <button className="btn-sm btn-p" style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }} onClick={onStart}>▶ 처리 시작</button>
               )}
               {isActive && (
-                <button className="btn-sm btn-sm-blue" style={{ fontSize: 11 }} onClick={onToggle}>{open ? '접기' : '✏️ 처리'}</button>
+                <button className="btn-sm btn-sm-blue" style={{ fontSize: 'var(--fs-1)' }} onClick={onToggle}>{open ? '접기' : '✏️ 처리'}</button>
               )}
               {isPost && (
-                <button className="btn-sm btn-sm-blue" style={{ fontSize: 11 }} onClick={onToggle} title="반송·재발송완료 등 후속 처리">{open ? '접기' : '✏️ 상태'}</button>
+                <button className="btn-sm btn-sm-blue" style={{ fontSize: 'var(--fs-1)' }} onClick={onToggle} title="반송·재발송완료 등 후속 처리">{open ? '접기' : '✏️ 상태'}</button>
               )}
               {r.status !== '취소' && (
                 <button
                   className="btn-sm"
-                  style={{ fontSize: 10.5, color: '#6B7280' }}
+                  style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}
                   onClick={onCancel}
                   title="필요 없어진 요청을 취소합니다(기록은 남고 대기열에서 빠집니다)"
                 >
@@ -529,7 +529,7 @@ function ProcessRow({
                 <input type="date" value={sentDate} onChange={(e) => setSentDate(e.target.value)} />
               </div>
               <div className="frow" style={{ minWidth: 220 }}>
-                <span className="fl">등기번호 <span style={{ color: '#888', fontWeight: 400 }}>(등기인 경우)</span></span>
+                <span className="fl">등기번호 <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>(등기인 경우)</span></span>
                 <input value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} placeholder="예: 1234567890123" />
               </div>
               <button className="btn-sm btn-sm-blue" onClick={() => onSaveProgress(sentDate, trackingNo)}>💾 저장(진행중 유지)</button>
@@ -545,12 +545,12 @@ function ProcessRow({
         <tr>
           <td colSpan={15} style={{ background: '#FEF9F3' }}>
             <div style={{ padding: '4px 2px' }}>
-              <div style={{ fontSize: 11, color: '#8a5a00', marginBottom: 6 }}>
+              <div style={{ fontSize: 'var(--fs-1)', color: '#8a5a00', marginBottom: 6 }}>
                 발송완료 이후 <b>반송</b>(수취 실패 등) 또는 <b>재발송완료</b>로 후속 처리할 수 있습니다. 사유를 남겨 두면 현황에서 함께 확인됩니다.
               </div>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
                 <div className="frow" style={{ flex: '1 1 340px', minWidth: 240 }}>
-                  <span className="fl">사유 <span style={{ color: '#888', fontWeight: 400 }}>(반송 시 필수)</span></span>
+                  <span className="fl">사유 <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>(반송 시 필수)</span></span>
                   <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 수취인 부재로 반송 / 주소 보완 후 재발송" />
                 </div>
                 <button className="btn-sm btn-sm-del" onClick={() => onChangeStatus('반송', note)}>↪ 반송</button>

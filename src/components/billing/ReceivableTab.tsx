@@ -27,7 +27,7 @@ import { AgingPanel, AgingDetail } from './AgingPanel';
 import { AgingLedgerBox } from './AgingLedgerBox';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
-const dash = <span style={{ color: '#CCC' }}>—</span>;
+const dash = <span style={{ color: 'var(--ink-4)' }}>—</span>;
 
 /** 올린 원장을 한 줄로 요약 — '어디까지 올렸나'가 한눈에 보이게. */
 function uploadSummary(us: UploadState[]): string {
@@ -244,7 +244,7 @@ export default function ReceivableTab() {
         💰 수금·미수금
         <input type="month" value={ym} onChange={(e) => { if (e.target.value) setYm(e.target.value); }}
           style={{ fontWeight: 700 }} title="이 달까지의 누계로 미수금을 계산합니다 — 아무 달이나 지정할 수 있습니다" />
-        <span style={{ fontSize: 11.5, color: '#666' }}>까지 누계</span>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>까지 누계</span>
         <span style={{ display: 'inline-flex', gap: 3 }}>
           <button className="btn-sm" onClick={() => setYm(shiftYm(ym, -1))} title="한 달 앞으로">◀</button>
           <button className="btn-sm" onClick={() => setYm(prevMonth())} title="지난달로">지난달</button>
@@ -254,11 +254,11 @@ export default function ReceivableTab() {
           <option value="taxteam">taxteam (기장24팀)</option>
           <option value="감사team">감사팀 (2본부5팀)</option>
         </select>
-        {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
+        {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
       </div>
       {err && <div className="alert-w">{err}</div>}
 
-      <div className="alert-i" style={{ fontSize: 11 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
         <b>미수금 = 기초 + 발행 − 입금</b> (모두 부가세 포함). 기초는 {OPENING_AS_OF} 잔액,
         발행은 <b>발행완료</b>된 건, 입금은 ERP 부서별원장의 <b>외상매출금 대변</b>입니다.
         <br />ERP는 입금을 청구건에 연결하지 않으므로(입금 전표에 거래#가 없습니다) <b>사업장 단위</b>로만 잡습니다.
@@ -271,15 +271,15 @@ export default function ReceivableTab() {
           {showUploads ? '▾' : '▸'} 올린 원장 ({uploads.length}) — {uploadSummary(uploads)}
         </button>
         {showUploads && (
-          <div style={{ marginTop: 6, border: '1px solid #eee', borderRadius: 6, overflow: 'auto', maxHeight: 240 }}>
-            <table className="tbl" style={{ fontSize: 11.5 }}>
+          <div style={{ marginTop: 6, border: '1px solid var(--rule-2)', borderRadius: 6, overflow: 'auto', maxHeight: 240 }}>
+            <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
               <thead>
                 <tr><th>월</th><th>팀</th><th>파일</th><th className="r">입금건수</th><th className="r">입금액</th>
                   <th className="r">이월</th><th className="r">차변(발행)</th><th>올린 때</th><th>올린 사람</th><th></th></tr>
               </thead>
               <tbody>
                 {uploads.length === 0 && (
-                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: 14, color: '#BBB' }}>
+                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: 14, color: 'var(--ink-4)' }}>
                     아직 올린 원장이 없습니다.
                   </td></tr>
                 )}
@@ -287,13 +287,13 @@ export default function ReceivableTab() {
                   <tr key={u.ym + u.team} style={{ background: u.ym === ym && u.team === team ? '#fdfaf3' : undefined }}>
                     <td style={{ fontWeight: 700 }}>{u.ym}</td>
                     <td>{u.team === 'taxteam' ? '기장24팀' : '2본부5팀'}</td>
-                    <td style={{ fontSize: 11, color: '#666' }}>{u.fileName}</td>
+                    <td style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>{u.fileName}</td>
                     <td className="r">{u.rowCount}</td>
                     <td className="r" style={{ fontWeight: 700 }}>{won(u.amountTotal)}</td>
-                    <td className="r" style={{ color: '#888' }}>{won(u.opening)}</td>
-                    <td className="r" style={{ color: '#888' }}>{won(u.debitTotal)}</td>
-                    <td style={{ fontSize: 11, color: '#888' }}>{kstDateTime(u.uploadedAt)}</td>
-                    <td style={{ fontSize: 11 }}>{u.uploadedBy}</td>
+                    <td className="r" style={{ color: 'var(--ink-3)' }}>{won(u.opening)}</td>
+                    <td className="r" style={{ color: 'var(--ink-3)' }}>{won(u.debitTotal)}</td>
+                    <td style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{kstDateTime(u.uploadedAt)}</td>
+                    <td style={{ fontSize: 'var(--fs-1)' }}>{u.uploadedBy}</td>
                     <td>
                       <button className="btn-sm" onClick={() => { setYm(u.ym); setTeam(u.team); }}>보기</button>
                     </td>
@@ -314,14 +314,14 @@ export default function ReceivableTab() {
             display: 'block', border: '2px dashed #c9b98a', borderRadius: 8, background: '#fdfaf3',
             padding: '14px 16px', textAlign: 'center', cursor: canWrite && !busy ? 'pointer' : 'default', margin: '10px 0',
           }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: up ? '#92400E' : '#1A2B52' }}>
+          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: up ? '#92400E' : '#1A2B52' }}>
             {up
               ? `${ym} ${team === 'taxteam' ? '기장24팀' : '2본부5팀'} 원장은 이미 올렸습니다 — 다시 올리면 덮어씁니다`
               : `${ym} ${team === 'taxteam' ? '기장24팀' : '2본부5팀'} 부서별원장 엑셀을 끌어다 놓으세요`}
           </div>
-          <div style={{ fontSize: 11.5, color: '#777', lineHeight: 1.7, marginTop: 4 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: '#777', lineHeight: 1.7, marginTop: 4 }}>
             인덕 ERP ▸ 부서별원장 ▸ 기간 {ym}-01 ~ 말일 ▸ 조회 ▸ 엑셀 — <b>외상매출금</b> 시트를 읽습니다.
-            {up && <><br /><span style={{ color: '#2a7' }}>
+            {up && <><br /><span style={{ color: 'var(--good)' }}>
               이미 올림: {up.fileName} · 입금 {up.rowCount}건 {won(up.amountTotal)} · {up.uploadedAt.slice(0, 10)}{up.uploadedBy && ` ${up.uploadedBy}`}
             </span></>}
           </div>
@@ -332,11 +332,11 @@ export default function ReceivableTab() {
 
       {preview && (
         <div style={{ border: '1px solid #c9b98a', borderRadius: 8, background: '#fdfaf3', padding: 12, margin: '10px 0' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', marginBottom: 4 }}>
+          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)', marginBottom: 4 }}>
             읽었습니다 — 입금 {preview.rows.length}건 {won(preview.creditTotal)}
           </div>
           {up && (
-            <div className="alert-w" style={{ fontSize: 11.5 }}>
+            <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
               ⚠️ <b>{ym} {team === 'taxteam' ? '기장24팀' : '2본부5팀'} 원장은 이미 올려져 있습니다</b>
               {' '}({up.fileName} · 입금 {up.rowCount}건 {won(up.amountTotal)} · {up.uploadedAt.slice(0, 10)}{up.uploadedBy && ` ${up.uploadedBy}`}).
               <br />저장하면 <b>그 달 입금을 지우고 이 파일로 바꿉니다</b> — 같은 파일이면 결과는 같고, 다른 파일이면 이전 것은 사라집니다.
@@ -345,13 +345,13 @@ export default function ReceivableTab() {
             </div>
           )}
           {preview.rows.some((r) => r.paidDate && r.paidDate.slice(0, 7) !== ym) && (
-            <div className="alert-w" style={{ fontSize: 11.5 }}>
+            <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
               ⚠️ 전표일이 <b>{ym}</b> 이 아닌 줄이 섞여 있습니다
               ({[...new Set(preview.rows.map((r) => r.paidDate?.slice(0, 7)).filter(Boolean))].join(', ')}) —
               위에서 고른 달과 원장 조회기간이 같은지 확인해 주세요.
             </div>
           )}
-          <div style={{ fontSize: 11.5, color: '#666', marginBottom: 8, lineHeight: 1.7 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginBottom: 8, lineHeight: 1.7 }}>
             {preview.fileName} · 시트 {preview.sheet}<br />
             원장 이월 {won(preview.opening)} + 차변(발행) {won(preview.debitTotal)} − 대변(입금) {won(preview.creditTotal)}
             {' = '}<b>기말 {won(preview.closing)}</b>
@@ -371,11 +371,11 @@ export default function ReceivableTab() {
 
       {/* ── 검산 ── */}
       {up && (
-        <div style={{ border: '1px solid #e2d9c6', background: '#fdfaf3', borderRadius: 6, padding: '8px 10px', marginBottom: 10, fontSize: 12 }}>
+        <div style={{ border: '1px solid var(--rule)', background: '#fdfaf3', borderRadius: 6, padding: '8px 10px', marginBottom: 10, fontSize: 'var(--fs-2)' }}>
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
             <span><b>원장</b> 이월 {won(up.opening)} + 차변 {won(up.debitTotal)} − 대변 {won(up.amountTotal)}
               {' = '}<b>{won(up.opening + up.debitTotal - up.amountTotal)}</b></span>
-            <span style={{ color: '#999' }}>|</span>
+            <span style={{ color: 'var(--ink-3)' }}>|</span>
             <span><b>우리</b> 기초 {won(sum((r) => r.opening))} + 발행 {won(sum((r) => r.issued))} − 입금 {won(sum((r) => r.paid))}
               {' = '}<b>{won(sum((r) => r.balance))}</b></span>
             {canWrite && (
@@ -385,7 +385,7 @@ export default function ReceivableTab() {
               </button>
             )}
           </div>
-          <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 3 }}>
             원장은 <b>그 부서 전체</b>(우리 담당이 아닌 거래처 포함)이고, 우리 쪽은 <b>거래처관리에 등록된 곳</b>만입니다 —
             두 숫자가 다른 것이 정상입니다. 우리 거래처만 놓고 보려면 아래 표를 보세요.
           </div>
@@ -394,16 +394,16 @@ export default function ReceivableTab() {
 
       {/* ── 못 붙은 입금 ── */}
       {unmatched.length === 0 && excluded.length > 0 && (
-        <div style={{ fontSize: 11, color: '#999', marginBottom: 6 }}>
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 6 }}>
           ✓ 거래처를 못 찾은 입금은 없습니다. (우리와 무관하다고 접어 둔 {excluded.length}건 {won(excluded.reduce((s, c) => s + c.amount, 0))} 별도)
           <button className="btn-sm" style={{ marginLeft: 6 }} onClick={() => setShowUnmatched(true)}>접어 둔 건 보기</button>
         </div>
       )}
       {unmatched.length > 0 && (
-        <div className="alert-w" style={{ fontSize: 11.5 }}>
+        <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
           <b>거래처를 못 찾은 입금 {unmatched.length}건 · {won(unmatched.reduce((s, c) => s + c.amount, 0))}</b>
           {' — '}원장의 거래처코드가 우리 거래처등록에 없습니다. 다른 회계사 담당이거나 미등록입니다.
-          {excluded.length > 0 && <span style={{ color: '#888' }}>{' '}(제외 처리 {excluded.length}건 {won(excluded.reduce((s, c) => s + c.amount, 0))} 별도)</span>}
+          {excluded.length > 0 && <span style={{ color: 'var(--ink-3)' }}>{' '}(제외 처리 {excluded.length}건 {won(excluded.reduce((s, c) => s + c.amount, 0))} 별도)</span>}
           <span style={{ display: 'inline-flex', gap: 6, marginLeft: 8 }}>
             <button className="btn-sm" onClick={() => setShowUnmatched(true)}>상세 보기 · 연결하기</button>
             {canWrite && (
@@ -469,17 +469,17 @@ export default function ReceivableTab() {
       {tab === 'balance' && (<>
       <div className="sbar">
         <input placeholder="🔍 거래처·사업장·코드·담당CPA" value={q} onChange={(e) => setQ(e.target.value)} />
-        <label style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
+        <label style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} /> 잔액 있는 곳만
         </label>
-        <span style={{ fontSize: 12, color: '#555' }}>
+        <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>
           {view.length}곳 · 기초 {won(sum((r) => r.opening))} · 발행 {won(sum((r) => r.issued))}
-          {' · '}입금 {won(sum((r) => r.paid))} · <b style={{ color: '#1A2B52' }}>미수 {won(sum((r) => r.balance))}</b>
+          {' · '}입금 {won(sum((r) => r.paid))} · <b style={{ color: 'var(--navy)' }}>미수 {won(sum((r) => r.balance))}</b>
         </span>
       </div>
 
       <div className="tbl-scroll" style={{ maxHeight: '58vh' }}>
-        <table className="tbl" style={{ fontSize: 11.5 }}>
+        <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
           <thead>
             <tr>
               <th>코드</th><th>거래처</th><th>사업장</th><th>담당CPA</th>
@@ -488,19 +488,19 @@ export default function ReceivableTab() {
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20, color: 'var(--ink-4)' }}>
                 해당하는 거래처가 없습니다.
               </td></tr>
             )}
             {view.map((r) => (
               <tr key={r.placeId}>
-                <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.code}</td>
-                <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.name}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-0)' }}>{r.code}</td>
+                <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{r.name}</td>
                 <td>{r.placeName}</td>
-                <td style={{ fontSize: 11 }}>{r.cpa}</td>
-                <td className="r" style={{ color: '#888' }}>{r.opening ? won(r.opening) : ''}</td>
+                <td style={{ fontSize: 'var(--fs-1)' }}>{r.cpa}</td>
+                <td className="r" style={{ color: 'var(--ink-3)' }}>{r.opening ? won(r.opening) : ''}</td>
                 <td className="r">{r.issued ? won(r.issued) : ''}</td>
-                <td className="r" style={{ color: '#2a7' }}>{r.paid ? won(r.paid) : ''}</td>
+                <td className="r" style={{ color: 'var(--good)' }}>{r.paid ? won(r.paid) : ''}</td>
                 <td className="r" style={{ fontWeight: 700, color: r.balance < 0 ? '#c33' : '#1A2B52' }}>{won(r.balance)}</td>
               </tr>
             ))}
@@ -560,11 +560,11 @@ function UnmatchedModal({ rows, placeOpts, canWrite, busy, onClose, onAssign, on
       <div className="card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1040, width: '100%' }}>
         <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           🔎 거래처를 못 찾은 입금
-          <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>{view.length}건 · {won(total)}</span>
+          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>{view.length}건 · {won(total)}</span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
 
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           부서별원장은 <b>그 부서 전체</b>가 나옵니다. 여기 남는 건은 둘 중 하나입니다.
           <br />· <b>우리 거래처인데 ERP 거래처코드가 비어 있는 것</b> — 사업장을 골라 <b>연결</b>하세요.
           <b>거래처코드도 함께 저장</b>을 켜 두면 다음 달부터는 저절로 붙습니다.
@@ -574,15 +574,15 @@ function UnmatchedModal({ rows, placeOpts, canWrite, busy, onClose, onAssign, on
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
           <input placeholder="🔍 거래처·코드·적요" value={kw} onChange={(e) => setKw(e.target.value)} style={{ flex: '0 1 240px' }} />
-          <label style={{ fontSize: 11.5, cursor: 'pointer' }}>
+          <label style={{ fontSize: 'var(--fs-1)', cursor: 'pointer' }}>
             <input type="checkbox" checked={showExcluded} onChange={(e) => { setShowExcluded(e.target.checked); setPick(new Set()); }} />
             {' '}제외한 것 보기
           </label>
-          <label style={{ fontSize: 11.5, cursor: 'pointer' }} title="연결할 때 그 사업장에 ERP 거래처코드를 적어 둡니다">
+          <label style={{ fontSize: 'var(--fs-1)', cursor: 'pointer' }} title="연결할 때 그 사업장에 ERP 거래처코드를 적어 둡니다">
             <input type="checkbox" checked={saveCode} onChange={(e) => setSaveCode(e.target.checked)} />
             {' '}거래처코드도 함께 저장
           </label>
-          <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{pick.size}</b>건</span>
+          <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>선택 <b>{pick.size}</b>건</span>
           {canWrite && (
             showExcluded ? (
               <button className="btn-sm" disabled={busy || !pick.size}
@@ -602,7 +602,7 @@ function UnmatchedModal({ rows, placeOpts, canWrite, busy, onClose, onAssign, on
         </div>
 
         <div style={{ maxHeight: '52vh', overflow: 'auto' }}>
-          <table className="tbl" style={{ fontSize: 11.5 }}>
+          <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
             <thead>
               <tr>
                 <th style={{ width: 28 }}></th>
@@ -612,7 +612,7 @@ function UnmatchedModal({ rows, placeOpts, canWrite, busy, onClose, onAssign, on
             </thead>
             <tbody>
               {view.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 18, color: '#BBB' }}>
+                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 18, color: 'var(--ink-4)' }}>
                   {showExcluded ? '제외한 건이 없습니다.' : '못 찾은 입금이 없습니다.'}
                 </td></tr>
               )}
@@ -620,24 +620,24 @@ function UnmatchedModal({ rows, placeOpts, canWrite, busy, onClose, onAssign, on
                 <tr key={r.id}>
                   <td><input type="checkbox" checked={pick.has(r.id!)} onChange={() => toggle(r.id!)} /></td>
                   <td>{r.paidDate ?? dash}</td>
-                  <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.slipNo}</td>
-                  <td style={{ fontFamily: 'monospace', fontSize: 10.5, fontWeight: 700 }}>{r.clientCode || dash}</td>
-                  <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.clientName}</td>
-                  <td style={{ fontSize: 11, color: '#666' }}>{r.summary}</td>
+                  <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-0)' }}>{r.slipNo}</td>
+                  <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-0)', fontWeight: 700 }}>{r.clientCode || dash}</td>
+                  <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{r.clientName}</td>
+                  <td style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>{r.summary}</td>
                   <td className="r" style={{ fontWeight: 700 }}>{won(r.amount)}</td>
                   <td>
                     {canWrite && !showExcluded ? (
                       <span style={{ display: 'flex', gap: 4 }}>
                         <input list="recv-places" value={choice[r.id!] ?? ''} placeholder="코드·상호로 찾기"
                           onChange={(e) => setChoice((p) => ({ ...p, [r.id!]: e.target.value }))}
-                          style={{ flex: 1, fontSize: 11 }} />
+                          style={{ flex: 1, fontSize: 'var(--fs-1)' }} />
                         <button className="btn-p" disabled={busy || !placeOpts.some((o) => o.label === (choice[r.id!] ?? ''))}
                           onClick={() => {
                             const o = placeOpts.find((x) => x.label === choice[r.id!]);
                             if (o) void onAssign(r.id!, o, r.clientCode, saveCode);
                           }}>연결</button>
                       </span>
-                    ) : showExcluded ? <span style={{ color: '#999' }}>제외됨</span> : null}
+                    ) : showExcluded ? <span style={{ color: 'var(--ink-3)' }}>제외됨</span> : null}
                   </td>
                 </tr>
               ))}

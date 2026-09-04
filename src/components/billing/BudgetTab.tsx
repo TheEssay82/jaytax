@@ -197,7 +197,7 @@ export default function BudgetTab() {
 
   if (!allowed) {
     return (
-      <div className="alert-w" style={{ fontSize: 12 }}>
+      <div className="alert-w" style={{ fontSize: 'var(--fs-2)' }}>
         이 화면은 <b>급여 자료</b>를 다루므로 열 수 없습니다.
         <br />필요하시면 최고관리자에게 문의해 주세요.
       </div>
@@ -235,7 +235,7 @@ export default function BudgetTab() {
           <option value="감사team">감사팀</option>
         </select>
         {isAudit ? (
-          <span style={{ fontSize: 11.5, color: 'var(--warn)', fontWeight: 700 }}>구분: 담당회계사</span>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--warn)', fontWeight: 700 }}>구분: 담당회계사</span>
         ) : (
           <select value={axis} onChange={(e) => setAxis(e.target.value as Axis)}>
             <option value="staff">담당직원별</option>
@@ -249,7 +249,7 @@ export default function BudgetTab() {
         💡 <b>배수 = 수입 ÷ 인건비</b> — 인건비 1원당 얼마를 벌어들였는지 나타냅니다.
         {' '}<b>기여 = 수입 − 인건비</b>.
         <details style={{ marginTop: 6 }}>
-          <summary style={{ cursor: 'pointer', color: 'var(--ink-3)', fontSize: 11.5 }}>셈법 자세히</summary>
+          <summary style={{ cursor: 'pointer', color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>셈법 자세히</summary>
           <div style={{ marginTop: 6, color: 'var(--ink-2)' }}>
             · 기여 금액만 보면 사람마다 인건비 규모가 달라 비교가 어긋납니다. <b>배수는 그 차이를 지웁니다.</b>
             <br />· 수입은 셋으로 갈라 봅니다 — <b>기장(월별)</b> · <b>조정수수료</b>(법인세조정+종합소득세) ·
@@ -261,28 +261,28 @@ export default function BudgetTab() {
       </div>
 
       {basis === 'budget' && (
-        <div style={{ fontSize: 11.5, color: '#555', margin: '6px 0' }}>
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', margin: '6px 0' }}>
           📐 수입 기준 — <b>{fyRange(fy).from} ~ {prevOf(cut)}</b> 은 실제로 청구한 <b>실적</b>,
           {' '}<b>{cut} 이후</b>는 계약에서 뽑은 <b>예상</b>입니다.
           {' '}달이 갈수록 실적이 예상을 밀어냅니다. 이번 달은 아직 청구가 끝나지 않았을 수 있어 예상 쪽에 둡니다.
         </div>
       )}
       {isAudit && (
-        <div className="alert-w" style={{ fontSize: 11.5 }}>
+        <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
           감사팀은 <b>담당회계사</b>로 구분합니다 — 감사 계약에는 담당직원이 없습니다.
           {' '}인건비는 <b>비워 둡니다</b>(수입·거래처만 봅니다).
         </div>
       )}
       {!isAudit && axis === 'cpa-staff' && (
-        <div style={{ fontSize: 11.5, color: '#555', margin: '6px 0' }}>
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', margin: '6px 0' }}>
           ⚖️ 한 직원이 여러 회계사 아래 걸치면 <b>인건비를 수입 비율로 나눠</b> 놓았습니다(그 줄에 <i>안분</i> 표시).
           {' '}통째로 놓으면 합계가 사람 수보다 부풀기 때문입니다. 회계사 줄의 인건비는 아래 직원 줄의 합입니다.
         </div>
       )}
-      {err && <div className="alert-e" style={{ fontSize: 11.5 }}>{err}</div>}
+      {err && <div className="alert-e" style={{ fontSize: 'var(--fs-1)' }}>{err}</div>}
 
       {/* 칸이 많아 좁은 화면에서는 표만 가로로 민다 — 페이지가 통째로 밀리면 제목까지 사라진다. */}
-      <div className="tbl-scroll">
+      <div className="tbl-wide">
       <table className="tbl-rep">
         <thead>
           <tr>
@@ -300,7 +300,7 @@ export default function BudgetTab() {
         </thead>
         <tbody>
           {rows.length === 0 && (
-            <tr><td colSpan={KINDS.length + 7} style={{ textAlign: 'center', padding: 18, color: '#BBB' }}>
+            <tr><td colSpan={KINDS.length + 7} style={{ textAlign: 'center', padding: 18, color: 'var(--ink-4)' }}>
               자료가 없습니다.
             </td></tr>
           )}
@@ -312,13 +312,13 @@ export default function BudgetTab() {
             return (
               <tr key={`${r.key} ${r.sub ?? ''}`}
                 style={isSubtotal ? { background: '#F3F4F6', fontWeight: 700 }
-                  : r.exempt ? { color: '#999' }
+                  : r.exempt ? { color: 'var(--ink-3)' }
                     : !noCost && r.cost === 0 ? { background: '#FFFBEB' } : undefined}>
                 <td style={{ fontWeight: r.sub == null ? 700 : 400, color: r.exempt ? '#999' : '#1A2B52' }}>
-                  {r.sub == null ? r.key : <span style={{ paddingLeft: 14, color: '#444' }}>└ {r.sub}</span>}
-                  {r.split && <span style={{ fontSize: 10, color: '#92400E' }}> 안분</span>}
+                  {r.sub == null ? r.key : <span style={{ paddingLeft: 14, color: 'var(--ink-2)' }}>└ {r.sub}</span>}
+                  {r.split && <span style={{ fontSize: 'var(--fs-0)', color: 'var(--warn)' }}> 안분</span>}
                 </td>
-                <td className="r" style={{ color: '#666' }}>{r.values.clients ?? 0}</td>
+                <td className="r" style={{ color: 'var(--ink-2)' }}>{r.values.clients ?? 0}</td>
                 {KINDS.map((k) => (
                   <td key={k.key} className="r" style={{ color: (r.values[k.key] ?? 0) ? undefined : '#CCC' }}>
                     {won(r.values[k.key] ?? 0)}
@@ -358,7 +358,7 @@ export default function BudgetTab() {
           <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
             <td>
               합계
-              {!isAudit && <span style={{ fontWeight: 400, fontSize: 10.5, color: '#666' }}> (인건비 대상)</span>}
+              {!isAudit && <span style={{ fontWeight: 400, fontSize: 'var(--fs-0)', color: 'var(--ink-2)' }}> (인건비 대상)</span>}
             </td>
             <td className="r">{sumOf(counted, 'clients')}</td>
             {KINDS.map((k) => <td key={k.key} className="r">{won(sumOf(counted, k.key))}</td>)}
@@ -374,7 +374,7 @@ export default function BudgetTab() {
           </tr>
           {exempted.length > 0 && (
             <>
-              <tr style={{ color: '#999' }}>
+              <tr style={{ color: 'var(--ink-3)' }}>
                 <td>대상 아님 ({exempted.map((r) => r.person).join('·')})</td>
                 <td className="r">{sumOf(exempted, 'clients')}</td>
                 {KINDS.map((k) => <td key={k.key} className="r">{won(sumOf(exempted, k.key))}</td>)}
@@ -406,14 +406,14 @@ export default function BudgetTab() {
       )}
 
       {exempted.length > 0 && (
-        <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginTop: 8 }}>
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginTop: 8 }}>
           ℹ️ {exempted.map((r) => r.person).join('·')} 님은 <b>인건비 대상이 아니어서</b> 기여·배수를 따지지
           않습니다 — 인건비 없이 수입만 합치면 배수가 부풀려집니다.
         </div>
       )}
 
       {sumOf(unassigned, 'supply') > 0 && (
-        <div className="alert-w" style={{ fontSize: 11.5, marginTop: 8 }}>
+        <div className="alert-w" style={{ fontSize: 'var(--fs-1)', marginTop: 8 }}>
           ⚠️ 담당{isAudit ? '회계사' : '직원'}가 지정되지 않은 매출이 <b>{won(sumOf(unassigned, 'supply'))}</b>
           ({sumOf(unassigned, 'clients')}곳) 있습니다 — 누구의 기여로도 잡히지 않습니다.
           매출계약이나 거래처에 담당을 넣어 주세요.
@@ -486,7 +486,7 @@ function CostEditor({ row, onClose, onSaved }: {
   }
 
   const F = ({ label, k }: { label: string; k: keyof typeof f }) => (
-    <label style={{ fontSize: 11.5, display: 'block' }}>
+    <label style={{ fontSize: 'var(--fs-1)', display: 'block' }}>
       {label}<br />
       <input value={f[k]} onChange={(e) => set(k, e.target.value.replace(/[^\d-]/g, ''))}
         style={{ width: '100%', textAlign: 'right' }} />
@@ -515,14 +515,14 @@ function CostEditor({ row, onClose, onSaved }: {
           title="연봉=세전×12, 4대보험·기타=연봉의 10%, 퇴직금=(연봉+상여)/13">
           ⚡ 세전 월급으로 나머지 채우기
         </button>
-        <label style={{ fontSize: 11.5, display: 'block', marginTop: 8 }}>
+        <label style={{ fontSize: 'var(--fs-1)', display: 'block', marginTop: 8 }}>
           비고<br />
           <input value={f.note} onChange={(e) => set('note', e.target.value)} style={{ width: '100%' }} />
         </label>
-        <div style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>
+        <div style={{ marginTop: 10, fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>
           총부담비용 {won(total)}
         </div>
-        {err && <div className="alert-e" style={{ fontSize: 11.5, marginTop: 6 }}>{err}</div>}
+        {err && <div className="alert-e" style={{ fontSize: 'var(--fs-1)', marginTop: 6 }}>{err}</div>}
         <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
           <button className="btn-p" disabled={busy} onClick={() => void save()}>
             {busy ? '저장 중…' : '저장'}

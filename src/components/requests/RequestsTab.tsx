@@ -12,10 +12,10 @@ import {
 
 const STATUSES: RequestStatus[] = ['미접수', '개발중', '개발완료', '미반영종료'];
 const STATUS_STYLE: Record<RequestStatus, React.CSSProperties> = {
-  미접수: { background: '#FEE2E2', color: '#991B1B' },
-  개발중: { background: '#FEF3C7', color: '#92400E' },
+  미접수: { background: '#FEE2E2', color: 'var(--bad)' },
+  개발중: { background: '#FEF3C7', color: 'var(--warn)' },
   개발완료: { background: '#D1FAE5', color: '#065F46' },
-  미반영종료: { background: '#F3F4F6', color: '#6B7280' },
+  미반영종료: { background: '#F3F4F6', color: 'var(--ink-3)' },
 };
 // 저장은 UTC(timestamptz/ISO). 표시는 한국 표준시(KST)로 변환.
 const dtShort = (s?: string) => {
@@ -86,7 +86,7 @@ export default function RequestsTab() {
     return (
       <div className="card">
         <div className="chdr">💬 업데이트요청</div>
-        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
       </div>
     );
   }
@@ -95,18 +95,18 @@ export default function RequestsTab() {
     <div className="card">
       <div className="chdr">
         업데이트 요청 게시판
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#888' }}>총 {requests.length}건</span>
+        <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>총 {requests.length}건</span>
       </div>
 
       {error && <div className="alert-w">{error}</div>}
 
       <div className="card" style={{ background: '#F5F1EB' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 8 }}>새 요청 등록</div>
+        <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 8 }}>새 요청 등록</div>
         <div className="frow">
           <span className="fl">요청자</span>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#1A2B52' }}>
+          <span style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--navy)' }}>
             {authorName || '(담당자명 미설정)'}
-            <span style={{ fontWeight: 400, color: '#9aa0ad', marginLeft: 6 }}>· 로그인 담당자</span>
+            <span style={{ fontWeight: 400, color: 'var(--ink-3)', marginLeft: 6 }}>· 로그인 담당자</span>
           </span>
         </div>
         <div className="frow" style={{ alignItems: 'flex-start' }}>
@@ -121,9 +121,9 @@ export default function RequestsTab() {
             style={{
               width: '100%',
               padding: '5px 8px',
-              border: '1px solid #D0CCC4',
+              border: '1px solid var(--rule)',
               borderRadius: 6,
-              fontSize: 12,
+              fontSize: 'var(--fs-2)',
               fontFamily: 'inherit',
               resize: 'vertical',
             }}
@@ -135,7 +135,7 @@ export default function RequestsTab() {
       </div>
 
       {requests.length === 0 && (
-        <div style={{ textAlign: 'center', padding: 24, color: '#BBB' }}>등록된 요청이 없습니다.</div>
+        <div style={{ textAlign: 'center', padding: 24, color: 'var(--ink-4)' }}>등록된 요청이 없습니다.</div>
       )}
 
       {requests.map((r) => (
@@ -196,19 +196,19 @@ function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSet
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap', marginBottom: 5 }}>
-            <span style={{ fontWeight: 700, fontSize: 12 }}>{r.requester}</span>
-            <span style={{ fontSize: 10, color: '#888' }}>{dtShort(r.createdAt)}</span>
-            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, ...STATUS_STYLE[r.status] }}>
+            <span style={{ fontWeight: 700, fontSize: 'var(--fs-2)' }}>{r.requester}</span>
+            <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{dtShort(r.createdAt)}</span>
+            <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 'var(--fs-0)', fontWeight: 700, ...STATUS_STYLE[r.status] }}>
               {r.status}
             </span>
           </div>
-          <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{r.content}</div>
+          <div style={{ fontSize: 'var(--fs-3)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{r.content}</div>
         </div>
         <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
           {canSetStatus && (
             <select
               className="btn-sm"
-              style={{ fontSize: 11 }}
+              style={{ fontSize: 'var(--fs-1)' }}
               value={r.status}
               onChange={(e) => onStatus(e.target.value as RequestStatus)}
             >
@@ -225,17 +225,17 @@ function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSet
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid #EDE9E2', paddingTop: 8 }}>
+      <div style={{ borderTop: '1px solid var(--rule-2)', paddingTop: 8 }}>
         <button
           onClick={() => setExpanded((v) => !v)}
           style={{
             background: 'none',
-            border: '1px solid #D0CCC4',
+            border: '1px solid var(--rule)',
             borderRadius: 5,
             padding: '3px 10px',
             cursor: 'pointer',
-            fontSize: 11,
-            color: '#555',
+            fontSize: 'var(--fs-1)',
+            color: 'var(--ink-2)',
             fontFamily: 'inherit',
             display: 'flex',
             alignItems: 'center',
@@ -243,14 +243,14 @@ function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSet
           }}
         >
           <span>💬 댓글 {cmts.length}개</span>
-          {last && <span style={{ color: '#AAA', fontSize: 10 }}>· 최근: {dtShort(last.createdAt)}</span>}
-          <span style={{ color: '#AAA', fontSize: 10 }}>{expanded ? '▲ 접기' : '▼ 펼치기'}</span>
+          {last && <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-0)' }}>· 최근: {dtShort(last.createdAt)}</span>}
+          <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-0)' }}>{expanded ? '▲ 접기' : '▼ 펼치기'}</span>
         </button>
 
         {expanded && (
           <div style={{ marginTop: 9 }}>
             {cmts.length === 0 && (
-              <div style={{ fontSize: 11, color: '#BBB', marginBottom: 8, padding: 6 }}>
+              <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', marginBottom: 8, padding: 6 }}>
                 등록된 댓글이 없습니다.
               </div>
             )}
@@ -264,13 +264,13 @@ function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSet
                     flexShrink: 0,
                     width: 28,
                     height: 28,
-                    background: '#1A2B52',
+                    background: 'var(--navy)',
                     borderRadius: '50%',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     color: '#fff',
-                    fontSize: 11,
+                    fontSize: 'var(--fs-1)',
                     fontWeight: 700,
                   }}
                 >
@@ -278,10 +278,10 @@ function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSet
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 3 }}>
-                    <span style={{ fontWeight: 700, fontSize: 11 }}>{c.author}</span>
-                    <span style={{ fontSize: 10, color: '#AAA' }}>{dtShort(c.createdAt)}</span>
+                    <span style={{ fontWeight: 700, fontSize: 'var(--fs-1)' }}>{c.author}</span>
+                    <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)' }}>{dtShort(c.createdAt)}</span>
                   </div>
-                  <div style={{ fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{c.text}</div>
+                  <div style={{ fontSize: 'var(--fs-2)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{c.text}</div>
                 </div>
               </div>
             ))}
@@ -289,7 +289,7 @@ function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSet
             <div style={{ display: 'flex', gap: 5, marginTop: 7, alignItems: 'flex-start' }}>
               <span
                 title="로그인 담당자"
-                style={{ width: 90, flexShrink: 0, fontSize: 11, fontWeight: 700, color: '#1A2B52', paddingTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                style={{ width: 90, flexShrink: 0, fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--navy)', paddingTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
               >
                 {authorName || '(미설정)'}
               </span>
@@ -301,9 +301,9 @@ function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSet
                 style={{
                   flex: 1,
                   padding: '5px 8px',
-                  border: '1px solid #D0CCC4',
+                  border: '1px solid var(--rule)',
                   borderRadius: 6,
-                  fontSize: 12,
+                  fontSize: 'var(--fs-2)',
                   fontFamily: 'inherit',
                   resize: 'vertical',
                 }}

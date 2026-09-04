@@ -47,18 +47,16 @@ export default function ServiceLimitsTab() {
   if (loading) return <div className="card">불러오는 중…</div>;
 
   return (
-    <div className="card">
-      <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+    <div className="card rep">
+      <div className="rep-title">
         ⚙️ 서비스 한도
-        <span style={{ fontWeight: 400, fontSize: 11.5, color: '#888' }}>
-          요금제를 올려야 할 때를 미리 알려 줍니다
-        </span>
-        <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => void load()}>새로고침</button>
+        <span className="sub">요금제를 올려야 할 때를 미리 알려 줍니다</span>
+        <button className="btn-rep" style={{ marginLeft: 'auto' }} onClick={() => void load()}>새로고침</button>
       </div>
 
-      {err && <div className="alert-e" style={{ fontSize: 11.5 }}>{err}</div>}
+      {err && <div className="alert-e" style={{ fontSize: 'var(--fs-1)' }}>{err}</div>}
 
-      <div className={worst === 'ok' ? 'alert-i' : 'alert-w'} style={{ fontSize: 11.5 }}>
+      <div className={worst === 'ok' ? 'alert-i' : 'alert-w'} style={{ fontSize: 'var(--fs-1)' }}>
         {worst === 'ok' ? (
           <>지금은 <b>여유가 있습니다.</b> {Math.round(WARN_AT * 100)}% 를 넘으면 여기가 경고로 바뀝니다.</>
         ) : (
@@ -75,26 +73,26 @@ export default function ServiceLimitsTab() {
           return (
             <div key={r.key}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                <b style={{ fontSize: 13, color: '#1A2B52' }}>{r.label}</b>
-                <span style={{ fontSize: 12.5, color: '#333' }}>
+                <b style={{ fontSize: 'var(--fs-3)', color: 'var(--navy)' }}>{r.label}</b>
+                <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink)' }}>
                   {humanUsed(r.used, r.unit)}
-                  <span style={{ color: '#888' }}> / {r.limit == null ? '한도 모름'
+                  <span style={{ color: 'var(--ink-3)' }}> / {r.limit == null ? '한도 모름'
                     : r.unit === 'bytes' ? humanBytes(r.limit) : r.limit.toLocaleString('ko-KR')}</span>
                 </span>
                 <span style={{
-                  fontSize: 11, padding: '2px 7px', borderRadius: 3,
+                  fontSize: 'var(--fs-1)', padding: '2px 7px', borderRadius: 3,
                   background: t.bg, color: t.text, fontWeight: 700,
                 }}>
                   {r.ratio == null ? '—' : `${w}% · ${LEVEL_LABEL[r.level]}`}
                 </span>
                 {r.key === 'storage' && r.items != null && (
-                  <span style={{ fontSize: 11, color: '#888' }}>파일 {r.items}개</span>
+                  <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>파일 {r.items}개</span>
                 )}
               </div>
               <div style={{ height: 8, background: '#EDEAE2', borderRadius: 4, marginTop: 5, overflow: 'hidden' }}>
                 <div style={{ width: `${w}%`, height: '100%', background: t.bar, borderRadius: 4 }} />
               </div>
-              <div style={{ fontSize: 11, color: '#777', marginTop: 4 }}>{r.consequence}</div>
+              <div style={{ fontSize: 'var(--fs-1)', color: '#777', marginTop: 4 }}>{r.consequence}</div>
             </div>
           );
         })}
@@ -102,18 +100,18 @@ export default function ServiceLimitsTab() {
 
       {/* ── 무엇이 자리를 차지하나 ── */}
       <div style={{ marginTop: 20 }}>
-        <b style={{ fontSize: 13, color: '#1A2B52' }}>무엇이 자리를 차지하나</b>
-        <span style={{ fontSize: 11, color: '#888' }}> — 줄여야 할 때 여기를 봅니다</span>
-        <table className="tbl" style={{ fontSize: 11.5, marginTop: 6 }}>
+        <b style={{ fontSize: 'var(--fs-3)', color: 'var(--navy)' }}>무엇이 자리를 차지하나</b>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}> — 줄여야 할 때 여기를 봅니다</span>
+        <table className="tbl" style={{ fontSize: 'var(--fs-1)', marginTop: 6 }}>
           <thead>
             <tr><th>테이블</th><th className="r" style={{ width: 90 }}>크기</th><th className="r" style={{ width: 90 }}>행 수(추정)</th></tr>
           </thead>
           <tbody>
             {tables.map((t) => (
               <tr key={t.name}>
-                <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{t.name}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-1)' }}>{t.name}</td>
                 <td className="r">{humanBytes(t.bytes)}</td>
-                <td className="r" style={{ color: '#666' }}>{t.rowsEst.toLocaleString('ko-KR')}</td>
+                <td className="r" style={{ color: 'var(--ink-2)' }}>{t.rowsEst.toLocaleString('ko-KR')}</td>
               </tr>
             ))}
           </tbody>
@@ -122,17 +120,17 @@ export default function ServiceLimitsTab() {
 
       {buckets.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <b style={{ fontSize: 13, color: '#1A2B52' }}>파일 저장소</b>
-          <table className="tbl" style={{ fontSize: 11.5, marginTop: 6 }}>
+          <b style={{ fontSize: 'var(--fs-3)', color: 'var(--navy)' }}>파일 저장소</b>
+          <table className="tbl" style={{ fontSize: 'var(--fs-1)', marginTop: 6 }}>
             <thead>
               <tr><th>버킷</th><th className="r" style={{ width: 90 }}>크기</th><th className="r" style={{ width: 90 }}>파일 수</th></tr>
             </thead>
             <tbody>
               {buckets.map((b) => (
                 <tr key={b.name}>
-                  <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{b.name}</td>
+                  <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-1)' }}>{b.name}</td>
                   <td className="r">{humanBytes(b.bytes)}</td>
-                  <td className="r" style={{ color: '#666' }}>{b.items}</td>
+                  <td className="r" style={{ color: 'var(--ink-2)' }}>{b.items}</td>
                 </tr>
               ))}
             </tbody>
@@ -142,25 +140,25 @@ export default function ServiceLimitsTab() {
 
       {/* ── 앱에서 잴 수 없는 것 ── */}
       <div style={{ marginTop: 20 }}>
-        <b style={{ fontSize: 13, color: '#1A2B52' }}>앱에서 잴 수 없는 것</b>
-        <span style={{ fontSize: 11, color: '#888' }}> — 각자 콘솔에서 봐야 합니다</span>
+        <b style={{ fontSize: 'var(--fs-3)', color: 'var(--navy)' }}>앱에서 잴 수 없는 것</b>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}> — 각자 콘솔에서 봐야 합니다</span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
           {EXTERNAL_SERVICES.map((s) => (
             <div key={s.name} style={{
-              border: '1px solid #E5E1D8', borderRadius: 6, padding: '8px 10px', fontSize: 11.5,
+              border: '1px solid var(--rule)', borderRadius: 6, padding: '8px 10px', fontSize: 'var(--fs-1)',
             }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                <b style={{ color: '#1A2B52' }}>{s.name}</b>
+                <b style={{ color: 'var(--navy)' }}>{s.name}</b>
                 <span style={{
-                  fontSize: 10.5, padding: '1px 6px', borderRadius: 3,
-                  background: '#F1EFE9', color: '#6B7280',
+                  fontSize: 'var(--fs-0)', padding: '1px 6px', borderRadius: 3,
+                  background: '#F1EFE9', color: 'var(--ink-3)',
                 }}>{s.plan}</span>
                 <a href={s.url} target="_blank" rel="noreferrer"
-                  style={{ marginLeft: 'auto', fontSize: 11, color: '#A9761F', fontWeight: 700 }}>
+                  style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: '#A9761F', fontWeight: 700 }}>
                   콘솔 열기 ↗
                 </a>
               </div>
-              <div style={{ color: '#555', marginTop: 3, lineHeight: 1.6 }}>{s.watch}</div>
+              <div style={{ color: 'var(--ink-2)', marginTop: 3, lineHeight: 1.6 }}>{s.watch}</div>
             </div>
           ))}
         </div>

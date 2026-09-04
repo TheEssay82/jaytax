@@ -162,15 +162,18 @@ export default function BizStatusTab() {
   if (loading) return <div className="card">불러오는 중…</div>;
 
   return (
-    <div className="card">
-      <div className="chdr">📈 현황및예산조회</div>
-      <div className="alert-i" style={{ fontSize: 11 }}>
-        <b>앞을 보는 화면</b>입니다 — 계약이 이대로 굴러갈 때의 <b>연환산 매출</b>,
-        앞으로의 <b>월별 추이</b>, <b>예산</b>과의 비교를 봅니다.
-        <br />실제로 청구·발행한 금액은 기장등청구관리 › <b>매출통계</b>에서 봅니다.
-        이쪽은 <b>계약</b>에서, 저쪽은 <b>청구 기록</b>에서 나오므로 두 숫자가 다른 것이 정상입니다.
+    <div className="card rep">
+      <div className="rep-title">
+        📈 현황및예산조회
+        <span className="sub">계약에서 내다본 앞으로의 매출</span>
       </div>
-      {error && <div style={{ color: '#c33', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      <div className="rep-sub">연환산 매출 · 월별 추이 · 예산 비교</div>
+      <div className="rep-hint">
+        💡 <b>앞을 보는 화면</b>입니다 — 계약이 이대로 굴러갈 때의 숫자입니다.
+        실제로 청구·발행한 금액은 기장등청구관리 › <b>매출통계</b>에서 봅니다.
+        <b> 두 숫자가 다른 것이 정상입니다</b> — 이쪽은 <b>계약</b>에서, 저쪽은 <b>청구 기록</b>에서 나옵니다.
+      </div>
+      {error && <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)', marginBottom: 8 }}>{error}</div>}
 
       {/* 요약 카드 */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -192,12 +195,12 @@ export default function BizStatusTab() {
         <MiniTable title="담당CPA별 매출(연환산)" rows={stat.byCpa} />
         <MiniTable title="유형별 매출(연환산)" rows={stat.byType} />
       </div>
-      <div style={{ fontSize: 10.5, color: '#999', marginBottom: 10 }}>※ 연환산 = 월×12·분기×4·반기×2·연×1·건/발생시×1. 종속계약(청구금액 0)은 합계에 영향 없음. CPA집계는 계약의 담당CPA 기준.</div>
+      <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginBottom: 10 }}>※ 연환산 = 월×12·분기×4·반기×2·연×1·건/발생시×1. 종속계약(청구금액 0)은 합계에 영향 없음. CPA집계는 계약의 담당CPA 기준.</div>
 
       {/* 월별 매출추이 */}
-      <div style={{ border: '1px solid #d8cfa0', borderRadius: 8, background: '#fbf8ef', padding: '8px 10px', marginBottom: 12 }}>
+      <div style={{ border: '1px solid #E1E8F1', borderRadius: 8, background: '#F8FAFD', padding: '8px 10px', marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-          <b style={{ fontSize: 12.5, color: '#654' }}>📈 월별 매출추이</b>
+          <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>📈 월별 매출추이</b>
           <select value={trendYear || curSettlementYear} onChange={(e) => setTrendYear(Number(e.target.value))} style={selStyle} title="정산연도(회계연도 7/1~익6/30)">
             {trendYearOpts.map((y) => <option key={y} value={y}>{y} 귀속(정산 {y}-07~{y + 1}-06)</option>)}
           </select>
@@ -205,55 +208,55 @@ export default function BizStatusTab() {
             <button className={trendBasis === 'accrual' ? 'btn-p' : 'btn-sm'} onClick={() => setTrendBasis('accrual')}>매출(발생)</button>
             <button className={trendBasis === 'billing' ? 'btn-p' : 'btn-sm'} onClick={() => setTrendBasis('billing')}>청구</button>
           </span>
-          <label style={{ fontSize: 11.5, cursor: 'pointer' }}
+          <label style={{ fontSize: 'var(--fs-1)', cursor: 'pointer' }}
             title="사업연도(7월~익6월) 대신 이번 달부터 열두 달을 봅니다 — 예산을 짤 때 쓰는 창입니다">
             <input type="checkbox" checked={rolling} onChange={(e) => setRolling(e.target.checked)} />
             {' '}앞으로 12개월
           </label>
-          <span style={{ fontSize: 10.5, color: '#a98' }}>공급가액(순액) · 회계감사 매출은 회계연도 월할 · 옅은 월 = 미경과(예정)</span>
+          <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>공급가액(순액) · 회계감사 매출은 회계연도 월할 · 옅은 월 = 미경과(예정)</span>
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', fontSize: 11.5, minWidth: 900 }}>
-            <thead><tr style={{ background: '#f0e9d2' }}>
-              <th style={{ ...thc, textAlign: 'left', position: 'sticky', left: 0, background: '#f0e9d2' }}>팀 \ 월</th>
+          <table style={{ borderCollapse: 'collapse', fontSize: 'var(--fs-1)', minWidth: 900 }}>
+            <thead><tr style={{ background: '#E9EFF7' }}>
+              <th style={{ ...thc, textAlign: 'left', position: 'sticky', left: 0, background: '#E9EFF7' }}>팀 \ 월</th>
               {trend.months.map((m) => <th key={m} style={{ ...thc, textAlign: 'right', color: m > todayMonth ? '#bbb' : '#555' }}>{m.slice(2)}</th>)}
-              <th style={{ ...thc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}>합계</th>
+              <th style={{ ...thc, textAlign: 'right', borderLeft: '2px solid #C3CEDC' }}>합계</th>
             </tr></thead>
             <tbody>
               {TEAMS.map((t) => (
-                <tr key={t} style={{ borderTop: '1px solid #eadfbf' }}>
-                  <td style={{ ...tdc, fontWeight: 600, position: 'sticky', left: 0, background: '#fbf8ef' }}>{t}</td>
+                <tr key={t} style={{ borderTop: '1px solid #E7ECF3' }}>
+                  <td style={{ ...tdc, fontWeight: 600, position: 'sticky', left: 0, background: '#F8FAFD' }}>{t}</td>
                   {trend.months.map((m) => { const v = trend.byTeam.get(t)!.get(m) ?? 0; return <td key={m} style={{ ...tdc, textAlign: 'right', color: v ? (m > todayMonth ? '#9bb' : '#245') : '#ccc' }}>{v ? won(v) : '·'}</td>; })}
-                  <td style={{ ...tdc, textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #c9a54a' }}>{won(trend.teamTotal(t))}</td>
+                  <td style={{ ...tdc, textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #C3CEDC' }}>{won(trend.teamTotal(t))}</td>
                 </tr>
               ))}
-              <tr style={{ borderTop: '2px solid #c9a54a', background: '#f5efdd', fontWeight: 700 }}>
-                <td style={{ ...tdc, position: 'sticky', left: 0, background: '#f5efdd' }}>합계</td>
+              <tr style={{ borderTop: '2px solid #C3CEDC', background: '#EEF4FB', fontWeight: 700 }}>
+                <td style={{ ...tdc, position: 'sticky', left: 0, background: '#EEF4FB' }}>합계</td>
                 {trend.months.map((m, i) => { const v = trend.totals[i]; const pct = Math.round((v / trend.peak) * 100); return (
                   <td key={m} style={{ ...tdc, textAlign: 'right', color: m > todayMonth ? '#9ab' : '#134', background: `linear-gradient(to top, rgba(36,85,120,.16) ${pct}%, transparent ${pct}%)` }}>{v ? won(v) : '·'}</td>
                 ); })}
-                <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}>{won(trend.grand)}</td>
+                <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #C3CEDC' }}>{won(trend.grand)}</td>
               </tr>
-              <tr style={{ borderTop: '1px solid #eadfbf', color: '#888' }}>
-                <td style={{ ...tdc, position: 'sticky', left: 0, background: '#fbf8ef' }}>누계</td>
+              <tr style={{ borderTop: '1px solid #E7ECF3', color: 'var(--ink-3)' }}>
+                <td style={{ ...tdc, position: 'sticky', left: 0, background: '#F8FAFD' }}>누계</td>
                 {trend.months.map((m, i) => <td key={m} style={{ ...tdc, textAlign: 'right', color: m > todayMonth ? '#ccc' : '#889' }}>{won(trend.cumTotals[i])}</td>)}
-                <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}></td>
+                <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #C3CEDC' }}></td>
               </tr>
               {actualTrend.has && (<>
-                <tr style={{ borderTop: '2px solid #7a9', background: '#eef6ee', fontWeight: 700, color: '#274' }}>
+                <tr style={{ borderTop: '2px solid #7a9', background: '#eef6ee', fontWeight: 700, color: 'var(--good)' }}>
                   <td style={{ ...tdc, position: 'sticky', left: 0, background: '#eef6ee' }}>실적(청구)</td>
                   {trend.months.map((m, i) => { const v = actualTrend.totals[i]; const pct = Math.round((v / trend.peak) * 100); return (
-                    <td key={m} style={{ ...tdc, textAlign: 'right', color: '#274', background: `linear-gradient(to top, rgba(40,120,70,.16) ${pct}%, transparent ${pct}%)` }}>{v ? won(v) : '·'}</td>
+                    <td key={m} style={{ ...tdc, textAlign: 'right', color: 'var(--good)', background: `linear-gradient(to top, rgba(40,120,70,.16) ${pct}%, transparent ${pct}%)` }}>{v ? won(v) : '·'}</td>
                   ); })}
-                  <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}>{won(actualTrend.grand)}</td>
+                  <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #C3CEDC' }}>{won(actualTrend.grand)}</td>
                 </tr>
                 <tr style={{ borderTop: '1px solid #d4e4d4', color: '#6a8' }}>
-                  <td style={{ ...tdc, position: 'sticky', left: 0, background: '#fbf8ef' }}>실적 누계</td>
+                  <td style={{ ...tdc, position: 'sticky', left: 0, background: '#F8FAFD' }}>실적 누계</td>
                   {trend.months.map((m, i) => <td key={m} style={{ ...tdc, textAlign: 'right' }}>{won(actualTrend.cumTotals[i])}</td>)}
-                  <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a' }}></td>
+                  <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #C3CEDC' }}></td>
                 </tr>
                 <tr style={{ borderTop: '1px solid #d4e4d4', fontWeight: 700 }}>
-                  <td style={{ ...tdc, position: 'sticky', left: 0, background: '#fbf8ef' }}
+                  <td style={{ ...tdc, position: 'sticky', left: 0, background: '#F8FAFD' }}
                     title="실적 − 계획. (+)는 계획보다 더 나온 달, (−)는 덜 나온 달입니다.">차이(실적−계획)</td>
                   {trend.months.map((m, i) => {
                     const d = actualTrend.totals[i] - trend.totals[i];
@@ -264,7 +267,7 @@ export default function BizStatusTab() {
                       </td>
                     );
                   })}
-                  <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #c9a54a', color: actualTrend.grand - trend.grand >= 0 ? '#274' : '#c33' }}>
+                  <td style={{ ...tdc, textAlign: 'right', borderLeft: '2px solid #C3CEDC', color: actualTrend.grand - trend.grand >= 0 ? '#274' : '#c33' }}>
                     {actualTrend.grand - trend.grand >= 0 ? '+' : ''}{won(actualTrend.grand - trend.grand)}
                   </td>
                 </tr>
@@ -272,7 +275,7 @@ export default function BizStatusTab() {
             </tbody>
           </table>
         </div>
-        {actualTrend.has && <div style={{ fontSize: 10.5, color: '#798', marginTop: 4 }}>※ 위 3행(팀별·합계·누계)=계약 기준 {trendBasis === 'accrual' ? '매출(발생)' : '청구'} projection · 아래 <b style={{ color: '#274' }}>실적(청구)</b>=실제 청구실적(biz_revenue_actual). 계약 vs 실적 비교.</div>}
+        {actualTrend.has && <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 4 }}>※ 위 3행(팀별·합계·누계)=계약 기준 {trendBasis === 'accrual' ? '매출(발생)' : '청구'} projection · 아래 <b style={{ color: 'var(--good)' }}>실적(청구)</b>=실제 청구실적(biz_revenue_actual). 계약 vs 실적 비교.</div>}
       </div>
 
       {/* 이탈 위험 · 신규 유입 — 예산의 가정이 흔들리는 곳 */}
@@ -287,18 +290,18 @@ export default function BizStatusTab() {
         <select value={kindF} onChange={(e) => setKindF(e.target.value as '' | '법인' | '개인')} style={selStyle}><option value="">구분 전체</option><option value="법인">법인</option><option value="개인">개인</option></select>
         <select value={natF} onChange={(e) => setNatF(e.target.value as '' | '매출' | '일반')} style={selStyle}><option value="">성격 전체</option><option value="매출">매출</option><option value="일반">일반</option></select>
         <input placeholder="🔍 거래처·CPA·담당직원" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-        <span style={{ fontSize: 11, color: '#888' }}>{view.length}건</span>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{view.length}건</span>
       </div>
       <div style={scrollBox()}>
-        <table style={{ tableLayout: 'fixed', width: COLS.reduce((s, c) => s + widthOf(c.key, c.w), 0), borderCollapse: 'separate', borderSpacing: 0, fontSize: 11.5 }}>
+        <table style={{ tableLayout: 'fixed', width: COLS.reduce((s, c) => s + widthOf(c.key, c.w), 0), borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
           <colgroup>{COLS.map((c) => <col key={c.key} style={{ width: widthOf(c.key, c.w) }} />)}</colgroup>
           <thead><tr>
-            {COLS.map((c) => <th key={c.key} style={{ ...thc, ...clip, height: 26, cursor: 'pointer', textAlign: c.num ? 'right' : 'left', position: 'sticky', ...stickyTop(0, '#f4efe4') }} onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key && s.dir === 'desc' ? 'asc' : 'desc' }))} title="클릭: 정렬 · 우측 끝 드래그: 너비 조절">{c.label}{sort.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}<ResizeHandle onMouseDown={startResize(c.key, widthOf(c.key, c.w))} /></th>)}
+            {COLS.map((c) => <th key={c.key} style={{ ...thc, ...clip, height: 26, cursor: 'pointer', textAlign: c.num ? 'right' : 'left', position: 'sticky', ...stickyTop(0, '#E9EFF7') }} onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key && s.dir === 'desc' ? 'asc' : 'desc' }))} title="클릭: 정렬 · 우측 끝 드래그: 너비 조절">{c.label}{sort.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}<ResizeHandle onMouseDown={startResize(c.key, widthOf(c.key, c.w))} /></th>)}
           </tr></thead>
           <tbody>
-            {view.length === 0 && <tr><td colSpan={COLS.length} style={{ ...tdc, color: '#999', padding: 12 }}>거래처가 없습니다.</td></tr>}
+            {view.length === 0 && <tr><td colSpan={COLS.length} style={{ ...tdc, color: 'var(--ink-3)', padding: 12 }}>거래처가 없습니다.</td></tr>}
             {view.map((r) => {
-              const bt: React.CSSProperties = { borderTop: '1px solid #eee', ...clip };
+              const bt: React.CSSProperties = { borderTop: '1px solid var(--rule-2)', ...clip };
               return (
               <tr key={r.e.id}>
                 <td style={{ ...tdc, ...bt }}>{r.code}</td>
@@ -329,22 +332,22 @@ function agg(cons: SalesContract[], keyOf: (c: SalesContract) => string): { labe
 
 function Stat({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
-    <div style={{ border: '1px solid #e6e0d8', borderRadius: 8, padding: '8px 14px', minWidth: 120, background: accent ? '#eef4fb' : '#fff' }}>
-      <div style={{ fontSize: 10.5, color: '#888' }}>{label}</div>
+    <div style={{ border: '1px solid var(--rule)', borderRadius: 8, padding: '8px 14px', minWidth: 120, background: accent ? '#eef4fb' : '#fff' }}>
+      <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{label}</div>
       <div style={{ fontSize: 17, fontWeight: 700, color: accent ? '#245' : '#333' }}>{value}</div>
-      {sub && <div style={{ fontSize: 10, color: '#aaa' }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)' }}>{sub}</div>}
     </div>
   );
 }
 function MiniTable({ title, rows }: { title: string; rows: { label: string; amount: number; count: number }[] }) {
   return (
-    <div style={{ flex: 1, minWidth: 240, border: '1px solid #eee', borderRadius: 6, padding: 8 }}>
-      <div style={{ fontSize: 11.5, fontWeight: 700, color: '#456', marginBottom: 4 }}>{title}</div>
-      {rows.length === 0 && <div style={{ fontSize: 11, color: '#aaa' }}>데이터 없음</div>}
-      <table style={{ width: '100%', fontSize: 11 }}>
+    <div style={{ flex: 1, minWidth: 240, border: '1px solid var(--rule-2)', borderRadius: 6, padding: 8 }}>
+      <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#456', marginBottom: 4 }}>{title}</div>
+      {rows.length === 0 && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)' }}>데이터 없음</div>}
+      <table style={{ width: '100%', fontSize: 'var(--fs-1)' }}>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.label}><td style={{ padding: '1px 2px' }}>{r.label}</td><td style={{ padding: '1px 2px', color: '#888', textAlign: 'right' }}>{r.count}건</td><td style={{ padding: '1px 2px', textAlign: 'right', fontWeight: 600 }}>{won(r.amount)}</td></tr>
+            <tr key={r.label}><td style={{ padding: '1px 2px' }}>{r.label}</td><td style={{ padding: '1px 2px', color: 'var(--ink-3)', textAlign: 'right' }}>{r.count}건</td><td style={{ padding: '1px 2px', textAlign: 'right', fontWeight: 600 }}>{won(r.amount)}</td></tr>
           ))}
         </tbody>
       </table>
@@ -358,6 +361,6 @@ const COLS: { key: string; label: string; num?: boolean; w: number }[] = [
   { key: 'contracts', label: '매출계약', num: true, w: 66 }, { key: 'annual', label: '연환산매출', num: true, w: 104 },
   { key: 'cpa', label: '담당CPA', w: 70 }, { key: 'staff', label: '담당직원', w: 96 }, { key: 'contacts', label: '담당자', num: true, w: 56 },
 ];
-const selStyle: React.CSSProperties = { padding: '4px 7px', fontSize: 12 };
-const thc: React.CSSProperties = { padding: '5px 6px', fontWeight: 700, color: '#555', whiteSpace: 'nowrap', userSelect: 'none' };
+const selStyle: React.CSSProperties = { padding: '4px 7px', fontSize: 'var(--fs-2)' };
+const thc: React.CSSProperties = { padding: '5px 6px', fontWeight: 700, color: 'var(--ink-2)', whiteSpace: 'nowrap', userSelect: 'none' };
 const tdc: React.CSSProperties = { padding: '4px 6px', whiteSpace: 'nowrap' };

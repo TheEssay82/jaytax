@@ -110,7 +110,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
     return (
       <div className="card">
         <div className="chdr">📋 청구기록</div>
-        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
       </div>
     );
   }
@@ -125,7 +125,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
 
       {error && <div className="alert-w">{error}</div>}
       {ownOnly && (
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           🔒 본인(담당자: {profileName || '미지정'}) 청구기록만 표시됩니다.
         </div>
       )}
@@ -189,7 +189,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
           <tbody>
             {view.length === 0 && (
               <tr>
-                <td colSpan={13} style={{ textAlign: 'center', padding: 24, color: '#BBB' }}>
+                <td colSpan={13} style={{ textAlign: 'center', padding: 24, color: 'var(--ink-4)' }}>
                   기록 없음
                 </td>
               </tr>
@@ -213,7 +213,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
           </tbody>
           {view.length > 0 && (
             <tfoot style={{ background: '#F5F1EB', fontWeight: 700 }}>
-              <tr style={{ borderTop: '2px solid #1A2B52' }}>
+              <tr style={{ borderTop: '2px solid var(--navy)' }}>
                 <td colSpan={4} style={{ padding: '7px 9px' }}>
                   합계 ({view.length}건)
                 </td>
@@ -224,10 +224,10 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
                   -{fm(sum((r) => r.disc))}
                 </td>
                 <td className="r" style={{ fontFamily: 'monospace' }}>{fm(sum((r) => r.D))}</td>
-                <td className="r" style={{ fontFamily: 'monospace', color: '#888', fontSize: 11 }}>
+                <td className="r" style={{ fontFamily: 'monospace', color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>
                   {fm(sum((r) => r.VAT))}
                 </td>
-                <td className="r" style={{ fontFamily: 'monospace', color: '#1A2B52' }}>
+                <td className="r" style={{ fontFamily: 'monospace', color: 'var(--navy)' }}>
                   {fm(sum((r) => r.grand))}
                 </td>
                 <td colSpan={2}></td>
@@ -283,7 +283,7 @@ function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, onPr
           )}
         </td>
         <td>{r.manager}</td>
-        <td style={{ fontWeight: 700, color: '#1A2B52' }}>
+        <td style={{ fontWeight: 700, color: 'var(--navy)' }}>
           {r.companyName}
           {r.status === 'draft' && (
             <>
@@ -294,16 +294,16 @@ function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, onPr
         </td>
         <td className="r" style={{ fontFamily: 'monospace' }}>{fm(r.rev || 0)}</td>
         <td className="r" style={{ fontFamily: 'monospace' }}>{fm(r.A || 0)}</td>
-        <td className="r" style={{ fontFamily: 'monospace', color: '#555' }}>{fm(r.C || 0)}</td>
+        <td className="r" style={{ fontFamily: 'monospace', color: 'var(--ink-2)' }}>{fm(r.C || 0)}</td>
         <td className="r" style={{ fontFamily: 'monospace', color: '#DC2626' }}>
           {r.disc ? '-' + fm(r.disc) : '-'}
         </td>
         <td className="r" style={{ fontFamily: 'monospace' }}>{fm(r.D || 0)}</td>
-        <td className="r" style={{ fontFamily: 'monospace', color: '#888', fontSize: 11 }}>{fm(r.VAT || 0)}</td>
-        <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1A2B52' }}>
+        <td className="r" style={{ fontFamily: 'monospace', color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>{fm(r.VAT || 0)}</td>
+        <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--navy)' }}>
           {fm(r.grand || 0)}
         </td>
-        <td style={{ fontSize: 10, color: '#999' }}>{dt(r.savedAt)}</td>
+        <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{dt(r.savedAt)}</td>
         <td>
           <div style={{ display: 'flex', gap: 3 }} onClick={(e) => e.stopPropagation()}>
             <button className="btn-sm" onClick={onPrint} title="청구서 PDF/인쇄">
@@ -342,7 +342,7 @@ function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, onPr
                 </div>
                 <div className="hdet-item">
                   <label>보수총계 C) ← 할인 전</label>
-                  <strong style={{ color: '#1A2B52' }}>{fm(r.C || 0)}원</strong>
+                  <strong style={{ color: 'var(--navy)' }}>{fm(r.C || 0)}원</strong>
                 </div>
                 <div className="hdet-item">
                   <label>할인금액 ⑧</label>
@@ -358,14 +358,14 @@ function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, onPr
                 </div>
                 <div className="hdet-item">
                   <label>최종 청구금액</label>
-                  <strong style={{ fontSize: 15, color: '#1A2B52' }}>{fm(r.grand || 0)}원</strong>
+                  <strong style={{ fontSize: 'var(--fs-4)', color: 'var(--navy)' }}>{fm(r.grand || 0)}원</strong>
                 </div>
                 <div className="hdet-item">
                   <label>할인 사유</label>
                   <strong>{r.discContent || '-'}</strong>
                 </div>
               </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#555', margin: '8px 0 4px' }}>
+              <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--ink-2)', margin: '8px 0 4px' }}>
                 업무량 측정 내역
               </div>
               <div className="wf-grid">

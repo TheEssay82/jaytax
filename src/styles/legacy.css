@@ -297,11 +297,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
    여기서만 제 폭을 갖게 한다. */
 .rep-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0 8px}
 .rep-controls select{width:auto;min-width:120px;max-width:100%}
-/* 넓은 표를 담는 자리 — 표만 가로로 민다. */
-.tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+/* 넓은 표를 담는 자리 — 표만 가로로 민다.
+   .tbl-scroll 과 다르다. 그쪽은 세로로 길 때 머리를 붙박아 두는 자리다. */
+.tbl-wide{overflow-x:auto;-webkit-overflow-scrolling:touch}
 /* 신호색은 hover·tfoot 바탕에 지워지면 안 된다 — 뜻을 담은 색이 마우스 위치에 따라
    사라지면 표를 못 믿게 된다. 특이도를 여기서 되돌려 준다. */
 .tbl-rep tbody tr:hover td.sig-hi {background:var(--good-bg)}
 .tbl-rep tbody tr:hover td.sig-mid{background:var(--warn-bg)}
 .tbl-rep tbody tr:hover td.sig-low{background:var(--bad-bg)}
 .tbl-rep tfoot td.sig-sum{background:var(--navy-bg)}
+
+/* 보고서 화면 안의 붙박이 표머리 — 세로로 긴 피벗표는 구조를 못 바꾼다(머리를 붙박아야 하므로).
+   대신 색만 보고서 쪽으로 맞춘다. */
+.card.rep .tbl-scroll thead th{background:#E9EFF7 !important;color:#2A3444;border-bottom:1px solid #D5DDE7}

@@ -77,13 +77,13 @@ export default function AttachmentsModal({
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, maxWidth: 640, width: '100%', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #eee', position: 'sticky', top: 0, background: '#fff' }}>
-          <span style={{ fontWeight: 700, color: '#1A2B52' }}>📎 첨부파일 — {req.companyName} · {req.sendKind}</span>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--rule-2)', position: 'sticky', top: 0, background: '#fff' }}>
+          <span style={{ fontWeight: 700, color: 'var(--navy)' }}>📎 첨부파일 — {req.companyName} · {req.sendKind}</span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
         <div style={{ padding: 12 }}>
           {attachments.length === 0 ? (
-            <div style={{ padding: 12, color: '#888', fontSize: 12.5 }}>
+            <div style={{ padding: 12, color: 'var(--ink-3)', fontSize: 'var(--fs-2)' }}>
               첨부파일이 없습니다.{editable && ' 아래에서 추가할 수 있습니다.'}
             </div>
           ) : (
@@ -92,8 +92,8 @@ export default function AttachmentsModal({
               <tbody>
                 {attachments.map((a) => (
                   <tr key={a.id}>
-                    <td style={{ fontSize: 12 }}>📄 {a.fileName}</td>
-                    <td style={{ fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>{fmtSize(a.sizeBytes)}</td>
+                    <td style={{ fontSize: 'var(--fs-2)' }}>📄 {a.fileName}</td>
+                    <td style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>{fmtSize(a.sizeBytes)}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button className="btn-sm btn-sm-blue" onClick={() => download(a)}>⬇ 다운로드</button>
@@ -114,10 +114,10 @@ export default function AttachmentsModal({
             </label>
           )}
           {canWrite && req.status !== '미접수' && (
-            <div style={{ marginTop: 10, fontSize: 11, color: '#8a5a00' }}>※ 처리 시작된 요청의 첨부는 변경할 수 없습니다(다운로드만 가능).</div>
+            <div style={{ marginTop: 10, fontSize: 'var(--fs-1)', color: '#8a5a00' }}>※ 처리 시작된 요청의 첨부는 변경할 수 없습니다(다운로드만 가능).</div>
           )}
           {shared && (
-            <div style={{ marginTop: 8, fontSize: 11, color: '#888' }}>※ 이 첨부는 같은 요청(문서)의 모든 수신자에게 공유됩니다.</div>
+            <div style={{ marginTop: 8, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>※ 이 첨부는 같은 요청(문서)의 모든 수신자에게 공유됩니다.</div>
           )}
         </div>
       </div>

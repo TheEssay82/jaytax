@@ -129,7 +129,7 @@ export default function SettingsTab() {
     return (
       <div className="card">
         <div className="chdr">⚙️ 설정</div>
-        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
       </div>
     );
   }
@@ -150,13 +150,13 @@ export default function SettingsTab() {
     <>
       <div className="set-t">⚙️ 설정 버전</div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-        <span style={{ fontSize: 12, color: '#555' }}>현재 적용:</span>
+        <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>현재 적용:</span>
         <span className="ver-badge">{activeLabel}</span>
-        <span style={{ fontSize: 11, color: '#aaa', marginLeft: 4 }}>편집 중:</span>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', marginLeft: 4 }}>편집 중:</span>
         <select
           value={selectedId}
           onChange={(e) => selectVersion(e.target.value)}
-          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #D0CCC4', borderRadius: 6 }}
+          style={{ padding: '4px 8px', fontSize: 'var(--fs-2)', border: '1px solid var(--rule)', borderRadius: 6 }}
         >
           {versions.map((v) => (
             <option key={v.id} value={v.id}>
@@ -177,7 +177,7 @@ export default function SettingsTab() {
         )}
       </div>
       {isDefault ? (
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           DEFAULT(코드 기본값)는 수정할 수 없습니다. 아래에서 값을 보고, 바꾸려면 <strong>새 버전명</strong>을 입력해{' '}
           <strong>새 버전으로 저장</strong>하세요.
         </div>
@@ -197,7 +197,7 @@ export default function SettingsTab() {
         value={label}
         placeholder="새 버전명 (예: 2025년 적용)"
         onChange={(e) => setLabel(e.target.value)}
-        style={{ padding: '5px 9px', border: '1px solid #D0CCC4', borderRadius: 6, fontSize: 12, width: 180 }}
+        style={{ padding: '5px 9px', border: '1px solid var(--rule)', borderRadius: 6, fontSize: 'var(--fs-2)', width: 180 }}
       />
       <button className="btn-p" onClick={doSaveNew} disabled={saving}>
         💾 새 버전으로 저장·적용
@@ -207,7 +207,7 @@ export default function SettingsTab() {
           이 버전 덮어쓰기
         </button>
       )}
-      {msg && <span style={{ fontSize: 11, color: '#059669' }}>{msg}</span>}
+      {msg && <span style={{ fontSize: 'var(--fs-1)', color: '#059669' }}>{msg}</span>}
     </div>
   );
 
@@ -221,7 +221,7 @@ export default function SettingsTab() {
         <div className="alert-i">설명 텍스트 수정 후 저장(새 버전/덮어쓰기)해야 영구 반영됩니다.</div>
         {HELP_KEYS.map((k) => (
           <div key={k} style={{ marginBottom: 14 }}>
-            <strong style={{ fontSize: 13, color: '#1A2B52' }}>{k}</strong>
+            <strong style={{ fontSize: 'var(--fs-3)', color: 'var(--navy)' }}>{k}</strong>
             <textarea
               rows={5}
               disabled={isDefault}
@@ -231,9 +231,9 @@ export default function SettingsTab() {
                 width: '100%',
                 marginTop: 5,
                 padding: '7px 9px',
-                border: '1px solid #D0CCC4',
+                border: '1px solid var(--rule)',
                 borderRadius: 7,
-                fontSize: 12,
+                fontSize: 'var(--fs-2)',
                 fontFamily: 'inherit',
                 resize: 'vertical',
                 lineHeight: 1.6,
@@ -255,7 +255,7 @@ export default function SettingsTab() {
       {versionBar}
 
       <div className="set-t" style={{ marginTop: 14 }}>💰 기준수수료 누진 구간</div>
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 6 }}>
         법인/개인 사업자별 매출액 구간에 따른 조정수수료율을 설정합니다.
       </div>
       <div style={{ overflowX: 'auto' }}>

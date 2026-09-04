@@ -36,7 +36,7 @@ import {
 } from '../../lib/invoiceMonthApi';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
-const dash = <span style={{ color: '#CCC' }}>—</span>;
+const dash = <span style={{ color: 'var(--ink-4)' }}>—</span>;
 /**
  * 매출계약 대사 창 — 청구예정(초안)과 매출계약 전개분을 맞춰 본다.
  *
@@ -78,19 +78,19 @@ function ReconcileModal({ rows, ym, busy, canWrite, me, isMine, onClose, onAdd, 
       <div className="card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 940, width: '100%' }}>
         <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           🔍 매출계약 대사 · {ym}
-          <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
+          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
             청구예정 ↔ 매출계약등록{shown.length !== rows.length && ` · ${shown.length}/${rows.length} 보는 중`}
           </span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
 
         {rows.length === 0 ? (
-          <div className="alert-i" style={{ fontSize: 12 }}>
+          <div className="alert-i" style={{ fontSize: 'var(--fs-2)' }}>
             ✓ 청구예정과 매출계약이 <b>모두 일치</b>합니다. 고칠 것이 없습니다.
           </div>
         ) : (
           <>
-            <div className="alert-i" style={{ fontSize: 11 }}>
+            <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
               <b>매출계약은 참고자료</b>입니다 — 청구의 기준은 청구예정입니다.
               그러니 계약이 맞을 때만 반영하세요.
               <br />· <b>계약에만</b> ({count('계약에만')}) — 계약엔 있는데 청구예정에 없습니다. 새로 시작한 곳이면 <b>추가</b>합니다.
@@ -99,18 +99,18 @@ function ReconcileModal({ rows, ym, busy, canWrite, me, isMine, onClose, onAdd, 
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
               {me && (
-                <label style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
+                <label style={{ fontSize: 'var(--fs-1)', display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
                   title="담당직원이 나인 건만 봅니다">
                   <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} />
                   내 담당만 ({rows.filter((r) => isMine(r.staff)).length})
                 </label>
               )}
-              <span style={{ fontSize: 11.5, color: '#666' }}>골라서:</span>
+              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>골라서:</span>
               <button className="btn-sm" onClick={() => pickKind('계약에만')}>계약에만 전체</button>
               <button className="btn-sm" onClick={() => pickKind('초안에만')}>초안에만 전체</button>
               <button className="btn-sm" onClick={() => pickKind('금액다름')}>금액다름 전체</button>
               <button className="btn-sm" onClick={() => setSel(new Set())}>선택해제</button>
-              <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{chosen.length}</b>건</span>
+              <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>선택 <b>{chosen.length}</b>건</span>
               {canWrite && (
                 <>
                   <button className="btn-p" disabled={busy || !addable.length} onClick={() => void onAdd(addable)}>
@@ -126,7 +126,7 @@ function ReconcileModal({ rows, ym, busy, canWrite, me, isMine, onClose, onAdd, 
               )}
             </div>
             <div style={{ maxHeight: '52vh', overflow: 'auto' }}>
-              <table className="tbl" style={{ fontSize: 11.5 }}>
+              <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
                 <thead>
                   <tr>
                     <th style={{ width: 28 }}></th>
@@ -141,11 +141,11 @@ function ReconcileModal({ rows, ym, busy, canWrite, me, isMine, onClose, onAdd, 
                     return (
                       <tr key={i}>
                         <td><input type="checkbox" checked={sel.has(i)} onChange={() => toggle(i)} /></td>
-                        <td><span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.kind}</span></td>
-                        <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.company}</td>
+                        <td><span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 'var(--fs-0)', fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.kind}</span></td>
+                        <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{r.company}</td>
                         <td>{r.place}</td>
-                        <td style={{ fontSize: 11, fontWeight: 600, color: '#1A2B52' }}>{r.staff || dash}</td>
-                        <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.contractCode}</td>
+                        <td style={{ fontSize: 'var(--fs-1)', fontWeight: 600, color: 'var(--navy)' }}>{r.staff || dash}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-0)' }}>{r.contractCode}</td>
                         <td className="r">{r.draftAmount ? won(r.draftAmount) : dash}</td>
                         <td className="r">{r.candAmount ? won(r.candAmount) : dash}</td>
                         <td className="r" style={{ fontWeight: 700, color: r.candAmount - r.draftAmount >= 0 ? '#2a7' : '#c33' }}>
@@ -168,7 +168,7 @@ function ReconcileModal({ rows, ym, busy, canWrite, me, isMine, onClose, onAdd, 
 function Tag({ children, bg, fg, bd }: { children: React.ReactNode; bg: string; fg: string; bd: string }) {
   return (
     <span style={{
-      marginLeft: 4, fontSize: 10, fontWeight: 700, padding: '0 4px', borderRadius: 3,
+      marginLeft: 4, fontSize: 'var(--fs-0)', fontWeight: 700, padding: '0 4px', borderRadius: 3,
       color: fg, background: bg, border: `1px solid ${bd}`, whiteSpace: 'nowrap',
     }}>{children}</span>
   );
@@ -490,7 +490,7 @@ ${noContract ? `
   // 제목행을 누르면 정렬, 아래 칸에 값을 넣으면 그 열만 걸러진다. 너비는 끝을 끌어 조절(더블클릭=내용맞춤).
   const draftCols: GridCol<InvoiceDraft>[] = [
     { key: 'company', label: '거래처', width: 150, value: (d) => d.companyName,
-      style: { fontWeight: 700, color: '#1A2B52' },
+      style: { fontWeight: 700, color: 'var(--navy)' },
       cell: (d) => (
         <>
           {d.companyName}
@@ -500,8 +500,8 @@ ${noContract ? `
         </>
       ) },
     { key: 'place', label: '사업장', width: 110, value: (d) => d.placeName },
-    { key: 'erp', label: '매출계정', width: 118, value: (d) => d.erpAccount, cell: (d) => d.erpAccount || dash, style: { color: '#666' } },
-    { key: 'code', label: '계약코드', width: 100, value: (d) => d.contractCode, style: { fontFamily: 'monospace', fontSize: 10.5 } },
+    { key: 'erp', label: '매출계정', width: 118, value: (d) => d.erpAccount, cell: (d) => d.erpAccount || dash, style: { color: 'var(--ink-2)' } },
+    { key: 'code', label: '계약코드', width: 100, value: (d) => d.contractCode, style: { fontFamily: 'monospace', fontSize: 'var(--fs-0)' } },
     { key: 'round', label: '회차', width: 64, value: (d) => d.label },
     { key: 'supply', label: '공급가액', width: 104, num: true, value: (d) => d.supplyAmount,
       sum: (d) => d.supplyAmount,
@@ -511,19 +511,19 @@ ${noContract ? `
             const v = Number(e.target.value.replace(/[^\d-]/g, '')) || 0;
             if (v !== Math.round(d.supplyAmount)) void saveDraft(d.id, { supplyAmount: v }, d);
           }}
-          style={{ width: '100%', textAlign: 'right', fontSize: 11.5, padding: '1px 3px', boxSizing: 'border-box' }} />
+          style={{ width: '100%', textAlign: 'right', fontSize: 'var(--fs-1)', padding: '1px 3px', boxSizing: 'border-box' }} />
       ) : won(d.supplyAmount)) },
     { key: 'vat', label: '부가세', width: 84, num: true, value: (d) => Math.round(d.supplyAmount * 0.1),
-      cell: (d) => won(Math.round(d.supplyAmount * 0.1)), sum: (d) => Math.round(d.supplyAmount * 0.1), style: { color: '#888' } },
+      cell: (d) => won(Math.round(d.supplyAmount * 0.1)), sum: (d) => Math.round(d.supplyAmount * 0.1), style: { color: 'var(--ink-3)' } },
     { key: 'total', label: '합계', width: 96, num: true, value: (d) => d.supplyAmount + Math.round(d.supplyAmount * 0.1),
       cell: (d) => won(d.supplyAmount + Math.round(d.supplyAmount * 0.1)),
       sum: (d) => d.supplyAmount + Math.round(d.supplyAmount * 0.1), style: { fontWeight: 700 } },
     { key: 'cpa', label: '담당회계사', width: 80, value: (d) => d.cpa, opts: cpaOpts, cell: (d) => d.cpa || dash },
     { key: 'staff', label: '담당직원', width: 96, value: (d) => d.staff, opts: staffOpts,
-      style: { fontWeight: 600, color: '#1A2B52' },
+      style: { fontWeight: 600, color: 'var(--navy)' },
       cell: (d) => (canWrite ? (
         <select value={d.staff} onChange={(e) => void saveDraft(d.id, { staff: e.target.value }, d)}
-          style={{ width: '100%', fontSize: 11, padding: '1px 2px', boxSizing: 'border-box' }}>
+          style={{ width: '100%', fontSize: 'var(--fs-1)', padding: '1px 2px', boxSizing: 'border-box' }}>
           <option value="">(미지정)</option>
           {[...new Set([...staffOpts, ...(d.staff ? [d.staff] : [])])].map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
@@ -532,10 +532,10 @@ ${noContract ? `
       cell: (d) => (canWrite ? (
         <input defaultValue={d.summary} key={`${d.id}:s:${d.summary}`}
           onBlur={(e) => { if (e.target.value !== d.summary) void saveDraft(d.id, { summary: e.target.value }, d); }}
-          style={{ width: '100%', fontSize: 11, padding: '1px 3px', boxSizing: 'border-box' }} />
+          style={{ width: '100%', fontSize: 'var(--fs-1)', padding: '1px 3px', boxSizing: 'border-box' }} />
       ) : d.summary) },
     { key: 'source', label: '출처', width: 70, value: (d) => d.source, opts: ['전월복사', '계약추가', '수동추가'],
-      style: { color: '#888', fontSize: 10.5 } },
+      style: { color: 'var(--ink-3)', fontSize: 'var(--fs-0)' } },
     { key: 'del', label: '삭제', width: 48, value: () => '',
       cell: (d) => (canWrite ? (
         <button className="btn-sm btn-sm-del" title="이 건을 청구예정에서 뺍니다"
@@ -548,28 +548,28 @@ ${noContract ? `
       cell: (r) => {
         const c = r.status === '발행완료' ? { bg: '#D1FAE5', fg: '#065F46' }
           : r.status === '취소' ? { bg: '#F3F4F6', fg: '#6B7280' } : { bg: '#DBEAFE', fg: '#1E3A8A' };
-        return <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.status}</span>;
+        return <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 'var(--fs-0)', fontWeight: 700, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>{r.status}</span>;
       } },
     { key: 'company', label: '거래처', width: 150, value: (r) => r.companyName,
-      style: { fontWeight: 700, color: '#1A2B52' },
+      style: { fontWeight: 700, color: 'var(--navy)' },
       cell: (r) => <>{r.companyName}<DiffBadge d={diff.mark.get(r.contractId ?? '')} amount={r.supplyAmount} /></> },
     { key: 'place', label: '사업장', width: 110, value: (r) => r.placeName },
-    { key: 'erp', label: '매출계정', width: 120, value: (r) => r.erpAccount, cell: (r) => r.erpAccount || dash, style: { color: '#666' } },
-    { key: 'code', label: '계약코드', width: 100, value: (r) => r.contractCode, style: { fontFamily: 'monospace', fontSize: 10.5 } },
+    { key: 'erp', label: '매출계정', width: 120, value: (r) => r.erpAccount, cell: (r) => r.erpAccount || dash, style: { color: 'var(--ink-2)' } },
+    { key: 'code', label: '계약코드', width: 100, value: (r) => r.contractCode, style: { fontFamily: 'monospace', fontSize: 'var(--fs-0)' } },
     { key: 'cpa', label: '담당회계사', width: 80, value: (r) => r.cpa, opts: cpaOpts, cell: (r) => r.cpa || dash },
     { key: 'staff', label: '담당직원', width: 96, value: (r) => shareLabel(shares.get(r.id), r.staff), opts: staffOpts,
-      style: { fontWeight: 600, color: '#1A2B52' },
+      style: { fontWeight: 600, color: 'var(--navy)' },
       cell: (r) => (canWrite ? (
         <button className="btn-sm" style={{ fontWeight: 600 }} onClick={() => setEditShare(r)}
           title="담당직원을 바꾸거나, 둘이 나눠 한 일이면 비율을 정합니다">
           {shareLabel(shares.get(r.id), r.staff || '지정')}
         </button>
       ) : (shareLabel(shares.get(r.id), r.staff) || dash)) },
-    { key: 'summary', label: '비고', width: 130, value: (r) => r.summary || r.note, style: { color: '#666' } },
+    { key: 'summary', label: '비고', width: 130, value: (r) => r.summary || r.note, style: { color: 'var(--ink-2)' } },
     { key: 'supply', label: '공급가액', width: 96, num: true, value: (r) => r.supplyAmount,
       cell: (r) => won(r.supplyAmount), sum: (r) => (r.status === '취소' ? 0 : r.supplyAmount) },
     { key: 'vat', label: 'VAT', width: 84, num: true, value: (r) => r.vat,
-      cell: (r) => won(r.vat), sum: (r) => (r.status === '취소' ? 0 : r.vat), style: { color: '#888' } },
+      cell: (r) => won(r.vat), sum: (r) => (r.status === '취소' ? 0 : r.vat), style: { color: 'var(--ink-3)' } },
     { key: 'total', label: '합계', width: 96, num: true, value: (r) => r.total,
       cell: (r) => won(r.total), sum: (r) => (r.status === '취소' ? 0 : r.total), style: { fontWeight: 700 } },
     { key: 'invoiceNo', label: '승인번호', width: 110, value: (r) => r.invoiceNo,
@@ -584,7 +584,7 @@ ${noContract ? `
     { key: 'issuedDate', label: '발행일', width: 88, value: (r) => r.issuedDate ?? '', cell: (r) => r.issuedDate ?? dash },
     { key: 'issuedBy', label: '처리자', width: 76, value: (r) => r.issuedByName,
       cell: (r) => r.issuedByName || dash,
-      style: { color: '#666' } },
+      style: { color: 'var(--ink-2)' } },
   ];
 
   const candGrid = useGrid(VIEW_KEYS.invoiceCandidate, draftCols, draftSearched, { key: 'company', dir: 'asc' });
@@ -610,23 +610,23 @@ ${noContract ? `
         <select value={ym} onChange={(e) => setYm(e.target.value)} style={{ fontWeight: 700 }}>
           {monthOpts.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
-        <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
+        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
           청구예정 {drafts.length} · 요청 {stat.요청.length} · 발행완료 {stat.발행완료.length}
           {stat.취소.length > 0 && ` · 취소 ${stat.취소.length}`}
         </span>
         <button className="btn-sm" onClick={() => setManual(true)}
           title="내 자리에서 무엇을 언제 하는지 — 김민섭·담당직원·회계사별로">📖 업무 매뉴얼</button>
-        {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
+        {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
       </div>
       {err && <div className="alert-w">{err}</div>}
 
       {/* ── 이번 달 진행 상태 — 엑셀의 '전월 복사 → 3인 확인 → 마감'을 그대로 옮긴 자리 ── */}
       <div style={{
-        border: '1px solid #e2d9c6', background: '#fdfaf3', borderRadius: 6,
-        padding: '8px 10px', marginBottom: 10, fontSize: 12,
+        border: '1px solid var(--rule)', background: '#fdfaf3', borderRadius: 6,
+        padding: '8px 10px', marginBottom: 10, fontSize: 'var(--fs-2)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <b style={{ color: '#1A2B52' }}>{ym} 진행</b>
+          <b style={{ color: 'var(--navy)' }}>{ym} 진행</b>
           {!month?.opened ? (
             <>
               <span style={{ color: '#a15' }}>아직 열지 않았습니다.</span>
@@ -647,7 +647,7 @@ ${noContract ? `
             </>
           ) : (
             <>
-              <span style={{ color: '#666' }}>
+              <span style={{ color: 'var(--ink-2)' }}>
                 전개 {month.openedAt?.slice(0, 10)}{month.openedBy && ` · ${month.openedBy}`} · 작성일 {issueDateOf(ym)}
               </span>
               <span style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 4 }}>
@@ -660,7 +660,7 @@ ${noContract ? `
                       ? `${kstDateTime(c.checkedAt)}${c.note ? ` · ${c.note}` : ''}${stale ? ' · 확인 뒤에 또 고쳤습니다' : ''}`
                       : '아직 확인 전'}
                       style={{
-                        padding: '1px 7px', borderRadius: 9, fontSize: 11, fontWeight: 700,
+                        padding: '1px 7px', borderRadius: 9, fontSize: 'var(--fs-1)', fontWeight: 700,
                         background: stale ? '#FEF3C7' : c ? '#D1FAE5' : '#F3F4F6',
                         color: stale ? '#92400E' : c ? '#065F46' : '#9CA3AF',
                         border: '1px solid ' + (stale ? '#FCD34D' : c ? '#6EE7B7' : '#E5E7EB'),
@@ -671,8 +671,8 @@ ${noContract ? `
               {isChecker && (
                 <>
                   {amStaff && (
-                    <span style={{ fontSize: 11.5, color: '#666' }}>
-                      내 담당 <b style={{ color: '#1A2B52' }}>{myDrafts.length}</b>건
+                    <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
+                      내 담당 <b style={{ color: 'var(--navy)' }}>{myDrafts.length}</b>건
                       {myDrafts.length > 0 && ` · ${won(myDrafts.reduce((t, d) => t + d.supplyAmount, 0))}`}
                     </span>
                   )}
@@ -683,7 +683,7 @@ ${noContract ? `
                 </>
               )}
               {month.finalConfirmedAt ? (
-                <span style={{ marginLeft: 4, padding: '1px 8px', borderRadius: 9, fontSize: 11, fontWeight: 700, background: '#1A2B52', color: '#fff' }}>
+                <span style={{ marginLeft: 4, padding: '1px 8px', borderRadius: 9, fontSize: 'var(--fs-1)', fontWeight: 700, background: 'var(--navy)', color: '#fff' }}>
                   최종확인 {month.finalConfirmedAt.slice(0, 10)}{month.finalConfirmedBy && ` · ${month.finalConfirmedBy}`}
                 </span>
               ) : (
@@ -708,20 +708,20 @@ ${noContract ? `
           )}
         </div>
         {month?.opened && diff.rows.length > 0 && (
-          <div style={{ marginTop: 5, fontSize: 11.5, color: '#7a5' }}>
+          <div style={{ marginTop: 5, fontSize: 'var(--fs-1)', color: '#7a5' }}>
             전월({prevMonthOf(ym)}) 대비 — 🆕신규·⚠️금액변동 <b>{diff.mark.size}</b>건
-            {diff.dropped.length > 0 && <> · ❌전월에 있었는데 이번 달 없음 <b style={{ color: '#c33' }}>{diff.dropped.length}</b>건</>}
+            {diff.dropped.length > 0 && <> · ❌전월에 있었는데 이번 달 없음 <b style={{ color: 'var(--bad)' }}>{diff.dropped.length}</b>건</>}
             <button className="btn-sm" style={{ marginLeft: 6 }} onClick={() => setShowDiff((v) => !v)}>
               {showDiff ? '▾ 상세 닫기' : `▸ 차이 상세 (${diff.rows.length}건)`}
             </button>
             {showDiff && (
               <div style={{ marginTop: 6, background: '#fff', border: '1px solid #e6ddc8', borderRadius: 5, padding: 6 }}>
-                <div style={{ fontSize: 11, color: '#888', marginBottom: 5 }}>
+                <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 5 }}>
                   전월 요청과 이번 달을 <b>계약 단위로</b> 맞춰 본 것입니다.
                   <b> 없어짐</b>은 해지·중단인지 확인하고, <b>변동</b>은 계약금액이 바뀐 게 맞는지 봅니다.
                 </div>
                 <div style={{ maxHeight: 220, overflow: 'auto' }}>
-                  <table className="tbl" style={{ fontSize: 11.5 }}>
+                  <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
                     <thead>
                       <tr><th>구분</th><th>거래처</th><th>사업장</th>
                         <th className="r">전월</th><th className="r">이번 달</th><th className="r">차이</th></tr>
@@ -732,9 +732,9 @@ ${noContract ? `
                           <td style={{ whiteSpace: 'nowrap', fontWeight: 700, color: d.kind === '없어짐' ? '#c33' : d.kind === '신규' ? '#1E3A8A' : '#92400E' }}>
                             {d.kind === '없어짐' ? '❌ 없어짐' : d.kind === '신규' ? '🆕 신규' : '⚠️ 변동'}
                           </td>
-                          <td style={{ fontWeight: 700, color: '#1A2B52' }}>{d.company}</td>
+                          <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{d.company}</td>
                           <td>{d.place}</td>
-                          <td className="r" style={{ color: '#888' }}>{d.prev ? won(d.prev) : dash}</td>
+                          <td className="r" style={{ color: 'var(--ink-3)' }}>{d.prev ? won(d.prev) : dash}</td>
                           <td className="r" style={{ fontWeight: 700 }}>{d.now ? won(d.now) : dash}</td>
                           <td className="r" style={{ color: d.now - d.prev >= 0 ? '#2a7' : '#c33', fontWeight: 700 }}>
                             {d.now - d.prev > 0 ? '+' : ''}{won(d.now - d.prev)}
@@ -751,14 +751,14 @@ ${noContract ? `
       </div>
 
       {month?.opened && noStaff.length > 0 && (
-        <div className="alert-w" style={{ fontSize: 11.5 }}>
+        <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
           ⚠️ <b>담당직원이 비어 있는 건이 {noStaff.length}건</b> 있습니다
           ({won(noStaff.reduce((t, d) => t + d.supplyAmount, 0))}) — 아무도 보지 않고 지나갈 수 있습니다.
           <button className="btn-sm" style={{ marginLeft: 6 }}
             onClick={() => { setMineOnly(false); setQ(''); setNoStaffOnly((v) => !v); }}>
             {noStaffOnly ? '전체 보기' : '이 건들만 보기'}
           </button>
-          <span style={{ color: '#999' }}>
+          <span style={{ color: 'var(--ink-3)' }}>
             {' '}{noStaff.slice(0, 5).map((d) => d.companyName).join(', ')}{noStaff.length > 5 ? ' 외' : ''}
           </span>
         </div>
@@ -769,8 +769,8 @@ ${noContract ? `
             {showLog ? '▾' : '▸'} 이번 달 변경 이력 ({logs.length}) — {CHECKERS.map((n) => `${n} ${changeSummary(logs, n)}`).join(' / ')}
           </button>
           {showLog && (
-            <div style={{ maxHeight: 240, overflow: 'auto', marginTop: 6, border: '1px solid #eee', borderRadius: 6 }}>
-              <table className="tbl" style={{ fontSize: 11.5 }}>
+            <div style={{ maxHeight: 240, overflow: 'auto', marginTop: 6, border: '1px solid var(--rule-2)', borderRadius: 6 }}>
+              <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
                 <thead>
                   <tr><th>한 일</th><th>거래처</th><th>항목</th><th>이전</th><th>이후</th><th>사람</th><th>시각</th></tr>
                 </thead>
@@ -778,12 +778,12 @@ ${noContract ? `
                   {logs.map((l) => (
                     <tr key={l.id}>
                       <td style={{ fontWeight: 700, color: l.action === '삭제' ? '#c33' : l.action === '추가' ? '#1E3A8A' : '#92400E' }}>{l.action}</td>
-                      <td style={{ fontWeight: 700, color: '#1A2B52' }}>{l.company}</td>
+                      <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{l.company}</td>
                       <td>{l.field || (l.amount ? won(l.amount) : '')}</td>
-                      <td style={{ color: '#888' }}>{l.before || dash}</td>
+                      <td style={{ color: 'var(--ink-3)' }}>{l.before || dash}</td>
                       <td style={{ fontWeight: 600 }}>{l.after || dash}</td>
                       <td>{l.actor || dash}</td>
-                      <td style={{ color: '#888' }}>{kstShort(l.at)}</td>
+                      <td style={{ color: 'var(--ink-3)' }}>{kstShort(l.at)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -793,7 +793,7 @@ ${noContract ? `
         </div>
       )}
 
-      <div className="alert-i" style={{ fontSize: 11 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
 <b>업무 순서</b> — ① 김민섭이 <b>당월 전개</b>를 누르면 <b>전월 세금계산서가 그대로 복사</b>되어 청구예정이 됩니다(엑셀에서 전월 열을 복사하던 그 일).
         ② 담당자 3인이 각자 맡은 곳을 고치고 지우고 더한 뒤 <b>확인</b>을 누릅니다 — 이때 <b>🔍 매출계약 대사</b>로 계약과 맞춰 봅니다.
         ③ 김민섭이 확인하고 <b>발행요청 등록</b>을 누르면 그 건은 ①에서 ②로 넘어갑니다.
@@ -814,9 +814,9 @@ ${noContract ? `
       {/* ── 청구예정 → 발행요청 ── */}
       <div style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>① {ym} 청구예정 ({candView.length}건 · 공급가액 {won(candView.reduce((s, d) => s + d.supplyAmount, 0))})</b>
+          <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>① {ym} 청구예정 ({candView.length}건 · 공급가액 {won(candView.reduce((s, d) => s + d.supplyAmount, 0))})</b>
           {amStaff && (
-            <label style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
+            <label style={{ fontSize: 'var(--fs-1)', display: 'inline-flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}
               title="담당직원이 나인 건만 봅니다">
               <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} />
               내 담당만 ({myDrafts.length})
@@ -828,7 +828,7 @@ ${noContract ? `
           </button>
           {ym > thisMonth() && (
             <span title="아직 오지 않은 달입니다. 계약에서 계산한 예상일 뿐, 등록된 것은 없습니다."
-              style={{ fontSize: 10.5, fontWeight: 700, color: '#5B21B6', background: '#EDE9FE', border: '1px solid #C4B5FD', padding: '1px 6px', borderRadius: 9 }}>
+              style={{ fontSize: 'var(--fs-0)', fontWeight: 700, color: '#5B21B6', background: '#EDE9FE', border: '1px solid #C4B5FD', padding: '1px 6px', borderRadius: 9 }}>
               미리보기 — 아직 오지 않은 달
             </span>
           )}
@@ -836,7 +836,7 @@ ${noContract ? `
             <>
               <button className="btn-sm" onClick={() => setPick(new Set(candView.map((d) => d.id)))}>보이는 건 전체선택</button>
               <button className="btn-sm" onClick={() => setPick(new Set())}>선택해제</button>
-              <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{picked.length}</b>건 · 공급가액 {won(pickedSupply)}</span>
+              <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>선택 <b>{picked.length}</b>건 · 공급가액 {won(pickedSupply)}</span>
               <button className="btn-sm btn-sm-del" disabled={busy || !picked.length}
                 onClick={() => void removeDrafts(picked.map((d) => d.id))}>선택 삭제</button>
               <button className="btn-p" disabled={busy || !picked.length || !isApprover} onClick={() => void doRequest()}
@@ -864,9 +864,9 @@ ${noContract ? `
       {/* ── 요청 목록 → 발행처리 ── */}
       <div style={{ marginTop: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 12.5, color: '#1A2B52' }}>
-            ② 발행요청 목록 ({live(reqView).length}건{reqView.length !== live(reqView).length && <span style={{ fontWeight: 400, color: '#999' }}> (+취소 {reqView.length - live(reqView).length})</span>} · <span title="부가세 별도 — 엑셀·ERP의 공급가액과 맞춰 보는 기준. 취소분은 빠집니다">공급가액 {won(sumSupply(reqView))}</span>
-            {' · '}<span style={{ fontWeight: 400, color: '#666' }}>합계(VAT포함) {won(sum(reqView))}</span>)
+          <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>
+            ② 발행요청 목록 ({live(reqView).length}건{reqView.length !== live(reqView).length && <span style={{ fontWeight: 400, color: 'var(--ink-3)' }}> (+취소 {reqView.length - live(reqView).length})</span>} · <span title="부가세 별도 — 엑셀·ERP의 공급가액과 맞춰 보는 기준. 취소분은 빠집니다">공급가액 {won(sumSupply(reqView))}</span>
+            {' · '}<span style={{ fontWeight: 400, color: 'var(--ink-2)' }}>합계(VAT포함) {won(sum(reqView))}</span>)
           </b>
           {canWrite && (
             <>
@@ -875,9 +875,9 @@ ${noContract ? `
                 요청 전체선택 ({issuable(reqView).length})
               </button>
               <button className="btn-sm" onClick={() => setPickReq(new Set())}>선택해제</button>
-              <span style={{ fontSize: 12, color: '#555' }}>선택 <b>{pickedReqs.length}</b>건</span>
-              <span style={{ fontSize: 11.5, color: '#666' }}>발행일</span>
-              <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 12 }} />
+              <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>선택 <b>{pickedReqs.length}</b>건</span>
+              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>발행일</span>
+              <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
               <button className="btn-p" disabled={busy || !pickedReqs.length || !isApprover} onClick={() => void doIssue()}
                 title={isApprover ? '' : `발행완료는 ${FINAL_APPROVER}(부재 시 기장팀장·최고관리자)만 처리합니다`}>
                 발행완료 처리
@@ -896,7 +896,7 @@ ${noContract ? `
             <ColumnSettings cols={reqGrid.ordered} view={reqGrid.view} onMessage={flash} />
           </span>
         </div>
-        <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 4 }}>
           다음 단계 — 여기 등록된 대로 ERP에서 발행한 뒤, <b>ERP 발행내역 대사</b> 메뉴에서 거래전표와 맞춰 봅니다.
           맞으면 이 목록에서 <b>발행완료 처리</b>를 누릅니다(승인번호·발행일이 남습니다).
         </div>
@@ -967,7 +967,7 @@ function DiffBadge({ d, amount }: { d?: { kind: '신규' | '변동'; prevAmount:
   return (
     <span title={isNew ? '전월에는 없던 건입니다' : `전월 ${won(d.prevAmount)} → 이번 달 ${won(amount)}`}
       style={{
-        marginLeft: 4, fontSize: 10, fontWeight: 700, padding: '0 4px', borderRadius: 3,
+        marginLeft: 4, fontSize: 'var(--fs-0)', fontWeight: 700, padding: '0 4px', borderRadius: 3,
         color: isNew ? '#1E3A8A' : '#92400E',
         background: isNew ? '#DBEAFE' : '#FEF3C7',
         border: '1px solid ' + (isNew ? '#93C5FD' : '#FCD34D'),

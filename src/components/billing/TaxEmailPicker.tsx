@@ -71,9 +71,9 @@ export function TaxEmailPicker({ entityId, placeId, clientName, value, onChange 
   return (
     <div style={{ border: '1px solid #cfe0f5', background: '#f7fbff', borderRadius: 6, padding: '8px 10px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>
-        <b style={{ fontSize: 12, color: '#1A2B52' }}>■ 전자세금계산서 발송 e-mail</b>
-        <span style={{ fontSize: 10.5, color: '#c33', fontWeight: 700 }}>필수</span>
-        <span style={{ fontSize: 11, color: '#666' }}>
+        <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>■ 전자세금계산서 발송 e-mail</b>
+        <span style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)', fontWeight: 700 }}>필수</span>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
           {value.emails.length ? `${value.emails.length}곳 선택` : '한 곳 이상 골라 주세요'}
         </span>
       </div>
@@ -82,7 +82,7 @@ export function TaxEmailPicker({ entityId, placeId, clientName, value, onChange 
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
           {value.emails.map((e) => (
             <span key={e} style={{
-              fontSize: 11, background: '#1A2B52', color: '#fff', borderRadius: 3,
+              fontSize: 'var(--fs-1)', background: 'var(--navy)', color: '#fff', borderRadius: 3,
               padding: '2px 5px', display: 'inline-flex', gap: 4, alignItems: 'center',
             }}>
               {e}
@@ -93,29 +93,29 @@ export function TaxEmailPicker({ entityId, placeId, clientName, value, onChange 
         </div>
       )}
 
-      {loading && <div style={{ fontSize: 11, color: '#999' }}>후보를 찾는 중…</div>}
+      {loading && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>후보를 찾는 중…</div>}
       {!loading && cands.length > 0 && (
         <div style={{ maxHeight: 130, overflow: 'auto', border: '1px solid #e3ecf5', borderRadius: 4, background: '#fff' }}>
           {cands.map((c) => (
             <label key={c.email} style={{
-              display: 'flex', gap: 6, alignItems: 'center', fontSize: 11.5,
+              display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--fs-1)',
               padding: '3px 6px', cursor: 'pointer', borderBottom: '1px solid #f2f6fa',
             }}>
               <input type="checkbox" checked={picked.has(c.email)} onChange={() => toggle(c.email)} />
               <span style={{ fontWeight: 600 }}>{c.email}</span>
               <SourceTag s={c.source} />
               {c.source === '과거발행' && (
-                <span style={{ fontSize: 10, color: '#888' }}>
+                <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>
                   {c.count}회{c.lastSeen ? ` · 최근 ${c.lastSeen}` : ''}
                 </span>
               )}
-              {c.note && <span style={{ fontSize: 10, color: '#999' }}>{c.note}</span>}
+              {c.note && <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{c.note}</span>}
             </label>
           ))}
         </div>
       )}
       {!loading && cands.length === 0 && (
-        <div style={{ fontSize: 11, color: '#a15' }}>
+        <div style={{ fontSize: 'var(--fs-1)', color: '#a15' }}>
           이 거래처로 보낸 기록이 없습니다 — 아래에 직접 적어 주세요.
         </div>
       )}
@@ -123,25 +123,25 @@ export function TaxEmailPicker({ entityId, placeId, clientName, value, onChange 
       <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
         <input value={typed} onChange={(e) => setTyped(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTyped(); } }}
-          placeholder="새 이메일 직접 입력 (여러 개면 쉼표로)" style={{ flex: 1, fontSize: 11.5 }} />
+          placeholder="새 이메일 직접 입력 (여러 개면 쉼표로)" style={{ flex: 1, fontSize: 'var(--fs-1)' }} />
         <button className="btn-sm" onClick={addTyped}>＋ 추가</button>
       </div>
 
       {placeId && (
         <div style={{ marginTop: 7, borderTop: '1px solid #e3ecf5', paddingTop: 6 }}>
-          <label style={{ fontSize: 11.5, display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}>
+          <label style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}>
             <input type="checkbox" checked={value.saveToPlace}
               onChange={(e) => onChange({ ...value, saveToPlace: e.target.checked })} />
             이 이메일을 <b>거래처정보</b>에도 남깁니다 — 다음부터 저절로 뜹니다.
           </label>
           {placeEmails.length > 0 && (
-            <div style={{ fontSize: 10.5, color: '#888', marginTop: 3 }}>
+            <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 3 }}>
               지금 거래처정보에 적힌 것: {placeEmails.join(', ')}
             </div>
           )}
           {value.saveToPlace && differs && (
             <div style={{
-              marginTop: 5, fontSize: 11.5, background: '#FFF7ED',
+              marginTop: 5, fontSize: 'var(--fs-1)', background: '#FFF7ED',
               border: '1px solid #FCD34D', borderRadius: 4, padding: '5px 7px',
             }}>
               거래처정보에 적힌 것과 <b>다릅니다</b>. 어떻게 할까요?
@@ -155,7 +155,7 @@ export function TaxEmailPicker({ entityId, placeId, clientName, value, onChange 
                   추가 기재
                 </button>
               </div>
-              <div style={{ fontSize: 10.5, color: '#92400E', marginTop: 3 }}>
+              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--warn)', marginTop: 3 }}>
                 {value.mode === 'replace'
                   ? '기존 것을 지우고 이번에 고른 것만 남깁니다 — 담당이 바뀐 경우.'
                   : '기존 것에 더합니다 — 받는 사람이 늘어난 경우.'}

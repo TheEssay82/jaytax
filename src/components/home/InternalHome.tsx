@@ -103,17 +103,17 @@ export default function InternalHome({
   return (
     <div style={{ maxWidth: 980, margin: '0 auto' }}>
       {/* 인사바 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: '#faf8f4', border: '1px solid #ece8df', borderRadius: 14, marginBottom: 16 }}>
-        <div style={{ width: 40, height: 40, borderRadius: '50%', background: NAVY, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 15, flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: '#faf8f4', border: '1px solid var(--rule-2)', borderRadius: 14, marginBottom: 16 }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', background: NAVY, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 'var(--fs-4)', flexShrink: 0 }}>
           {(name[0] || '?').toUpperCase()}
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: '#1f2937' }}>
-            안녕하세요, {name} <span style={{ color: '#6b7280', fontWeight: 500 }}>{ROLE_LABELS[role]}님</span>
+          <div style={{ fontSize: 'var(--fs-4)', fontWeight: 600, color: 'var(--ink-2)' }}>
+            안녕하세요, {name} <span style={{ color: 'var(--ink-3)', fontWeight: 500 }}>{ROLE_LABELS[role]}님</span>
           </div>
-          <div style={{ fontSize: 12.5, color: '#8a8170' }}>{todayStr()} · 오늘도 좋은 하루 되세요</div>
+          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>{todayStr()} · 오늘도 좋은 하루 되세요</div>
         </div>
-        <div style={{ marginLeft: 'auto', fontSize: 12, color: '#9aa0ad', whiteSpace: 'nowrap' }}>🏠 내부홈</div>
+        <div style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>🏠 내부홈</div>
       </div>
 
       {/* 공지사항 전광판 — 로그인 직후 가장 먼저 보이도록 '내 할 일' 위에 둔다 */}
@@ -129,12 +129,12 @@ export default function InternalHome({
             <button key={t.key} onClick={() => onNavigate(t.tab)} style={{ textAlign: 'left', background: c[0], border: `1px solid ${c[1]}`, borderRadius: 14, padding: '14px 15px', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 18 }}>{t.emoji}</span>
-                <span style={{ fontSize: 13, color: c[2] }}>↗</span>
+                <span style={{ fontSize: 'var(--fs-3)', color: c[2] }}>↗</span>
               </div>
               <div style={{ fontSize: 27, fontWeight: 700, color: c[3], marginTop: 10, lineHeight: 1 }}>
-                {loaded ? n : '–'}<span style={{ fontSize: 13, fontWeight: 400, color: c[2] }}> 건</span>
+                {loaded ? n : '–'}<span style={{ fontSize: 'var(--fs-3)', fontWeight: 400, color: c[2] }}> 건</span>
               </div>
-              <div style={{ fontSize: 12, color: c[2], marginTop: 6, lineHeight: 1.35 }}>{t.label}</div>
+              <div style={{ fontSize: 'var(--fs-2)', color: c[2], marginTop: 6, lineHeight: 1.35 }}>{t.label}</div>
             </button>
           );
         })}
@@ -146,33 +146,33 @@ export default function InternalHome({
         {ready.map((s) => {
           const c = C[s.color];
           return (
-            <button key={s.key} onClick={() => s.tab && onNavigate(s.tab)} style={{ background: '#fff', border: '1px solid #e4e0d8', borderRadius: 14, padding: '15px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9, cursor: 'pointer' }}>
-              <span style={{ width: 40, height: 40, borderRadius: 11, background: c[0], border: `1px solid ${c[1]}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{s.emoji}</span>
-              <span style={{ fontSize: 12.5, color: '#1f2937', fontWeight: 500 }}>{s.label}</span>
+            <button key={s.key} onClick={() => s.tab && onNavigate(s.tab)} style={{ background: '#fff', border: '1px solid var(--rule)', borderRadius: 14, padding: '15px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9, cursor: 'pointer' }}>
+              <span style={{ width: 40, height: 40, borderRadius: 11, background: c[0], border: `1px solid ${c[1]}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--fs-5)' }}>{s.emoji}</span>
+              <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', fontWeight: 500 }}>{s.label}</span>
             </button>
           );
         })}
         {coming.map((s) => (
           <div key={s.key} style={{ background: '#faf8f4', border: '1px dashed #d8d2c6', borderRadius: 14, padding: '15px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9 }}>
-            <span style={{ width: 40, height: 40, borderRadius: 11, background: '#fff', border: '1px solid #e4e0d8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, filter: 'grayscale(1)', opacity: 0.55 }}>{s.emoji}</span>
-            <span style={{ fontSize: 12.5, color: '#9aa0ad' }}>{s.label}</span>
-            <span style={{ fontSize: 10, color: '#9aa0ad', background: '#fff', border: '1px solid #e4e0d8', padding: '1px 8px', borderRadius: 20 }}>준비 중</span>
+            <span style={{ width: 40, height: 40, borderRadius: 11, background: '#fff', border: '1px solid var(--rule)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--fs-5)', filter: 'grayscale(1)', opacity: 0.55 }}>{s.emoji}</span>
+            <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>{s.label}</span>
+            <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', background: '#fff', border: '1px solid var(--rule)', padding: '1px 8px', borderRadius: 20 }}>준비 중</span>
           </div>
         ))}
       </div>
 
       {/* 개발노트 */}
       <SectionTitle hint="최신 업데이트">개발노트</SectionTitle>
-      <button onClick={onOpenDevNotes} style={{ display: 'block', width: '100%', textAlign: 'left', background: '#fff', border: '1px solid #e4e0d8', borderRadius: 14, padding: '13px 15px', cursor: 'pointer' }}>
+      <button onClick={onOpenDevNotes} style={{ display: 'block', width: '100%', textAlign: 'left', background: '#fff', border: '1px solid var(--rule)', borderRadius: 14, padding: '13px 15px', cursor: 'pointer' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#0F6E56', background: '#E1F5EE', border: '1px solid #9FE1CB', padding: '2px 9px', borderRadius: 20 }}>v{latest.version}</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#1f2937' }}>{latest.title}</span>
-          <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#9aa0ad' }}>{latest.date}</span>
+          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#0F6E56', background: '#E1F5EE', border: '1px solid #9FE1CB', padding: '2px 9px', borderRadius: 20 }}>v{latest.version}</span>
+          <span style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: 'var(--ink-2)' }}>{latest.title}</span>
+          <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{latest.date}</span>
         </div>
         {latest.highlights[0] && (
-          <div style={{ fontSize: 12.5, color: '#4b5563', marginTop: 7, lineHeight: 1.55 }}>{latest.highlights[0]}</div>
+          <div style={{ fontSize: 'var(--fs-2)', color: '#4b5563', marginTop: 7, lineHeight: 1.55 }}>{latest.highlights[0]}</div>
         )}
-        <div style={{ fontSize: 11.5, color: '#9aa0ad', marginTop: 8 }}>전체 개발내역 보기 ↗</div>
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 8 }}>전체 개발내역 보기 ↗</div>
       </button>
     </div>
   );
@@ -181,8 +181,8 @@ export default function InternalHome({
 function SectionTitle({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '2px 2px 9px' }}>
-      <span style={{ fontSize: 14, fontWeight: 700, color: '#1f2937' }}>{children}</span>
-      {hint && <span style={{ fontSize: 12, color: '#9aa0ad' }}>{hint}</span>}
+      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink-2)' }}>{children}</span>
+      {hint && <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>{hint}</span>}
     </div>
   );
 }

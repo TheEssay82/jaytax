@@ -86,7 +86,7 @@ export default function EvidenceTab() {
         </span>
       </div>
 
-      <div style={{ fontSize: 12, color: '#8a8170', marginBottom: canWrite ? 12 : 8 }}>
+      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', marginBottom: canWrite ? 12 : 8 }}>
         각종 계약서·사업자등록증·위임장 등 증빙 자료를 보관합니다. 열람은 외부인을 제외한 전 직원이 가능합니다.
       </div>
 
@@ -112,9 +112,9 @@ export default function EvidenceTab() {
 
       {topTags.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 10 }}>
-          <span style={{ fontSize: 11.5, color: '#8a8170', fontWeight: 700 }}>태그</span>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', fontWeight: 700 }}>태그</span>
           <TagList tags={topTags} active={tagFilter} onSelect={(t) => setTagFilter((cur) => (cur === t ? null : t))} />
-          {tagFilter && <button className="btn-sm" style={{ fontSize: 11 }} onClick={() => setTagFilter(null)}>필터 해제</button>}
+          {tagFilter && <button className="btn-sm" style={{ fontSize: 'var(--fs-1)' }} onClick={() => setTagFilter(null)}>필터 해제</button>}
         </div>
       )}
 
@@ -122,7 +122,7 @@ export default function EvidenceTab() {
       {docs === null && !error && <div className="alert-i" style={{ marginTop: 12 }}>불러오는 중…</div>}
 
       {docs !== null && (
-        <div style={{ fontSize: 12, color: '#6b7280', margin: '10px 0' }}>
+        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', margin: '10px 0' }}>
           총 {docs.length}건 {(f || categoryFilter || tagFilter) && `· 필터 ${filtered.length}건`}
         </div>
       )}
@@ -188,7 +188,7 @@ function UploadForm({ onDone }: { onDone: () => Promise<void> }) {
       <button type="button" className="btn-sm" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         {open ? '▾' : '▸'} ⬆️ 증빙 업로드
       </button>
-      {ok && !open && <span style={{ marginLeft: 8, fontSize: 12, color: '#1A6E3C', fontWeight: 600 }}>업로드됨 ✓</span>}
+      {ok && !open && <span style={{ marginLeft: 8, fontSize: 'var(--fs-2)', color: '#1A6E3C', fontWeight: 600 }}>업로드됨 ✓</span>}
 
       {open && (
         <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -213,7 +213,7 @@ function UploadForm({ onDone }: { onDone: () => Promise<void> }) {
           <div>
             <label className="fl">파일 *</label>
             <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-            {file && <span style={{ marginLeft: 8, fontSize: 12, color: '#6b7280' }}>{file.name} · {fmtFileSize(file.size)}</span>}
+            {file && <span style={{ marginLeft: 8, fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>{file.name} · {fmtFileSize(file.size)}</span>}
           </div>
 
           <div>
@@ -272,29 +272,29 @@ function DocRow({ doc, canManage, onChanged }: { doc: EvidenceDoc; canManage: bo
     <div style={rowStyle}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
         {doc.category && (
-          <span className="bdg" style={{ fontSize: 10, fontWeight: 700, color: '#1A2B52', background: '#eef2fb', border: '1px solid #cdd8ef', whiteSpace: 'nowrap' }}>
+          <span className="bdg" style={{ fontSize: 'var(--fs-0)', fontWeight: 700, color: 'var(--navy)', background: '#eef2fb', border: '1px solid #cdd8ef', whiteSpace: 'nowrap' }}>
             {doc.category}
           </span>
         )}
-        {doc.counterparty && <span style={{ fontSize: 11, color: '#8a8170', whiteSpace: 'nowrap' }}>{doc.counterparty}</span>}
-        <span style={{ flex: 1, fontWeight: 600, color: '#1f2937', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {doc.counterparty && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{doc.counterparty}</span>}
+        <span style={{ flex: 1, fontWeight: 600, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {doc.title || doc.fileName}
         </span>
-        <span style={{ fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
           {doc.fileExt && <b style={{ textTransform: 'uppercase' }}>{doc.fileExt}</b>}{doc.fileSize ? ` · ${fmtFileSize(doc.fileSize)}` : ''}
         </span>
         <span style={{ display: 'inline-flex', gap: 6, whiteSpace: 'nowrap' }}>
           <button className="btn-sm" onClick={() => open(false)}>열기</button>
           <button className="btn-sm" onClick={() => open(true)}>⬇️</button>
-          {canManage && <button className="btn-sm" onClick={remove} disabled={busy} style={{ color: '#b91c1c' }}>🗑️</button>}
+          {canManage && <button className="btn-sm" onClick={remove} disabled={busy} style={{ color: 'var(--bad)' }}>🗑️</button>}
         </span>
       </div>
       {doc.description && (
-        <div style={{ marginTop: 6, fontSize: 12.5, color: '#4b5563', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{doc.description}</div>
+        <div style={{ marginTop: 6, fontSize: 'var(--fs-2)', color: '#4b5563', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{doc.description}</div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
         {doc.tags.length > 0 && <TagList tags={doc.tags} />}
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9aa0ad', whiteSpace: 'nowrap' }}>
+        <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
           {doc.uploadedByName} · {dtFmt(doc.createdAt)}
         </span>
       </div>
@@ -304,6 +304,6 @@ function DocRow({ doc, canManage, onChanged }: { doc: EvidenceDoc; canManage: bo
 }
 
 const rowStyle: React.CSSProperties = {
-  border: '1px solid #e4e0d8', borderRadius: 7, padding: '10px 13px',
+  border: '1px solid var(--rule)', borderRadius: 7, padding: '10px 13px',
   background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'stretch', width: '100%',
 };

@@ -2,11 +2,11 @@
 import { epostTrackingUrl } from '../../lib/docSendApi';
 
 export default function TrackingLink({ no }: { no: string }) {
-  if (!no) return <span style={{ color: '#CCC' }}>—</span>;
+  if (!no) return <span style={{ color: 'var(--ink-4)' }}>—</span>;
   return (
     <button
       className="btn-sm btn-sm-blue"
-      style={{ fontSize: 11, padding: '1px 6px' }}
+      style={{ fontSize: 'var(--fs-1)', padding: '1px 6px' }}
       title="우체국 배달조회 (새 창)"
       onClick={() => window.open(epostTrackingUrl(no), '_blank', 'noopener')}
     >

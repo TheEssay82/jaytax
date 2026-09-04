@@ -28,13 +28,13 @@ export default function AiUsageTab() {
     <div className="card">
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         📊 AI 사용량
-        <span style={{ fontSize: 11, fontWeight: 400, color: '#9aa0ad' }}>최고관리자 전용</span>
+        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>최고관리자 전용</span>
         <span style={{ marginLeft: 'auto' }}>
           <button className="btn-sm" onClick={reload}>↻ 새로고침</button>
         </span>
       </div>
 
-      <div className="alert-i" style={{ fontSize: 12 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-2)' }}>
         상담진행에서 <b>회신 초안 작성·보완</b>으로 AI를 사용한 횟수를 사용자별로 집계합니다. (외부인 데모 사용은 제외)
       </div>
 
@@ -65,13 +65,13 @@ export default function AiUsageTab() {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.userId}>
-                      <td style={{ fontWeight: 600, color: '#1f2937' }}>
+                      <td style={{ fontWeight: 600, color: 'var(--ink-2)' }}>
                         {r.userName || '(이름 없음)'}
-                        {r.userEmail && <span style={{ fontSize: 11, color: '#9aa0ad', marginLeft: 6 }}>{r.userEmail}</span>}
+                        {r.userEmail && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginLeft: 6 }}>{r.userEmail}</span>}
                       </td>
                       <td className="r" style={{ fontFamily: 'monospace' }}>{r.thisMonth}</td>
-                      <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1A2B52' }}>{r.total}</td>
-                      <td style={{ fontSize: 12, color: '#6b7280' }}>{r.lastUsed ? dtFmt(r.lastUsed) : '-'}</td>
+                      <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--navy)' }}>{r.total}</td>
+                      <td style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>{r.lastUsed ? dtFmt(r.lastUsed) : '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -86,9 +86,9 @@ export default function AiUsageTab() {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div style={{ background: '#fff', border: '1px solid #E0DCD4', borderRadius: 8, padding: '9px 14px', minWidth: 96 }}>
-      <div style={{ fontSize: 11, color: '#8a8170' }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: '#1A2B52', fontFamily: 'monospace' }}>{value.toLocaleString()}</div>
+    <div style={{ background: '#fff', border: '1px solid var(--rule)', borderRadius: 8, padding: '9px 14px', minWidth: 96 }}>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{label}</div>
+      <div style={{ fontSize: 'var(--fs-5)', fontWeight: 700, color: 'var(--navy)', fontFamily: 'monospace' }}>{value.toLocaleString()}</div>
     </div>
   );
 }

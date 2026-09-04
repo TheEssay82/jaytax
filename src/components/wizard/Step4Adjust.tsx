@@ -34,7 +34,7 @@ export default function Step4Adjust({ records }: WizardStepProps) {
           <span className="fk" style={{ fontWeight: 700 }}>
             C) 산출 보수총계
           </span>
-          <span style={{ fontWeight: 700, fontSize: 14, color: '#1A2B52' }}>{won(c.C)}</span>
+          <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--navy)' }}>{won(c.C)}</span>
         </div>
         <div style={{ height: 1, background: '#EDE9E2', margin: '0 0 9px' }} />
         <div className="frow">
@@ -97,7 +97,7 @@ export default function Step4Adjust({ records }: WizardStepProps) {
           <span className="fk" style={{ fontSize: 14, fontWeight: 600 }}>
             최종 청구금액
           </span>
-          <span className="fv" style={{ fontSize: 20 }}>
+          <span className="fv" style={{ fontSize: 'var(--fs-5)' }}>
             {won(c.grand)}
           </span>
         </div>
@@ -147,7 +147,7 @@ export default function Step4Adjust({ records }: WizardStepProps) {
                     <td className="r" style={{ fontFamily: 'monospace', color: '#DC2626' }}>
                       {만(c.disc)}
                     </td>
-                    <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#C8963C' }}>
+                    <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--gold)' }}>
                       {만(c.grand)}원
                     </td>
                   </tr>
@@ -172,7 +172,7 @@ export default function Step4Adjust({ records }: WizardStepProps) {
                       <td className="r" style={{ fontFamily: 'monospace', color: '#DC2626' }}>
                         {만(r.disc)}
                       </td>
-                      <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1A2B52' }}>
+                      <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--navy)' }}>
                         {만(r.grand)}원
                       </td>
                     </tr>
@@ -180,7 +180,7 @@ export default function Step4Adjust({ records }: WizardStepProps) {
                 </tbody>
               </table>
             </div>
-            <div style={{ marginTop: 8, fontSize: 11, color: '#888' }}>※ 금액 단위: 억/만원 (요약 표시)</div>
+            <div style={{ marginTop: 8, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>※ 금액 단위: 억/만원 (요약 표시)</div>
           </div>
         </div>
       )}

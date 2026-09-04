@@ -142,7 +142,7 @@ function TrioView() {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
         {TRIO_QUICK.map((name) => (
-          <button key={name} className="btn-sm" onClick={() => { setQuery(name); run(name); }} disabled={busy} style={{ fontSize: 12 }}>{name}</button>
+          <button key={name} className="btn-sm" onClick={() => { setQuery(name); run(name); }} disabled={busy} style={{ fontSize: 'var(--fs-2)' }}>{name}</button>
         ))}
       </div>
 
@@ -152,15 +152,15 @@ function TrioView() {
       {trio && !busy && (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0 8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>{trio.base} 3단비교</span>
+            <span style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>{trio.base} 3단비교</span>
             {trio.delegations.length > 0 && (
-              <label style={{ fontSize: 12, color: '#4b5563', display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+              <label style={{ fontSize: 'var(--fs-2)', color: '#4b5563', display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                 <input type="checkbox" checked={link} onChange={(e) => setLink(e.target.checked)} />
                 🔗 위임조문 연동
               </label>
             )}
             {link && curDel && (
-              <span style={{ fontSize: 11.5, color: '#8a5a00', background: '#fdf3e0', border: '1px solid #f0dcb4', borderRadius: 12, padding: '2px 8px' }}>
+              <span style={{ fontSize: 'var(--fs-1)', color: '#8a5a00', background: '#fdf3e0', border: '1px solid #f0dcb4', borderRadius: 12, padding: '2px 8px' }}>
                 위임 → {curDel.decree ? `시행령 제${curDel.decree.no}조${curDel.decree.branch ? `의${curDel.decree.branch}` : ''}` : '시행령 없음'}
                 {curDel.rule ? ` · 시행규칙 제${curDel.rule.no}조${curDel.rule.branch ? `의${curDel.rule.branch}` : ''}` : ''}
               </span>
@@ -190,25 +190,25 @@ function TrioView() {
 function TrioColumn({ label, detail, sel, onSel }: { label: string; detail: LawDetail | null; sel: number; onSel: (v: number) => void }) {
   const articles = (detail?.articles ?? []).filter((a) => !a.isChapter);
   const cur = articles[sel];
-  const head: React.CSSProperties = { border: '1px solid #e4e0d8', borderRadius: 8, background: '#fff', overflow: 'hidden' };
+  const head: React.CSSProperties = { border: '1px solid var(--rule)', borderRadius: 8, background: '#fff', overflow: 'hidden' };
 
   if (!detail) {
     return (
       <div style={head}>
-        <div style={{ background: '#f3f1ea', padding: '8px 10px', fontSize: 12, fontWeight: 700, color: '#8a8170' }}>{label}</div>
-        <div className="alert-i" style={{ margin: 10, fontSize: 12 }}>해당 {label}이(가) 없습니다.</div>
+        <div style={{ background: '#f3f1ea', padding: '8px 10px', fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-3)' }}>{label}</div>
+        <div className="alert-i" style={{ margin: 10, fontSize: 'var(--fs-2)' }}>해당 {label}이(가) 없습니다.</div>
       </div>
     );
   }
 
   return (
     <div style={head}>
-      <div style={{ background: '#1A2B52', padding: '8px 10px', color: '#fff' }}>
-        <div style={{ fontSize: 12.5, fontWeight: 700 }}>{detail.name}</div>
-        <div style={{ fontSize: 10.5, color: '#c9d2e6' }}>시행 {fmtEffDate(detail.effDate)} · 조문 {detail.articleCount}개</div>
+      <div style={{ background: 'var(--navy)', padding: '8px 10px', color: '#fff' }}>
+        <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700 }}>{detail.name}</div>
+        <div style={{ fontSize: 'var(--fs-0)', color: '#c9d2e6' }}>시행 {fmtEffDate(detail.effDate)} · 조문 {detail.articleCount}개</div>
       </div>
-      <div style={{ padding: 8, borderBottom: '1px solid #eee' }}>
-        <select value={sel} onChange={(e) => onSel(Number(e.target.value))} style={{ width: '100%', fontSize: 12, padding: '5px 6px' }}>
+      <div style={{ padding: 8, borderBottom: '1px solid var(--rule-2)' }}>
+        <select value={sel} onChange={(e) => onSel(Number(e.target.value))} style={{ width: '100%', fontSize: 'var(--fs-2)', padding: '5px 6px' }}>
           {articles.map((a, i) => (
             <option key={`${a.no}-${i}`} value={i}>제{a.no}조{a.title ? ` (${a.title})` : ''}</option>
           ))}
@@ -217,16 +217,16 @@ function TrioColumn({ label, detail, sel, onSel }: { label: string; detail: LawD
       <div style={{ padding: '8px 10px', maxHeight: '62vh', overflowY: 'auto' }}>
         {cur ? (
           <>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1A2B52', marginBottom: 3 }}>
+            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--navy)', marginBottom: 3 }}>
               제{cur.no}조{cur.title ? ` (${cur.title})` : ''}
               {cur.effDate && cur.effDate !== detail.effDate && (
-                <span style={{ fontWeight: 400, fontSize: 10.5, color: '#9aa0ad' }}> · 시행 {fmtEffDate(cur.effDate)}</span>
+                <span style={{ fontWeight: 400, fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}> · 시행 {fmtEffDate(cur.effDate)}</span>
               )}
             </div>
-            <div style={{ fontSize: 12.5, lineHeight: 1.65, color: '#1f2937', whiteSpace: 'pre-wrap' }}>{cur.content}</div>
+            <div style={{ fontSize: 'var(--fs-2)', lineHeight: 1.65, color: 'var(--ink-2)', whiteSpace: 'pre-wrap' }}>{cur.content}</div>
           </>
         ) : (
-          <div className="alert-i" style={{ fontSize: 12 }}>조문이 없습니다.</div>
+          <div className="alert-i" style={{ fontSize: 'var(--fs-2)' }}>조문이 없습니다.</div>
         )}
       </div>
     </div>
@@ -244,10 +244,10 @@ function AttachmentsPanel({ cols }: { cols: { label: string; detail: LawDetail |
   return (
     <div style={{ marginTop: 18 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>📎 별표·별지서식</span>
+        <span style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>📎 별표·별지서식</span>
         <span style={{ display: 'inline-flex', gap: 6 }}>
           {withByl.map((c, i) => (
-            <button key={c.label} className={`btn-sm${tab === i ? ' btn-sm-navy' : ''}`} onClick={() => setTab(i)} style={{ fontSize: 11.5 }}>
+            <button key={c.label} className={`btn-sm${tab === i ? ' btn-sm-navy' : ''}`} onClick={() => setTab(i)} style={{ fontSize: 'var(--fs-1)' }}>
               {c.label} ({c.detail?.attachments.length})
             </button>
           ))}
@@ -257,17 +257,17 @@ function AttachmentsPanel({ cols }: { cols: { label: string; detail: LawDetail |
         {items.map((a, i) => (
           <div key={`${a.no}-${a.branch}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #f0ede5', borderRadius: 6, padding: '6px 10px' }}>
             {a.kind && <span className="bdg b-on" style={{ fontSize: 9 }}>{a.kind}</span>}
-            <span style={{ fontSize: 12, color: '#6b7280', minWidth: 40 }}>{a.no}{a.branch && `-${a.branch}`}</span>
-            <span style={{ flex: 1, fontSize: 12.5, color: '#1f2937' }}>{a.title}</span>
+            <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', minWidth: 40 }}>{a.no}{a.branch && `-${a.branch}`}</span>
+            <span style={{ flex: 1, fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>{a.title}</span>
             {a.pdfUrl ? (
-              <a href={a.pdfUrl} target="_blank" rel="noreferrer" className="btn-sm" style={{ fontSize: 11, textDecoration: 'none', color: '#C8963C' }}>PDF ↓</a>
+              <a href={a.pdfUrl} target="_blank" rel="noreferrer" className="btn-sm" style={{ fontSize: 'var(--fs-1)', textDecoration: 'none', color: 'var(--gold)' }}>PDF ↓</a>
             ) : (
-              <span style={{ fontSize: 11, color: '#c0c0c0' }}>—</span>
+              <span style={{ fontSize: 'var(--fs-1)', color: '#c0c0c0' }}>—</span>
             )}
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6 }}>별표·서식 원본(PDF)은 법제처에서 내려받습니다.</div>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 6 }}>별표·서식 원본(PDF)은 법제처에서 내려받습니다.</div>
     </div>
   );
 }
@@ -276,7 +276,7 @@ function AttachmentsPanel({ cols }: { cols: { label: string; detail: LawDetail |
 function AdminRulesPanel({ base }: { base: string }) {
   return (
     <div style={{ marginTop: 18 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', marginBottom: 8 }}>📋 관련통칙 · 집행기준 (행정규칙)</div>
+      <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>📋 관련통칙 · 집행기준 (행정규칙)</div>
       <a
         href={admRuleSearchUrl(base)}
         target="_blank"
@@ -286,7 +286,7 @@ function AdminRulesPanel({ base }: { base: string }) {
       >
         법제처 행정규칙에서 ‘{base}’ 검색 ↗
       </a>
-      <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6, lineHeight: 1.6 }}>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 6, lineHeight: 1.6 }}>
         국세청 기본통칙·집행기준·훈령·고시 등 관련 행정규칙을 법제처에서 확인합니다.
       </div>
     </div>
@@ -310,7 +310,7 @@ function printTrioSelection(trio: LawTrio, sels: [number, number, number]) {
     `<style>body{font-family:'Malgun Gothic','맑은 고딕',sans-serif;margin:16px;color:#1f2937}` +
     `h1{font-size:15px;color:#1A2B52;margin:0 0 10px}table{width:100%;border-collapse:collapse;table-layout:fixed}` +
     `td.c{width:33.33%;vertical-align:top;border:1px solid #ccc;padding:8px}` +
-    `.h{font-weight:700;color:#1A2B52;font-size:11.5px;border-bottom:1px solid #eee;padding-bottom:4px;margin-bottom:6px}` +
+    `.h{font-weight:700;color:#1A2B52;font-size:11.5px;border-bottom:1px solid var(--rule-2);padding-bottom:4px;margin-bottom:6px}` +
     `.d{font-weight:400;color:#888;font-size:10px}.an{font-weight:700;font-size:11.5px;margin-bottom:3px}` +
     `.ac{font-size:11px;line-height:1.6;white-space:pre-wrap}.empty{color:#aaa;font-size:11px}@media print{body{margin:0}}</style>` +
     `</head><body><h1>${esc(trio.base)} 3단비교 — 법률 · 시행령 · 시행규칙 (법제처 원문)</h1>` +
@@ -364,23 +364,23 @@ function LawView() {
     return (
       <div style={{ marginTop: 8 }}>
         <button className="btn-sm" onClick={() => setDetail(null)} style={{ marginBottom: 12 }}>← 목록으로</button>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#1A2B52' }}>{detail.name}</div>
-        <div style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 12px' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)' }}>{detail.name}</div>
+        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', margin: '4px 0 12px' }}>
           시행일 {fmtEffDate(detail.effDate)} {detail.dept && `· ${detail.dept}`} · 조문 {detail.articleCount}개 · 법제처 원문
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {detail.articles.map((a, i) =>
             a.isChapter ? (
-              <div key={i} style={{ fontSize: 13, fontWeight: 700, color: '#8a8170', margin: '14px 0 4px' }}>{a.content}</div>
+              <div key={i} style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--ink-3)', margin: '14px 0 4px' }}>{a.content}</div>
             ) : (
               <div key={i} style={{ padding: '5px 0', borderBottom: '1px solid #f3f1ea' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>
+                <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>
                   제{a.no}조{a.title ? ` (${a.title})` : ''}
                   {a.effDate && a.effDate !== detail.effDate && (
-                    <span style={{ fontWeight: 400, fontSize: 11, color: '#9aa0ad' }}> · 시행 {fmtEffDate(a.effDate)}</span>
+                    <span style={{ fontWeight: 400, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}> · 시행 {fmtEffDate(a.effDate)}</span>
                   )}
                 </div>
-                <div style={{ fontSize: 13, lineHeight: 1.65, color: '#1f2937', whiteSpace: 'pre-wrap', marginTop: 2 }}>{a.content}</div>
+                <div style={{ fontSize: 'var(--fs-3)', lineHeight: 1.65, color: 'var(--ink-2)', whiteSpace: 'pre-wrap', marginTop: 2 }}>{a.content}</div>
               </div>
             )
           )}
@@ -403,7 +403,7 @@ function LawView() {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
         {TAX_LAW_QUICKLIST.map((name) => (
-          <button key={name} className="btn-sm" onClick={() => { setQuery(name); run(name); }} disabled={busy} style={{ fontSize: 12 }}>{name}</button>
+          <button key={name} className="btn-sm" onClick={() => { setQuery(name); run(name); }} disabled={busy} style={{ fontSize: 'var(--fs-2)' }}>{name}</button>
         ))}
       </div>
 
@@ -418,9 +418,9 @@ function LawView() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {laws.map((l) => (
                 <button key={l.mst} onClick={() => openDetail(l)} style={rowBtn}>
-                  <span style={{ fontWeight: 700, color: '#1A2B52', fontSize: 13.5 }}>{l.name}</span>
-                  {l.lawType && <span className="bdg b-on" style={{ fontSize: 10 }}>{l.lawType}</span>}
-                  <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9aa0ad' }}>시행 {fmtEffDate(l.effDate)} {l.dept && `· ${l.dept}`}</span>
+                  <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 13.5 }}>{l.name}</span>
+                  {l.lawType && <span className="bdg b-on" style={{ fontSize: 'var(--fs-0)' }}>{l.lawType}</span>}
+                  <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>시행 {fmtEffDate(l.effDate)} {l.dept && `· ${l.dept}`}</span>
                 </button>
               ))}
             </div>
@@ -515,7 +515,7 @@ function PrecedentView() {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
         {PREC_QUICK.map((name) => (
-          <button key={name} className="btn-sm" onClick={() => { setQuery(name); run(name); }} disabled={busy} style={{ fontSize: 12 }}>{name}</button>
+          <button key={name} className="btn-sm" onClick={() => { setQuery(name); run(name); }} disabled={busy} style={{ fontSize: 'var(--fs-2)' }}>{name}</button>
         ))}
       </div>
 
@@ -528,7 +528,7 @@ function PrecedentView() {
             <div className="alert-i">검색 결과가 없습니다. 다른 쟁점어로 시도해 보세요.</div>
           ) : (
             <>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', marginBottom: 8 }}>
                 총 {totalCnt.toLocaleString('ko-KR')}건 {totalCnt > list.length && `(상위 ${list.length}건 표시)`}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -536,10 +536,10 @@ function PrecedentView() {
                   <button key={p.serial} onClick={() => openDetail(p)} style={{ ...rowBtn, alignItems: 'flex-start', flexDirection: 'column', gap: 4 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', flexWrap: 'wrap' }}>
                       {p.caseType && <span className="bdg b-on" style={{ fontSize: 9 }}>{p.caseType}</span>}
-                      <span style={{ fontWeight: 700, color: '#1A2B52', fontSize: 12.5 }}>{p.court} {p.caseNo}</span>
-                      <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9aa0ad' }}>{fmtPrecDate(p.date)}</span>
+                      <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 'var(--fs-2)' }}>{p.court} {p.caseNo}</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{fmtPrecDate(p.date)}</span>
                     </div>
-                    <span style={{ fontSize: 13, color: '#1f2937', lineHeight: 1.5, textAlign: 'left' }}>{p.caseName}</span>
+                    <span style={{ fontSize: 'var(--fs-3)', color: 'var(--ink-2)', lineHeight: 1.5, textAlign: 'left' }}>{p.caseName}</span>
                   </button>
                 ))}
               </div>
@@ -570,8 +570,8 @@ function PrecedentDetailView({ d, onBack }: { d: PrecedentDetail; onBack: () => 
         </a>
       </div>
 
-      <div style={{ fontSize: 15, fontWeight: 700, color: '#1A2B52', lineHeight: 1.5 }}>{d.caseName || '(사건명 없음)'}</div>
-      <div style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 14px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ fontSize: 'var(--fs-4)', fontWeight: 700, color: 'var(--navy)', lineHeight: 1.5 }}>{d.caseName || '(사건명 없음)'}</div>
+      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', margin: '4px 0 14px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {d.court && <span>{d.court}</span>}
         {d.caseNo && <span>· {d.caseNo}</span>}
         {d.date && <span>· 선고 {fmtPrecDate(d.date)}</span>}
@@ -590,7 +590,7 @@ function PrecedentDetailView({ d, onBack }: { d: PrecedentDetail; onBack: () => 
           {d.refClauses && <PrecSection label="참조조문" text={d.refClauses} small />}
           {d.refCases && <PrecSection label="참조판례" text={d.refCases} small />}
           {d.body && <PrecSection label="판례 전문" text={d.body} />}
-          <div style={{ fontSize: 11, color: '#9aa0ad', lineHeight: 1.6 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', lineHeight: 1.6 }}>
             법제처 국가법령정보 원문입니다. 판결문은 저작권 보호대상이 아니나, 인용 시 사건번호·선고일자를 명시하세요.
           </div>
         </div>
@@ -602,14 +602,14 @@ function PrecedentDetailView({ d, onBack }: { d: PrecedentDetail; onBack: () => 
 function PrecSection({ label, text, small }: { label: string; text: string; small?: boolean }) {
   return (
     <div>
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#8a8170', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: small ? 12.5 : 13.5, lineHeight: 1.7, color: '#1f2937', whiteSpace: 'pre-wrap' }}>{text}</div>
+      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-3)', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: small ? 12.5 : 13.5, lineHeight: 1.7, color: 'var(--ink-2)', whiteSpace: 'pre-wrap' }}>{text}</div>
     </div>
   );
 }
 
 const rowBtn: React.CSSProperties = {
-  textAlign: 'left', border: '1px solid #e4e0d8', borderRadius: 7, padding: '10px 13px',
+  textAlign: 'left', border: '1px solid var(--rule)', borderRadius: 7, padding: '10px 13px',
   background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, width: '100%',
 };
 
@@ -677,7 +677,7 @@ function TribunalView() {
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
         {TT_QUICK.map((name) => (
-          <button key={name} className="btn-sm" onClick={() => { setQuery(name); run(name); }} disabled={busy} style={{ fontSize: 12 }}>{name}</button>
+          <button key={name} className="btn-sm" onClick={() => { setQuery(name); run(name); }} disabled={busy} style={{ fontSize: 'var(--fs-2)' }}>{name}</button>
         ))}
       </div>
 
@@ -690,7 +690,7 @@ function TribunalView() {
             <div className="alert-i">검색 결과가 없습니다. 다른 쟁점어로 시도해 보세요.</div>
           ) : (
             <>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+              <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', marginBottom: 8 }}>
                 총 {totalCnt.toLocaleString('ko-KR')}건 {totalCnt > list.length && `(상위 ${list.length}건 표시)`}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -698,10 +698,10 @@ function TribunalView() {
                   <button key={p.serial} onClick={() => openDetail(p)} style={{ ...rowBtn, alignItems: 'flex-start', flexDirection: 'column', gap: 4 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%', flexWrap: 'wrap' }}>
                       {p.kind && <span className="bdg b-on" style={{ fontSize: 9 }}>{p.kind}</span>}
-                      <span style={{ fontWeight: 700, color: '#1A2B52', fontSize: 12.5 }}>{p.agency} {p.caseNo}</span>
-                      <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9aa0ad' }}>{fmtPrecDate(p.date)}</span>
+                      <span style={{ fontWeight: 700, color: 'var(--navy)', fontSize: 'var(--fs-2)' }}>{p.agency} {p.caseNo}</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{fmtPrecDate(p.date)}</span>
                     </div>
-                    <span style={{ fontSize: 13, color: '#1f2937', lineHeight: 1.5, textAlign: 'left' }}>{p.caseName}</span>
+                    <span style={{ fontSize: 'var(--fs-3)', color: 'var(--ink-2)', lineHeight: 1.5, textAlign: 'left' }}>{p.caseName}</span>
                   </button>
                 ))}
               </div>
@@ -727,8 +727,8 @@ function TribunalDetailView({ d, onBack }: { d: TribunalDetail; onBack: () => vo
         <button className="btn-sm" onClick={onBack}>← 목록으로</button>
       </div>
 
-      <div style={{ fontSize: 15, fontWeight: 700, color: '#1A2B52', lineHeight: 1.5 }}>{d.caseName || '(사건명 없음)'}</div>
-      <div style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 14px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ fontSize: 'var(--fs-4)', fontWeight: 700, color: 'var(--navy)', lineHeight: 1.5 }}>{d.caseName || '(사건명 없음)'}</div>
+      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', margin: '4px 0 14px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {d.agency && <span>{d.agency}</span>}
         {d.date && <span>· 의결 {fmtPrecDate(d.date)}</span>}
         {d.taxItem && <span className="bdg b-on" style={{ fontSize: 9 }}>{d.taxItem}</span>}
@@ -744,7 +744,7 @@ function TribunalDetailView({ d, onBack }: { d: TribunalDetail; onBack: () => vo
           {d.refLaw && <PrecSection label="관련법령" text={d.refLaw} small />}
           {d.refDecision && <PrecSection label="참조결정" text={d.refDecision} small />}
           {d.reason && <PrecSection label="이유(전문)" text={d.reason} />}
-          <div style={{ fontSize: 11, color: '#9aa0ad', lineHeight: 1.6 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', lineHeight: 1.6 }}>
             조세심판원 재결례(법제처 국가법령정보) 원문입니다. 인용 시 청구번호·의결일자를 명시하고, 사실관계 차이 가능성을 유의하세요.
           </div>
         </div>

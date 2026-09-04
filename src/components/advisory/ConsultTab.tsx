@@ -243,9 +243,9 @@ export default function ConsultTab() {
         </div>
 
         {/* 형식 모드 토글 */}
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 10, fontSize: 12.5, color: '#4b5563', cursor: 'pointer' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 10, fontSize: 'var(--fs-2)', color: '#4b5563', cursor: 'pointer' }}>
           <input type="checkbox" checked={structured} onChange={(e) => setStructured(e.target.checked)} />
-          🧩 형식을 갖춘 질문 <span style={{ color: '#9aa0ad' }}>(대상·가정·자체검토를 규격 필드로 입력)</span>
+          🧩 형식을 갖춘 질문 <span style={{ color: 'var(--ink-3)' }}>(대상·가정·자체검토를 규격 필드로 입력)</span>
         </label>
 
         {structured && (
@@ -266,7 +266,7 @@ export default function ConsultTab() {
           {/* 상담기록은 보존기간을 따로 두지 않고 영구보관한다(사용자 결정 2026-09-03).
               그 전제가 '의뢰인 개인정보를 적지 않는다'이므로, 적는 자리에서 그렇게 안내한다.
               혹시 적더라도 API 로 나가기 전에 마스킹되지만(pii.ts), 저장되는 본문에는 남는다. */}
-          <div style={{ fontSize: 10.5, color: '#92400E', background: '#FEF3C7',
+          <div style={{ fontSize: 'var(--fs-0)', color: 'var(--warn)', background: '#FEF3C7',
             border: '1px solid #FCD34D', borderRadius: 4, padding: '5px 8px', marginBottom: 5 }}>
             ⚠️ <b>의뢰인의 실명·주민번호·연락처는 적지 마세요.</b> 상담기록은 지우지 않고 계속 남습니다.
             쟁점만 적으시면 됩니다 (예: “A법인”, “개인사업자 갑”).
@@ -334,14 +334,14 @@ export default function ConsultTab() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
           {domain !== '회계' && (
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#4b5563', cursor: 'pointer' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-2)', color: '#4b5563', cursor: 'pointer' }}>
               <input type="checkbox" checked={includeTaxLaw} onChange={(e) => setIncludeTaxLaw(e.target.checked)} />
-              ⚖️ 세법 조문 자동근거 <span style={{ color: '#9aa0ad' }}>(질문에서 관련 세법을 찾아 법제처 조문 원문·시행일을 근거에 자동 추가)</span>
+              ⚖️ 세법 조문 자동근거 <span style={{ color: 'var(--ink-3)' }}>(질문에서 관련 세법을 찾아 법제처 조문 원문·시행일을 근거에 자동 추가)</span>
             </label>
           )}
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#4b5563', cursor: 'pointer' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-2)', color: '#4b5563', cursor: 'pointer' }}>
             <input type="checkbox" checked={includePrec} onChange={(e) => setIncludePrec(e.target.checked)} />
-            🏛️ 관련 판례 자동 참조 <span style={{ color: '#9aa0ad' }}>(세무 쟁점 시 — 법제처 판례 전문을 근거에 추가, 다소 느려짐)</span>
+            🏛️ 관련 판례 자동 참조 <span style={{ color: 'var(--ink-3)' }}>(세무 쟁점 시 — 법제처 판례 전문을 근거에 추가, 다소 느려짐)</span>
           </label>
         </div>
       </form>
@@ -369,7 +369,7 @@ export default function ConsultTab() {
       )}
 
       {answer !== null && maskedNote && (
-        <div className="alert-i" style={{ fontSize: 11.5, marginTop: 14 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)', marginTop: 14 }}>
           🔒 <b>{maskedNote}</b> 을(를) 가린 뒤 보냈습니다 — 개인정보는 외부 AI 로 나가지 않습니다
           (개인정보보호법 제28조의8). 위 초안에는 원래 값으로 되돌려 두었습니다.
         </div>
@@ -377,8 +377,8 @@ export default function ConsultTab() {
       {answer !== null && (
         <div style={{ marginTop: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>회신 초안</span>
-            {model && <span className="bdg" style={{ fontSize: 10, color: '#6b7280' }} title={model}>{modelLabel(model)}</span>}
+            <span style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>회신 초안</span>
+            {model && <span className="bdg" style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }} title={model}>{modelLabel(model)}</span>}
             <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
               <button type="button" className="btn-sm" onClick={copyAnswer}>
                 {copyOk ? '복사됨 ✓' : '📋 복사'}
@@ -404,7 +404,7 @@ export default function ConsultTab() {
           {/* 보완 재회신 — 기존 초안·근거를 유지한 채 개정 */}
           <div style={{ marginTop: 12, border: '1px dashed #d8d2c6', borderRadius: 8, padding: '10px 12px', background: '#fbfaf6' }}>
             <label className="fl" style={{ display: 'block', marginBottom: 4 }}>
-              ↻ 보완 요청 <span style={{ fontWeight: 400, color: '#9aa0ad' }}>(초안에 빠진 점·추가 질문을 적으면 기존 초안·근거를 유지한 채 개정합니다)</span>
+              ↻ 보완 요청 <span style={{ fontWeight: 400, color: 'var(--ink-3)' }}>(초안에 빠진 점·추가 질문을 적으면 기존 초안·근거를 유지한 채 개정합니다)</span>
             </label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <textarea
@@ -412,7 +412,7 @@ export default function ConsultTab() {
                 onChange={(e) => setFollowup(e.target.value)}
                 rows={2}
                 placeholder="예: 최근 국세청 해석 경향을 반영해 주세요 / 개인·법인을 구분해 더 자세히 / 이 부분의 예외 요건을 보강"
-                style={{ flex: 1, resize: 'vertical', lineHeight: 1.6, fontSize: 13 }}
+                style={{ flex: 1, resize: 'vertical', lineHeight: 1.6, fontSize: 'var(--fs-3)' }}
               />
               <button type="button" className="btn-p btn-sm" onClick={refine} disabled={refining || !followup.trim()} style={{ whiteSpace: 'nowrap' }}>
                 {refining ? '보완 중…' : '↻ 보완하여 다시 작성'}
@@ -422,7 +422,7 @@ export default function ConsultTab() {
 
           <div style={{ marginTop: 10 }}>
             <label className="fl" style={{ display: 'block', marginBottom: 4 }}>
-              키워드 해시태그 <span style={{ fontWeight: 400, color: '#9aa0ad' }}>(자동 추출 · 저장 전 편집 가능)</span>
+              키워드 해시태그 <span style={{ fontWeight: 400, color: 'var(--ink-3)' }}>(자동 추출 · 저장 전 편집 가능)</span>
             </label>
             <TagEditor value={tags} onChange={(t) => { setTags(t); setSaved(false); }} />
           </div>
@@ -435,25 +435,25 @@ export default function ConsultTab() {
 
           {citations.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', marginBottom: 8 }}>
+              <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>
                 근거 ({citations.length})
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {citations.map((c, i) => (
                   <div key={i} style={citeStyle}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
-                      <span className="bdg" style={{ fontSize: 10, color: c.type === '세법' ? '#1A2B52' : '#8a5a00' }}>
+                      <span className="bdg" style={{ fontSize: 'var(--fs-0)', color: c.type === '세법' ? '#1A2B52' : '#8a5a00' }}>
                         {c.type}
                       </span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#1A2B52' }}>{c.ref}</span>
+                      <span style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--navy)' }}>{c.ref}</span>
                     </div>
-                    <div style={{ fontSize: 12.5, lineHeight: 1.6, color: '#4b5563', whiteSpace: 'pre-wrap' }}>
+                    <div style={{ fontSize: 'var(--fs-2)', lineHeight: 1.6, color: '#4b5563', whiteSpace: 'pre-wrap' }}>
                       {c.text}
                     </div>
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 8, lineHeight: 1.6 }}>
+              <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 8, lineHeight: 1.6 }}>
                 회계기준 요지는 정리본입니다. 인용·적용 전 원문 대조를 권고하며, 최종 판단·서명은 담당 회계사·세무사가 합니다.
               </div>
             </div>
@@ -475,5 +475,5 @@ function deriveTitle(answerMd: string, question: string): string {
 }
 
 const citeStyle: React.CSSProperties = {
-  border: '1px solid #e4e0d8', borderRadius: 8, padding: '10px 12px', background: '#fffdf6',
+  border: '1px solid var(--rule)', borderRadius: 8, padding: '10px 12px', background: '#fffdf6',
 };

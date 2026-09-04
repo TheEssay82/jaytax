@@ -168,13 +168,13 @@ export default function BulkRevenue({
         </button>
       </div>
 
-      <div className="alert-i" style={{ fontSize: 11 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
         <strong>방법 ①</strong> 표에서 직접 입력 후 [일괄 저장] &nbsp;|&nbsp; <strong>방법 ②</strong> 엑셀에서
         사업자번호·매출액 2열 복사 → 하단 붙여넣기
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>귀속연도:</span>
+        <span style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>귀속연도:</span>
         <div className="pills">
           {yearPills.map((y) => (
             <span key={y} className={`pill${year === y ? ' on' : ''}`} onClick={() => setYear(y)}>
@@ -218,7 +218,7 @@ export default function BulkRevenue({
           <tbody>
             {list.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: 24, color: '#BBB' }}>
+                <td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--ink-4)' }}>
                   거래처 없음
                 </td>
               </tr>
@@ -231,8 +231,8 @@ export default function BulkRevenue({
                     <span className={`bdg ${c.bizType === '법인' ? 'b-law' : 'b-per'}`}>{c.bizType}</span>
                   </td>
                   <td>{c.manager}</td>
-                  <td style={{ fontWeight: 700, color: '#1A2B52' }}>{c.companyName}</td>
-                  <td style={{ fontSize: 11 }}>{c.taxId}</td>
+                  <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{c.companyName}</td>
+                  <td style={{ fontSize: 'var(--fs-1)' }}>{c.taxId}</td>
                   <td className="r" style={{ fontFamily: 'monospace', color: cur ? '#1A2B52' : '#BBB' }}>
                     {cur ? fm(cur) : 'N/A'}
                   </td>
@@ -249,7 +249,7 @@ export default function BulkRevenue({
                     <select
                       value={modelVal(c)}
                       onChange={(e) => setModelInputs((p) => ({ ...p, [key(c.id)]: e.target.value }))}
-                      style={{ width: '100%', padding: '4px 6px', fontSize: 12 }}
+                      style={{ width: '100%', padding: '4px 6px', fontSize: 'var(--fs-2)' }}
                     >
                       <option value="">❓ 미확정</option>
                       <option value="O">✅ O 해당</option>
@@ -263,11 +263,11 @@ export default function BulkRevenue({
         </table>
       </div>
 
-      <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #EDE9E2' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 7 }}>
+      <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--rule-2)' }}>
+        <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 7 }}>
           📋 Excel 붙여넣기 (사업자번호 ⇥ 매출액)
         </div>
-        <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 6 }}>
           엑셀에서 [사업자번호] [매출액] 2개 열을 복사(Ctrl+C) 후 아래에 붙여넣기(Ctrl+V)
         </div>
         <textarea
@@ -278,9 +278,9 @@ export default function BulkRevenue({
           style={{
             width: '100%',
             fontFamily: 'monospace',
-            fontSize: 12,
+            fontSize: 'var(--fs-2)',
             padding: 8,
-            border: '1px solid #D0CCC4',
+            border: '1px solid var(--rule)',
             borderRadius: 6,
           }}
         />

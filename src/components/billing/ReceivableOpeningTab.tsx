@@ -104,15 +104,15 @@ export default function ReceivableOpeningTab() {
   return (
     <div className="card">
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        💰 기초 미수금 <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>{OPENING_AS_OF} 기준 · 사업장 단위</span>
-        <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>
-          입력 {entered.length}/{rows.length} · 합계 {won(total)} <span style={{ color: '#aaa' }}>(VAT포함 {won(totalGross)})</span>
+        💰 기초 미수금 <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>{OPENING_AS_OF} 기준 · 사업장 단위</span>
+        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
+          입력 {entered.length}/{rows.length} · 합계 {won(total)} <span style={{ color: 'var(--ink-4)' }}>(VAT포함 {won(totalGross)})</span>
         </span>
-        {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
+        {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
       </div>
       {err && <div className="alert-w">{err}</div>}
 
-      <div className="alert-i" style={{ fontSize: 11 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
         {OPENING_AS_OF} 시점에 아직 못 받은 금액을 <b>사업장별로</b> 적습니다. 기준은 <b>공급가액(부가세 제외)</b>이고,
         VAT포함 금액을 함께 보관해 거래처가 부가세를 뺀 금액만 입금했는지 가려낼 수 있게 했습니다. 세금계산서가 사업자번호 단위로
         나가기 때문에 사업장이 기준입니다. <b>0원도 저장하면 '확인함'</b>으로 남아, 아직 안 본 사업장과 구분됩니다.
@@ -121,7 +121,7 @@ export default function ReceivableOpeningTab() {
 
       <div className="sbar">
         <input placeholder="🔍 거래처코드·거래처·사업장·사업자번호" value={q} onChange={(e) => setQ(e.target.value)} />
-        <label style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
+        <label style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={onlyEmpty} onChange={(e) => setOnlyEmpty(e.target.checked)} /> 미입력만
         </label>
         {canWrite && (
@@ -141,23 +141,23 @@ export default function ReceivableOpeningTab() {
       </div>
 
       <div className="tbl-scroll">
-        <table className="tbl" style={{ fontSize: 11.5 }}>
+        <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
           <thead>
             <tr>
               <th>거래처코드</th><th>거래처</th><th>사업장</th><th>사업자번호</th><th>상태</th>
-              <th className="r">기초 미수금<div style={{ fontSize: 9.5, fontWeight: 400, color: '#888' }}>공급가액</div></th><th className="r">VAT포함</th><th>비고</th>
+              <th className="r">기초 미수금<div style={{ fontSize: 9.5, fontWeight: 400, color: 'var(--ink-3)' }}>공급가액</div></th><th className="r">VAT포함</th><th>비고</th>
             </tr>
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>해당 사업장 없음</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20, color: 'var(--ink-4)' }}>해당 사업장 없음</td></tr>
             )}
             {view.map((r) => (
               <tr key={r.placeId} style={{ opacity: r.status === '정상' ? 1 : 0.6 }}>
-                <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.code}</td>
-                <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.company}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-1)' }}>{r.code}</td>
+                <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{r.company}</td>
                 <td>{r.placeName}</td>
-                <td style={{ fontSize: 11 }}>{r.bizRegNo || <span style={{ color: '#CCC' }}>—</span>}</td>
+                <td style={{ fontSize: 'var(--fs-1)' }}>{r.bizRegNo || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
                 <td>{r.status}</td>
                 <td className="r">
                   {canWrite ? (
@@ -165,14 +165,14 @@ export default function ReceivableOpeningTab() {
                       value={edit[r.placeId] ?? (r.amount === null ? '' : String(r.amount))}
                       onChange={(e) => setEdit((p) => ({ ...p, [r.placeId]: e.target.value }))}
                       placeholder={r.amount === null ? '미입력' : ''}
-                      style={{ width: 110, textAlign: 'right', fontSize: 11.5 }}
+                      style={{ width: 110, textAlign: 'right', fontSize: 'var(--fs-1)' }}
                     />
-                  ) : r.amount === null ? <span style={{ color: '#CCC' }}>미입력</span> : won(r.amount)}
+                  ) : r.amount === null ? <span style={{ color: 'var(--ink-4)' }}>미입력</span> : won(r.amount)}
                 </td>
-                <td className="r" style={{ fontSize: 11, color: '#666' }}>
-                  {r.amount === null ? <span style={{ color: '#CCC' }}>—</span> : won(r.amountGross)}
+                <td className="r" style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
+                  {r.amount === null ? <span style={{ color: 'var(--ink-4)' }}>—</span> : won(r.amountGross)}
                 </td>
-                <td style={{ fontSize: 11, color: '#666' }}>{r.note}</td>
+                <td style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>{r.note}</td>
               </tr>
             ))}
           </tbody>

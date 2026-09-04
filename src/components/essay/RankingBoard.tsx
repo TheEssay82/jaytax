@@ -36,7 +36,7 @@ export default function RankingBoard({ pieces, initialOrder, initialComment, sub
     <div style={{ minHeight: '100vh', background: 'radial-gradient(120% 90% at 50% 0%, #f6efdd 0%, #eadfc6 60%, #e0d3b6 100%)', padding: '28px 16px 60px' }}>
       <div style={{ maxWidth: 620, margin: '0 auto', fontFamily: "'Noto Sans KR', system-ui, sans-serif" }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ fontSize: 12.5, letterSpacing: '0.22em', color: '#9c8f7a', marginBottom: 8 }}>마지막 단계</div>
+          <div style={{ fontSize: 'var(--fs-2)', letterSpacing: '0.22em', color: '#9c8f7a', marginBottom: 8 }}>마지막 단계</div>
           <h1 style={{ fontFamily: "'Nanum Myeongjo', serif", fontSize: 25, color: '#332c20', margin: '0 0 10px', fontWeight: 700 }}>
             {submitted ? '순위를 다시 정하시겠어요?' : `${pieces.length}편을 모두 읽으셨습니다`}
           </h1>
@@ -78,7 +78,7 @@ export default function RankingBoard({ pieces, initialOrder, initialComment, sub
                       type="button"
                       title="순위에서 빼기"
                       aria-label="순위에서 빼기"
-                      style={{ ...iconBtn, color: '#b04a3a', fontSize: 15 }}
+                      style={{ ...iconBtn, color: '#b04a3a', fontSize: 'var(--fs-4)' }}
                       onClick={() => setOrder(order.filter((x) => x !== id))}
                     >
                       ✕
@@ -123,9 +123,9 @@ export default function RankingBoard({ pieces, initialOrder, initialComment, sub
             style={{
               width: '100%',
               padding: '11px 12px',
-              fontSize: 15,
+              fontSize: 'var(--fs-4)',
               lineHeight: 1.6,
-              border: '1px solid #ddd2bb',
+              border: '1px solid var(--rule)',
               borderRadius: 10,
               background: 'rgba(255,255,255,0.85)',
               color: '#332c20',
@@ -135,11 +135,11 @@ export default function RankingBoard({ pieces, initialOrder, initialComment, sub
               boxSizing: 'border-box',
             }}
           />
-          <div style={{ fontSize: 11.5, color: '#a3947c', textAlign: 'right', marginTop: 4 }}>{comment.length} / 200</div>
+          <div style={{ fontSize: 'var(--fs-1)', color: '#a3947c', textAlign: 'right', marginTop: 4 }}>{comment.length} / 200</div>
         </div>
 
         {error && (
-          <div style={{ fontSize: 13, color: '#b04a3a', background: '#fdf1ef', border: '1px solid #f0d6d0', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
+          <div style={{ fontSize: 'var(--fs-3)', color: '#b04a3a', background: '#fdf1ef', border: '1px solid #f0d6d0', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
             {error}
           </div>
         )}
@@ -155,7 +155,7 @@ export default function RankingBoard({ pieces, initialOrder, initialComment, sub
             fontWeight: 700,
             color: done ? '#fff' : '#a3947c',
             background: done ? '#5c4a2e' : 'rgba(255,255,255,0.6)',
-            border: done ? 'none' : '1px solid #ddd2bb',
+            border: done ? 'none' : '1px solid var(--rule)',
             borderRadius: 10,
             cursor: done && !busy ? 'pointer' : 'default',
             opacity: busy ? 0.6 : 1,
@@ -184,7 +184,7 @@ function Row({
   const theme = themeOf(piece.bgKey);
   const font = fontOf(piece.fontKey);
   return (
-    <div style={{ borderTop: '1px solid #ece5d6' }}>
+    <div style={{ borderTop: '1px solid var(--rule-2)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 2px' }}>
         {left}
         <button
@@ -212,7 +212,7 @@ function Row({
           >
             {piece.title}
           </span>
-          <span style={{ display: 'block', fontSize: 11.5, color: '#a3947c', marginTop: 2 }}>
+          <span style={{ display: 'block', fontSize: 'var(--fs-1)', color: '#a3947c', marginTop: 2 }}>
             {open ? '접기' : '다시 읽기'}
           </span>
         </button>
@@ -222,7 +222,7 @@ function Row({
         <div
           style={{
             background: 'rgba(255,255,255,0.7)',
-            border: '1px solid #ece5d6',
+            border: '1px solid var(--rule-2)',
             borderRadius: 10,
             padding: '16px 16px 18px',
             margin: '0 0 12px',
@@ -255,13 +255,13 @@ function Row({
 
 const card: React.CSSProperties = {
   background: 'rgba(255,252,244,0.72)',
-  border: '1px solid #e6ddc9',
+  border: '1px solid var(--rule)',
   borderRadius: 14,
   padding: '14px 16px 16px',
   marginBottom: 14,
   boxShadow: '0 10px 30px rgba(90,72,42,0.08)',
 };
-const cardLabel: React.CSSProperties = { fontSize: 12.5, fontWeight: 700, color: '#8b7c63', marginBottom: 2 };
+const cardLabel: React.CSSProperties = { fontSize: 'var(--fs-2)', fontWeight: 700, color: '#8b7c63', marginBottom: 2 };
 const rankBadge: React.CSSProperties = {
   width: 26,
   height: 26,
@@ -269,7 +269,7 @@ const rankBadge: React.CSSProperties = {
   borderRadius: '50%',
   background: '#5c4a2e',
   color: '#fff',
-  fontSize: 13,
+  fontSize: 'var(--fs-3)',
   fontWeight: 700,
   display: 'grid',
   placeItems: 'center',
@@ -278,16 +278,16 @@ const iconBtn: React.CSSProperties = {
   width: 38,
   height: 38,
   flexShrink: 0,
-  fontSize: 12,
+  fontSize: 'var(--fs-2)',
   color: '#5c4a2e',
   background: 'rgba(255,255,255,0.9)',
-  border: '1px solid #ddd2bb',
+  border: '1px solid var(--rule)',
   borderRadius: 8,
   cursor: 'pointer',
 };
 const pickBtn: React.CSSProperties = {
   padding: '8px 13px',
-  fontSize: 13,
+  fontSize: 'var(--fs-3)',
   fontWeight: 700,
   color: '#fff',
   background: '#5c4a2e',

@@ -112,10 +112,10 @@ export default function Step2Workload() {
       />
 
       {S.isModel && (
-        <div className="wsec" style={{ borderColor: '#C8963C' }}>
+        <div className="wsec" style={{ borderColor: 'var(--gold)' }}>
           <div className="whdr" style={{ background: '#FEF3C7' }}>
             <span>성실신고수수료 적용 방식</span>
-            <span className="bdg" style={{ background: '#C8963C', color: '#fff' }}>
+            <span className="bdg" style={{ background: 'var(--gold)', color: '#fff' }}>
               {modeLabel}
             </span>
           </div>
@@ -154,7 +154,7 @@ export default function Step2Workload() {
             )}
             <div className="wrow">
               <span className="wl">적용금액</span>
-              <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#C8963C' }}>{modelFeeDisplay}</span>
+              <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--gold)' }}>{modelFeeDisplay}</span>
             </div>
           </div>
         </div>
@@ -192,7 +192,7 @@ export default function Step2Workload() {
               onChange={(e) => setS({ otherAmt: e.target.value })}
             />
           </div>
-          <div style={{ fontSize: 11, color: '#888', padding: '4px 2px' }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', padding: '4px 2px' }}>
             ※ 가산세(가산금액)는 [금액 조정] 단계에서 입력합니다.
           </div>
         </div>

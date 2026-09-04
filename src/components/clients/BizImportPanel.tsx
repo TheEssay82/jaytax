@@ -90,14 +90,14 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
   return (
     <div style={{ border: '1px dashed #c9a54a', borderRadius: 6, background: '#fdfaf1', marginBottom: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#8a6d1f' }}>📥 기존자료 일괄등록</span>
-        <span style={{ fontSize: 11, color: '#a88' }}>최고관리자 · 1회성 (세무조정 clients + 문서발송 doc_clients → 거래처관리)</span>
-        <span style={{ marginLeft: 'auto', fontSize: 12 }}>{open ? '▾' : '▸'}</span>
+        <span style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: '#8a6d1f' }}>📥 기존자료 일괄등록</span>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>최고관리자 · 1회성 (세무조정 clients + 문서발송 doc_clients → 거래처관리)</span>
+        <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)' }}>{open ? '▾' : '▸'}</span>
       </div>
 
       {open && (
         <div style={{ padding: '0 10px 10px' }}>
-          <div style={{ fontSize: 11.5, color: '#777', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: '#777', marginBottom: 8 }}>
             회사명·사업자번호로 자동 병합하여 <b>귀속주체 + 본사 사업장</b>을 만듭니다. 청구 거래처는 <b>매출</b>, 발송 전용은 <b>일반</b>으로 이관됩니다.
             법인등록번호·과세유형·원천세·홈텍스·개업일 등 <b>부족 정보는 비워두고</b> 이후 Excel로 채웁니다.
           </div>
@@ -105,22 +105,22 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
             <button className="btn-sm btn-sm-blue" disabled={loading} onClick={preview}>{loading ? '처리 중…' : '🔍 미리보기 불러오기'}</button>
             {rows && (
               <>
-                <span style={{ fontSize: 12, color: '#555' }}>신규 <b>{newCount}</b> · 이미이관 {existCount} · 선택 <b>{selCount}</b></span>
+                <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>신규 <b>{newCount}</b> · 이미이관 {existCount} · 선택 <b>{selCount}</b></span>
                 <button className="btn-p" disabled={loading || selCount === 0} onClick={run} style={{ marginLeft: 'auto' }}>선택 {selCount}건 이관 실행</button>
               </>
             )}
           </div>
 
           {result && (
-            <div style={{ fontSize: 12, background: '#eef7ee', border: '1px solid #cbe3cb', borderRadius: 5, padding: '6px 8px', marginBottom: 8, color: '#256b25' }}>
+            <div style={{ fontSize: 'var(--fs-2)', background: '#eef7ee', border: '1px solid #cbe3cb', borderRadius: 5, padding: '6px 8px', marginBottom: 8, color: '#256b25' }}>
               ✓ 이관 완료 — 생성 {result.created} · 건너뜀(이미있음) {result.skipped}
-              {result.failed.length > 0 && <span style={{ color: '#c33' }}> · 실패 {result.failed.length} ({result.failed.map((f) => f.name).join(', ')})</span>}
+              {result.failed.length > 0 && <span style={{ color: 'var(--bad)' }}> · 실패 {result.failed.length} ({result.failed.map((f) => f.name).join(', ')})</span>}
             </div>
           )}
 
           {rows && rows.length > 0 && (
-            <div style={{ maxHeight: 340, overflow: 'auto', border: '1px solid #eee', borderRadius: 5 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+            <div style={{ maxHeight: 340, overflow: 'auto', border: '1px solid var(--rule-2)', borderRadius: 5 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--fs-1)' }}>
                 <thead>
                   <tr style={{ background: '#f4efe4', position: 'sticky', top: 0 }}>
                     <th style={thc}></th><th style={thc}>회사명(통일표기)</th><th style={thc}>법인격</th><th style={thc}>구분</th><th style={thc}>성격</th>
@@ -130,30 +130,30 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.key} style={{ borderTop: '1px solid #eee', opacity: r.exists ? 0.5 : 1 }}>
+                    <tr key={r.key} style={{ borderTop: '1px solid var(--rule-2)', opacity: r.exists ? 0.5 : 1 }}>
                       <td style={tdc}><input type="checkbox" disabled={r.exists} checked={!r.exists && sel.has(r.key)} onChange={() => toggle(r.key)} /></td>
                       <td style={{ ...tdc, fontWeight: 600 }}>{corpDisplayName(r.name, r.corpForm, r.corpFormPosition)}</td>
-                      <td style={tdc}>{r.corpForm || <span style={{ color: '#bbb' }}>–</span>}</td>
+                      <td style={tdc}>{r.corpForm || <span style={{ color: 'var(--ink-4)' }}>–</span>}</td>
                       <td style={tdc}>{r.kind}</td>
                       <td style={tdc}>{r.nature}</td>
                       <td style={tdc}>{r.taxId || <span style={{ color: '#c93' }}>–</span>}</td>
-                      <td style={tdc}>{r.cpa || <span style={{ color: '#bbb' }}>–</span>}</td>
-                      <td style={tdc}>{r.repName || <span style={{ color: '#bbb' }}>–</span>}</td>
-                      <td style={tdc}>{r.staffName || <span style={{ color: '#bbb' }}>–</span>}</td>
+                      <td style={tdc}>{r.cpa || <span style={{ color: 'var(--ink-4)' }}>–</span>}</td>
+                      <td style={tdc}>{r.repName || <span style={{ color: 'var(--ink-4)' }}>–</span>}</td>
+                      <td style={tdc}>{r.staffName || <span style={{ color: 'var(--ink-4)' }}>–</span>}</td>
                       <td style={tdc}>{r.source === 'both' ? '청구+발송' : r.source === 'clients' ? '청구' : '발송'}</td>
-                      <td style={tdc}>{r.exists ? <span style={{ color: '#999' }}>이미이관</span> : <span style={{ color: '#2a8', fontWeight: 700 }}>신규</span>}</td>
+                      <td style={tdc}>{r.exists ? <span style={{ color: 'var(--ink-3)' }}>이미이관</span> : <span style={{ color: '#2a8', fontWeight: 700 }}>신규</span>}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-          {rows && rows.length === 0 && <div style={{ fontSize: 12, color: '#999' }}>이관할 기존 거래처가 없습니다.</div>}
+          {rows && rows.length === 0 && <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>이관할 기존 거래처가 없습니다.</div>}
 
           {/* Phase B — Excel 보강 / 대량등록 */}
-          <div style={{ borderTop: '1px solid #eadfbf', marginTop: 12, paddingTop: 8 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#8a6d1f', marginBottom: 4 }}>📊 Excel 보강 / 대량등록</div>
-            <div style={{ fontSize: 11.5, color: '#777', marginBottom: 6 }}>
+          <div style={{ borderTop: '1px solid var(--rule-2)', marginTop: 12, paddingTop: 8 }}>
+            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: '#8a6d1f', marginBottom: 4 }}>📊 Excel 보강 / 대량등록</div>
+            <div style={{ fontSize: 'var(--fs-1)', color: '#777', marginBottom: 6 }}>
               내보내기 → 부족 정보(법인등록번호·과세유형·원천세·홈텍스·개업일 등) 채우기 → 다시 올리기.
               <b> 코드 있는 행 = 보강</b>(빈 칸은 미변경), <b>코드 없는 행 = 신규 등록</b>. 주민번호·홈텍스PW는 입력값만 암호화 저장됩니다.
             </div>
@@ -167,10 +167,10 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
               </label>
             </div>
             {excelResult && (
-              <div style={{ fontSize: 12, background: excelResult.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${excelResult.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
-                <div>✓ 완료 — 보강 {excelResult.updated} · 신규 {excelResult.created} {excelResult.failed.length > 0 && <span style={{ color: '#c33' }}>· 실패 {excelResult.failed.length}</span>}</div>
+              <div style={{ fontSize: 'var(--fs-2)', background: excelResult.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${excelResult.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
+                <div>✓ 완료 — 보강 {excelResult.updated} · 신규 {excelResult.created} {excelResult.failed.length > 0 && <span style={{ color: 'var(--bad)' }}>· 실패 {excelResult.failed.length}</span>}</div>
                 {excelResult.failed.length > 0 && (
-                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#a33' }}>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: 'var(--bad)' }}>
                     {excelResult.failed.slice(0, 10).map((f, i) => <li key={i}><b>{f.ref}</b>: {f.error}</li>)}
                     {excelResult.failed.length > 10 && <li>… 외 {excelResult.failed.length - 10}건</li>}
                   </ul>
@@ -180,9 +180,9 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
           </div>
 
           {/* 통합엑셀(3시트) 대량등록 */}
-          <div style={{ borderTop: '1px solid #eadfbf', marginTop: 12, paddingTop: 8 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#8a6d1f', marginBottom: 4 }}>🗂️ 통합엑셀 대량등록 (3시트)</div>
-            <div style={{ fontSize: 11.5, color: '#777', marginBottom: 6 }}>
+          <div style={{ borderTop: '1px solid var(--rule-2)', marginTop: 12, paddingTop: 8 }}>
+            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: '#8a6d1f', marginBottom: 4 }}>🗂️ 통합엑셀 대량등록 (3시트)</div>
+            <div style={{ fontSize: 'var(--fs-1)', color: '#777', marginBottom: 6 }}>
               <b>거래처·사업장 / 매출계약 / 거래처담당자</b> 3시트를 한 번에 적재합니다.
               <b> 거래처코드·사업자번호 일치 = 보강</b>, <b>그룹키</b>가 같으면 1거래처 N사업장, 나머지는 신규.
               폐업(상태)·기장 매출계약·담당자까지 함께 반영됩니다.
@@ -199,7 +199,7 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
               )}
             </div>
             {uniPreview && (
-              <div style={{ fontSize: 12, background: uniPreview.warnings.length ? '#fbf7ee' : '#eef4fb', border: `1px solid ${uniPreview.warnings.length ? '#e6d8b8' : '#cbd9e3'}`, borderRadius: 5, padding: '7px 9px', marginTop: 8, color: '#334' }}>
+              <div style={{ fontSize: 'var(--fs-2)', background: uniPreview.warnings.length ? '#fbf7ee' : '#eef4fb', border: `1px solid ${uniPreview.warnings.length ? '#e6d8b8' : '#cbd9e3'}`, borderRadius: 5, padding: '7px 9px', marginTop: 8, color: '#334' }}>
                 <div style={{ fontWeight: 700, marginBottom: 3 }}>🔍 미리보기 (쓰기 전 — 아직 저장 안 됨)</div>
                 <div>사업장: 보강 <b>{uniPreview.places.amend}</b> · 신규(단독) <b>{uniPreview.places.createStandalone}</b> · 신규(그룹) <b>{uniPreview.places.createGrouped}</b></div>
                 <div>새 거래처 생성: <b>{uniPreview.entitiesNew}</b> · 그룹 <b>{uniPreview.groups.length}</b>개</div>
@@ -217,12 +217,12 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
               </div>
             )}
             {uniResult && (
-              <div style={{ fontSize: 12, background: uniResult.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${uniResult.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
+              <div style={{ fontSize: 'var(--fs-2)', background: uniResult.failed.length ? '#fbf0ee' : '#eef7ee', border: `1px solid ${uniResult.failed.length ? '#e3cbcb' : '#cbe3cb'}`, borderRadius: 5, padding: '6px 8px', marginTop: 8, color: '#256b25' }}>
                 <div>✓ 완료 — 사업장 보강 {uniResult.places.updated}·신규 {uniResult.places.created} · 거래처 신규 {uniResult.entities.created} · 기장계약 {uniResult.contracts.created}(스킵 {uniResult.contracts.skipped}·미매칭 {uniResult.contracts.unmatched}) · 담당자 {uniResult.contacts.created}(스킵 {uniResult.contacts.skipped}·미매칭 {uniResult.contacts.unmatched})
-                  {uniResult.failed.length > 0 && <span style={{ color: '#c33' }}> · 실패 {uniResult.failed.length}</span>}
+                  {uniResult.failed.length > 0 && <span style={{ color: 'var(--bad)' }}> · 실패 {uniResult.failed.length}</span>}
                 </div>
                 {uniResult.failed.length > 0 && (
-                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#a33' }}>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: 'var(--bad)' }}>
                     {uniResult.failed.slice(0, 12).map((f, i) => <li key={i}><b>[{f.sheet}] {f.ref}</b>: {f.error}</li>)}
                     {uniResult.failed.length > 12 && <li>… 외 {uniResult.failed.length - 12}건</li>}
                   </ul>
@@ -236,5 +236,5 @@ export default function BizImportPanel({ entities, staff, onImported }: { entiti
   );
 }
 
-const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: '#555', whiteSpace: 'nowrap' };
+const thc: React.CSSProperties = { padding: '5px 6px', textAlign: 'left', fontWeight: 700, color: 'var(--ink-2)', whiteSpace: 'nowrap' };
 const tdc: React.CSSProperties = { padding: '4px 6px', whiteSpace: 'nowrap' };

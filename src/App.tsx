@@ -12,7 +12,7 @@ function Gate() {
   const { session, loading } = useAuth();
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#888' }}>
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--ink-3)' }}>
         불러오는 중…
       </div>
     );
@@ -24,7 +24,7 @@ function Gate() {
 function EssayAdminGate() {
   const { session, loading } = useAuth();
   if (loading) {
-    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#888' }}>불러오는 중…</div>;
+    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>;
   }
   return session ? <MfaGate><EssayAdmin /></MfaGate> : <Login />;
 }

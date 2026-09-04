@@ -42,7 +42,7 @@ export default function InvoiceDocument({ S, config, draft }: { S: WizardState; 
         부분 언제든지 문의주시기 바라며,{payStr ? <strong> {payStr}</strong> : ''}까지 송금하여 주실 것을
         부탁드립니다.
       </div>
-      <strong style={{ fontSize: 12 }}>▣ 결산 및 조정수수료 산출 근거</strong>
+      <strong style={{ fontSize: 'var(--fs-2)' }}>▣ 결산 및 조정수수료 산출 근거</strong>
       <table className="itbl">
         <tbody>
           <tr className="ihdr">
@@ -160,7 +160,7 @@ export default function InvoiceDocument({ S, config, draft }: { S: WizardState; 
       <div className="inv-sign">인덕회계법인 &nbsp; 정우철 · 송현주 회계사 드림</div>
       <div className="inv-bank">
         <p>■ 입금계좌 : 신한은행 [ {S.bankAccount || ' '.repeat(16)} ] &nbsp;&nbsp; 예금주: 인덕회계법인</p>
-        <p style={{ marginTop: 3, fontSize: 10, color: '#666' }}>
+        <p style={{ marginTop: 3, fontSize: 'var(--fs-0)', color: 'var(--ink-2)' }}>
           ■ {S.bizType === '법인' ? '법인세 및 지방소득세' : '종합소득세 및 지방소득세'}는 납부서에 명기된
           날짜까지 가까운 은행 또는 우체국에 납부하시기 바랍니다.
         </p>

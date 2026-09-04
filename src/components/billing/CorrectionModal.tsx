@@ -104,7 +104,7 @@ export function CorrectionModal({ team, origin, entities, onClose, onSaved }: {
           <button className={sign === '-' ? 'btn-p' : 'btn-sm'} onClick={() => setSign('-')}>➖ 되돌리기 (−)</button>
           <button className={sign === '+' ? 'btn-p' : 'btn-sm'} onClick={() => setSign('+')}>➕ 되살리기 (+)</button>
         </div>
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           금액은 언제나 <b>양수로</b> 넣으세요 — 저장할 때 부호를 붙입니다.
           <br />· <b>되돌리기 (−)</b> — 이미 발행한 것을 무릅니다(계약 해지·과다청구). 미수금과 매출통계에서 <b>빠집니다</b>.
           <br />· <b>되살리기 (+)</b> — 덜 발행했거나, 예전에 끊어 둔 (−)크레딧이 소멸해 채권이 <b>되살아납니다</b>.
@@ -115,7 +115,7 @@ export function CorrectionModal({ team, origin, entities, onClose, onSaved }: {
         </div>
 
         {origin ? (
-          <div style={{ fontSize: 12, background: '#fdfaf3', border: '1px solid #e2d9c6', borderRadius: 6, padding: '6px 8px', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--fs-2)', background: '#fdfaf3', border: '1px solid var(--rule)', borderRadius: 6, padding: '6px 8px', marginBottom: 8 }}>
             되돌릴 원 건 — <b>{origin.companyName}</b> {origin.placeName} · {origin.ym} ·
             공급가액 {won(origin.supplyAmount)} · {origin.status}
             {origin.invoiceNo && <> · 승인번호 {origin.invoiceNo}</>}
@@ -140,11 +140,11 @@ export function CorrectionModal({ team, origin, entities, onClose, onSaved }: {
         <Row label={`${sign === '-' ? '되돌릴' : '되살릴'} 공급가액 (양수)`}>
           <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="부가세 별도"
             style={{ width: 140, textAlign: 'right' }} />
-          <span style={{ fontSize: 11.5, color: '#666' }}>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
             × <input value={count} onChange={(e) => setCount(e.target.value)} style={{ width: 44, textAlign: 'right' }} />건
           </span>
           {amt > 0 && (
-            <b style={{ fontSize: 12, color: sign === '-' ? '#c33' : '#2a7' }}>합계 {S}{won(totalGross)}</b>
+            <b style={{ fontSize: 'var(--fs-2)', color: sign === '-' ? '#c33' : '#2a7' }}>합계 {S}{won(totalGross)}</b>
           )}
         </Row>
         <Row label="귀속월 · 발행일">
@@ -183,7 +183,7 @@ export function CorrectionModal({ team, origin, entities, onClose, onSaved }: {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-      <span style={{ fontSize: 11.5, color: '#888', width: 140, flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', width: 140, flexShrink: 0 }}>{label}</span>
       <span style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1 }}>{children}</span>
     </div>
   );

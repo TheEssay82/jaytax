@@ -79,17 +79,17 @@ export default function RankingStats({ pieces, rankings, readers }: Props) {
     <>
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 16, color: '#1A2B52' }}>순위 결과</b>
-          <span style={{ fontSize: 12.5, color: '#8a8170' }}>
+          <b style={{ fontSize: 16, color: 'var(--navy)' }}>순위 결과</b>
+          <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>
             순위 제출 {submitted}명 · 읽는 중 {reading}명 · 등록 {readers.length}명
           </span>
         </div>
-        <div style={{ fontSize: 12, color: '#9aa0ad', marginBottom: 12 }}>
+        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', marginBottom: 12 }}>
           평균 순위는 <b>낮을수록 좋습니다</b>. 편차가 크면 호불호가 갈린 글입니다.
         </div>
 
         {submitted === 0 ? (
-          <div style={{ fontSize: 13.5, color: '#8a8170', padding: '10px 0' }}>아직 순위를 낸 사람이 없습니다.</div>
+          <div style={{ fontSize: 13.5, color: 'var(--ink-3)', padding: '10px 0' }}>아직 순위를 낸 사람이 없습니다.</div>
         ) : (
           <table style={table}>
             <thead>
@@ -104,13 +104,13 @@ export default function RankingStats({ pieces, rankings, readers }: Props) {
             </thead>
             <tbody>
               {stats.map((s, i) => (
-                <tr key={s.piece.id} style={{ borderTop: '1px solid #eee9dd', background: i === 0 ? '#fbf9f2' : undefined }}>
+                <tr key={s.piece.id} style={{ borderTop: '1px solid var(--rule-2)', background: i === 0 ? '#fbf9f2' : undefined }}>
                   <td style={{ ...td, color: i === 0 ? '#8a5a00' : '#9aa0ad', fontWeight: i === 0 ? 800 : 400 }}>{i + 1}</td>
-                  <td style={{ ...td, fontWeight: 600, color: '#1A2B52' }}>{s.piece.title}</td>
+                  <td style={{ ...td, fontWeight: 600, color: 'var(--navy)' }}>{s.piece.title}</td>
                   <td style={num}>{s.n ? s.avg.toFixed(2) : '—'}</td>
                   <td style={num}>{s.first || '—'}</td>
                   <td style={num}>{s.n ? `${s.best} ~ ${s.worst}` : '—'}</td>
-                  <td style={{ ...num, color: '#6b7280' }}>{s.n > 1 ? s.sd.toFixed(2) : '—'}</td>
+                  <td style={{ ...num, color: 'var(--ink-3)' }}>{s.n > 1 ? s.sd.toFixed(2) : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -120,8 +120,8 @@ export default function RankingStats({ pieces, rankings, readers }: Props) {
 
       {voters.length > 0 && (
         <div style={card}>
-          <b style={{ fontSize: 16, color: '#1A2B52' }}>평가자별 순위</b>
-          <div style={{ fontSize: 12, color: '#9aa0ad', margin: '4px 0 12px' }}>
+          <b style={{ fontSize: 16, color: 'var(--navy)' }}>평가자별 순위</b>
+          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', margin: '4px 0 12px' }}>
             가로줄이 한 사람의 순위입니다. 1위는 진하게 표시했습니다.
           </div>
           <div style={{ overflowX: 'auto' }}>
@@ -138,8 +138,8 @@ export default function RankingStats({ pieces, rankings, readers }: Props) {
               </thead>
               <tbody>
                 {voters.map((v) => (
-                  <tr key={v} style={{ borderTop: '1px solid #eee9dd' }}>
-                    <td style={{ ...td, fontWeight: 600, color: '#1A2B52' }}>{v}</td>
+                  <tr key={v} style={{ borderTop: '1px solid var(--rule-2)' }}>
+                    <td style={{ ...td, fontWeight: 600, color: 'var(--navy)' }}>{v}</td>
                     {stats.map((s) => {
                       const r = rankOf(v, s.piece.id);
                       return (
@@ -168,8 +168,8 @@ export default function RankingStats({ pieces, rankings, readers }: Props) {
 
       {voterProfile.length > 0 && (
         <div style={card}>
-          <b style={{ fontSize: 16, color: '#1A2B52' }}>평가자 성향과 한 줄 평</b>
-          <div style={{ fontSize: 12, color: '#9aa0ad', margin: '4px 0 12px' }}>
+          <b style={{ fontSize: 16, color: 'var(--navy)' }}>평가자 성향과 한 줄 평</b>
+          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', margin: '4px 0 12px' }}>
             일치도는 그 사람의 순위가 전체 평균과 얼마나 같은 방향인지입니다(1에 가까울수록 다수 의견, 음수면 반대 취향).
           </div>
           <table style={table}>
@@ -183,18 +183,18 @@ export default function RankingStats({ pieces, rankings, readers }: Props) {
             </thead>
             <tbody>
               {voterProfile.map((v) => (
-                <tr key={v.name} style={{ borderTop: '1px solid #eee9dd' }}>
-                  <td style={{ ...td, fontWeight: 600, color: '#1A2B52' }}>
+                <tr key={v.name} style={{ borderTop: '1px solid var(--rule-2)' }}>
+                  <td style={{ ...td, fontWeight: 600, color: 'var(--navy)' }}>
                     {v.name}
                     {v.comment && (
-                      <div style={{ fontSize: 12, color: '#6b7280', fontWeight: 400, marginTop: 4, fontStyle: 'italic' }}>
+                      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', fontWeight: 400, marginTop: 4, fontStyle: 'italic' }}>
                         “{v.comment}”
                       </div>
                     )}
                   </td>
                   <td style={{ ...num, color: v.agreement < 0 ? '#b04a3a' : '#3d4756' }}>{v.agreement.toFixed(2)}</td>
                   <td style={td}>{v.top}</td>
-                  <td style={{ ...td, color: '#6b7280' }}>{v.bottom}</td>
+                  <td style={{ ...td, color: 'var(--ink-3)' }}>{v.bottom}</td>
                 </tr>
               ))}
             </tbody>
@@ -207,14 +207,14 @@ export default function RankingStats({ pieces, rankings, readers }: Props) {
 
 const card: React.CSSProperties = {
   background: '#fff',
-  border: '1px solid #e8e2d5',
+  border: '1px solid var(--rule)',
   borderRadius: 12,
   padding: 20,
   marginBottom: 16,
   boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
 };
 const table: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 13.5 };
-const theadRow: React.CSSProperties = { textAlign: 'left', color: '#6b7280', fontSize: 12.5 };
+const theadRow: React.CSSProperties = { textAlign: 'left', color: 'var(--ink-3)', fontSize: 'var(--fs-2)' };
 const th: React.CSSProperties = { padding: '6px 8px', fontWeight: 600 };
 const td: React.CSSProperties = { padding: '9px 8px', verticalAlign: 'top' };
 const num: React.CSSProperties = { ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };

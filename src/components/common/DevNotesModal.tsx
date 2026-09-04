@@ -12,7 +12,7 @@ export default function DevNotesModal({ onClose }: { onClose: () => void }) {
       >
         <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           📓 개발노트
-          <span style={{ fontSize: 11, fontWeight: 600, color: '#9aa0ad' }}>현재 v{LATEST_VERSION}</span>
+          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 600, color: 'var(--ink-3)' }}>현재 v{LATEST_VERSION}</span>
           <button className="btn-s" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
 
@@ -22,14 +22,14 @@ export default function DevNotesModal({ onClose }: { onClose: () => void }) {
               key={e.version}
               style={{
                 padding: '12px 2px',
-                borderTop: i === 0 ? 'none' : '1px solid #ece8df',
+                borderTop: i === 0 ? 'none' : '1px solid var(--rule-2)',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                 <span
                   className="bdg"
                   style={{
-                    fontSize: 11, fontWeight: 700,
+                    fontSize: 'var(--fs-1)', fontWeight: 700,
                     color: i === 0 ? '#1A6E3C' : '#1A2B52',
                     background: i === 0 ? '#eafaef' : '#eef2fb',
                     border: `1px solid ${i === 0 ? '#bfe6cc' : '#cdd8ef'}`,
@@ -38,12 +38,12 @@ export default function DevNotesModal({ onClose }: { onClose: () => void }) {
                 >
                   v{e.version}
                 </span>
-                <span style={{ fontWeight: 700, color: '#1f2937' }}>{e.title}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#9aa0ad', whiteSpace: 'nowrap' }}>{e.date}</span>
+                <span style={{ fontWeight: 700, color: 'var(--ink-2)' }}>{e.title}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{e.date}</span>
               </div>
               <ul style={{ margin: '8px 0 0', paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {e.highlights.map((h, j) => (
-                  <li key={j} style={{ fontSize: 12.5, color: '#4b5563', lineHeight: 1.55 }}>{h}</li>
+                  <li key={j} style={{ fontSize: 'var(--fs-2)', color: '#4b5563', lineHeight: 1.55 }}>{h}</li>
                 ))}
               </ul>
             </div>

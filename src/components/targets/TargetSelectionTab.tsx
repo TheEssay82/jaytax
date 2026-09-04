@@ -209,7 +209,7 @@ export default function TargetSelectionTab() {
     return (
       <div className="card">
         <div className="chdr">🏢 거래처 관리</div>
-        <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
       </div>
     );
   }
@@ -255,11 +255,11 @@ export default function TargetSelectionTab() {
 
       {error && <div className="alert-w">{error}</div>}
       {canManage ? (
-        <div className="alert-i" style={{ fontSize: 11 }}>
-          흐름: <b>매출계약등록</b>에 법인세·종합소득세 계약을 넣고 → <b>＋ 매출계약에서 가져오기</b>로 편입 → <b>매출액·성실신고</b> 입력 → <b>확정</b> → 청구서 작성. 매출 셀: <b>숫자</b>=매출액 · <b style={{ color: '#6B7280' }}>0</b>=매출 0원(기록됨) · <b style={{ color: '#CCC' }}>—</b>=데이터 없음 · <span className="bdg b-loss">상실</span>=거래종료.
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
+          흐름: <b>매출계약등록</b>에 법인세·종합소득세 계약을 넣고 → <b>＋ 매출계약에서 가져오기</b>로 편입 → <b>매출액·성실신고</b> 입력 → <b>확정</b> → 청구서 작성. 매출 셀: <b>숫자</b>=매출액 · <b style={{ color: 'var(--ink-3)' }}>0</b>=매출 0원(기록됨) · <b style={{ color: 'var(--ink-4)' }}>—</b>=데이터 없음 · <span className="bdg b-loss">상실</span>=거래종료.
         </div>
       ) : (
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           🔧 기장팀원은 <b>사업자번호·대표자명·가상계좌·성실신고</b>만 수정할 수 있습니다. 거래처 편입·제외·매출/담당자 변경은 기장팀장 이상만 가능합니다.
         </div>
       )}
@@ -286,7 +286,7 @@ export default function TargetSelectionTab() {
           <option value="법인">법인</option>
           <option value="개인">개인</option>
         </select>
-        <span style={{ fontSize: 12, color: '#555', fontWeight: 700, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', fontWeight: 700, whiteSpace: 'nowrap' }}>
           귀속연도:
         </span>
         <select
@@ -300,7 +300,7 @@ export default function TargetSelectionTab() {
             </option>
           ))}
         </select>
-        <span style={{ fontSize: 10, color: '#888', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
           ← 확정·청구 상태와 매출액이 이 연도 기준으로 보입니다
         </span>
       </div>
@@ -338,7 +338,7 @@ export default function TargetSelectionTab() {
           <tbody>
             {view.length === 0 && (
               <tr>
-                <td colSpan={colCount} style={{ textAlign: 'center', padding: 24, color: '#BBB' }}>
+                <td colSpan={colCount} style={{ textAlign: 'center', padding: 24, color: 'var(--ink-4)' }}>
                   등록된 거래처 없음
                 </td>
               </tr>
@@ -443,7 +443,7 @@ function ClientRow({
         )}
         <td>
           <span style={{
-            display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 10.5, fontWeight: 700,
+            display: 'inline-block', padding: '1px 6px', borderRadius: 9, fontSize: 'var(--fs-0)', fontWeight: 700,
             background: statusStyle[status].bg, color: statusStyle[status].fg, whiteSpace: 'nowrap',
           }}>{status}</span>
         </td>
@@ -451,9 +451,9 @@ function ClientRow({
           <span className={`bdg ${c.bizType === '법인' ? 'b-law' : 'b-per'}`}>{c.bizType}</span>
         </td>
         <td>{c.manager}</td>
-        <td style={{ fontWeight: 700, color: '#1A2B52' }}>{c.companyName}</td>
+        <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{c.companyName}</td>
         <td>{c.tradeName}</td>
-        <td style={{ fontSize: 11 }}>{c.taxId}</td>
+        <td style={{ fontSize: 'var(--fs-1)' }}>{c.taxId}</td>
         <td style={{ textAlign: 'center' }}>
           {canManage ? (
             <select
@@ -462,8 +462,8 @@ function ClientRow({
               style={{
                 width: 82,
                 padding: '2px 3px',
-                fontSize: 11,
-                border: '1px solid #D0CCC4',
+                fontSize: 'var(--fs-1)',
+                border: '1px solid var(--rule)',
                 borderRadius: 4,
                 fontFamily: 'inherit',
                 cursor: 'pointer',
@@ -475,7 +475,7 @@ function ClientRow({
               <option value="X">✗ X 미해당</option>
             </select>
           ) : (
-            <span style={{ fontSize: 11, color: '#555' }}>{mv === true ? '✅ O' : mv === false ? '✗ X' : '❓'}</span>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>{mv === true ? '✅ O' : mv === false ? '✗ X' : '❓'}</span>
           )}
         </td>
         {dispYears.map((y) => {
@@ -485,13 +485,13 @@ function ClientRow({
           // ① 상실 확정 — 빨강 '상실' + 해제 버튼
           if (isLoss) {
             return (
-              <td key={y} className="r" style={{ fontFamily: 'monospace', fontSize: 11 }}>
+              <td key={y} className="r" style={{ fontFamily: 'monospace', fontSize: 'var(--fs-1)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
                   <span className="bdg b-loss">상실</span>
                   {canManage && (
                     <button
                       className="btn-sm btn-sm-del"
-                      style={{ fontSize: 10, padding: '1px 6px' }}
+                      style={{ fontSize: 'var(--fs-0)', padding: '1px 6px' }}
                       onClick={() => onToggleLoss(y, false)}
                       title="상실 해제"
                     >
@@ -505,14 +505,14 @@ function ClientRow({
           // ② 매출 있음 — 금액만
           if (rv > 0) {
             return (
-              <td key={y} className="r" style={{ fontFamily: 'monospace', fontSize: 11 }}>
+              <td key={y} className="r" style={{ fontFamily: 'monospace', fontSize: 'var(--fs-1)' }}>
                 {fm(rv)}
               </td>
             );
           }
           // ③ 매출 0(기록됨) / 데이터 없음 — 구분 표기 + 상실 처리 버튼
           return (
-            <td key={y} className="r" style={{ fontFamily: 'monospace', fontSize: 11 }}>
+            <td key={y} className="r" style={{ fontFamily: 'monospace', fontSize: 'var(--fs-1)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
                 <span
                   style={{ color: hasKey ? '#6B7280' : '#CCC', fontWeight: hasKey ? 700 : 400 }}
@@ -523,7 +523,7 @@ function ClientRow({
                 {canManage && (
                   <button
                     className="btn-sm btn-sm-del"
-                    style={{ fontSize: 10, padding: '1px 6px' }}
+                    style={{ fontSize: 'var(--fs-0)', padding: '1px 6px' }}
                     onClick={() => onToggleLoss(y, true)}
                     title="이 연도를 상실(거래종료)로 처리"
                   >
@@ -534,10 +534,10 @@ function ClientRow({
             </td>
           );
         })}
-        <td className="r" style={{ fontSize: 11, color: '#666', whiteSpace: 'nowrap' }}>
-          {prevGrand != null ? fm(prevGrand) : <span style={{ color: '#CCC' }}>—</span>}
+        <td className="r" style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>
+          {prevGrand != null ? fm(prevGrand) : <span style={{ color: 'var(--ink-4)' }}>—</span>}
         </td>
-        <td style={{ fontSize: 10, color: '#888', whiteSpace: 'nowrap' }}>{dtFmt(c.updatedAt)}</td>
+        <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{dtFmt(c.updatedAt)}</td>
         <td>
           <div style={{ display: 'flex', gap: 4 }}>
             {!readonly && (
@@ -616,22 +616,22 @@ function ImportFromContracts({ fiscalYear, onClose, onDone }: { fiscalYear: numb
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box" style={{ maxWidth: 980 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <b style={{ color: '#1A2B52' }}>매출계약에서 가져오기 — {fiscalYear}년 귀속</b>
-          <span style={{ fontSize: 11, color: '#888' }}>법인세·종합소득세 계약 기준 · 이미 편입된 건은 회색</span>
+          <b style={{ color: 'var(--navy)' }}>매출계약에서 가져오기 — {fiscalYear}년 귀속</b>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>법인세·종합소득세 계약 기준 · 이미 편입된 건은 회색</span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
 
         {err && <div className="alert-w">{err}</div>}
-        {!rows && !err && <div style={{ padding: 20, color: '#888', fontSize: 12.5 }}>불러오는 중…</div>}
+        {!rows && !err && <div style={{ padding: 20, color: 'var(--ink-3)', fontSize: 'var(--fs-2)' }}>불러오는 중…</div>}
 
         {rows && (
           <>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
               <input placeholder="🔍 코드·거래처·사업자번호·담당CPA" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-              <label style={{ fontSize: 11.5 }}>
+              <label style={{ fontSize: 'var(--fs-1)' }}>
                 <input type="checkbox" checked={hideTaken} onChange={(e) => setHideTaken(e.target.checked)} /> 편입된 건 숨김
               </label>
-              <label style={{ fontSize: 11.5 }} title="김준성·조현규 담당 세무조정은 이 시스템으로 청구하지 않습니다">
+              <label style={{ fontSize: 'var(--fs-1)' }} title="김준성·조현규 담당 세무조정은 이 시스템으로 청구하지 않습니다">
                 <input type="checkbox" checked={onlyMain} onChange={(e) => setOnlyMain(e.target.checked)} /> 정우철 담당분만
               </label>
               <button className="btn-p" disabled={busy || pick.size === 0} onClick={() => void run()}>
@@ -639,13 +639,13 @@ function ImportFromContracts({ fiscalYear, onClose, onDone }: { fiscalYear: numb
               </button>
             </div>
             {onlyMain && otherCpaCnt > 0 && (
-              <div className="alert-i" style={{ fontSize: 11 }}>
+              <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
                 김준성·조현규 담당 세무조정 계약 <b>{otherCpaCnt}건</b>은 숨겨져 있습니다 — 이 시스템으로 청구하지 않고 매출계약으로만 매출을 잡습니다.
               </div>
             )}
 
-            <div style={{ maxHeight: '55vh', overflow: 'auto', border: '1px solid #E5E1D8', borderRadius: 6 }}>
-              <table className="tbl" style={{ fontSize: 11.5 }}>
+            <div style={{ maxHeight: '55vh', overflow: 'auto', border: '1px solid var(--rule)', borderRadius: 6 }}>
+              <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
                 <thead>
                   <tr>
                     <th style={{ width: 32 }}></th>
@@ -654,7 +654,7 @@ function ImportFromContracts({ fiscalYear, onClose, onDone }: { fiscalYear: numb
                 </thead>
                 <tbody>
                   {view.length === 0 && (
-                    <tr><td colSpan={9} style={{ textAlign: 'center', padding: 20, color: '#BBB' }}>
+                    <tr><td colSpan={9} style={{ textAlign: 'center', padding: 20, color: 'var(--ink-4)' }}>
                       가져올 계약이 없습니다. 거래처관리 › 매출계약등록에서 {fiscalYear}년 귀속 법인세·종합소득세 계약을 먼저 등록하세요.
                     </td></tr>
                   )}
@@ -675,14 +675,14 @@ function ImportFromContracts({ fiscalYear, onClose, onDone }: { fiscalYear: numb
                           }
                         />
                       </td>
-                      <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{r.code}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-1)' }}>{r.code}</td>
                       <td><span className={`bdg ${r.bizType === '법인' ? 'b-law' : 'b-per'}`}>{r.bizType}</span></td>
-                      <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.companyName}</td>
-                      <td>{r.taxType}{!r.confirmed && <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>미계약</span>}</td>
+                      <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{r.companyName}</td>
+                      <td>{r.taxType}{!r.confirmed && <span style={{ marginLeft: 4, fontSize: 'var(--fs-0)', fontWeight: 700, color: 'var(--warn)', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>미계약</span>}</td>
                       <td className="r">{fm(r.amount)}</td>
-                      <td>{r.cpa || <span style={{ color: '#CCC' }}>—</span>}</td>
-                      <td style={{ fontSize: 11 }}>{r.taxId || <span style={{ color: '#CCC' }}>—</span>}</td>
-                      <td>{r.already ? <span style={{ color: '#888' }}>편입됨</span> : r.placeStatus}</td>
+                      <td>{r.cpa || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                      <td style={{ fontSize: 'var(--fs-1)' }}>{r.taxId || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                      <td>{r.already ? <span style={{ color: 'var(--ink-3)' }}>편입됨</span> : r.placeStatus}</td>
                     </tr>
                   ))}
                 </tbody>

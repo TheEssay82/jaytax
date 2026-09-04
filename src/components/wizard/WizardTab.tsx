@@ -23,7 +23,7 @@ export default function WizardTab() {
 
   let body: React.ReactNode;
   if (loading) {
-    body = <div style={{ padding: 24, textAlign: 'center', color: '#888' }}>불러오는 중…</div>;
+    body = <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>;
   } else if (step === 1) {
     body = <Step0SelectClient {...data} />;
   } else if (step === 2) {

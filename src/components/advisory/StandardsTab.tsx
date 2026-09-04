@@ -143,7 +143,7 @@ function SearchView() {
 
       {matches && !error && (
         <div style={{ marginTop: 16 }}>
-          {notice && <div className="alert-i" style={{ marginBottom: 12, fontSize: 12, lineHeight: 1.6 }}>⚠️ {notice}</div>}
+          {notice && <div className="alert-i" style={{ marginBottom: 12, fontSize: 'var(--fs-2)', lineHeight: 1.6 }}>⚠️ {notice}</div>}
           {matches.length === 0 ? (
             <div className="alert-i">관련 문단을 찾지 못했습니다. 상위개념·동의어로 바꿔 다시 검색해 보세요.</div>
           ) : (
@@ -151,9 +151,9 @@ function SearchView() {
               {matches.map((m, i) => (
                 <div key={`${m.standard_no}-${m.paragraph_no}-${i}`} style={cardStyle}>
                   <div style={rowStyle}>
-                    <span className="bdg b-on" style={{ fontSize: 11 }}>{m.citation}</span>
+                    <span className="bdg b-on" style={{ fontSize: 'var(--fs-1)' }}>{m.citation}</span>
                     {m.section_title && <span style={subStyle}>{m.section_title}</span>}
-                    <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9aa0ad' }}>
+                    <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
                       유사도 {(m.similarity * 100).toFixed(0)}%
                     </span>
                   </div>
@@ -211,7 +211,7 @@ function BrowseView({
   return (
     <div style={{ marginTop: 8 }}>
       {/* 대분류 탭 */}
-      <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid #e4e0d8', marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--rule)', marginBottom: 12 }}>
         {CATALOG.map((c, i) => (
           <button
             key={c.set}
@@ -221,10 +221,10 @@ function BrowseView({
               background: 'none',
               padding: '8px 12px',
               cursor: 'pointer',
-              fontSize: 13,
+              fontSize: 'var(--fs-3)',
               fontWeight: catIdx === i ? 700 : 500,
               color: catIdx === i ? '#1A2B52' : '#6b7280',
-              borderBottom: catIdx === i ? '2px solid #1A2B52' : '2px solid transparent',
+              borderBottom: catIdx === i ? '2px solid var(--navy)' : '2px solid transparent',
             }}
           >
             {c.label}
@@ -237,13 +237,13 @@ function BrowseView({
         return (
         <div key={g.label} style={{ marginBottom: 14 }}>
           {showSection && (
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#1A2B52', margin: '18px 0 10px', paddingBottom: 6, borderBottom: '2px solid #e7e2d8' }}>
+            <div style={{ fontSize: 'var(--fs-3)', fontWeight: 800, color: 'var(--navy)', margin: '18px 0 10px', paddingBottom: 6, borderBottom: '2px solid #e7e2d8' }}>
               ⚖️ {g.section}
             </div>
           )}
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#8a8170', marginBottom: 6 }}>{g.label}</div>
+          <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-3)', marginBottom: 6 }}>{g.label}</div>
           {g.items.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#b0a89a', padding: '4px 2px' }}>세부 법령·규정을 준비 중입니다.</div>
+            <div style={{ fontSize: 'var(--fs-2)', color: '#b0a89a', padding: '4px 2px' }}>세부 법령·규정을 준비 중입니다.</div>
           ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 6 }}>
             {g.items.map((item, i) => {
@@ -257,13 +257,13 @@ function BrowseView({
                     rel="noreferrer"
                     title="전문 열람 (법제처 국가법령정보센터 ↗)"
                     style={{
-                      textAlign: 'left', border: '1px solid #e4e0d8', background: '#fff', color: '#1f2937',
-                      borderRadius: 6, padding: '7px 10px', cursor: 'pointer', fontSize: 12.5,
+                      textAlign: 'left', border: '1px solid var(--rule)', background: '#fff', color: 'var(--ink-2)',
+                      borderRadius: 6, padding: '7px 10px', cursor: 'pointer', fontSize: 'var(--fs-2)',
                       display: 'flex', gap: 6, alignItems: 'baseline', textDecoration: 'none',
                     }}
                   >
                     <span style={{ flex: 1 }}>{item.title}</span>
-                    <span style={{ fontSize: 11, color: '#C8963C', fontWeight: 700, whiteSpace: 'nowrap' }}>전문 ↗</span>
+                    <span style={{ fontSize: 'var(--fs-1)', color: 'var(--gold)', fontWeight: 700, whiteSpace: 'nowrap' }}>전문 ↗</span>
                   </a>
                 );
               }
@@ -285,7 +285,7 @@ function BrowseView({
                     borderRadius: 6,
                     padding: '7px 10px',
                     cursor: clickable ? 'pointer' : 'default',
-                    fontSize: 12.5,
+                    fontSize: 'var(--fs-2)',
                     display: 'flex',
                     gap: 6,
                     alignItems: 'baseline',
@@ -293,7 +293,7 @@ function BrowseView({
                 >
                   {item.no && /^\d/.test(item.no) && <span style={{ fontWeight: 700, minWidth: 38, color: active ? '#1A2B52' : clickable ? '#6b7280' : '#bbb' }}>{item.no}</span>}
                   <span style={{ flex: 1 }}>{item.title}</span>
-                  {hasPdf && <span className="bdg" style={{ fontSize: 9, color: '#b91c1c', background: '#fdeaea', border: '1px solid #f3caca' }}>PDF</span>}
+                  {hasPdf && <span className="bdg" style={{ fontSize: 9, color: 'var(--bad)', background: '#fdeaea', border: '1px solid #f3caca' }}>PDF</span>}
                   {loaded && <span className="bdg b-on" style={{ fontSize: 9 }}>요지</span>}
                 </button>
               );
@@ -303,12 +303,12 @@ function BrowseView({
         </div>
         );
       })}
-      <div className="alert-i" style={{ fontSize: 12, lineHeight: 1.6 }}>
+      <div className="alert-i" style={{ fontSize: 'var(--fs-2)', lineHeight: 1.6 }}>
         기준서를 클릭하면 <b>원문 PDF</b>를 게시·열람하고, <b>요지 정리본</b>(적재된 경우)을 함께 볼 수 있습니다.
-        <span className="bdg" style={{ fontSize: 9, color: '#b91c1c', background: '#fdeaea', border: '1px solid #f3caca', margin: '0 3px' }}>PDF</span>는 원문 게시,
+        <span className="bdg" style={{ fontSize: 9, color: 'var(--bad)', background: '#fdeaea', border: '1px solid #f3caca', margin: '0 3px' }}>PDF</span>는 원문 게시,
         <span className="bdg b-on" style={{ fontSize: 9, margin: '0 3px' }}>요지</span>는 정리본 적재를 뜻합니다.
         참고로 KASB 원문 열람은{' '}
-        <a href={KASB_STANDARDS_URL} target="_blank" rel="noreferrer" style={{ color: '#C8963C', fontWeight: 700 }}>
+        <a href={KASB_STANDARDS_URL} target="_blank" rel="noreferrer" style={{ color: 'var(--gold)', fontWeight: 700 }}>
           열람서비스 ↗
         </a>
         에서도 가능합니다.
@@ -367,7 +367,7 @@ function StandardDetail({
           📖 KASB 열람서비스 ↗
         </a>
       </div>
-      <div style={{ fontSize: 16, fontWeight: 700, color: '#1A2B52', marginBottom: 10 }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 10 }}>
         {set} {item.no && /^\d/.test(item.no) ? `제${item.no}호 ` : ''}{item.title}
       </div>
 
@@ -377,8 +377,8 @@ function StandardDetail({
       {/* 요지 정리본 (적재된 경우만) */}
       {loaded && (
         <div style={{ marginTop: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', marginBottom: 6 }}>📝 요지 정리본</div>
-          <div className="alert-i" style={{ fontSize: 12, marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>📝 요지 정리본</div>
+          <div className="alert-i" style={{ fontSize: 'var(--fs-2)', marginBottom: 8 }}>
             아래는 <b>요지 정리본</b>(원문 verbatim 아님)입니다. 정확한 인용은 위 <b>원문 PDF</b>를 사용하세요.
           </div>
           {busy && <div className="alert-i">문단을 불러오는 중…</div>}
@@ -391,13 +391,13 @@ function StandardDetail({
                 return (
                   <div key={`${p.paragraph_no}-${i}`}>
                     {showSection && (
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#8a8170', margin: '12px 0 4px' }}>
+                      <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-3)', margin: '12px 0 4px' }}>
                         {p.part !== '본문' ? `[${p.part}] ` : ''}{p.section_title}
                       </div>
                     )}
                     <div style={{ display: 'flex', gap: 8, padding: '3px 0', alignItems: 'baseline' }}>
-                      <span style={{ fontWeight: 700, color: '#1A2B52', minWidth: 42, fontSize: 12.5 }}>§{p.paragraph_no}</span>
-                      <span style={{ fontSize: 13.5, lineHeight: 1.6, color: '#1f2937' }}>{p.content}</span>
+                      <span style={{ fontWeight: 700, color: 'var(--navy)', minWidth: 42, fontSize: 'var(--fs-2)' }}>§{p.paragraph_no}</span>
+                      <span style={{ fontSize: 13.5, lineHeight: 1.6, color: 'var(--ink-2)' }}>{p.content}</span>
                     </div>
                   </div>
                 );
@@ -409,19 +409,19 @@ function StandardDetail({
 
       {related.length > 0 && (
         <div style={{ marginTop: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>
             💬 관련 질의회신 ({related.length})
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {related.map((q) => (
               <button key={q.id} type="button" onClick={() => onOpenQna(q)} style={qnaLinkStyle}>
                 <span style={{ flex: 1, textAlign: 'left' }}>{q.title}</span>
-                {q.date && <span style={{ fontSize: 11, color: '#9aa0ad' }}>{q.date}</span>}
-                <span style={{ fontSize: 11, color: '#C8963C' }}>본문 보기</span>
+                {q.date && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{q.date}</span>}
+                <span style={{ fontSize: 'var(--fs-1)', color: 'var(--gold)' }}>본문 보기</span>
               </button>
             ))}
           </div>
-          <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 6 }}>
             제목을 클릭하면 질의회신 본문을 앱에서 바로 봅니다(KASB 원문 링크도 함께 제공).
           </div>
         </div>
@@ -499,14 +499,14 @@ function StandardPdfSection({
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52' }}>📄 원문 PDF</span>
+        <span style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>📄 원문 PDF</span>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
           {exists && url && <a className="btn-sm" href={url} target="_blank" rel="noreferrer">↗ 새 탭</a>}
           {exists && <button className="btn-sm" onClick={download} disabled={busy}>⬇ 다운로드</button>}
           <button className="btn-sm btn-sm-navy" onClick={() => fileRef.current?.click()} disabled={busy}>
             {busy ? '처리 중…' : exists ? '🔁 교체' : '⬆ PDF 업로드'}
           </button>
-          {exists && <button className="btn-sm" onClick={remove} disabled={busy} style={{ color: '#b91c1c' }}>🗑️ 삭제</button>}
+          {exists && <button className="btn-sm" onClick={remove} disabled={busy} style={{ color: 'var(--bad)' }}>🗑️ 삭제</button>}
         </span>
         <input ref={fileRef} type="file" accept="application/pdf" onChange={onFile} style={{ display: 'none' }} />
       </div>
@@ -515,7 +515,7 @@ function StandardPdfSection({
 
       {exists ? (
         url ? (
-          <iframe title="기준서 원문 PDF" src={url} style={{ width: '100%', height: '78vh', border: '1px solid #e4e0d8', borderRadius: 8 }} />
+          <iframe title="기준서 원문 PDF" src={url} style={{ width: '100%', height: '78vh', border: '1px solid var(--rule)', borderRadius: 8 }} />
         ) : (
           <div className="alert-i">PDF를 불러오는 중…</div>
         )
@@ -550,7 +550,7 @@ function QnaView({ items, onOpenQna }: { items: QnaIndexItem[]; onOpenQna: (q: Q
           autoFocus
         />
       </div>
-      <div style={{ fontSize: 12, color: '#6b7280', margin: '6px 0 10px' }}>
+      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', margin: '6px 0 10px' }}>
         총 {items.length}건 중 {filtered.length}건 {filtered.length > LIMIT && `(상위 ${LIMIT}건 표시)`} · 제목 클릭 시 본문 표시
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -558,10 +558,10 @@ function QnaView({ items, onOpenQna }: { items: QnaIndexItem[]; onOpenQna: (q: Q
           <button key={q.id} type="button" onClick={() => onOpenQna(q)} style={qnaLinkStyle}>
             <span style={{ flex: 1, textAlign: 'left' }}>
               {q.title}
-              {q.deprecated && <span className="bdg" style={{ marginLeft: 6, fontSize: 9, color: '#b91c1c' }}>폐지</span>}
+              {q.deprecated && <span className="bdg" style={{ marginLeft: 6, fontSize: 9, color: 'var(--bad)' }}>폐지</span>}
             </span>
-            {q.relStds && <span style={{ fontSize: 11, color: '#6b7280', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.relStds}</span>}
-            <span style={{ fontSize: 11, color: '#C8963C' }}>본문 보기</span>
+            {q.relStds && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.relStds}</span>}
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--gold)' }}>본문 보기</span>
           </button>
         ))}
       </div>
@@ -597,11 +597,11 @@ function QnaModal({ item, onClose }: { item: QnaIndexItem; onClose: () => void }
       <div onClick={(e) => e.stopPropagation()} style={qnaSheet}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15.5, fontWeight: 700, color: '#1A2B52', lineHeight: 1.4 }}>
+            <div style={{ fontSize: 15.5, fontWeight: 700, color: 'var(--navy)', lineHeight: 1.4 }}>
               {item.title}
-              {item.deprecated && <span className="bdg" style={{ marginLeft: 6, fontSize: 9, color: '#b91c1c' }}>폐지</span>}
+              {item.deprecated && <span className="bdg" style={{ marginLeft: 6, fontSize: 9, color: 'var(--bad)' }}>폐지</span>}
             </div>
-            <div style={{ fontSize: 11.5, color: '#8a8170', marginTop: 3 }}>
+            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 3 }}>
               {[item.relStds, content?.docNumber || item.docNumber, content?.date || item.date].filter(Boolean).join(' · ')}
             </div>
           </div>
@@ -616,33 +616,33 @@ function QnaModal({ item, onClose }: { item: QnaIndexItem; onClose: () => void }
               const t = line.trim();
               if (t.startsWith('###')) {
                 const h = t.replace(/^#+\s*/, '').trim();
-                return h ? <div key={i} style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', margin: '12px 0 4px' }}>{h}</div> : null;
+                return h ? <div key={i} style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)', margin: '12px 0 4px' }}>{h}</div> : null;
               }
               if (!t) return <div key={i} style={{ height: 6 }} />;
-              return <div key={i} style={{ fontSize: 13.5, lineHeight: 1.7, color: '#1f2937', whiteSpace: 'pre-wrap' }}>{line}</div>;
+              return <div key={i} style={{ fontSize: 13.5, lineHeight: 1.7, color: 'var(--ink-2)', whiteSpace: 'pre-wrap' }}>{line}</div>;
             })}
           </div>
         )}
 
-        <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid #ece8e0' }}>
+        <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--rule-2)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             {content && content.raw && (
               <button type="button" className="btn-sm" onClick={() => setShowRaw((v) => !v)} aria-expanded={showRaw}>
-                {showRaw ? '▾' : '▸'} 가공 전 원문 <span style={{ color: '#9aa0ad' }}>(원본 대조)</span>
+                {showRaw ? '▾' : '▸'} 가공 전 원문 <span style={{ color: 'var(--ink-3)' }}>(원본 대조)</span>
               </button>
             )}
-            <a href="https://db.kasb.or.kr/qnas" target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: '#C8963C', fontWeight: 700, textDecoration: 'none' }}
+            <a href="https://db.kasb.or.kr/qnas" target="_blank" rel="noreferrer" style={{ fontSize: 'var(--fs-2)', color: 'var(--gold)', fontWeight: 700, textDecoration: 'none' }}
               title="KASB 질의회신요약 목록을 열어 제목으로 검색하세요 (개별 직접 링크는 KASB가 지원하지 않음)">
               KASB 질의회신요약 목록 ↗
             </a>
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9aa0ad' }}>출처: 한국회계기준원(KASB)</span>
+            <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>출처: 한국회계기준원(KASB)</span>
           </div>
           {showRaw && content?.raw && (
-            <div style={{ marginTop: 8, padding: '10px 12px', background: '#faf9f5', border: '1px solid #ece8e0', borderRadius: 8, fontSize: 12.5, lineHeight: 1.7, color: '#4b5563', whiteSpace: 'pre-wrap', maxHeight: 320, overflow: 'auto' }}>
+            <div style={{ marginTop: 8, padding: '10px 12px', background: '#faf9f5', border: '1px solid var(--rule-2)', borderRadius: 8, fontSize: 'var(--fs-2)', lineHeight: 1.7, color: '#4b5563', whiteSpace: 'pre-wrap', maxHeight: 320, overflow: 'auto' }}>
               {content.raw}
             </div>
           )}
-          <div style={{ fontSize: 11, color: '#9aa0ad', marginTop: 6, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 6, lineHeight: 1.6 }}>
             KASB 사이트는 개별 질의회신 <b>직접 링크(딥링크)</b>를 지원하지 않아 직접 열면 빈 화면이 뜹니다(목록에서 클릭해야만 표시). 그래서 본문을 <b>여기 앱에서 그대로</b> 보여드립니다 — 위 내용이 KASB 원문 전체입니다.
           </div>
         </div>
@@ -653,14 +653,14 @@ function QnaModal({ item, onClose }: { item: QnaIndexItem; onClose: () => void }
 }
 
 // ── 공통 스타일 ──
-const cardStyle: React.CSSProperties = { border: '1px solid #e4e0d8', borderRadius: 8, padding: '12px 14px', background: '#fff' };
+const cardStyle: React.CSSProperties = { border: '1px solid var(--rule)', borderRadius: 8, padding: '12px 14px', background: '#fff' };
 const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' };
-const subStyle: React.CSSProperties = { fontSize: 12, color: '#6b7280' };
-const contentStyle: React.CSSProperties = { fontSize: 13.5, lineHeight: 1.65, color: '#1f2937', whiteSpace: 'pre-wrap' };
+const subStyle: React.CSSProperties = { fontSize: 'var(--fs-2)', color: 'var(--ink-3)' };
+const contentStyle: React.CSSProperties = { fontSize: 13.5, lineHeight: 1.65, color: 'var(--ink-2)', whiteSpace: 'pre-wrap' };
 const qnaLinkStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', width: '100%',
-  border: '1px solid #ececec', borderRadius: 6, padding: '8px 11px', background: '#fff',
-  color: '#1f2937', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+  border: '1px solid var(--rule-2)', borderRadius: 6, padding: '8px 11px', background: '#fff',
+  color: 'var(--ink-2)', fontSize: 'var(--fs-3)', cursor: 'pointer', fontFamily: 'inherit',
 };
 const qnaBackdrop: React.CSSProperties = {
   position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(20,25,40,.45)',

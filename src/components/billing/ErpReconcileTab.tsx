@@ -110,7 +110,7 @@ export default function ErpReconcileTab() {
   const step = !state?.uploadedAt ? 1 : todo > 0 ? 3 : state.doneAt ? 4 : 3;
   const Step = ({ n, label }: { n: number; label: string }) => (
     <span style={{
-      padding: '1px 8px', borderRadius: 9, fontSize: 11, fontWeight: 700,
+      padding: '1px 8px', borderRadius: 9, fontSize: 'var(--fs-1)', fontWeight: 700,
       background: step === n ? '#1A2B52' : step > n ? '#D1FAE5' : '#F3F4F6',
       color: step === n ? '#fff' : step > n ? '#065F46' : '#9CA3AF',
     }}>{step > n ? '✓ ' : ''}{label}</span>
@@ -131,12 +131,12 @@ export default function ErpReconcileTab() {
         <span style={{ display: 'flex', gap: 4 }}>
           <Step n={1} label="① 파일" /><Step n={2} label="② 확인" /><Step n={3} label="③ 처리" /><Step n={4} label="④ 마감" />
         </span>
-        <label style={{ fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}
+        <label style={{ fontSize: 'var(--fs-1)', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}
           title="ERP 부서에는 다른 회계사 담당 거래처가 함께 들어 있습니다. 우리 거래처관리에 등록된 곳만 봅니다.">
           <input type="checkbox" checked={oursOnly} onChange={(e) => setOursOnly(e.target.checked)} /> 우리 거래처만
         </label>
         <button className="btn-sm btn-sm-blue" onClick={() => setHelp(true)}>❓ 차이가 날 때 보는 안내</button>
-        {msg && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#2a7' }}>{msg}</span>}
+        {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
       </div>
       {err && <div className="alert-w">{err}</div>}
 
@@ -149,14 +149,14 @@ export default function ErpReconcileTab() {
             display: 'block', border: '2px dashed #c9b98a', borderRadius: 8, background: '#fdfaf3',
             padding: '22px 16px', textAlign: 'center', cursor: busy ? 'default' : 'pointer', margin: '10px 0',
           }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#1A2B52', marginBottom: 6 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>
             ERP 거래전표 엑셀을 여기에 끌어다 놓으세요
           </div>
-          <div style={{ fontSize: 11.5, color: '#777', lineHeight: 1.7 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: '#777', lineHeight: 1.7 }}>
             인덕 ERP ▸ 회계관리 ▸ <b>거래전표 리스트</b> ▸ 기간 {ym}-01 ~ {ym} 말일 ▸
             부서 <b>{team === 'taxteam' ? '기장24팀' : '2본부5팀'}</b> ▸ <b>검색</b> ▸ <b>엑셀</b><br />
             내려받은 파일을 그대로 올리시면 됩니다. 매입 전표는 자동으로 걸러냅니다.<br />
-            <span style={{ color: '#999' }}>파일을 고르기만 하고 아직 저장하지 않습니다 — 내용을 먼저 보여드립니다.</span>
+            <span style={{ color: 'var(--ink-3)' }}>파일을 고르기만 하고 아직 저장하지 않습니다 — 내용을 먼저 보여드립니다.</span>
           </div>
           <input type="file" accept=".xls,.xlsx" style={{ display: 'none' }} disabled={busy}
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f); }} />
@@ -166,17 +166,17 @@ export default function ErpReconcileTab() {
       {/* ── ② 읽은 내용 확인 ── */}
       {preview && (
         <div style={{ border: '1px solid #c9b98a', borderRadius: 8, background: '#fdfaf3', padding: 12, margin: '10px 0' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#1A2B52', marginBottom: 6 }}>
+          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)', marginBottom: 6 }}>
             읽었습니다 — 매출 {preview.rows.length}건 · 공급가액 {won(preview.rows.reduce((s, r) => s + r.supplyAmount, 0))}
           </div>
-          <div style={{ fontSize: 11.5, color: '#666', marginBottom: 8 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginBottom: 8 }}>
             {preview.fileName}{preview.skipped > 0 && ` · 매입 ${preview.skipped}건은 뺐습니다`}
             {preview.depts.length > 0 && ` · 부서 ${preview.depts.join(', ')}`}
             {preview.rows.some((r) => r.supplyAmount < 0) && ` · (−)수정전표 ${preview.rows.filter((r) => r.supplyAmount < 0).length}건 포함`}
             <br />이 내용이 맞으면 저장하세요. 아니면 취소하고 다른 파일을 올리면 됩니다.
           </div>
           {preview.fileTeam && preview.fileTeam !== team && (
-            <div className="alert-w" style={{ fontSize: 11.5, marginBottom: 8 }}>
+            <div className="alert-w" style={{ fontSize: 'var(--fs-1)', marginBottom: 8 }}>
               이 파일은 <b>{preview.fileTeam === 'taxteam' ? 'taxteam (기장24팀)' : '감사팀 (2본부5팀)'}</b> 자료로 보입니다.
               지금 고른 팀과 다릅니다 — 위에서 팀을 바꾸고 다시 올리시거나, 파일을 확인해 주세요.
             </div>
@@ -193,15 +193,15 @@ export default function ErpReconcileTab() {
 
       {/* ── 요약 ── */}
       {state?.uploadedAt && (
-        <div style={{ border: '1px solid #e2d9c6', background: '#fdfaf3', borderRadius: 6, padding: '8px 10px', margin: '10px 0', fontSize: 12 }}>
+        <div style={{ border: '1px solid var(--rule)', background: '#fdfaf3', borderRadius: 6, padding: '8px 10px', margin: '10px 0', fontSize: 'var(--fs-2)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <b style={{ color: '#1A2B52' }}>ERP {won(erpTotal)}</b>
-            <span style={{ color: '#999' }}>↔</span>
-            <b style={{ color: '#1A2B52' }}>우리 요청 {won(ourTotal)}</b>
+            <b style={{ color: 'var(--navy)' }}>ERP {won(erpTotal)}</b>
+            <span style={{ color: 'var(--ink-3)' }}>↔</span>
+            <b style={{ color: 'var(--navy)' }}>우리 요청 {won(ourTotal)}</b>
             <span style={{ color: erpTotal === ourTotal ? '#2a7' : '#c33', fontWeight: 700 }}>
               {erpTotal === ourTotal ? '차이 없음' : `차이 ${won(ourTotal - erpTotal)}`}
             </span>
-            <span style={{ color: '#888', fontSize: 11 }}>
+            <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>
               · {state.fileName} · {state.uploadedAt.slice(0, 10)}{state.uploadedBy && ` ${state.uploadedBy}`}
             </span>
             {canWrite && !state.doneAt && (
@@ -211,7 +211,7 @@ export default function ErpReconcileTab() {
               </button>
             )}
             {state.doneAt ? (
-              <span style={{ marginLeft: 'auto', padding: '1px 8px', borderRadius: 9, fontSize: 11, fontWeight: 700, background: '#1A2B52', color: '#fff' }}>
+              <span style={{ marginLeft: 'auto', padding: '1px 8px', borderRadius: 9, fontSize: 'var(--fs-1)', fontWeight: 700, background: 'var(--navy)', color: '#fff' }}>
                 대사완료 {state.doneAt.slice(0, 10)}{state.doneBy && ` · ${state.doneBy}`}
                 {canFinish && <button className="btn-sm" style={{ marginLeft: 6 }} disabled={busy} onClick={() => void run(() => setReconcileDone(ym, team, false), '해제했습니다')}>해제</button>}
               </span>
@@ -234,8 +234,8 @@ export default function ErpReconcileTab() {
           <Bucket title={`✅ 일치 ${m.matched.length}곳`} tone="#2a7" openKey="matched" open={open} setOpen={setOpen}
             right={canWrite && pending > 0 && (
               <>
-                <span style={{ fontSize: 11.5, color: '#666' }}>발행일</span>
-                <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 12 }} />
+                <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>발행일</span>
+                <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
                 <button className="btn-p" disabled={busy}
                   onClick={() => void run(async () => { await markMatchedIssued(m.matched, issuedDate); }, '✓ 발행완료로 바꿨습니다')}>
                   모두 발행완료 ({pending}건)
@@ -267,17 +267,17 @@ export default function ErpReconcileTab() {
             <Bucket title={`➖ (−)수정전표 ${m.corrections.length}건`} tone="#a15" openKey="corr" open={open} setOpen={setOpen}
               hint="잘못 발행한 것을 되돌린 마이너스 전표입니다. 기록해 두면 미수금이 맞습니다.">
               <div className="tbl-scroll" style={{ maxHeight: 240 }}>
-                <table className="tbl" style={{ fontSize: 11.5 }}>
+                <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
                   <thead><tr><th>전표번호</th><th>거래처</th><th>내역</th><th className="r">공급가액</th><th>처리</th></tr></thead>
                   <tbody>
                     {m.corrections.map((c) => (
                       <tr key={c.slipNo}>
-                        <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{c.slipNo}</td>
-                        <td style={{ fontWeight: 700, color: '#1A2B52' }}>{c.clientName}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-0)' }}>{c.slipNo}</td>
+                        <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{c.clientName}</td>
                         <td>{c.description}</td>
-                        <td className="r" style={{ color: '#c33', fontWeight: 700 }}>{won(c.supplyAmount)}</td>
+                        <td className="r" style={{ color: 'var(--bad)', fontWeight: 700 }}>{won(c.supplyAmount)}</td>
                         <td>
-                          {c.requestId ? <span style={{ color: '#2a7', fontSize: 11 }}>✓ 기록됨</span>
+                          {c.requestId ? <span style={{ color: 'var(--good)', fontSize: 'var(--fs-1)' }}>✓ 기록됨</span>
                             : canWrite && (
                               <button className="btn-sm btn-sm-blue" disabled={busy}
                                 onClick={() => void run(() => importCorrection(c, entities, team), '✓ 수정발행으로 기록했습니다')}>
@@ -401,27 +401,27 @@ function HelpModal({ onClose }: { onClose: () => void }) {
           ❓ 차이가 날 때 — 경우별 해결 방법
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
-        <div className="alert-i" style={{ fontSize: 11.5 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           아래는 <b>실제로 2026-07·08 을 대사하며 나온 사례</b>만 모은 것입니다. 차이가 나는 것은 잘못이 아니라
           대부분 <b>계약이 덜 채워졌거나 파일 조건이 어긋난 것</b>입니다. 순서대로 확인하시면 스스로 정리하실 수 있습니다.
         </div>
         {CASES.map((c, i) => (
-          <div key={i} style={{ border: '1px solid #eee', borderRadius: 6, padding: '8px 10px', marginTop: 8 }}>
+          <div key={i} style={{ border: '1px solid var(--rule-2)', borderRadius: 6, padding: '8px 10px', marginTop: 8 }}>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{
-                fontSize: 10.5, fontWeight: 700, color: '#fff', background: tone(c.tag),
+                fontSize: 'var(--fs-0)', fontWeight: 700, color: '#fff', background: tone(c.tag),
                 padding: '1px 6px', borderRadius: 3, whiteSpace: 'nowrap',
               }}>{c.tag}</span>
-              <b style={{ fontSize: 12.5, color: '#1A2B52' }}>{c.title}</b>
+              <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>{c.title}</b>
             </div>
-            <div style={{ fontSize: 11.5, color: '#555', marginTop: 4, lineHeight: 1.65 }}>
-              <div><b style={{ color: '#888' }}>왜 </b>{c.why}</div>
-              <div style={{ marginTop: 2 }}><b style={{ color: '#2a7' }}>어떻게 </b>{c.fix}</div>
-              {c.ex !== '—' && <div style={{ marginTop: 2, color: '#888' }}><b>실제 사례 </b>{c.ex}</div>}
+            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginTop: 4, lineHeight: 1.65 }}>
+              <div><b style={{ color: 'var(--ink-3)' }}>왜 </b>{c.why}</div>
+              <div style={{ marginTop: 2 }}><b style={{ color: 'var(--good)' }}>어떻게 </b>{c.fix}</div>
+              {c.ex !== '—' && <div style={{ marginTop: 2, color: 'var(--ink-3)' }}><b>실제 사례 </b>{c.ex}</div>}
             </div>
           </div>
         ))}
-        <div style={{ fontSize: 11.5, color: '#666', marginTop: 12, lineHeight: 1.7 }}>
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginTop: 12, lineHeight: 1.7 }}>
           <b>그래도 모르겠으면</b> — 이 화면은 아무것도 지우지 않습니다. 처리하지 않고 두었다가 담당 회계사에게
           물어보셔도 되고, 미처리 건이 남은 채로 마감해도 기록에 남습니다. 잘못 눌렀으면 발행요청 화면에서
           되돌리기·취소가 모두 됩니다.
@@ -439,13 +439,13 @@ function Bucket({ title, tone, openKey, open, setOpen, hint, right, children }: 
 }) {
   const isOpen = !!open[openKey];
   return (
-    <div style={{ border: '1px solid #eee', borderRadius: 6, marginTop: 8 }}>
+    <div style={{ border: '1px solid var(--rule-2)', borderRadius: 6, marginTop: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#faf7f0', flexWrap: 'wrap' }}>
         <button className="btn-sm" onClick={() => setOpen((p) => ({ ...p, [openKey]: !p[openKey] }))} style={{ minWidth: 26 }}>
           {isOpen ? '▾' : '▸'}
         </button>
-        <b style={{ fontSize: 12.5, color: tone }}>{title}</b>
-        {hint && <span style={{ fontSize: 11, color: '#888' }}>{hint}</span>}
+        <b style={{ fontSize: 'var(--fs-2)', color: tone }}>{title}</b>
+        {hint && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{hint}</span>}
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>{right}</span>
       </div>
       {isOpen && <div style={{ padding: 8 }}>{children}</div>}
@@ -459,10 +459,10 @@ function Table({ rows, kind, busy, canWrite, onAlign, onImport }: {
   busy?: boolean; canWrite?: boolean;
   onAlign?: (r: MatchRow) => void; onImport?: (r: MatchRow) => void;
 }) {
-  if (!rows.length) return <div style={{ color: '#BBB', fontSize: 12, padding: 8 }}>없습니다.</div>;
+  if (!rows.length) return <div style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-2)', padding: 8 }}>없습니다.</div>;
   return (
     <div className="tbl-scroll" style={{ maxHeight: 320 }}>
-      <table className="tbl" style={{ fontSize: 11.5 }}>
+      <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
         <thead>
           <tr>
             <th>거래처</th><th>사업자번호</th>
@@ -475,23 +475,23 @@ function Table({ rows, kind, busy, canWrite, onAlign, onImport }: {
         <tbody>
           {rows.map((r) => (
             <tr key={r.bizNo}>
-              <td style={{ fontWeight: 700, color: '#1A2B52' }}>
+              <td style={{ fontWeight: 700, color: 'var(--navy)' }}>
                 {r.ourName || r.clientName}
                 {!r.known && (
                   <span title="우리 거래처관리에 없는 사업자번호입니다"
-                    style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>
+                    style={{ marginLeft: 4, fontSize: 'var(--fs-0)', fontWeight: 700, color: 'var(--warn)', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '0 4px', borderRadius: 3 }}>
                     미등록 거래처
                   </span>
                 )}
                 {r.ourName && r.clientName && r.ourName !== r.clientName && (
-                  <div style={{ fontSize: 10.5, color: '#999' }}>ERP 표기: {r.clientName}</div>
+                  <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>ERP 표기: {r.clientName}</div>
                 )}
               </td>
-              <td style={{ fontSize: 11 }}>{r.bizNo.replace(/^(\d{3})(\d{2})(\d{5})$/, '$1-$2-$3')}</td>
-              <td className="r">{r.slips.length ? won(r.erpAmount) : <span style={{ color: '#CCC' }}>—</span>}</td>
-              <td className="r">{r.requests.length ? won(r.ourAmount) : <span style={{ color: '#CCC' }}>—</span>}</td>
-              {kind === 'diff' && <td className="r" style={{ color: '#c33', fontWeight: 700 }}>{won(r.ourAmount - r.erpAmount)}</td>}
-              <td style={{ fontSize: 11, color: '#666' }}>
+              <td style={{ fontSize: 'var(--fs-1)' }}>{r.bizNo.replace(/^(\d{3})(\d{2})(\d{5})$/, '$1-$2-$3')}</td>
+              <td className="r">{r.slips.length ? won(r.erpAmount) : <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+              <td className="r">{r.requests.length ? won(r.ourAmount) : <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+              {kind === 'diff' && <td className="r" style={{ color: 'var(--bad)', fontWeight: 700 }}>{won(r.ourAmount - r.erpAmount)}</td>}
+              <td style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
                 {kind === 'erpOnly' ? r.slips.map((s) => `${s.description} ${won(s.supplyAmount)}`).join(' / ')
                   : kind === 'ourOnly' ? r.requests.map((q) => q.contractCode).filter(Boolean).join(', ')
                     : r.slips.map((s) => s.description).filter(Boolean).join(' / ')}
@@ -510,7 +510,7 @@ function Table({ rows, kind, busy, canWrite, onAlign, onImport }: {
                 <td>
                   {canWrite && (r.known
                     ? <button className="btn-sm btn-sm-blue" disabled={busy} onClick={() => onImport?.(r)}>발행요청으로 추가</button>
-                    : <span style={{ fontSize: 11, color: '#a15' }}>거래처등록 먼저</span>)}
+                    : <span style={{ fontSize: 'var(--fs-1)', color: '#a15' }}>거래처등록 먼저</span>)}
                 </td>
               )}
             </tr>

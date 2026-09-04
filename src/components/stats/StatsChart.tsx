@@ -7,7 +7,7 @@ export default function StatsChart({ records }: { records: BillingRecord[] }) {
   const years = [...new Set(records.map((r) => Number(r.fiscalYear)))].sort((a, b) => a - b);
   const managers = [...new Set(records.map((r) => r.manager || '(미지정)'))].sort();
   if (!years.length || !managers.length) {
-    return <div style={{ padding: 16, textAlign: 'center', color: '#BBB', fontSize: 12 }}>표시할 데이터 없음</div>;
+    return <div style={{ padding: 16, textAlign: 'center', color: 'var(--ink-4)', fontSize: 'var(--fs-2)' }}>표시할 데이터 없음</div>;
   }
 
   // data[manager][year] = sum of 최종청구금액(D, VAT제외)

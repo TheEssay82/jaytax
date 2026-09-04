@@ -81,12 +81,12 @@ export default function ClientForm({ initial, isAdd, limited = false, onSubmit, 
   }
 
   return (
-    <div className="card" style={{ borderColor: '#1A2B52', marginTop: 8 }}>
+    <div className="card" style={{ borderColor: 'var(--navy)', marginTop: 8 }}>
       <div className="chdr">
         {isAdd ? '새 거래처 추가' : limited ? '거래처 일부 수정' : '거래처 수정'}: {companyName || '신규'}
       </div>
       {limited && (
-        <div className="alert-i" style={{ fontSize: 11, marginBottom: 8 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)', marginBottom: 8 }}>
           🔧 사업자번호·대표자명·가상계좌·성실신고만 수정됩니다. 나머지 항목은 변경되지 않습니다.
         </div>
       )}
@@ -150,12 +150,12 @@ export default function ClientForm({ initial, isAdd, limited = false, onSubmit, 
       </div>
 
       {!limited && (
-      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #EDE9E2' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 7 }}>📊 귀속연도별 매출액</div>
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--rule-2)' }}>
+        <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 7 }}>📊 귀속연도별 매출액</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 7 }}>
           {REV_YEARS.map((y) => (
             <div key={y} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#1A2B52', whiteSpace: 'nowrap' }}>{y}년</label>
+              <label style={{ fontSize: 'var(--fs-2)', fontWeight: 600, color: 'var(--navy)', whiteSpace: 'nowrap' }}>{y}년</label>
               <input
                 type="number"
                 value={revInputs[String(y)]}
@@ -166,24 +166,24 @@ export default function ClientForm({ initial, isAdd, limited = false, onSubmit, 
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 6, fontSize: 11, color: '#888' }}>
+        <div style={{ marginTop: 6, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
           ※ 여기 없는 연도는 [매출액 일괄입력]을 이용하거나 청구서 저장 시 자동 반영됩니다.
         </div>
       </div>
       )}
 
       {!limited && (
-      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #EDE9E2' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#555', marginBottom: 7 }}>
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--rule-2)' }}>
+        <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 7 }}>
           📅 귀속연도별 담당자 / 성실신고
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div>
-            <label style={{ fontSize: 11, color: '#666' }}>담당자 귀속연도</label>
+            <label style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>담당자 귀속연도</label>
             <select
               value={mgrYear}
               onChange={(e) => setMgrYear(e.target.value)}
-              style={{ width: '100%', padding: '4px 7px', fontSize: 12, marginTop: 3 }}
+              style={{ width: '100%', padding: '4px 7px', fontSize: 'var(--fs-2)', marginTop: 3 }}
             >
               {REV_YEARS.map((y) => (
                 <option key={y} value={y}>
@@ -193,11 +193,11 @@ export default function ClientForm({ initial, isAdd, limited = false, onSubmit, 
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 11, color: '#666' }}>성실신고 귀속연도</label>
+            <label style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>성실신고 귀속연도</label>
             <select
               value={modelYear}
               onChange={(e) => setModelYear(e.target.value)}
-              style={{ width: '100%', padding: '4px 7px', fontSize: 12, marginTop: 3 }}
+              style={{ width: '100%', padding: '4px 7px', fontSize: 'var(--fs-2)', marginTop: 3 }}
             >
               {REV_YEARS.map((y) => (
                 <option key={y} value={y}>
@@ -208,12 +208,12 @@ export default function ClientForm({ initial, isAdd, limited = false, onSubmit, 
           </div>
         </div>
         {managersEntries.length > 0 && (
-          <div style={{ marginTop: 5, fontSize: 11, color: '#888' }}>
+          <div style={{ marginTop: 5, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
             기존 담당자: {managersEntries.map(([y, m]) => `${y}년:${m}`).join(', ')}
           </div>
         )}
         {modelEntries.length > 0 && (
-          <div style={{ marginTop: 3, fontSize: 11, color: '#888' }}>
+          <div style={{ marginTop: 3, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
             기존 성실: {modelEntries.map(([y, v]) => `${y}년:${v ? 'O' : 'X'}`).join(', ')}
           </div>
         )}

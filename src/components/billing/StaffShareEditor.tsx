@@ -60,23 +60,23 @@ export function StaffShareEditor({ requestId, amount, current, staffOptions, ym,
       <div className="card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460, width: '100%' }}>
         <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           👥 담당직원 · 실적 배분
-          <span style={{ fontSize: 11, fontWeight: 400, color: '#888' }}>공급가액 {won(amount)}</span>
+          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>공급가액 {won(amount)}</span>
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
-        <div className="alert-i" style={{ fontSize: 11 }}>
+        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
           이 청구 한 건의 <b>담당직원</b>과, 실적을 누구에게 얼마나 돌릴지 정합니다. 기본은 <b>주담당 100%</b>이고,
           둘이 나눠 한 일이면 비율을 주면 됩니다. <b>합이 100%</b>여야 저장됩니다.
         </div>
         {rows.map((r, i) => (
           <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 5 }}>
-            <span style={{ fontSize: 10.5, color: '#888', width: 34 }}>{i === 0 ? '주담당' : `공동${i}`}</span>
+            <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', width: 34 }}>{i === 0 ? '주담당' : `공동${i}`}</span>
             <input list="staff-opts" value={r.staffName} placeholder="직원명"
               onChange={(e) => set(i, { staffName: e.target.value })} style={{ flex: 1 }} />
             <datalist id="staff-opts">{staffOptions.map((n) => <option key={n} value={n} />)}</datalist>
             <input value={r.share} onChange={(e) => set(i, { share: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })}
               style={{ width: 62, textAlign: 'right' }} />
-            <span style={{ fontSize: 11, color: '#666', width: 12 }}>%</span>
-            <span style={{ fontSize: 11, color: '#888', width: 88, textAlign: 'right' }}>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', width: 12 }}>%</span>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', width: 88, textAlign: 'right' }}>
               {won(amount * (Number(r.share) || 0) / 100)}
             </span>
             {rows.length > 1 && (
@@ -85,12 +85,12 @@ export function StaffShareEditor({ requestId, amount, current, staffOptions, ym,
           </div>
         ))}
         {changed && contractId && (
-          <label style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 10, fontSize: 11.5, cursor: 'pointer' }}>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 10, fontSize: 'var(--fs-1)', cursor: 'pointer' }}>
             <input type="checkbox" checked={propagate} onChange={(e) => setPropagate(e.target.checked)} style={{ marginTop: 2 }} />
             <span>
               <b>앞으로도 이 사람이 담당</b> — 매출계약의 담당직원을 <b>{ym}부터</b>{' '}
               {before || '(없음)'} → <b>{after}</b> 로 바꿉니다.
-              <br /><span style={{ color: '#888' }}>
+              <br /><span style={{ color: 'var(--ink-3)' }}>
                 지난 달 청구 실적은 그대로 남고, 다음 달 청구예정부터 새 담당으로 잡힙니다.
                 이번 건만 대신 처리한 것이라면 켜지 마세요.
               </span>
@@ -101,7 +101,7 @@ export function StaffShareEditor({ requestId, amount, current, staffOptions, ym,
           <button className="btn-sm" onClick={() => setRows((p) => [...p, { staffName: '', share: 0, seq: p.length + 1 }])}>
             ＋ 공동담당
           </button>
-          <span style={{ fontSize: 11.5, color: Math.round(total) === 100 ? '#2a7' : '#c33', fontWeight: 700 }}>
+          <span style={{ fontSize: 'var(--fs-1)', color: Math.round(total) === 100 ? '#2a7' : '#c33', fontWeight: 700 }}>
             합계 {Math.round(total)}%
           </span>
           <button className="btn-p" style={{ marginLeft: 'auto' }} disabled={busy || Math.round(total) !== 100}

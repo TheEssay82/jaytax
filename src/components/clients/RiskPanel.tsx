@@ -95,9 +95,9 @@ export function ChurnRiskPanel({ contracts, entMap, lastBilled, today }: {
   return (
     <div style={{ border: '1px solid #e6c9c9', borderRadius: 8, background: '#fffaf9', padding: '8px 10px', marginBottom: 12 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-        <b style={{ fontSize: 12.5, color: '#8a3d3d' }}>⚠️ 이탈 위험</b>
-        <span style={{ fontSize: 11.5, color: '#666' }}>
-          {view.length}건 · 연환산 <b style={{ color: '#c33' }}>{won(total)}</b>
+        <b style={{ fontSize: 'var(--fs-2)', color: 'var(--bad)' }}>⚠️ 이탈 위험</b>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
+          {view.length}건 · 연환산 <b style={{ color: 'var(--bad)' }}>{won(total)}</b>
         </span>
         <select value={kindF} onChange={(e) => setKindF(e.target.value as '' | RiskKind)}>
           <option value="">전체</option>
@@ -105,32 +105,32 @@ export function ChurnRiskPanel({ contracts, entMap, lastBilled, today }: {
           <option value="청구 끊김">청구 끊김 ({count('청구 끊김')})</option>
           <option value="종료 임박">종료 임박 ({count('종료 임박')})</option>
         </select>
-        <label style={{ fontSize: 11.5 }}>
+        <label style={{ fontSize: 'var(--fs-1)' }}>
           종료 임박 기준{' '}
           <select value={withinDays} onChange={(e) => setWithinDays(Number(e.target.value))}>
             <option value={90}>90일</option><option value={180}>180일</option><option value={365}>1년</option>
           </select>
         </label>
-        <label style={{ fontSize: 11.5 }}>
+        <label style={{ fontSize: 'var(--fs-1)' }}>
           청구 끊김 기준{' '}
           <select value={gapMonths} onChange={(e) => setGapMonths(Number(e.target.value))}>
             <option value={2}>2개월</option><option value={3}>3개월</option><option value={6}>6개월</option>
           </select>
         </label>
       </div>
-      <div style={{ fontSize: 10.5, color: '#a88', marginBottom: 5 }}>
+      <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginBottom: 5 }}>
         예산에서 덜어 낼 후보입니다. <b>종료됨</b>은 정리하거나 연장하고, <b>청구 끊김</b>은 매달 청구하는 계약인데
         최근 청구가 없는 것입니다(조용히 빠져나간 곳이 여기 잡힙니다). 재계약이 되면 매출계약의 종료일만 미루면 됩니다.
       </div>
       <div style={{ maxHeight: 260, overflow: 'auto' }}>
-        <table className="tbl" style={{ fontSize: 11.5 }}>
+        <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
           <thead>
             <tr><th>구분</th><th>거래처</th><th>사업장</th><th>계약코드</th>
               <th>담당회계사</th><th>담당직원</th><th>기준일</th><th>상태</th><th className="r">연환산</th></tr>
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 16, color: '#BBB' }}>
+              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 16, color: 'var(--ink-4)' }}>
                 해당하는 계약이 없습니다.
               </td></tr>
             )}
@@ -139,13 +139,13 @@ export function ChurnRiskPanel({ contracts, entMap, lastBilled, today }: {
                 <td style={{ whiteSpace: 'nowrap', fontWeight: 700, color: r.kind === '종료 임박' ? '#92400E' : '#991B1B' }}>
                   {r.kind}
                 </td>
-                <td style={{ fontWeight: 700, color: '#1A2B52' }}>{r.company}</td>
+                <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{r.company}</td>
                 <td>{r.place}</td>
-                <td style={{ fontFamily: 'monospace', fontSize: 10.5 }}>{r.code}</td>
-                <td style={{ fontSize: 11 }}>{r.cpa}</td>
-                <td style={{ fontSize: 11 }}>{r.staff}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-0)' }}>{r.code}</td>
+                <td style={{ fontSize: 'var(--fs-1)' }}>{r.cpa}</td>
+                <td style={{ fontSize: 'var(--fs-1)' }}>{r.staff}</td>
                 <td>{r.when}</td>
-                <td style={{ color: '#888' }}>{r.detail}</td>
+                <td style={{ color: 'var(--ink-3)' }}>{r.detail}</td>
                 <td className="r" style={{ fontWeight: 700 }}>{won(r.annual)}</td>
               </tr>
             ))}
@@ -191,21 +191,21 @@ export function InflowPanel({ contracts, today }: { contracts: SalesContract[]; 
   return (
     <div style={{ border: '1px solid #c9dfc9', borderRadius: 8, background: '#f9fdf9', padding: '8px 10px', marginBottom: 12 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-        <b style={{ fontSize: 12.5, color: '#2f6b3f' }}>🌱 신규 유입 추이</b>
+        <b style={{ fontSize: 'var(--fs-2)', color: 'var(--good)' }}>🌱 신규 유입 추이</b>
         <select value={span} onChange={(e) => setSpan(Number(e.target.value))}>
           <option value={12}>최근 12개월</option><option value={24}>최근 24개월</option><option value={36}>최근 36개월</option>
         </select>
-        <span style={{ fontSize: 11.5, color: '#666' }}>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
           신규 {sum(data.inN)}건 {won(sum(data.inA))} · 종료 {sum(data.outN)}건 {won(sum(data.outA))} ·{' '}
           <b style={{ color: net >= 0 ? '#2a7' : '#c33' }}>순증 {net >= 0 ? '+' : ''}{won(net)}</b>
         </span>
       </div>
-      <div style={{ fontSize: 10.5, color: '#8a8', marginBottom: 5 }}>
+      <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginBottom: 5 }}>
         계약의 <b>시작월·종료월</b> 기준이고 금액은 <b>연환산</b>입니다 — 몇 건이 아니라 얼마가 늘고 줄었는지를 봅니다.
         순증이 계속 (−)이면 예산을 낮춰 잡아야 한다는 신호입니다.
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table className="tbl" style={{ fontSize: 11.5, minWidth: 700 }}>
+        <table className="tbl" style={{ fontSize: 'var(--fs-1)', minWidth: 700 }}>
           <thead>
             <tr>
               <th style={{ position: 'sticky', left: 0, background: '#eef6ee' }}>구분 \ 월</th>
@@ -216,11 +216,11 @@ export function InflowPanel({ contracts, today }: { contracts: SalesContract[]; 
           <tbody>
             <tr>
               <td style={{ position: 'sticky', left: 0, background: '#f9fdf9', fontWeight: 600 }}>신규(건)</td>
-              {data.months.map((m) => <td key={m} className="r" style={{ color: '#666' }}>{data.inN.get(m) || '·'}</td>)}
+              {data.months.map((m) => <td key={m} className="r" style={{ color: 'var(--ink-2)' }}>{data.inN.get(m) || '·'}</td>)}
               <td className="r" style={{ fontWeight: 700 }}>{sum(data.inN)}</td>
             </tr>
             <tr>
-              <td style={{ position: 'sticky', left: 0, background: '#f9fdf9', fontWeight: 600, color: '#2f6b3f' }}>신규(연환산)</td>
+              <td style={{ position: 'sticky', left: 0, background: '#f9fdf9', fontWeight: 600, color: 'var(--good)' }}>신규(연환산)</td>
               {data.months.map((m) => {
                 const v = data.inA.get(m) ?? 0;
                 const pct = Math.round((v / data.peak) * 100);
@@ -234,12 +234,12 @@ export function InflowPanel({ contracts, today }: { contracts: SalesContract[]; 
               <td className="r" style={{ fontWeight: 700 }}>{won(sum(data.inA))}</td>
             </tr>
             <tr>
-              <td style={{ position: 'sticky', left: 0, background: '#f9fdf9', fontWeight: 600, color: '#a33' }}>종료(연환산)</td>
+              <td style={{ position: 'sticky', left: 0, background: '#f9fdf9', fontWeight: 600, color: 'var(--bad)' }}>종료(연환산)</td>
               {data.months.map((m) => {
                 const v = data.outA.get(m) ?? 0;
                 return <td key={m} className="r" style={{ color: v ? '#c33' : '#ccc' }}>{v ? `−${won(v)}` : '·'}</td>;
               })}
-              <td className="r" style={{ fontWeight: 700, color: '#c33' }}>{won(sum(data.outA))}</td>
+              <td className="r" style={{ fontWeight: 700, color: 'var(--bad)' }}>{won(sum(data.outA))}</td>
             </tr>
             <tr style={{ background: '#eef6ee', fontWeight: 700 }}>
               <td style={{ position: 'sticky', left: 0, background: '#eef6ee' }}>순증</td>

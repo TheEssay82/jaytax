@@ -23,14 +23,14 @@ export function DetailLinesEditor({ lines, onChange, baseKind }: {
 
   if (!lines.length) {
     return (
-      <div style={{ fontSize: 11.5, color: '#666' }}>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
         <button className="btn-sm" onClick={() => onChange([
           { kind: baseKind || '기타용역', desc: '', amount: 0 },
           { kind: '제경비', desc: '', amount: 0 },
         ])}>
           ＋ 세부내역 나눠 적기 (제경비 합산청구)
         </button>
-        <span style={{ marginLeft: 6, color: '#999' }}>
+        <span style={{ marginLeft: 6, color: 'var(--ink-3)' }}>
           용역료와 제경비를 나눠 청구할 때 씁니다. 쓰지 않으면 위 공급가액 한 줄로 나갑니다.
         </span>
       </div>
@@ -38,11 +38,11 @@ export function DetailLinesEditor({ lines, onChange, baseKind }: {
   }
 
   return (
-    <div style={{ border: '1px solid #e2d9c6', borderRadius: 6, padding: '6px 8px', background: '#fffdf8' }}>
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
+    <div style={{ border: '1px solid var(--rule)', borderRadius: 6, padding: '6px 8px', background: '#fffdf8' }}>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 4 }}>
         &lt;세부내역&gt; — 합계가 <b>공급가액</b>이 됩니다. 제경비는 거래종류를 <b>제경비</b>로 두세요.
       </div>
-      <table className="tbl" style={{ fontSize: 11.5 }}>
+      <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
         <thead>
           <tr><th style={{ width: 110 }}>거래종류</th><th>세부내역</th>
             <th className="r" style={{ width: 110 }}>공급가액</th>
@@ -53,21 +53,21 @@ export function DetailLinesEditor({ lines, onChange, baseKind }: {
             <tr key={i}>
               <td>
                 <select value={l.kind} onChange={(e) => set(i, { kind: e.target.value })}
-                  style={{ width: '100%', fontSize: 11 }}>
+                  style={{ width: '100%', fontSize: 'var(--fs-1)' }}>
                   {[...new Set([...KINDS, l.kind].filter(Boolean))].map((k) => <option key={k} value={k}>{k}</option>)}
                 </select>
               </td>
               <td>
                 <input value={l.desc} onChange={(e) => set(i, { desc: e.target.value })}
                   placeholder={l.kind === '제경비' ? '예: 출장비·인지대' : '예: 2026년 회계감사 착수금'}
-                  style={{ width: '100%', fontSize: 11 }} />
+                  style={{ width: '100%', fontSize: 'var(--fs-1)' }} />
               </td>
               <td className="r">
                 <input value={String(Math.round(Number(l.amount) || 0))}
                   onChange={(e) => set(i, { amount: Number(e.target.value.replace(/[^\d]/g, '')) || 0 })}
-                  style={{ width: '100%', textAlign: 'right', fontSize: 11 }} />
+                  style={{ width: '100%', textAlign: 'right', fontSize: 'var(--fs-1)' }} />
               </td>
-              <td className="r" style={{ color: '#888' }}>{won(Math.round((Number(l.amount) || 0) * 0.1))}</td>
+              <td className="r" style={{ color: 'var(--ink-3)' }}>{won(Math.round((Number(l.amount) || 0) * 0.1))}</td>
               <td>
                 <button className="btn-sm btn-sm-del" onClick={() => onChange(lines.filter((_, k) => k !== i))}>−</button>
               </td>
@@ -88,7 +88,7 @@ export function DetailLinesEditor({ lines, onChange, baseKind }: {
           ＋ 줄 추가
         </button>
         <button className="btn-sm" onClick={() => onChange([])}>세부내역 없애기</button>
-        <span style={{ fontSize: 11, color: '#666', marginLeft: 'auto' }}>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginLeft: 'auto' }}>
           공급대가(VAT포함) <b>{won(total + Math.round(total * 0.1))}</b>
         </span>
       </div>

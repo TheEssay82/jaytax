@@ -231,8 +231,8 @@ export default function EssayAdmin() {
       <Shell publicUrl={publicUrl}>
         <div style={card}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-            <b style={{ fontSize: 16, color: '#1A2B52' }}>{editing ? '작품 수정' : '미리보기'}</b>
-            <span style={{ fontSize: 12.5, color: '#8a8170' }}>
+            <b style={{ fontSize: 16, color: 'var(--navy)' }}>{editing ? '작품 수정' : '미리보기'}</b>
+            <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>
               {editing ? '표시 설정을 바꾼 뒤 저장합니다(본문은 재업로드로만 교체).' : '이대로 등록할지 확인해 주세요.'}
             </span>
           </div>
@@ -265,7 +265,7 @@ export default function EssayAdmin() {
             <label style={fieldWrap}>
               <span style={fieldLabel}>배경 이미지(선택)</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input ref={bgRef} type="file" accept="image/*" onChange={(e) => pickBg(e.target.files?.[0] ?? null)} style={{ fontSize: 12.5 }} />
+                <input ref={bgRef} type="file" accept="image/*" onChange={(e) => pickBg(e.target.files?.[0] ?? null)} style={{ fontSize: 'var(--fs-2)' }} />
                 {bgPath && (
                   <button type="button" onClick={() => setBgPath(null)} style={ghostBtn}>
                     프리셋으로
@@ -281,10 +281,10 @@ export default function EssayAdmin() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                fontSize: 13,
+                fontSize: 'var(--fs-3)',
                 color: '#3d4756',
                 background: '#faf8f3',
-                border: '1px solid #ece5d6',
+                border: '1px solid var(--rule-2)',
                 borderRadius: 8,
                 padding: '9px 12px',
                 marginBottom: 14,
@@ -309,7 +309,7 @@ export default function EssayAdmin() {
                     height: 44,
                     borderRadius: 7,
                     background: t.photo ? `url(${bgUrl(t.photo)}) center/cover` : t.swatch,
-                    border: bgKey === t.key ? '2px solid #1A2B52' : '1px solid #d9d4c8',
+                    border: bgKey === t.key ? '2px solid var(--navy)' : '1px solid #d9d4c8',
                     cursor: 'pointer',
                     padding: 0,
                     display: 'flex',
@@ -320,7 +320,7 @@ export default function EssayAdmin() {
                 >
                   <span
                     style={{
-                      fontSize: 10,
+                      fontSize: 'var(--fs-0)',
                       fontWeight: 700,
                       color: '#fff',
                       width: '100%',
@@ -353,10 +353,10 @@ export default function EssayAdmin() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                fontSize: 13,
+                fontSize: 'var(--fs-3)',
                 color: '#3d4756',
                 background: '#faf8f3',
-                border: '1px solid #ece5d6',
+                border: '1px solid var(--rule-2)',
                 borderRadius: 8,
                 padding: '9px 12px',
                 marginTop: 14,
@@ -404,8 +404,8 @@ export default function EssayAdmin() {
   return (
     <Shell publicUrl={publicUrl}>
       <div style={card}>
-        <b style={{ fontSize: 16, color: '#1A2B52' }}>새 작품 올리기</b>
-        <div style={{ fontSize: 12.5, color: '#8a8170', margin: '4px 0 16px' }}>제목과 Word(.docx) 파일만 있으면 됩니다.</div>
+        <b style={{ fontSize: 16, color: 'var(--navy)' }}>새 작품 올리기</b>
+        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', margin: '4px 0 16px' }}>제목과 Word(.docx) 파일만 있으면 됩니다.</div>
 
         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={fieldWrap}>
@@ -424,7 +424,7 @@ export default function EssayAdmin() {
               type="file"
               accept=".docx"
               onChange={(e) => pickDocx(e.target.files?.[0] ?? null)}
-              style={{ fontSize: 13 }}
+              style={{ fontSize: 'var(--fs-3)' }}
             />
           </label>
           <button type="button" onClick={toPreview} disabled={busy} style={primaryBtn}>
@@ -438,7 +438,7 @@ export default function EssayAdmin() {
         </div>
 
         {fileName && (
-          <div style={{ marginTop: 10, fontSize: 12.5, color: '#5b6472' }}>
+          <div style={{ marginTop: 10, fontSize: 'var(--fs-2)', color: '#5b6472' }}>
             {fileName} · 본문 {body.split(/\n{2,}/).filter(Boolean).length}문단 · {body.replace(/\s/g, '').length}자
           </div>
         )}
@@ -449,14 +449,14 @@ export default function EssayAdmin() {
 
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-          <b style={{ fontSize: 16, color: '#1A2B52' }}>등록된 작품</b>
-          <span style={{ fontSize: 12.5, color: '#8a8170' }}>
+          <b style={{ fontSize: 16, color: 'var(--navy)' }}>등록된 작품</b>
+          <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>
             {pieces.length}편 · 공개 {publishedCount}편 · 비공개 {pieces.length - publishedCount}편
           </span>
           <span style={{ flex: 1 }} />
           {readers.length > 0 && (
             <>
-              <span style={{ fontSize: 12.5, color: '#5b6472' }}>
+              <span style={{ fontSize: 'var(--fs-2)', color: '#5b6472' }}>
                 등록 {readers.length}명 · 순위 제출 {submittedCount}명
               </span>
               <button type="button" disabled={busy} onClick={resetAll} style={dangerBtn}>
@@ -483,11 +483,11 @@ export default function EssayAdmin() {
         </div>
 
         {pieces.length === 0 ? (
-          <div style={{ fontSize: 13.5, color: '#8a8170', padding: '10px 0' }}>아직 등록된 작품이 없습니다.</div>
+          <div style={{ fontSize: 13.5, color: 'var(--ink-3)', padding: '10px 0' }}>아직 등록된 작품이 없습니다.</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
             <thead>
-              <tr style={{ textAlign: 'left', color: '#6b7280', fontSize: 12.5 }}>
+              <tr style={{ textAlign: 'left', color: 'var(--ink-3)', fontSize: 'var(--fs-2)' }}>
                 <th style={th}>제목</th>
                 <th style={{ ...th, width: 80 }}>상태</th>
                 <th style={{ ...th, width: 110, textAlign: 'right' }}>평균 순위</th>
@@ -499,15 +499,15 @@ export default function EssayAdmin() {
                 const rs = rankings.filter((r) => r.pieceId === p.id).map((r) => r.rank);
                 const avg = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : 0;
                 return (
-                  <tr key={p.id} style={{ borderTop: '1px solid #eee9dd' }}>
+                  <tr key={p.id} style={{ borderTop: '1px solid var(--rule-2)' }}>
                     <td style={td}>
-                      <div style={{ fontWeight: 600, color: '#1A2B52' }}>{p.title}</div>
-                      <div style={{ fontSize: 11.5, color: '#9aa0ad' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--navy)' }}>{p.title}</div>
+                      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
                         {ALL_THEMES.find((t) => t.key === p.bgKey)?.label ?? p.bgKey}
                         {p.bgPath ? ' · 이미지' : ''} · {FONTS.find((f) => f.key === p.fontKey)?.label ?? p.fontKey}
                       </div>
                       {rs.length > 0 && (
-                        <div style={{ fontSize: 11.5, color: '#9aa0ad', marginTop: 4 }}>
+                        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 4 }}>
                           {rs.length}명 평가 · 1위표 {rs.filter((r) => r === 1).length}
                         </div>
                       )}
@@ -515,7 +515,7 @@ export default function EssayAdmin() {
                     <td style={td}>
                       <span
                         style={{
-                          fontSize: 11.5,
+                          fontSize: 'var(--fs-1)',
                           fontWeight: 700,
                           padding: '2px 8px',
                           borderRadius: 4,
@@ -558,10 +558,10 @@ function Shell({ children, publicUrl }: { children: React.ReactNode; publicUrl: 
     <div style={{ minHeight: '100vh', background: '#f5f2ec', padding: '24px 16px' }}>
       <div style={{ maxWidth: 980, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 800, letterSpacing: 1, color: '#1A2B52' }}>JAY</span>
-          <span style={{ fontSize: 12, color: '#8a8170' }}>습작 관리 · 비공개</span>
+          <span style={{ fontWeight: 800, letterSpacing: 1, color: 'var(--navy)' }}>JAY</span>
+          <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>습작 관리 · 비공개</span>
           <span style={{ flex: 1 }} />
-          <code style={{ fontSize: 12, color: '#5b6472', background: '#fff', border: '1px solid #e3ddd0', borderRadius: 6, padding: '4px 8px' }}>
+          <code style={{ fontSize: 'var(--fs-2)', color: '#5b6472', background: '#fff', border: '1px solid #e3ddd0', borderRadius: 6, padding: '4px 8px' }}>
             {publicUrl}
           </code>
           <button
@@ -588,14 +588,14 @@ function Shell({ children, publicUrl }: { children: React.ReactNode; publicUrl: 
 
 const card: React.CSSProperties = {
   background: '#fff',
-  border: '1px solid #e8e2d5',
+  border: '1px solid var(--rule)',
   borderRadius: 12,
   padding: 20,
   marginBottom: 16,
   boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
 };
 const fieldWrap: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 5 };
-const fieldLabel: React.CSSProperties = { fontSize: 12, color: '#6b7280', fontWeight: 600 };
+const fieldLabel: React.CSSProperties = { fontSize: 'var(--fs-2)', color: 'var(--ink-3)', fontWeight: 600 };
 const input: React.CSSProperties = {
   padding: '8px 10px',
   fontSize: 14,
@@ -603,21 +603,21 @@ const input: React.CSSProperties = {
   borderRadius: 8,
   outline: 'none',
   background: '#fff',
-  color: '#1f2937',
+  color: 'var(--ink-2)',
 };
 const primaryBtn: React.CSSProperties = {
   padding: '9px 18px',
   fontSize: 14,
   fontWeight: 700,
   color: '#fff',
-  background: '#1A2B52',
+  background: 'var(--navy)',
   border: 'none',
   borderRadius: 8,
   cursor: 'pointer',
 };
 const ghostBtn: React.CSSProperties = {
   padding: '7px 12px',
-  fontSize: 12.5,
+  fontSize: 'var(--fs-2)',
   color: '#3d4756',
   background: '#fff',
   border: '1px solid #d9d4c8',
@@ -629,7 +629,7 @@ const th: React.CSSProperties = { padding: '6px 8px', fontWeight: 600 };
 const td: React.CSSProperties = { padding: '10px 8px', verticalAlign: 'top' };
 const errBox: React.CSSProperties = {
   marginTop: 12,
-  fontSize: 13,
+  fontSize: 'var(--fs-3)',
   color: '#b04a3a',
   background: '#fdf1ef',
   border: '1px solid #f0d6d0',

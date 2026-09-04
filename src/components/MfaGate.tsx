@@ -41,12 +41,12 @@ export default function MfaGate({ children }: { children: ReactNode }) {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, background: '#1A2B52', zIndex: 100,
+      position: 'fixed', inset: 0, background: 'var(--navy)', zIndex: 100,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
     }}>
       <div className="card" style={{ maxWidth: 380, width: '100%' }}>
         <div className="chdr">🔐 2차 인증</div>
-        <div style={{ fontSize: 12, color: '#444', margin: '4px 0 12px' }}>
+        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', margin: '4px 0 12px' }}>
           인증 앱에 지금 떠 있는 <b>숫자 6자리</b>를 입력해 주세요.
         </div>
         <input
@@ -59,11 +59,11 @@ export default function MfaGate({ children }: { children: ReactNode }) {
           disabled={busy || code.length !== 6} onClick={() => void submit()}>
           {busy ? '확인 중…' : '확인'}
         </button>
-        {err && <div className="alert-e" style={{ fontSize: 11.5, marginTop: 8 }}>{err}</div>}
+        {err && <div className="alert-e" style={{ fontSize: 'var(--fs-1)', marginTop: 8 }}>{err}</div>}
         <button className="btn-sm" style={{ width: '100%', marginTop: 8 }} onClick={() => void signOut()}>
           다른 계정으로 로그인
         </button>
-        <div style={{ fontSize: 10.5, color: '#888', marginTop: 10, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 10, lineHeight: 1.5 }}>
           휴대폰을 잃어버려 들어올 수 없다면 최고관리자에게 해제를 요청하세요.
         </div>
       </div>
