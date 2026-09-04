@@ -19,6 +19,7 @@ import ErpReconcileTab from './billing/ErpReconcileTab';
 import AuditInvoiceTab from './billing/AuditInvoiceTab';
 import ReceivableTab from './billing/ReceivableTab';
 import StaffRevenueTab from './billing/StaffRevenueTab';
+import CommandPalette, { type PaletteTarget } from './common/CommandPalette';
 import ReceivableOpeningTab from './billing/ReceivableOpeningTab';
 import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
@@ -66,6 +67,7 @@ function Shell() {
   const [showDevNotes, setShowDevNotes] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [openSub, setOpenSub] = useState<string | null>(null); // 열린 중분류 플라이아웃 서브메뉴
+  const [openPalette, setOpenPalette] = useState(0);   // 값이 바뀌면 팔레트가 열린다(단추용)
   const navRef = useRef<HTMLElement>(null);
   const fromPop = useRef(false); // popstate로 인한 탭 변경이면 pushState 생략
   const navMounted = useRef(false);
@@ -158,6 +160,15 @@ function Shell() {
     setOpenSub(null);
   }
 
+  // Ctrl+K 가 보여 줄 화면 목록 — 권한 판단은 위에서 이미 끝났다. 여기서 다시 하지 않는다.
+  const paletteTargets: PaletteTarget[] = [
+    ...visibleGroups.flatMap((g) => g.items.flatMap((it) => (it.children ?? [it]).map((c) => ({
+      id: c.id, label: c.label, group: g.label,
+    })))),
+    ...visibleIcons.map((it) => ({ id: it.id, label: `${it.icon} ${it.label}`, group: '관리' })),
+    ...(isExternal ? [] : [{ id: 'home', label: '🏠 내부홈', group: '' }]),
+  ];
+
   const curLabel =
     navItems.find((it) => it.id === cur)?.label ??
     visibleIcons.find((it) => it.id === cur)?.label ??
@@ -248,6 +259,13 @@ function Shell() {
           ))}
         </nav>
 
+        {/* 어디서든 찾기 — 눌러도 열리고 Ctrl+K 로도 열린다.
+            단축키만 두면 아무도 모른다. */}
+        <button className="cmdk-open" onClick={() => setOpenPalette((v) => v + 1)}
+          title="화면·거래처를 이름으로 바로 찾습니다 (Ctrl+K)">
+          🔍 찾기 <kbd>Ctrl</kbd><kbd>K</kbd>
+        </button>
+
         {/* 우측: 아이콘 메뉴 + 사용자 정보 + 액션 */}
         <div className="h-right">
           {visibleIcons.map((it) => (
@@ -299,6 +317,9 @@ function Shell() {
       <main id="main" key={`${cur}-${reloadKey}`}>
         <TabContent cur={cur} setCurTab={setCurTab} curLabel={curLabel} onNavigate={goTab} onOpenDevNotes={() => setShowDevNotes(true)} />
       </main>
+
+      {/* 어디서든 찾기 — Ctrl+K. 화면 어디에 있든 뜨도록 맨 바깥에 둔다. */}
+      <CommandPalette targets={paletteTargets} onGo={goTab} openSignal={openPalette} />
     </>
   );
 }

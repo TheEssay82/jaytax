@@ -1,6 +1,7 @@
 // 거래처관리 › 거래처등록 (거래처관리 2.0.0 · step 1)
 // 귀속주체(법인/개인) → 사업장(본사 강제) 등록 + 담당직원 배정 + 대표이사/공동사업자 + 민감정보 열람.
 import { useEffect, useMemo, useState } from 'react';
+import { takeNavQuery } from '../../lib/navSearch';
 import { useAuth } from '../../context/AuthContext';
 import BizImportPanel from './BizImportPanel';
 import {
@@ -118,7 +119,8 @@ export default function BizRegistryTab() {
   const [kindFilter, setKindFilter] = useState<'' | BizKind>('');
   const [natureFilter, setNatureFilter] = useState<'' | BizNature>('');
   const [noBizOnly, setNoBizOnly] = useState(false);
-  const [q, setQ] = useState('');
+  // Ctrl+K 에서 거래처를 골라 왔으면 그 이름으로 걸러 놓고 연다.
+  const [q, setQ] = useState(() => takeNavQuery('biz-register'));
   const [residents, setResidents] = useState<Map<string, string> | null>(null);   // 표뷰 주민번호 열람분
   const [hometaxPws, setHometaxPws] = useState<Map<string, string> | null>(null); // 표뷰 홈택스PW 열람분
 

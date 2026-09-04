@@ -234,6 +234,29 @@ const toRelation = (r: any): BizRelation => ({
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+/** Ctrl+K 용 가벼운 색인 — 이름·코드·사업자번호만. 전체 조립(listBizEntities)은 여섯 테이블을 읽어 무겁다. */
+export interface EntityIndexRow { id: string; code: string; name: string; kind: string; places: { name: string; bizRegNo: string }[] }
+
+export async function listEntityIndex(): Promise<EntityIndexRow[]> {
+  const [ent, plc] = await Promise.all([
+    supabase.from('biz_entity').select('id, code, name, kind').order('code'),
+    supabase.from('biz_place').select('entity_id, place_name, biz_reg_no'),
+  ]);
+  for (const r of [ent, plc]) if (r.error) throw new Error(r.error.message);
+  const byEnt = new Map<string, { name: string; bizRegNo: string }[]>();
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  for (const p of (plc.data as any[]) ?? []) {
+    const l = byEnt.get(p.entity_id) ?? [];
+    l.push({ name: p.place_name || '', bizRegNo: p.biz_reg_no || '' });
+    byEnt.set(p.entity_id, l);
+  }
+  return ((ent.data as any[]) ?? []).map((e) => ({
+    id: e.id, code: e.code || '', name: e.name || '', kind: e.kind || '',
+    places: byEnt.get(e.id) ?? [],
+  }));
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
 // ── 조회: 전체를 조립해서 반환 ─────────────────────────────
 export async function listBizEntities(): Promise<BizEntityFull[]> {
   const [ent, plc, stf, rep, prt, rel] = await Promise.all([

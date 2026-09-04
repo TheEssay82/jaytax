@@ -1,6 +1,7 @@
 // 거래처관리 › 매출계약등록 (거래처관리 2.0.0 · step 2)
 // 매출유형 트리 선택(cascade) + leaf 플래그 조건입력 + 발생/청구단위 + 청구주기·분할 + 담당 + 날짜 + 무료/할인.
 import { useEffect, useMemo, useState } from 'react';
+import { takeNavQuery } from '../../lib/navSearch';
 import Guide from '../common/Guide';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
@@ -107,7 +108,11 @@ export default function SalesContractTab() {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [teamFilter, setTeamFilter] = useState<'' | Team>('');
-  const [q, setQ] = useState('');
+  // Ctrl+K 에서 거래처를 골라 왔으면 그 이름으로 걸러 놓고 연다.
+  // 기본이 표 화면이라 검색칸(q)이 아니라 **거래처명 열 필터**에 넣는다 — 화면 모양을
+  // 멋대로 바꾸지 않으면서 원하는 줄만 남긴다.
+  const navQ = useState(() => takeNavQuery('biz-contract'))[0];
+  const [q, setQ] = useState(navQ);
   const [showAdd, setShowAdd] = useState(false);
   const [taxOffer, setTaxOffer] = useState<TaxOffer | null>(null);   // 세무조정 계약 동반등록 제안
   const [editId, setEditId] = useState<string | null>(null);
@@ -130,7 +135,7 @@ export default function SalesContractTab() {
   const [showRenew, setShowRenew] = useState(false);
   const tv = useTableView(VIEW_KEYS.salesContract);
   const { widthOf, startResize } = tv;
-  const [colF, setColF] = useState<Record<string, string>>({});
+  const [colF, setColF] = useState<Record<string, string>>(() => (navQ ? { name: navQ } : {} as Record<string, string>));
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
   const [groupBy, setGroupBy] = useState<string>('');   // 피봇 행 기준
   const [groupBy2, setGroupBy2] = useState<string>(''); // 피봇 열 기준(교차표)

@@ -6,6 +6,7 @@
 // 원장에는 사업자번호가 없어 **거래처코드**로 사업장에 붙인다.
 // 화면 위에서 우리 계산과 원장 숫자를 나란히 놓아, 어긋나면 바로 보이게 했다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { takeNavQuery } from '../../lib/navSearch';
 import Guide from '../common/Guide';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
@@ -74,7 +75,8 @@ export default function ReceivableTab() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState<string | null>(null);
-  const [q, setQ] = useState('');
+  // Ctrl+K 에서 거래처를 골라 왔으면 그 이름으로 걸러 놓고 연다.
+  const [q, setQ] = useState(() => takeNavQuery('receivable'));
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [showUploads, setShowUploads] = useState(false);
   const [showUnmatched, setShowUnmatched] = useState(false);

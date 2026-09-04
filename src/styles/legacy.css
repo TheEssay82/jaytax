@@ -349,3 +349,23 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
 .toolbar[open]>summary::before{transform:rotate(90deg)}
 .toolbar>summary:hover{color:var(--ink-2);background:var(--surface-2)}
 .toolbar-body{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;margin-top:8px;padding:10px 12px;border:1px solid var(--rule-2);border-radius:8px;background:var(--surface-2)}
+
+/* 어디서든 찾기(Ctrl+K) */
+.cmdk{width:min(620px,92vw);margin-top:12vh;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);box-shadow:0 18px 50px rgba(20,28,45,.22);overflow:hidden}
+.cmdk>input{width:100%;border:0;border-bottom:1px solid var(--rule-2);border-radius:0;padding:15px 18px;font-size:var(--fs-4);background:var(--surface);outline:none}
+.cmdk>input:focus{border-color:var(--rule-2);box-shadow:none}
+.cmdk-note{font-size:var(--fs-2);color:var(--ink-2);background:var(--navy-bg);padding:7px 18px}
+.cmdk-note span{color:var(--ink-3)}
+.cmdk-list{max-height:44vh;overflow:auto;padding:6px}
+.cmdk-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:none;font:inherit;font-size:var(--fs-3);color:var(--ink);padding:9px 12px;border-radius:7px;cursor:pointer}
+.cmdk-row.on{background:var(--navy);color:#fff}
+.cmdk-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmdk-side{font-size:var(--fs-1);color:var(--ink-3);white-space:nowrap}
+.cmdk-row.on .cmdk-side{color:rgba(255,255,255,.72)}
+.cmdk-empty{padding:20px;text-align:center;color:var(--ink-3);font-size:var(--fs-2)}
+.cmdk-foot{display:flex;gap:14px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--rule-2);padding:8px 16px;font-size:var(--fs-1);color:var(--ink-3);background:var(--surface-2)}
+.cmdk-foot kbd{font-family:inherit;font-size:var(--fs-0);border:1px solid var(--rule);border-radius:4px;padding:1px 5px;margin-right:3px;background:var(--surface)}
+/* 머리의 「찾기」 — 단축키만 두면 아무도 모른다. */
+.cmdk-open{margin-left:12px;display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-1);color:rgba(255,255,255,.72);background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.cmdk-open:hover{background:rgba(255,255,255,.16);color:#fff}
+.cmdk-open kbd{font-family:inherit;font-size:var(--fs-0);border:1px solid rgba(255,255,255,.25);border-radius:3px;padding:0 4px}
