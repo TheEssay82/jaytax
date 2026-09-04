@@ -1,5 +1,6 @@
 // 문서발송 › 발송요청 — 공통 문서정보 + 수신자 다중선택(거래처관리 › 거래처담당자등록 연동, 스냅샷) 요청 등록/목록/수정
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import { todayYmd } from '../../lib/format';
 import { useAuth } from '../../context/AuthContext';
 import { listDocClients, type DocClient, type DocContact } from '../../lib/docClientsApi';
@@ -812,6 +813,7 @@ function EditRequestForm({
 
 // ── 재발송요청 모달 (반송 건, 원 요청자) ────────────────────
 function ResendModal({ req, onClose, onDone }: { req: SendRequest; onClose: () => void; onDone: () => void | Promise<void> }) {
+  useEscape(onClose);
   const [memo, setMemo] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -877,6 +879,7 @@ function ResendModal({ req, onClose, onDone }: { req: SendRequest; onClose: () =
 function TrashModal({ rows, busy, onRestore, onHardDelete, onClose }: {
   rows: SendRequest[]; busy: boolean; onRestore: (r: SendRequest) => void; onHardDelete: (r: SendRequest) => void; onClose: () => void;
 }) {
+  useEscape(onClose);
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, maxWidth: 900, width: '100%', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 10px 40px rgba(0,0,0,0.25)' }}>
@@ -918,6 +921,7 @@ function TrashModal({ rows, busy, onRestore, onHardDelete, onClose }: {
 
 // ── 변경 로그 모달 ──────────────────────────────────────────
 function LogModal({ rows, onClose }: { rows: DocAudit[]; onClose: () => void }) {
+  useEscape(onClose);
   const actLabel = (a: DocAudit['action']) => (a === 'insert' ? '등록' : a === 'update' ? '수정' : '삭제');
   const actColor = (a: DocAudit['action']) => (a === 'insert' ? '#059669' : a === 'update' ? '#2563eb' : '#dc2626');
   return (

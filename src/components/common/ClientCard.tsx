@@ -2,6 +2,7 @@
 //
 // 고치는 일은 하지 않는다. 아래 단추로 각 화면에 보낸다 — 규칙이 한 곳에만 남아야 한다.
 import { useEffect, useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import { loadClientCard, type ClientCard as Card } from '../../lib/clientCardApi';
 import { setNavQuery } from '../../lib/navSearch';
 
@@ -19,6 +20,7 @@ export default function ClientCard(
   { entityId, name, onClose, onGo }:
   { entityId: string; name: string; onClose: () => void; onGo: (tab: string) => void },
 ) {
+  useEscape(onClose);
   const [card, setCard] = useState<Card | null>(null);
   const [err, setErr] = useState('');
 

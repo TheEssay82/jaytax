@@ -1,5 +1,6 @@
 // Step 4: 금액 조정 (+ 과거 청구기록 비교 모달) — 원본 rStep4 + showBillingHistory 포팅
 import { useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import { useWizard } from '../../context/WizardContext';
 import { useConfig } from '../../context/ConfigContext';
 import { calcS, won } from '../../lib/calc';
@@ -13,6 +14,7 @@ export default function Step4Adjust({ records }: WizardStepProps) {
   const { S, setS } = useWizard();
   const { config } = useConfig();
   const [showHistory, setShowHistory] = useState(false);
+  useEscape(() => setShowHistory(false), showHistory);
   const c = calcS(S, config);
 
   const pastRecs: BillingRecord[] = records

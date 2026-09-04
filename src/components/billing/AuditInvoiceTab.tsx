@@ -12,6 +12,7 @@
 // 월 셀렉터는 두지 않는다 — 감사팀은 '이 달 것'이라는 개념이 약하고, 기한이 지난 건은
 // 몇 달 전 것이라도 지금 청구한다. 기간은 3층의 조회 조건일 뿐이다.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import Loading from '../common/Loading';
 import Guide from '../common/Guide';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
@@ -519,7 +520,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
     finally { setBusy(false); }
   }
 
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <Loading title="🧾 세금계산서 발행요청 · 감사팀" rows={8} />;
 
   const overdue = props.filter((p) => p.overdueDays >= 0);
   const notYetAlerted = props.filter((p) => !p.notified && p.cpa.trim()).length;

@@ -1,8 +1,10 @@
 // 비밀번호 변경 모달 — 로그인한 본인의 비밀번호 변경
 import { useState } from 'react';
+import { useEscape } from '../lib/useEscape';
 import { useAuth } from '../context/AuthContext';
 
 export default function PasswordModal({ onClose }: { onClose: () => void }) {
+  useEscape(onClose);
   const { changePassword } = useAuth();
   const [pw1, setPw1] = useState('');
   const [pw2, setPw2] = useState('');

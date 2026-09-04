@@ -1,6 +1,10 @@
 // 거래처관리 › 매출계약등록 (거래처관리 2.0.0 · step 2)
 // 매출유형 트리 선택(cascade) + leaf 플래그 조건입력 + 발생/청구단위 + 청구주기·분할 + 담당 + 날짜 + 무료/할인.
 import { useEffect, useMemo, useState } from 'react';
+import Empty, { EmptyRow } from '../common/Empty';
+import { useEscape } from '../../lib/useEscape';
+import { useUnsaved } from '../../lib/unsaved';
+import Loading from '../common/Loading';
 import { takeNavQuery } from '../../lib/navSearch';
 import Guide from '../common/Guide';
 import { useAuth } from '../../context/AuthContext';
@@ -115,6 +119,7 @@ export default function SalesContractTab() {
   const [q, setQ] = useState(navQ);
   const [showAdd, setShowAdd] = useState(false);
   const [taxOffer, setTaxOffer] = useState<TaxOffer | null>(null);   // 세무조정 계약 동반등록 제안
+  useEscape(() => setTaxOffer(null), !!taxOffer);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
   /**
@@ -476,7 +481,7 @@ export default function SalesContractTab() {
     catch (e) { alert('삭제 실패: ' + (e instanceof Error ? e.message : e)); }
   }
 
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <Loading title="📄 매출계약등록" rows={10} />;
 
   return (
     <div className="card">
@@ -642,7 +647,15 @@ export default function SalesContractTab() {
 
       {viewMode === 'box' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {view.length === 0 && <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-2)', padding: 12 }}>매출계약이 없습니다.</div>}
+        {view.length === 0 && (
+          contracts.length === 0
+            ? <Empty text="아직 매출계약이 없습니다"
+                hint="계약을 넣어야 청구예정·예산·통계가 돌아갑니다."
+                action={canWrite ? { label: '＋ 신규 매출계약', onClick: () => { setShowAdd(true); setEditId(null); } } : undefined} />
+            : <Empty text="조건에 맞는 매출계약이 없습니다"
+                hint={`걸러서 비었습니다 — 전체는 ${contracts.length}건입니다.`}
+                action={{ label: '조건 지우기', onClick: () => { setQ(''); setTeamFilter(''); } }} />
+        )}
         {view.map((c) => {
           const leaf = leafOf(c.categoryCode);
           return (
@@ -793,7 +806,15 @@ export default function SalesContractTab() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + 1} style={{ ...tdc, color: 'var(--ink-3)', padding: 12 }}>조건에 맞는 매출계약이 없습니다.</td></tr>}
+              {sortedRows.length === 0 && (
+                contracts.length === 0
+                  ? <EmptyRow colSpan={shownCols.length + 1} text="아직 매출계약이 없습니다"
+                      hint="계약을 넣어야 청구예정·예산·통계가 돌아갑니다."
+                      action={canWrite ? { label: '＋ 신규 매출계약', onClick: () => { setShowAdd(true); setEditId(null); } } : undefined} />
+                  : <EmptyRow colSpan={shownCols.length + 1} text="조건에 맞는 매출계약이 없습니다"
+                      hint={`열 아래 칸에 넣은 값으로 걸러서 비었습니다 — 전체는 ${contracts.length}건입니다.`}
+                      action={{ label: '필터 초기화', onClick: () => setColF({}) }} />
+              )}
               {sortedRows.map((c) => (
                 <tr key={c.id}>
                   {shownCols.map((col) => <td key={col.key} style={{ ...tdc, ...clip, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid var(--rule-2)' }} title={col.val(c)}>{col.val(c)}</td>)}
@@ -841,6 +862,7 @@ export default function SalesContractTab() {
 
 // ── 매출계약코드 규칙 안내 ──────────────────────────────────
 function CodeHelpModal({ onClose }: { onClose: () => void }) {
+  useEscape(onClose);
   const table = typeMnemonicTable();
   const aud = table.filter((t) => t.team === '감사team');
   const tax = table.filter((t) => t.team === 'taxteam');
@@ -954,8 +976,14 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
   entities: BizEntityFull[]; staff: StaffProfileLite[]; contracts: SalesContract[];
   initial?: SalesContract; onSubmit: (f: FormState) => void; onCancel: () => void;
 }) {
-  const [f, setF] = useState<FormState>(() => initial ? fromContract(initial) : emptyForm());
+  const start = useMemo(() => (initial ? fromContract(initial) : emptyForm()), [initial]);
+  const [f, setF] = useState<FormState>(start);
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((p) => ({ ...p, [k]: v }));
+
+  // **손을 댄 것만** 저장 안 한 것으로 센다 — 열어만 보고 나가는 데까지 붙잡으면
+  // 경고가 잦아져 아무도 안 읽게 된다.
+  const touched = JSON.stringify(f) !== JSON.stringify(start);
+  useUnsaved('sales-contract-form', touched, initial ? '매출계약 수정' : '새 매출계약');
   const entity = entities.find((e) => e.id === f.entityId);
   const leaf = leafOf(f.categoryCode);
   const staffCands = staff.filter((s) => (staffCandidatesForTeam(f.team) as readonly string[]).includes(s.name));
@@ -1323,6 +1351,7 @@ const chip = (on: boolean): React.CSSProperties => ({ fontSize: 'var(--fs-0)', p
 // 세무조정은 귀속연도가 고정된 재계약형이라 해마다 새로 등록해야 한다. 전년 계약을 띄워
 // 체크한 것만 올해 귀속으로 복제한다(올해 세무조정을 안 하는 거래처는 체크를 빼면 된다).
 function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () => Promise<void> }) {
+  useEscape(onClose);
   const thisYear = settlementYearOfDate(todayYmd()) ?? new Date().getFullYear();
   const [toYear, setToYear] = useState(thisYear);
   const [rows, setRows] = useState<RenewCandidate[] | null>(null);

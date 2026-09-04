@@ -6,6 +6,7 @@
 // 청구 모집단(편입·확정)과 수수료 계산 기초자료(매출액·성실신고·상실), 청구 전용 정보(가상계좌 등)뿐이다.
 // 담당회계사가 김준성·조현규인 세무조정은 이 시스템으로 청구하지 않는다(매출계약으로만 매출을 잡는다).
 import { useEffect, useMemo, useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import type { Client } from '../../types';
 import { CURRENT_YEAR } from '../../lib/constants';
 import { fm, dtFmt, getRevForYear, getClientDispYears, sortIndicator } from '../../lib/format';
@@ -568,6 +569,7 @@ function ClientRow({
 // 그 해 세무조정 계약(법인세·종합소득세)이 있는 거래처를 청구 모집단으로 편입한다.
 // 담당회계사가 김준성·조현규인 건은 이 시스템으로 청구하지 않으므로 기본으로 감춘다.
 function ImportFromContracts({ fiscalYear, onClose, onDone }: { fiscalYear: number; onClose: () => void; onDone: () => Promise<void> }) {
+  useEscape(onClose);
   const [rows, setRows] = useState<ImportableTaxContract[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState('');

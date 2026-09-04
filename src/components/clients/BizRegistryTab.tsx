@@ -1,6 +1,10 @@
 // 거래처관리 › 거래처등록 (거래처관리 2.0.0 · step 1)
 // 귀속주체(법인/개인) → 사업장(본사 강제) 등록 + 담당직원 배정 + 대표이사/공동사업자 + 민감정보 열람.
 import { useEffect, useMemo, useState } from 'react';
+import Empty, { EmptyRow } from '../common/Empty';
+import { useEscape } from '../../lib/useEscape';
+import { useUnsaved } from '../../lib/unsaved';
+import Loading from '../common/Loading';
 import { takeNavQuery } from '../../lib/navSearch';
 import { useAuth } from '../../context/AuthContext';
 import BizImportPanel from './BizImportPanel';
@@ -378,7 +382,7 @@ export default function BizRegistryTab() {
     } catch (e) { alert('열람 권한이 없거나 오류입니다: ' + (e instanceof Error ? e.message : e)); }
   }
 
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <Loading title="🏢 거래처등록" rows={10} />;
 
   return (
     <div className="card">
@@ -434,7 +438,11 @@ export default function BizRegistryTab() {
       {/* 목록(박스) */}
       {viewMode === 'box' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {view.length === 0 && <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-2)', padding: 12 }}>거래처가 없습니다.</div>}
+        {view.length === 0 && (
+          <Empty text="조건에 맞는 거래처가 없습니다"
+            hint={`전체는 ${entities.length}곳입니다.`}
+            action={{ label: '검색어 지우기', onClick: () => setQ('') }} />
+        )}
         {view.map((e) => (
           <div key={e.id} style={{ border: '1px solid var(--rule)', borderRadius: 6, padding: '8px 10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -584,7 +592,12 @@ export default function BizRegistryTab() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + (canWrite ? 2 : 1)} style={{ ...tdc, color: 'var(--ink-3)', padding: 12 }}>조건에 맞는 거래처가 없습니다.</td></tr>}
+              {sortedRows.length === 0 && (
+                <EmptyRow colSpan={shownCols.length + (canWrite ? 2 : 1)}
+                  text="조건에 맞는 거래처가 없습니다"
+                  hint={`열 아래 칸에 넣은 값으로 걸러서 비었습니다 — 전체는 ${entities.length}곳입니다.`}
+                  action={{ label: '필터 초기화', onClick: () => setColF({}) }} />
+              )}
               {sortedRows.map(({ e, p }) => (
                 <tr key={p ? p.id : e.id} style={{ background: selected.has(e.id) ? '#fdf3f3' : undefined }}>
                   {canWrite && <td style={{ ...tdc, textAlign: 'center', borderTop: '1px solid var(--rule-2)' }}><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSelect(e.id)} /></td>}
@@ -954,6 +967,8 @@ function RepEditor({ entity, allEntities, canWrite, onChanged, onReveal }: {
 
   const [nf, setNf] = useState({ repName: '', repType: '단독' as RepType, residentNo: '', linkedEntityId: '' });
   const [ef, setEf] = useState<Record<string, { repName: string; repType: RepType; residentNo: string; linkedEntityId: string }>>({});
+  // 고치는 중인 대표자가 있으면 화면을 옮길 때 먼저 묻는다.
+  useUnsaved('biz-rep-edit', Object.keys(ef).length > 0, '대표자 수정');
   const draft = (r: BizRepresentative) =>
     ef[r.id] ?? { repName: r.repName, repType: r.repType, residentNo: '', linkedEntityId: r.linkedEntityId ?? '' };
   const patch = (id: string, k: string, v: string) =>
@@ -1164,6 +1179,7 @@ function RelationSection({ entity, allEntities, canWrite, onChanged }: {
 
 // ── 공용 모달 ──────────────────────────────────────────────
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  useEscape(onClose);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 100, padding: 20, overflow: 'auto' }} onClick={onClose}>
       <div className="card" style={{ maxWidth: 720, width: '100%', marginTop: 30 }} onClick={(e) => e.stopPropagation()}>

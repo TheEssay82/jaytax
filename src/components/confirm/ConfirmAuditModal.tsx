@@ -1,6 +1,7 @@
 // 조회서 변경이력 — 감사증빙용. 누가 언제 발송·회수를 처리했는지 기록.
 // 트리거가 남기므로 화면에서는 조회만 한다(수정·삭제 불가).
 import { useEffect, useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import { listAudit, type ConfirmAudit } from '../../lib/confirmApi';
 
 const dt = (s: string) => {
@@ -25,6 +26,7 @@ export default function ConfirmAuditModal({
   title: string;
   onClose: () => void;
 }) {
+  useEscape(onClose);
   const [rows, setRows] = useState<ConfirmAudit[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);

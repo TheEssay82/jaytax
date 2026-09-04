@@ -9,6 +9,8 @@
 // 매출계약을 그때그때 전개하던 것이 예전 방식이다. 계약은 이제 **대사용 참고자료**다 —
 // 실무는 전월을 복사해 고치는 것이고, 계약이 늘 최신인 것도 아니기 때문이다.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
+import Loading from '../common/Loading';
 import Guide from '../common/Guide';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, CPA_OPTIONS, type BizEntityFull } from '../../lib/bizRegistryApi';
@@ -57,6 +59,7 @@ function ReconcileModal({ rows, ym, busy, canWrite, me, isMine, onClose, onAdd, 
   onDelete: (draftIds: string[]) => Promise<void>;
   onApplyAmount: (pairs: [string, number][]) => Promise<void>;
 }) {
+  useEscape(onClose);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [mineOnly, setMineOnly] = useState(false);
   // 걸러도 원본 번호(i)로 고르므로, 필터를 껐다 켜도 선택이 흐트러지지 않는다.
@@ -601,7 +604,7 @@ ${noContract ? `
     });
   }, []);
 
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <Loading title="🧾 세금계산서 발행요청" rows={10} />;
 
   return (
     <div className="card">

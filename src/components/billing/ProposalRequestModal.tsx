@@ -4,6 +4,7 @@
 // 기한이 한참 지난 건은 계약에 적힌 날짜가 아니라 **지금 발행할 날짜**로 나가야 하고,
 // 금액도 그 사이 조정되었을 수 있다. 그래서 넘기기 전에 한 번 손볼 자리를 둔다.
 import { useEffect, useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import Guide from '../common/Guide';
 import { ERP_ACCOUNTS } from '../../lib/invoiceRequestApi';
 import { listEmailCandidates, isEmail, joinEmails, splitEmails } from '../../lib/taxEmailApi';
@@ -32,6 +33,7 @@ export function ProposalRequestModal({ rows, approver, issueDate, onClose, onSub
   onClose: () => void;
   onSubmit: (issueDate: string, edits: Map<string, ProposalEdit>) => Promise<void>;
 }) {
+  useEscape(onClose);
   const [date, setDate] = useState(issueDate);
   const [busy, setBusy] = useState(false);
   const [edits, setEdits] = useState<Map<string, ProposalEdit>>(

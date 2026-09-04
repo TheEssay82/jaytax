@@ -5,6 +5,7 @@
 // 실제로 청구한 금액은 여기서 세지 않는다 — 그것은 기장등청구관리 › **매출통계**의 몫이다.
 // 두 화면이 다른 숫자를 내놓는 것은 정상이다(이쪽은 계약, 저쪽은 청구 기록).
 import { useEffect, useMemo, useState } from 'react';
+import Loading from '../common/Loading';
 import { annualize } from '../../lib/annualize';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import { listSalesContracts, type SalesContract } from '../../lib/salesContractApi';
@@ -157,7 +158,7 @@ export default function BizStatusTab() {
 
   const entMap = useMemo(() => new Map(entities.map((e) => [e.id, e])), [entities]);
 
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <Loading title="📈 현황및예산조회" rows={8} rep />;
 
   return (
     <div className="card rep">

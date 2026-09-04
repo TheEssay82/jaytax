@@ -204,7 +204,15 @@ export default function BudgetTab() {
       </div>
     );
   }
-  if (loading) return <div style={{ padding: 12 }}>불러오는 중…</div>;
+  // 이 화면은 매출통계 카드 **안**이라 카드를 또 그리지 않는다. 뼈대만 둔다.
+  if (loading) return (
+    <div aria-busy="true">
+      <div className="skel-bar" />
+      <div className="skel-tbl">
+        {Array.from({ length: 6 }, (_, i) => <div key={i} className="skel-row" />)}
+      </div>
+    </div>
+  );
 
   return (
     <div>

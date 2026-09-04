@@ -4,6 +4,8 @@
 // 「끌어다 놓기 → 화면이 분류 → 묶음마다 버튼 하나」로 바꾼 화면이다.
 // 설계 원칙 셋: ① 되돌릴 수 있게 ② 먼저 보여주고 나중에 저장 ③ 판단은 사람이.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
+import Loading from '../common/Loading';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, type BizEntityFull } from '../../lib/bizRegistryApi';
 import { todayYmd } from '../../lib/format';
@@ -105,7 +107,7 @@ export default function ErpReconcileTab() {
     finally { setBusy(false); }
   }
 
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <Loading title="📥 ERP 발행내역 대사" rows={7} />;
 
   const step = !state?.uploadedAt ? 1 : todo > 0 ? 3 : state.doneAt ? 4 : 3;
   const Step = ({ n, label }: { n: number; label: string }) => (
@@ -389,6 +391,7 @@ const CASES: { tag: string; title: string; why: string; fix: string; ex: string 
 ];
 
 function HelpModal({ onClose }: { onClose: () => void }) {
+  useEscape(onClose);
   const tone = (t: string) => (t.startsWith('❓') ? '#1E3A8A' : t.startsWith('➖') ? '#991B1B'
     : t.startsWith('❗') ? '#92400E' : t.startsWith('⚠️') ? '#92400E' : '#065F46');
   return (

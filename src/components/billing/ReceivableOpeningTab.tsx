@@ -4,6 +4,8 @@
 // 기초 시점의 과거 청구에는 계약 연결이 없어 계약별로 쪼갤 근거가 없다.
 // 기초 이후 발행분은 발행요청에 계약·회차가 걸리므로 그때부터 계약별로 추적된다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useUnsaved } from '../../lib/unsaved';
+import Loading from '../common/Loading';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
@@ -75,6 +77,7 @@ export default function ReceivableOpeningTab() {
   const total = entered.reduce((s, r) => s + (r.amount ?? 0), 0);
   const totalGross = entered.reduce((s, r) => s + r.amountGross, 0);
   const dirty = Object.keys(edit).filter((k) => edit[k] !== '');
+  useUnsaved('receivable-opening', dirty.length > 0, `기초 미수금 ${dirty.length}건`);
 
   async function saveEdits() {
     const payload = dirty.map((placeId) => ({ placeId, amount: Number(edit[placeId].replace(/[^\d.-]/g, '')) || 0 }));
@@ -99,7 +102,7 @@ export default function ReceivableOpeningTab() {
     finally { setBusy(false); }
   }
 
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <Loading title="💰 기초 미수금" rows={8} />;
 
   return (
     <div className="card">

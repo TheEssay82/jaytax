@@ -3,6 +3,7 @@
 // **한도를 넘기면 어느 날 갑자기 막힌다.** 미리 알면 요금제를 올리거나 자료를 줄일 시간이 있다.
 // 최고관리자 전용(menu.ts cap: manageUsers) — 계정 수·용량은 운영 정보다.
 import { useCallback, useEffect, useState } from 'react';
+import Loading from './Loading';
 import Guide from './Guide';
 import {
   SUPABASE_FREE, EXTERNAL_SERVICES, ratioOf, levelOf, worstLevel,
@@ -45,7 +46,7 @@ export default function ServiceLimitsTab() {
   });
   const worst = worstLevel(rows.map((r) => r.level));
 
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <Loading title="⚙️ 서비스 한도" rows={6} rep />;
 
   return (
     <div className="card rep">

@@ -21,6 +21,7 @@ import ReceivableTab from './billing/ReceivableTab';
 import StaffRevenueTab from './billing/StaffRevenueTab';
 import CommandPalette, { type PaletteTarget } from './common/CommandPalette';
 import { useFitTableHeights } from '../lib/fillHeight';
+import { unsavedLabels, useBeforeUnloadGuard } from '../lib/unsaved';
 import ReceivableOpeningTab from './billing/ReceivableOpeningTab';
 import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
@@ -76,6 +77,7 @@ function Shell() {
 
   // 표가 화면 아래 끝까지 차게 한다 — 화면이 바뀌면 다시 잰다.
   useFitTableHeights(`${curTab}-${reloadKey}`);
+  useBeforeUnloadGuard();
 
   // 권한 필터링된 메뉴 그룹/아이콘.
   //  · 외부인: 정해진 조회 메뉴만(EXTERNAL_ALLOWED_TABS), 아이콘 메뉴 없음.
@@ -156,7 +158,18 @@ function Shell() {
   }, [curTab]);
 
   // 탭 이동: 화면 remount(key 변경)로 데이터 새로고침. 청구서 작성은 항상 새 청구서부터.
+  //
+  // 옮기면 지금 화면은 통째로 사라진다. 고치던 것이 있으면 **말없이 잃지 않게** 먼저 묻는다.
+  // 손을 댄 폼만 세므로(unsaved.ts), 열어만 보고 나가는 데는 걸리지 않는다.
   function goTab(id: string) {
+    if (id === cur) { setOpenMenu(null); setOpenSub(null); return; }
+    const pending = unsavedLabels();
+    if (pending.length > 0
+      && !confirm(`저장하지 않은 것이 있습니다 — ${pending.join(' · ')}.
+화면을 옮기면 사라집니다. 그래도 옮길까요?`)) {
+      setOpenMenu(null); setOpenSub(null);
+      return;
+    }
     if (id === 'wizard') resetNew();
     setCurTab(id);
     setReloadKey((k) => k + 1);

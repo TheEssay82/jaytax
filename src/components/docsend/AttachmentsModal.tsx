@@ -1,5 +1,6 @@
 // 발송요청 첨부파일 모달 (조회·다운로드 + 미접수 시 추가·삭제) — 발송요청/발송요청처리 공용
 import { useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import {
   signedAttachmentUrl,
   uploadSendFile,
@@ -31,6 +32,7 @@ export default function AttachmentsModal({
   onClose: () => void;
   onChanged: () => Promise<void> | void;
 }) {
+  useEscape(onClose);
   const [busy, setBusy] = useState(false);
   // 첨부 추가·삭제는 처리 전(미접수) 건만. 다운로드는 상태 무관 가능.
   const editable = canWrite && req.status === '미접수' && !!req.batchId;

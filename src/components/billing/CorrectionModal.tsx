@@ -9,6 +9,7 @@
 //  ② 원 건이 기초미수금에 묻혀 있을 때 — 거래처를 고르고 ERP 전표번호를 적는다.
 // 금액은 **양수로 받아** 저장할 때 부호를 붙인다. 사람이 직접 (−)를 치면 빠뜨리기 때문이다.
 import { useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import Guide from '../common/Guide';
 import { createCorrection, ERP_ACCOUNTS, type InvoiceRequest } from '../../lib/invoiceRequestApi';
 import { corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
@@ -24,6 +25,7 @@ export function CorrectionModal({ team, origin, entities, onClose, onSaved }: {
   onClose: () => void;
   onSaved: (msg: string) => void;
 }) {
+  useEscape(onClose);
   const [company, setCompany] = useState('');
   const [entityId, setEntityId] = useState(origin?.entityId ?? '');
   const [placeId, setPlaceId] = useState(origin?.placeId ?? '');

@@ -6,6 +6,9 @@
 // 원장에는 사업자번호가 없어 **거래처코드**로 사업장에 붙인다.
 // 화면 위에서 우리 계산과 원장 숫자를 나란히 놓아, 어긋나면 바로 보이게 했다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { EmptyRow } from '../common/Empty';
+import { useEscape } from '../../lib/useEscape';
+import Loading from '../common/Loading';
 import { takeNavQuery } from '../../lib/navSearch';
 import Guide from '../common/Guide';
 import { useAuth } from '../../context/AuthContext';
@@ -243,7 +246,7 @@ export default function ReceivableTab() {
     finally { setBusy(false); }
   }
 
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <Loading title="💰 수금·미수금" rows={9} />;
 
   return (
     <div className="card">
@@ -514,9 +517,13 @@ export default function ReceivableTab() {
           </thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20, color: 'var(--ink-4)' }}>
-                해당하는 거래처가 없습니다.
-              </td></tr>
+              <EmptyRow colSpan={8} text="해당하는 거래처가 없습니다"
+                hint={onlyOpen
+                  ? `「잔액 있는 곳만」이 켜져 있습니다 — 끄면 잔액 0인 곳까지 ${rows.length}곳이 보입니다.`
+                  : `전체는 ${rows.length}곳입니다. 검색어나 팀을 확인해 주세요.`}
+                action={onlyOpen
+                  ? { label: '잔액 0인 곳도 보기', onClick: () => setOnlyOpen(false) }
+                  : (q ? { label: '검색어 지우기', onClick: () => setQ('') } : undefined)} />
             )}
             {view.map((r) => (
               <tr key={r.placeId}>
@@ -565,6 +572,7 @@ function UnmatchedModal({ rows, placeOpts, canWrite, busy, onClose, onAssign, on
   onAssign: (id: string, opt: PlaceOpt, code: string, saveCode: boolean) => Promise<void>;
   onExclude: (ids: string[], on: boolean) => Promise<void>;
 }) {
+  useEscape(onClose);
   const [pick, setPick] = useState<Set<string>>(new Set());
   const [showExcluded, setShowExcluded] = useState(false);
   const [saveCode, setSaveCode] = useState(true);

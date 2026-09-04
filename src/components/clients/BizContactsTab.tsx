@@ -2,6 +2,8 @@
 // 거래처(법인/개인)의 외부 담당자(연락처) 관리. 여기가 담당자 정보의 유일한 등록·수정 창구이며,
 // 문서발송 발송요청·조회서등록은 0070 별칭 동기화로 이 데이터를 그대로 쓴다.
 import { useEffect, useMemo, useState } from 'react';
+import { EmptyRow } from '../common/Empty';
+import Loading from '../common/Loading';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
@@ -155,7 +157,7 @@ export default function BizContactsTab() {
     catch (e) { alert('삭제 실패: ' + (e instanceof Error ? e.message : e)); }
   }
 
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <Loading title="👤 거래처담당자등록" rows={9} />;
 
   return (
     <div className="card">
@@ -218,7 +220,12 @@ export default function BizContactsTab() {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length === 0 && <tr><td colSpan={shownCols.length + (canWrite ? 1 : 0)} style={{ ...tdc, color: 'var(--ink-3)', padding: 12 }}>조건에 맞는 담당자가 없습니다.</td></tr>}
+              {sortedRows.length === 0 && (
+                <EmptyRow colSpan={shownCols.length + (canWrite ? 1 : 0)}
+                  text="조건에 맞는 담당자가 없습니다"
+                  hint="열 아래 칸에 넣은 값으로 걸러서 비었을 수 있습니다."
+                  action={{ label: '필터 초기화', onClick: () => setColF({}) }} />
+              )}
               {sortedRows.map(({ c, e }) => (
                 <tr key={c.id} style={{ opacity: c.active ? 1 : 0.5 }}>
                   {shownCols.map((col) => <td key={col.key} style={{ ...tdc, ...clip, fontWeight: col.key === 'name' || col.key === 'contact' ? 600 : 400, borderTop: '1px solid var(--rule-2)' }} title={col.val({ c, e })}>{col.val({ c, e })}</td>)}

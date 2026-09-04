@@ -4,6 +4,7 @@
 // 세 사람이 이어 달린다 — 담당직원이 고치고, 회계사가 요청하고, 김민섭이 발행한다.
 // 그래서 **자기 자리만 펼쳐 읽을 수 있게** 셋으로 나눠 적었다.
 import { useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import { FINAL_APPROVER, CHECKERS, ISSUE_DAY } from '../../lib/invoiceMonthApi';
 
 type Role = 'approver' | 'staff' | 'cpa';
@@ -18,6 +19,7 @@ export function WorkflowManual({ initial = 'approver', onClose }: {
   initial?: Role;
   onClose: () => void;
 }) {
+  useEscape(onClose);
   const [tab, setTab] = useState<Role>(initial);
 
   return (

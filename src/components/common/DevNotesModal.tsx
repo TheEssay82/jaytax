@@ -1,8 +1,10 @@
 // 개발노트 팝업 — 헤더의 버전 배지를 클릭하면 뜬다. 버전별 개발내역을 최신순으로 보여준다.
 //  데이터는 src/lib/changelog.ts (리포 코드). 최초 화면(홈 대시보드)이 생기면 이 목록을 위젯으로도 재사용 예정.
 import { CHANGELOG, LATEST_VERSION } from '../../lib/changelog';
+import { useEscape } from '../../lib/useEscape';
 
 export default function DevNotesModal({ onClose }: { onClose: () => void }) {
+  useEscape(onClose);
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div

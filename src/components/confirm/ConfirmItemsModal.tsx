@@ -2,6 +2,7 @@
 // 한 줄씩 추가·수정·삭제하거나, 엑셀 양식을 업로드해 통째로 채운다.
 // 양식 다운로드 2종: 빈 양식(거래처 배포용) / 현재 명세(손봐서 다시 올리는 용도)
 import { useEffect, useRef, useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import {
   listItems,
   addItems,
@@ -46,6 +47,7 @@ export default function ConfirmItemsModal({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  useEscape(onClose);
   const [items, setItems] = useState<ConfirmItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);

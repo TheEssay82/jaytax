@@ -399,3 +399,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
 .cc-warn{color:var(--warn);font-weight:600}
 .cc-recent{margin-top:12px;border:1px solid var(--rule-2);border-radius:8px;padding:11px 13px}
 .cc-go{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule-2)}
+
+/* 불러오는 동안의 뼈대 — 제목은 남기고 표 자리만 회색으로. 화면이 튀지 않게 높이를 미리 잡는다. */
+.skel-note{font-size:var(--fs-1);font-weight:400;color:var(--ink-4);margin-left:6px}
+.skel-bar{height:28px;border-radius:6px;background:var(--rule-2);margin-bottom:12px;max-width:420px}
+.skel-tbl{display:flex;flex-direction:column;gap:7px}
+.skel-row{height:18px;border-radius:4px;background:var(--rule-2)}
+.skel-row:nth-child(3n){width:88%}
+.skel-row:nth-child(3n+1){width:96%}
+.skel-bar,.skel-row{animation:skel 1.6s ease-in-out infinite}
+@keyframes skel{0%,100%{opacity:.55}50%{opacity:1}}
+/* 움직임을 줄여 달라고 한 사람에게는 흐린 채로 둔다. */
+@media (prefers-reduced-motion:reduce){.skel-bar,.skel-row{animation:none;opacity:.7}}
+
+/* 비어 있을 때 — 다음에 할 일을 함께 내놓는다. */
+.empty{display:flex;flex-direction:column;align-items:center;gap:7px;padding:26px 16px;text-align:center}
+.empty-t{font-size:var(--fs-2);color:var(--ink-2);font-weight:600}
+.empty-h{font-size:var(--fs-1);color:var(--ink-3);max-width:46ch;line-height:1.6}

@@ -1,8 +1,10 @@
 // 2차 인증 — 등록·해제(본인) 모달.
 import { useEffect, useState } from 'react';
+import { useEscape } from '../lib/useEscape';
 import { startEnroll, confirmEnroll, listFactors, unenroll, assuranceLevel, type TotpFactor, type EnrollStart } from '../lib/mfaApi';
 
 export default function MfaModal({ onClose }: { onClose: () => void }) {
+  useEscape(onClose);
   const [factors, setFactors] = useState<TotpFactor[] | null>(null);
   const [enroll, setEnroll] = useState<EnrollStart | null>(null);
   const [code, setCode] = useState('');

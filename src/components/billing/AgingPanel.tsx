@@ -4,6 +4,7 @@
 // 회계 실무의 통상대로 **오래된 것부터 갚은 것으로 본다(FIFO)**. 그 가정을 화면에 적어 둔다 —
 // 숫자만 보고 사실인 줄 알면 안 되기 때문이다.
 import { useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import Guide from '../common/Guide';
 import { BUCKETS, OVERDUE_DAYS, type AgingRow, type AgingSource } from '../../lib/agingApi';
 
@@ -158,6 +159,7 @@ export function AgingPanel({
 
 /** 한 거래처에 남아 있는 채권의 내역 — 무엇이 언제부터 안 들어왔는지. */
 export function AgingDetail({ row, asOf, onClose }: { row: AgingRow; asOf: string; onClose: () => void }) {
+  useEscape(onClose);
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 60,

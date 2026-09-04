@@ -4,6 +4,7 @@
 // 담당이 아예 바뀐 것이라면 '앞으로도' 를 켠다 — 매출계약의 담당 이력이 이 달부터 갈리고,
 // 다음 달 청구예정부터 새 담당으로 잡힌다. 지난 달 청구는 그대로 남는다.
 import { useState } from 'react';
+import { useEscape } from '../../lib/useEscape';
 import { setInvoiceStaff, type InvoiceStaffShare } from '../../lib/invoiceStaffApi';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
@@ -27,6 +28,7 @@ export function StaffShareEditor({ requestId, amount, current, staffOptions, ym,
   onClose: () => void;
   onSaved: () => void;
 }) {
+  useEscape(onClose);
   const [rows, setRows] = useState<InvoiceStaffShare[]>(
     current.length ? current.map((r, i) => ({ ...r, seq: i + 1 })) : [{ staffName: '', share: 100, seq: 1 }],
   );

@@ -8,6 +8,8 @@
 //
 // 기간은 **사업연도(7/1~익년 6/30)** 가 기본이다. FY2026 = 2026-07~2027-06.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { EmptyRow } from '../common/Empty';
+import Loading from '../common/Loading';
 import Guide from '../common/Guide';
 import { pivotMulti, MEASURES } from '../../lib/revenuePivot';
 import { todayYmd, kstDateTime } from '../../lib/format';
@@ -158,7 +160,7 @@ function StatsPanel() {
     void navigator.clipboard.writeText([head, ...body, foot].join('\n'));
   }
 
-  if (loading) return <div className="card">불러오는 중…</div>;
+  if (loading) return <Loading title="📊 매출통계" rows={8} rep />;
 
   return (
     <div className="card rep">
@@ -298,9 +300,13 @@ function StatsPanel() {
             </thead>
             <tbody>
               {sum2.rows.length === 0 && (
-                <tr><td colSpan={1 + MEASURES.length} style={{ textAlign: 'center', padding: 20, color: 'var(--ink-4)' }}>
-                  조건에 맞는 매출이 없습니다.
-                </td></tr>
+                <EmptyRow colSpan={1 + MEASURES.length} text="조건에 맞는 매출이 없습니다"
+                  hint={filterCount > 0
+                    ? `필터 ${filterCount}개가 걸려 있습니다.`
+                    : '기간이나 팀을 바꿔 보세요. 앱을 쓰기 전 기간은 2025실적 자료에서 옵니다.'}
+                  action={filterCount > 0
+                    ? { label: '필터 초기화', onClick: () => { setCpaF(''); setStaffF(''); setTypeF(''); setErpF(''); } }
+                    : undefined} />
               )}
               {sum2.rows.map((r) => (
                 <tr key={`${r.key}|${r.sub ?? ''}`}
@@ -347,9 +353,13 @@ function StatsPanel() {
           </thead>
           <tbody>
             {p.rows.length === 0 && (
-              <tr><td colSpan={4 + p.cols.length} style={{ textAlign: 'center', padding: 20, color: 'var(--ink-4)' }}>
-                조건에 맞는 청구가 없습니다.
-              </td></tr>
+              <EmptyRow colSpan={4 + p.cols.length} text="조건에 맞는 청구가 없습니다"
+                hint={filterCount > 0
+                  ? `필터 ${filterCount}개가 걸려 있습니다.`
+                  : '기간이나 팀을 바꿔 보세요. 앱을 쓰기 전 기간은 2025실적 자료에서 옵니다.'}
+                action={filterCount > 0
+                  ? { label: '필터 초기화', onClick: () => { setCpaF(''); setStaffF(''); setTypeF(''); setErpF(''); } }
+                  : undefined} />
             )}
             {p.rows.map((r) => (
               <tr key={r}>
