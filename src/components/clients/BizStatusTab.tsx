@@ -292,7 +292,7 @@ export default function BizStatusTab() {
         <input placeholder="🔍 거래처·CPA·담당직원" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
         <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{view.length}건</span>
       </div>
-      <div style={scrollBox()}>
+      <div className="tbl-scroll" style={scrollBox()}>
         <table style={{ tableLayout: 'fixed', width: COLS.reduce((s, c) => s + widthOf(c.key, c.w), 0), borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
           <colgroup>{COLS.map((c) => <col key={c.key} style={{ width: widthOf(c.key, c.w) }} />)}</colgroup>
           <thead><tr>

@@ -369,3 +369,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
 .cmdk-open{margin-left:12px;display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-1);color:rgba(255,255,255,.72);background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;white-space:nowrap}
 .cmdk-open:hover{background:rgba(255,255,255,.16);color:#fff}
 .cmdk-open kbd{font-family:inherit;font-size:var(--fs-0);border:1px solid rgba(255,255,255,.25);border-radius:3px;padding:0 4px}
+
+/* 세로가 짧은 화면(13인치 노트북 768px 등) — 여백을 조여 표에 줄을 더 준다.
+   글자 크기는 건드리지 않는다. 작아지면 읽기가 힘들어져 얻는 것보다 잃는 것이 크다. */
+@media (max-height:860px){
+  #main{padding:10px 14px 24px}
+  .card{padding:11px 14px;margin-bottom:8px}
+  .chdr{padding-bottom:6px;margin-bottom:9px}
+  .guide{line-height:1.55}
+  .guide-head,.rep-hint{padding-top:0;padding-bottom:0}
+  .rep-hint{padding:7px 11px;margin:7px 0 10px}
+  .pane-bar{margin:8px 0 7px}
+  .toolbar{margin-bottom:7px}
+  .rep-controls{margin:8px 0 6px}
+  .card.rep{padding:14px 16px}
+  .rep-sub{margin-top:6px}
+}

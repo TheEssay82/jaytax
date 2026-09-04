@@ -767,7 +767,7 @@ export default function SalesContractTab() {
             </table>
           </div>
         )}
-        <div style={scrollBox()}>
+        <div className="tbl-scroll" style={scrollBox()}>
           <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
             <colgroup>
               {shownCols.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}

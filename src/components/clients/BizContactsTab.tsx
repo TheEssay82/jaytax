@@ -192,7 +192,7 @@ export default function BizContactsTab() {
       {role === 'superuser' && <ContactImportPanel entities={entities} contacts={contacts} onImported={load} />}
 
       {viewMode === 'table' && (
-        <div style={scrollBox()}>
+        <div className="tbl-scroll" style={scrollBox()}>
           <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
             <colgroup>
               {shownCols.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}

@@ -79,9 +79,13 @@ export function ResizeHandle({ onMouseDown, onAutoFit }: {
 /** table-layout:fixed 셀에서 내용이 폭을 넘으면 …로 줄이는 스타일. */
 export const clip: React.CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis' };
 
-/** 세로·가로 스크롤 컨테이너. 헤더는 내부 sticky로 고정. */
+/**
+ * 세로·가로 스크롤 컨테이너. 헤더는 내부 sticky로 고정.
+ * 높이는 정하지 않는다 — `.tbl-scroll` 로 표시해 두면 fillHeight 가 **실제 위치를 재서**
+ * 화면 아래 끝까지 채운다. 예전에는 68vh 라는 어림값이라 표 바닥이 창 밖으로 나갔다.
+ */
 export const scrollBox = (extra: React.CSSProperties = {}): React.CSSProperties => ({
-  overflow: 'auto', maxHeight: '68vh', border: '1px solid var(--rule-2)', borderRadius: 6, ...extra,
+  overflow: 'auto', border: '1px solid var(--rule-2)', borderRadius: 6, ...extra,
 });
 
 /** sticky 헤더 th 스타일(스크롤 시 상단 고정). top=행 오프셋(px), bg=배경(스크롤 내용 가림용). */

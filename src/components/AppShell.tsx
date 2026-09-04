@@ -20,6 +20,7 @@ import AuditInvoiceTab from './billing/AuditInvoiceTab';
 import ReceivableTab from './billing/ReceivableTab';
 import StaffRevenueTab from './billing/StaffRevenueTab';
 import CommandPalette, { type PaletteTarget } from './common/CommandPalette';
+import { useFitTableHeights } from '../lib/fillHeight';
 import ReceivableOpeningTab from './billing/ReceivableOpeningTab';
 import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
@@ -72,6 +73,9 @@ function Shell() {
   const fromPop = useRef(false); // popstate로 인한 탭 변경이면 pushState 생략
   const navMounted = useRef(false);
   const curTabRef = useRef<string>('');   // popstate 안에서 '지금 탭'을 보기 위한 거울
+
+  // 표가 화면 아래 끝까지 차게 한다 — 화면이 바뀌면 다시 잰다.
+  useFitTableHeights(`${curTab}-${reloadKey}`);
 
   // 권한 필터링된 메뉴 그룹/아이콘.
   //  · 외부인: 정해진 조회 메뉴만(EXTERNAL_ALLOWED_TABS), 아이콘 메뉴 없음.

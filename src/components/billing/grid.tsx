@@ -101,8 +101,9 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340
   const headKeys = select ? (select.headerKeys ?? select.selectableKeys) : [];
   const allPicked = !!select && headKeys.length > 0 && headKeys.every((k) => select.picked.has(k));
 
+  // 표는 maxHeight 를 받아 **일부러 낮게** 둔다 — data-fixed-h 로 fillHeight 가 건드리지 않게 한다.
   return (
-    <div style={{ overflow: 'auto', maxHeight, border: '1px solid var(--rule-2)', borderRadius: 6 }}>
+    <div className="tbl-scroll" data-fixed-h style={{ overflow: 'auto', maxHeight, border: '1px solid var(--rule-2)', borderRadius: 6 }}>
       <table className="tbl" style={{ tableLayout: 'fixed', width: '100%', fontSize: 'var(--fs-1)' }}>
         <colgroup>
           {select && <col style={{ width: 30 }} />}

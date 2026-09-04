@@ -286,7 +286,7 @@ function StatsPanel() {
       )}
 
       {mode === 'summary' ? (
-        <div className="tbl-scroll" style={{ maxHeight: '58vh' }}>
+        <div className="tbl-scroll">
           <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
             <thead>
               <tr>
@@ -334,7 +334,7 @@ function StatsPanel() {
           </table>
         </div>
       ) : (
-      <div className="tbl-scroll" style={{ maxHeight: '58vh' }}>
+      <div className="tbl-scroll">
         <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
           <thead>
             <tr>
@@ -397,7 +397,8 @@ function StatsPanel() {
               발행요청 화면에서 담당직원을 바꾼 기록입니다. <b>계약반영</b>이 <b>예</b>이면 매출계약의 담당직원도
               그 달부터 함께 바뀐 것이고, <b>아니오</b>면 그 달 청구 한 건만 바뀐 것입니다.
             </div>
-            <div className="tbl-scroll" style={{ maxHeight: '40vh', marginTop: 6 }}>
+            {/* 화면 아래에 접어 둔 보조 표라 일부러 낮게 둔다 — 화면을 채우면 안 된다. */}
+            <div className="tbl-scroll" data-fixed-h style={{ maxHeight: '40vh', marginTop: 6 }}>
               <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
                 <thead>
                   <tr>

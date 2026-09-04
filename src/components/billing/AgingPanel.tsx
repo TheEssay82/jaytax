@@ -89,7 +89,7 @@ export function AgingPanel({
         )}
       </div>
 
-      <div className="tbl-scroll" style={{ maxHeight: '56vh' }}>
+      <div className="tbl-scroll">
         <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
           <thead>
             <tr>

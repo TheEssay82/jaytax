@@ -91,7 +91,7 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
       </Guide>
 
       {tab === 'menu' && (
-        <div className="tbl-scroll" style={{ maxHeight: '62vh' }}>
+        <div className="tbl-scroll">
           <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
             <thead>
               <tr>
@@ -126,7 +126,7 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
       )}
 
       {tab === 'cap' && (
-        <div className="tbl-scroll" style={{ maxHeight: '62vh' }}>
+        <div className="tbl-scroll">
           <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
             <thead>
               <tr>
@@ -151,7 +151,7 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
       )}
 
       {tab === 'user' && (
-        <div className="tbl-scroll" style={{ maxHeight: '62vh' }}>
+        <div className="tbl-scroll">
           <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
             <thead>
               <tr>

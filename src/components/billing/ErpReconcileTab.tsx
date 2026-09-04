@@ -266,7 +266,7 @@ export default function ErpReconcileTab() {
           {m.corrections.length > 0 && (
             <Bucket title={`➖ (−)수정전표 ${m.corrections.length}건`} tone="#a15" openKey="corr" open={open} setOpen={setOpen}
               hint="잘못 발행한 것을 되돌린 마이너스 전표입니다. 기록해 두면 미수금이 맞습니다.">
-              <div className="tbl-scroll" style={{ maxHeight: 240 }}>
+              <div className="tbl-scroll" data-fixed-h style={{ maxHeight: 240 }}>
                 <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
                   <thead><tr><th>전표번호</th><th>거래처</th><th>내역</th><th className="r">공급가액</th><th>처리</th></tr></thead>
                   <tbody>
@@ -461,7 +461,7 @@ function Table({ rows, kind, busy, canWrite, onAlign, onImport }: {
 }) {
   if (!rows.length) return <div style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-2)', padding: 8 }}>없습니다.</div>;
   return (
-    <div className="tbl-scroll" style={{ maxHeight: 320 }}>
+    <div className="tbl-scroll" data-fixed-h style={{ maxHeight: 320 }}>
       <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
         <thead>
           <tr>
