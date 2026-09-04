@@ -38,7 +38,7 @@ export interface BacklogSection {
 }
 
 /** 수치를 실측한 날. 화면 아래에 그대로 적는다. */
-export const BACKLOG_AS_OF = '2026-09-03';
+export const BACKLOG_AS_OF = '2026-09-04';
 
 export const BACKLOG: BacklogSection[] = [
   {
@@ -79,7 +79,7 @@ export const BACKLOG: BacklogSection[] = [
     id: 'roadmap',
     eyebrow: '로드맵 6대 과제 · 3건 남음',
     title: '청구 → 손익으로 잇는 큰 줄기',
-    note: '1~3번(레거시 메뉴 정리 · 거래처담당자 · 발행요청)은 끝났습니다.',
+    note: '1~3번(레거시 메뉴 정리 · 거래처담당자 · 발행요청)은 끝났습니다. 5·6번이 감사팀+taxteam 결산시스템이고, 착수는 2026-11 초로 미뤘습니다(사용자 확정 2026-09-04).',
     items: [
       {
         mark: '4',
@@ -89,15 +89,15 @@ export const BACKLOG: BacklogSection[] = [
       },
       {
         mark: '5',
-        title: '비용집계',
+        title: '비용집계 — 결산시스템 ①',
         desc: '매출과 짝이 되는 비용 구조. 지금 있는 것은 인건비뿐이고 임차료·관리비 같은 공통비를 담을 자리가 없습니다.',
-        tags: [{ label: '규모 대' }, { label: '4번 이후' }],
+        tags: [{ label: '규모 대' }, { label: '2026-11 초 착수', tone: 'gold' }],
       },
       {
         mark: '6',
-        title: '손익집계 + 실적배부',
-        desc: '월·귀속연도 손익과 회계사별 배부 규칙. 배부방법이 매출유형마다 달라 실적 세분류를 나눠 둔 이유가 여기 있습니다.',
-        tags: [{ label: '규모 대' }, { label: '최종 목표' }],
+        title: '손익집계 + 실적배부 — 결산시스템 ②',
+        desc: '월·귀속연도 손익과 회계사별 배부 규칙. 배부방법이 매출유형마다 달라 실적 세분류를 나눠 둔 이유가 여기 있습니다. 감사팀·taxteam 을 함께 봅니다.',
+        tags: [{ label: '규모 대' }, { label: '2026-11 초 착수', tone: 'gold' }, { label: '최종 목표' }],
       },
     ],
   },
@@ -106,12 +106,6 @@ export const BACKLOG: BacklogSection[] = [
     eyebrow: '제안',
     title: '점검하다 드러난 것들',
     items: [
-      {
-        mark: '①',
-        title: '담당 배분 정합성 점검',
-        desc: '파트리지시스템즈에서 <b>계약 50:50 ↔ 청구 100:0</b> 어긋남이 나왔습니다. 같은 문제가 더 있는지 훑어야 합니다. 성과·예산 숫자가 기준마다 달라지는 원인이라 <b>손익집계 전에 반드시</b> 정리해야 합니다.',
-        tags: [{ label: '우선', tone: 'gold' }, { label: '반나절' }, { label: '판단 필요' }],
-      },
       {
         mark: '④',
         title: '테스트 — 돈이 지나가는 자리가 아직 비어 있습니다',
@@ -167,13 +161,14 @@ export const BACKLOG: BacklogSection[] = [
 
 /** 권하는 순서. 여기는 **정말 순서**라 번호를 매긴다. */
 export const BACKLOG_PLAN: { step: string; text: string; note?: string }[] = [
-  { step: '01', text: '담당 배분 정합성 → 단발 계약 가드 → 사업장 붙이기', note: '숫자의 바탕을 먼저' },
-  { step: '02', text: '병행 — 2026-09 마감 실사용', note: '김민섭' },
-  { step: '03', text: '테스트 확대 · 위험 2건', note: '안전망' },
-  { step: '04', text: 'MFA 스위치', note: '10월 안에' },
-  { step: '05', text: '로드맵 4번 청구누락 스케줄', note: '그다음 5·6번' },
+  { step: '01', text: '2026-09 마감을 실제로 돌려보기', note: '김민섭 · 이번 달 안에' },
+  { step: '02', text: '테스트 — 발행요청·초안', note: '돈이 지나가는 자리' },
+  { step: '03', text: 'MFA 스위치', note: '10-31 전에' },
+  { step: '04', text: '로드맵 4번 청구누락 스케줄', note: '새는 돈을 잡는다' },
+  { step: '05', text: '결산시스템(5·6번) — 비용집계 → 손익집계·실적배부', note: '2026-11 초 착수' },
 ];
 
 export const BACKLOG_WHY =
-  '①②③을 먼저 두는 이유는 전부 <b>숫자의 정확도</b>에 걸린 문제이기 때문입니다. ' +
-  '손익집계는 이 위에 쌓는 것이라, 바탕이 흔들리면 그 위에 만든 것이 전부 의심스러워집니다.';
+  '<b>숫자의 바탕은 2026-09-03 에 정리했습니다</b> — 담당 배분 불일치 0건, 감사팀 발행요청 전부 계약에 연결, ' +
+  '기록이 주인을 잃던 길 차단. 결산시스템은 그 위에 쌓는 것이라 바탕이 먼저였습니다. ' +
+  '이제 남은 것은 <b>실사용으로만 드러날 구멍</b>(2026-09 마감)과 <b>안전망</b>(테스트)입니다.';
