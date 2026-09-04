@@ -6,6 +6,7 @@
 // 원장에는 사업자번호가 없어 **거래처코드**로 사업장에 붙인다.
 // 화면 위에서 우리 계산과 원장 숫자를 나란히 놓아, 어긋나면 바로 보이게 했다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Guide from '../common/Guide';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import { todayYmd, kstDateTime } from '../../lib/format';
@@ -258,12 +259,12 @@ export default function ReceivableTab() {
       </div>
       {err && <div className="alert-w">{err}</div>}
 
-      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
-        <b>미수금 = 기초 + 발행 − 입금</b> (모두 부가세 포함). 기초는 {OPENING_AS_OF} 잔액,
-        발행은 <b>발행완료</b>된 건, 입금은 ERP 부서별원장의 <b>외상매출금 대변</b>입니다.
-        <br />ERP는 입금을 청구건에 연결하지 않으므로(입금 전표에 거래#가 없습니다) <b>사업장 단위</b>로만 잡습니다.
-        <br />위에서 고른 <b>팀 기준</b>입니다 — 기초·발행·입금·나이 분석이 모두 그 팀 것만 셉니다.
-      </div>
+      <Guide id="receivable" label="셈법 자세히"
+        summary={<><b>미수금 = 기초 + 발행 − 입금</b> (모두 부가세 포함). 위에서 고른 <b>팀 기준</b>입니다.</>}>
+        · 기초는 {OPENING_AS_OF} 잔액, 발행은 <b>발행완료</b>된 건, 입금은 ERP 부서별원장의 <b>외상매출금 대변</b>입니다.
+        <br />· ERP는 입금을 청구건에 연결하지 않으므로(입금 전표에 거래#가 없습니다) <b>사업장 단위</b>로만 잡습니다.
+        <br />· 기초·발행·입금·나이 분석이 모두 고른 팀 것만 셉니다.
+      </Guide>
 
       {/* ── 어디까지 올렸나 ── */}
       <div style={{ marginTop: 10 }}>
@@ -564,13 +565,13 @@ function UnmatchedModal({ rows, placeOpts, canWrite, busy, onClose, onAssign, on
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
 
-        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
-          부서별원장은 <b>그 부서 전체</b>가 나옵니다. 여기 남는 건은 둘 중 하나입니다.
-          <br />· <b>우리 거래처인데 ERP 거래처코드가 비어 있는 것</b> — 사업장을 골라 <b>연결</b>하세요.
-          <b>거래처코드도 함께 저장</b>을 켜 두면 다음 달부터는 저절로 붙습니다.
+        <Guide id="receivable-unmatched" label="어떻게 처리하나"
+          summary={<>부서별원장은 <b>그 부서 전체</b>가 나옵니다. 여기 남는 건은 둘 중 하나입니다.</>}>
+          · <b>우리 거래처인데 ERP 거래처코드가 비어 있는 것</b> — 사업장을 골라 <b>연결</b>하세요.
+          {' '}<b>거래처코드도 함께 저장</b>을 켜 두면 다음 달부터는 저절로 붙습니다.
           <br />· <b>우리와 무관한 것</b>(다른 회계사 담당 등) — <b>제외</b>로 접어 두면 다음부터 이 목록에 뜨지 않습니다.
-          지우지는 않으므로 원장 합계 검산에는 그대로 남습니다.
-        </div>
+          {' '}지우지는 않으므로 원장 합계 검산에는 그대로 남습니다.
+        </Guide>
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
           <input placeholder="🔍 거래처·코드·적요" value={kw} onChange={(e) => setKw(e.target.value)} style={{ flex: '0 1 240px' }} />

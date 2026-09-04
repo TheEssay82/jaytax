@@ -310,3 +310,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
 /* 보고서 화면 안의 붙박이 표머리 — 세로로 긴 피벗표는 구조를 못 바꾼다(머리를 붙박아야 하므로).
    대신 색만 보고서 쪽으로 맞춘다. */
 .card.rep .tbl-scroll thead th{background:#E9EFF7 !important;color:#2A3444;border-bottom:1px solid #D5DDE7}
+
+/* 안내문 — 한 줄 + 접기(Guide 컴포넌트). 열여덟 곳이 여섯 줄을 넘고 있었다. */
+.guide{line-height:1.65}
+.guide-head{font-size:var(--fs-2)}
+.guide details{margin-top:6px}
+.guide-more-btn{cursor:pointer;color:var(--ink-3);font-size:var(--fs-1);list-style:none;display:inline-flex;align-items:center;gap:4px;user-select:none}
+.guide-more-btn::-webkit-details-marker{display:none}
+.guide-more-btn::before{content:'▸';font-size:9px;transition:transform .12s}
+.guide details[open] .guide-more-btn::before{transform:rotate(90deg)}
+.guide-more-btn:hover{color:var(--ink-2)}
+.guide-more{margin-top:7px;font-size:var(--fs-2);color:var(--ink-2)}

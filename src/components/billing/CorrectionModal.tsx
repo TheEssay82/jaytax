@@ -9,6 +9,7 @@
 //  ② 원 건이 기초미수금에 묻혀 있을 때 — 거래처를 고르고 ERP 전표번호를 적는다.
 // 금액은 **양수로 받아** 저장할 때 부호를 붙인다. 사람이 직접 (−)를 치면 빠뜨리기 때문이다.
 import { useState } from 'react';
+import Guide from '../common/Guide';
 import { createCorrection, ERP_ACCOUNTS, type InvoiceRequest } from '../../lib/invoiceRequestApi';
 import { corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import { todayYmd } from '../../lib/format';
@@ -104,15 +105,15 @@ export function CorrectionModal({ team, origin, entities, onClose, onSaved }: {
           <button className={sign === '-' ? 'btn-p' : 'btn-sm'} onClick={() => setSign('-')}>➖ 되돌리기 (−)</button>
           <button className={sign === '+' ? 'btn-p' : 'btn-sm'} onClick={() => setSign('+')}>➕ 되살리기 (+)</button>
         </div>
-        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
-          금액은 언제나 <b>양수로</b> 넣으세요 — 저장할 때 부호를 붙입니다.
-          <br />· <b>되돌리기 (−)</b> — 이미 발행한 것을 무릅니다(계약 해지·과다청구). 미수금과 매출통계에서 <b>빠집니다</b>.
+        <Guide id="correction" label="(−)(+) 고르는 법"
+          summary={<>금액은 언제나 <b>양수로</b> 넣으세요 — 저장할 때 부호를 붙입니다.</>}>
+          · <b>되돌리기 (−)</b> — 이미 발행한 것을 무릅니다(계약 해지·과다청구). 미수금과 매출통계에서 <b>빠집니다</b>.
           <br />· <b>되살리기 (+)</b> — 덜 발행했거나, 예전에 끊어 둔 (−)크레딧이 소멸해 채권이 <b>되살아납니다</b>.
-          <br />취소(요청을 없던 일로)와 다릅니다 — 이미 나간 세금계산서를 고친 사실을 남기는 것입니다.
+          <br />· 취소(요청을 없던 일로)와 다릅니다 — 이미 나간 세금계산서를 고친 사실을 남기는 것입니다.
           {!origin && (
-            <><br />원 건이 우리 장부에 없다면(기초미수금에 묻힌 것) <b>ERP 전표번호</b>를 적어 두세요.</>
+            <><br />· 원 건이 우리 장부에 없다면(기초미수금에 묻힌 것) <b>ERP 전표번호</b>를 적어 두세요.</>
           )}
-        </div>
+        </Guide>
 
         {origin ? (
           <div style={{ fontSize: 'var(--fs-2)', background: '#fdfaf3', border: '1px solid var(--rule)', borderRadius: 6, padding: '6px 8px', marginBottom: 8 }}>

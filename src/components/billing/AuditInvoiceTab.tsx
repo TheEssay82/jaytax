@@ -12,6 +12,7 @@
 // 월 셀렉터는 두지 않는다 — 감사팀은 '이 달 것'이라는 개념이 약하고, 기한이 지난 건은
 // 몇 달 전 것이라도 지금 청구한다. 기간은 3층의 조회 조건일 뿐이다.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import Guide from '../common/Guide';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import { listBizContacts, type BizContact } from '../../lib/bizContactApi';
@@ -557,13 +558,13 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
       </div>
 
       {pane === 'request' && (
-        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
-          감사 용역은 계약금·중도금·잔금이 <b>건별로</b> 생기므로 달로 묶지 않습니다. 이 자리는 <b>회계사가 청구를 올리는 곳</b>입니다.
-          <br />① <b>제안</b> — 매출계약의 분할회차 중 <b>청구기한이 지난 것</b>입니다. <b>알림일 뿐</b>이라 그대로 넘어가지 않습니다 —
-          고른 뒤 창에서 <b>작성일·금액·적요를 고쳐</b> 발행요청으로 보냅니다.
-          <br />② <b>세금계산서 발행요청</b> — 계약에 없거나 분할회차를 등록해 두지 않은 건을 한 줄 적습니다.
-          <br />올린 건은 <b>🖨️ 발행 처리</b> 로 넘어갑니다.
-        </div>
+        <Guide id="audit-invoice-request" label="①②가 무엇인지"
+          summary={<>감사 용역은 계약금·중도금·잔금이 <b>건별로</b> 생기므로 달로 묶지 않습니다. 이 자리는 <b>회계사가 청구를 올리는 곳</b>입니다.</>}>
+          · ① <b>제안</b> — 매출계약의 분할회차 중 <b>청구기한이 지난 것</b>입니다. <b>알림일 뿐</b>이라 그대로 넘어가지 않습니다 —
+          {' '}고른 뒤 창에서 <b>작성일·금액·적요를 고쳐</b> 발행요청으로 보냅니다.
+          <br />· ② <b>세금계산서 발행요청</b> — 계약에 없거나 분할회차를 등록해 두지 않은 건을 한 줄 적습니다.
+          <br />· 올린 건은 <b>🖨️ 발행 처리</b> 로 넘어갑니다.
+        </Guide>
       )}
       {pane === 'issue' && (
         <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>

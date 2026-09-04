@@ -4,6 +4,7 @@
 // 그래서 **실제로 화면이 쓰는 규칙**(lib/menu.ts · lib/roles.ts)을 그대로 읽어 표로 그린다 —
 // 여기 적힌 설명이 아니라 그 규칙이 원본이므로, 메뉴나 권한을 고치면 이 표가 저절로 따라온다.
 import { useMemo, useState } from 'react';
+import Guide from '../common/Guide';
 import {
   ROLES, ROLE_LABELS, can,
   type Capability, type Role,
@@ -78,14 +79,16 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
         )}
       </div>
 
-      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
-        여기 보이는 것은 설명이 아니라 <b>화면이 실제로 쓰는 규칙</b>입니다(<code>lib/menu.ts</code>·<code>lib/roles.ts</code>).
-        메뉴나 권한을 고치면 이 표가 저절로 따라옵니다.
-        <br />● = 메뉴가 보이고 접근 가능 · · = 보이지 않음. <b>메뉴가 보인다고 다 쓸 수 있는 것은 아닙니다</b> —
-        쓰기 여부는 <b>권한 × 등급</b> 탭과 화면별 <code>readonly</code>가 함께 정합니다.
-        <br />일부 메뉴는 등급이 아니라 <b>이름</b>으로 갈립니다(매출통계는 김민섭·김동주 제외, 기초미수금 입력은 관리자만).
-        오른쪽에서 사람을 골라 확인하세요.
-      </div>
+      <Guide id="permission-matrix" label="표 읽는 법"
+        summary={<>
+          여기 보이는 것은 설명이 아니라 <b>화면이 실제로 쓰는 규칙</b>입니다(<code>lib/menu.ts</code>·<code>lib/roles.ts</code>).
+        </>}>
+        · 메뉴나 권한을 고치면 이 표가 저절로 따라옵니다.
+        <br />· ● = 메뉴가 보이고 접근 가능 · · = 보이지 않음. <b>메뉴가 보인다고 다 쓸 수 있는 것은 아닙니다</b> —
+        {' '}쓰기 여부는 <b>권한 × 등급</b> 탭과 화면별 <code>readonly</code>가 함께 정합니다.
+        <br />· 일부 메뉴는 등급이 아니라 <b>이름</b>으로 갈립니다(매출통계는 김민섭·김동주 제외, 기초미수금 입력은 관리자만).
+        {' '}오른쪽에서 사람을 골라 확인하세요.
+      </Guide>
 
       {tab === 'menu' && (
         <div className="tbl-scroll" style={{ maxHeight: '62vh' }}>

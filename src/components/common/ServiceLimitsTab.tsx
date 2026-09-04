@@ -3,6 +3,7 @@
 // **한도를 넘기면 어느 날 갑자기 막힌다.** 미리 알면 요금제를 올리거나 자료를 줄일 시간이 있다.
 // 최고관리자 전용(menu.ts cap: manageUsers) — 계정 수·용량은 운영 정보다.
 import { useCallback, useEffect, useState } from 'react';
+import Guide from './Guide';
 import {
   SUPABASE_FREE, EXTERNAL_SERVICES, ratioOf, levelOf, worstLevel,
   humanBytes, humanUsed, LEVEL_LABEL, WARN_AT, type LimitLevel,
@@ -56,14 +57,12 @@ export default function ServiceLimitsTab() {
 
       {err && <div className="alert-e" style={{ fontSize: 'var(--fs-1)' }}>{err}</div>}
 
-      <div className={worst === 'ok' ? 'alert-i' : 'alert-w'} style={{ fontSize: 'var(--fs-1)' }}>
-        {worst === 'ok' ? (
-          <>지금은 <b>여유가 있습니다.</b> {Math.round(WARN_AT * 100)}% 를 넘으면 여기가 경고로 바뀝니다.</>
-        ) : (
-          <><b>{LEVEL_LABEL[worst]}</b> — 아래에서 어느 항목인지 보시고, 요금제를 올리거나 자료를 줄여야 합니다.</>
-        )}
-        <br />· 한도는 <b>Supabase 무료 플랜</b> 기준입니다. 요금제는 바뀌므로, 경고가 뜨면 콘솔에서 현재 한도를 확인해 주세요.
-      </div>
+      <Guide box={worst === 'ok' ? 'rep-hint' : 'alert-w'} id="service-limits" label="한도 기준"
+        summary={worst === 'ok'
+          ? <>지금은 <b>여유가 있습니다.</b> {Math.round(WARN_AT * 100)}% 를 넘으면 여기가 경고로 바뀝니다.</>
+          : <><b>{LEVEL_LABEL[worst]}</b> — 아래에서 어느 항목인지 보시고, 요금제를 올리거나 자료를 줄여야 합니다.</>}>
+        · 한도는 <b>Supabase 무료 플랜</b> 기준입니다. 요금제는 바뀌므로, 경고가 뜨면 콘솔에서 현재 한도를 확인해 주세요.
+      </Guide>
 
       {/* ── 한도 막대 ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>

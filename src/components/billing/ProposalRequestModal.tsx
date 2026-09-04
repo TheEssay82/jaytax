@@ -4,6 +4,7 @@
 // 기한이 한참 지난 건은 계약에 적힌 날짜가 아니라 **지금 발행할 날짜**로 나가야 하고,
 // 금액도 그 사이 조정되었을 수 있다. 그래서 넘기기 전에 한 번 손볼 자리를 둔다.
 import { useEffect, useState } from 'react';
+import Guide from '../common/Guide';
 import { ERP_ACCOUNTS } from '../../lib/invoiceRequestApi';
 import { listEmailCandidates, isEmail, joinEmails, splitEmails } from '../../lib/taxEmailApi';
 import type { AuditProposal } from '../../lib/auditInvoiceApi';
@@ -113,14 +114,17 @@ ${approver}에게 바로 알림이 갑니다. 진행할까요?`)) return;
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
 
-        <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
-          제안은 <b>알림</b>입니다 — 계약에 적힌 대로 그대로 나가면 안 됩니다.
-          넘기기 전에 <b>작성일·금액·적요</b>를 이 자리에서 고치세요.
-          <br /><b>작성일(발행기준일)</b>이 실제 세금계산서 날짜입니다. 계약의 청구기한이 아니라
-          <b> 지금 발행할 날</b>을 넣으세요.
-          <br /><b>발송 e-mail</b>은 거래처정보와 과거 발행 이력에서 미리 채웁니다 — 비어 있으면 넘길 수 없습니다.
-          여러 곳이면 쉼표로 이으세요. <b>청구서</b>는 서면 청구서를 따로 보내야 하는 건에 체크합니다.
-        </div>
+        <Guide id="proposal-request" label="칸마다 무엇을 넣나" defaultOpen
+          summary={<>
+            제안은 <b>알림</b>입니다 — 계약에 적힌 대로 그대로 나가면 안 됩니다.
+            {' '}넘기기 전에 <b>작성일·금액·적요</b>를 이 자리에서 고치세요.
+          </>}>
+          · <b>작성일(발행기준일)</b>이 실제 세금계산서 날짜입니다. 계약의 청구기한이 아니라
+          {' '}<b>지금 발행할 날</b>을 넣으세요.
+          <br />· <b>발송 e-mail</b>은 거래처정보와 과거 발행 이력에서 미리 채웁니다 — 비어 있으면 넘길 수 없습니다.
+          {' '}여러 곳이면 쉼표로 이으세요.
+          <br />· <b>청구서</b>는 서면 청구서를 따로 보내야 하는 건에 체크합니다.
+        </Guide>
         {stale.length > 0 && (
           <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
             ⚠️ 청구기한이 <b>60일 넘게 지난 건이 {stale.length}건</b> 있습니다

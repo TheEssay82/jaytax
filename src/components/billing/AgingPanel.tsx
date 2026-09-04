@@ -4,6 +4,7 @@
 // 회계 실무의 통상대로 **오래된 것부터 갚은 것으로 본다(FIFO)**. 그 가정을 화면에 적어 둔다 —
 // 숫자만 보고 사실인 줄 알면 안 되기 때문이다.
 import { useState } from 'react';
+import Guide from '../common/Guide';
 import { BUCKETS, OVERDUE_DAYS, type AgingRow, type AgingSource } from '../../lib/agingApi';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
@@ -38,23 +39,27 @@ export function AgingPanel({
 
   return (
     <div style={{ marginBottom: 12 }}>
-      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
-        <b>{asOf}</b> 기준으로 남아 있는 채권을 <b>나이별</b>로 나눈 것입니다. 나이는 <b>발행일부터 기준일까지</b>입니다.
+      <Guide id="aging" label="근거 자세히"
+        summary={<>
+          <b>{asOf}</b> 기준으로 남아 있는 채권을 <b>나이별</b>로 나눈 것입니다. 나이는 <b>발행일부터 기준일까지</b>.
+          {source === '미수금대장'
+            ? <> 근거는 <b style={{ color: 'var(--good)' }}>ERP 미수금대장</b>입니다.</>
+            : <> 근거는 <b style={{ color: '#a15' }}>추정</b>입니다 — 이 달 미수금대장이 아직 없습니다.</>}
+        </>}>
         {source === '미수금대장' ? (
           <>
-            <br />근거: <b style={{ color: 'var(--good)' }}>ERP 미수금대장</b> — 건별 invoiceNo(거래전표번호)의 전표일이 곧 발행일이고,
-            잔금은 ERP 가 건별로 맞춰 둔 값입니다. <b>추정이 들어가지 않습니다.</b>
-            <br />(−)수정·취소 전표는 같은 거래처의 <b>오래된 채권부터 덜어 냅니다</b> —
-            그렇게 하고도 남는 게 없는 거래처는 목록에 서지 않습니다.
+            · 건별 invoiceNo(거래전표번호)의 전표일이 곧 발행일이고, 잔금은 ERP 가 건별로 맞춰 둔 값입니다.
+            {' '}<b>추정이 들어가지 않습니다.</b>
+            <br />· (−)수정·취소 전표는 같은 거래처의 <b>오래된 채권부터 덜어 냅니다</b> —
+            {' '}그렇게 하고도 남는 게 없는 거래처는 목록에 서지 않습니다.
           </>
         ) : (
           <>
-            <br />근거: <b style={{ color: '#a15' }}>추정</b> — 이 달 미수금대장이 아직 올라오지 않았습니다.
-            기초미수금(2026-07-01)과 발행완료 청구를 <b>오래된 것부터 갚은 것으로</b> 상계해(FIFO) 나이를 잽니다.
-            <b> 미수금대장을 올리면 실제 발행일로 바뀝니다.</b>
+            · 기초미수금(2026-07-01)과 발행완료 청구를 <b>오래된 것부터 갚은 것으로</b> 상계해(FIFO) 나이를 잽니다.
+            <br />· <b>미수금대장을 올리면 실제 발행일로 바뀝니다.</b>
           </>
         )}
-      </div>
+      </Guide>
 
       <div className="sbar">
         <input placeholder="🔍 거래처·사업장·코드·담당" value={q} onChange={(e) => setQ(e.target.value)} />

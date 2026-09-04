@@ -11,6 +11,7 @@
 //              인건비는 비워 둔다 — 수입·거래처만 본다.
 //   · taxteam — 담당직원, 또는 담당회계사 › 담당직원 2단계(엑셀 시트 모양). 화면에서 전환한다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Guide from '../common/Guide';
 import { useAuth } from '../../context/AuthContext';
 import {
   listBudgetFacts, listForecastFacts, listRevenueAll, fyOf, fyLabel, fyRange, kstYm,
@@ -245,20 +246,17 @@ export default function BudgetTab() {
         <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => void load()}>새로고침</button>
       </div>
 
-      <div className="rep-hint">
-        💡 <b>배수 = 수입 ÷ 인건비</b> — 인건비 1원당 얼마를 벌어들였는지 나타냅니다.
-        {' '}<b>기여 = 수입 − 인건비</b>.
-        <details style={{ marginTop: 6 }}>
-          <summary style={{ cursor: 'pointer', color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>셈법 자세히</summary>
-          <div style={{ marginTop: 6, color: 'var(--ink-2)' }}>
-            · 기여 금액만 보면 사람마다 인건비 규모가 달라 비교가 어긋납니다. <b>배수는 그 차이를 지웁니다.</b>
-            <br />· 수입은 셋으로 갈라 봅니다 — <b>기장(월별)</b> · <b>조정수수료</b>(법인세조정+종합소득세) ·
-            {' '}<b>건별·기타</b>. ERP 매출계정으로 가릅니다.
-            <br />· 배부는 <b>직접비(인건비)만</b> 합니다. 임차료·관리비 같은 공통비는 결산시스템에서 붙입니다.
-            <br />· 공동담당은 <b>배분 비율만큼</b> 나눠 더합니다 — 한 거래처가 두 사람에게 통째로 잡히지 않습니다.
-          </div>
-        </details>
-      </div>
+      <Guide box="rep-hint" id="budget" label="셈법 자세히"
+        summary={<>
+          💡 <b>배수 = 수입 ÷ 인건비</b> — 인건비 1원당 얼마를 벌어들였는지 나타냅니다.
+          {' '}<b>기여 = 수입 − 인건비</b>.
+        </>}>
+        · 기여 금액만 보면 사람마다 인건비 규모가 달라 비교가 어긋납니다. <b>배수는 그 차이를 지웁니다.</b>
+        <br />· 수입은 셋으로 갈라 봅니다 — <b>기장(월별)</b> · <b>조정수수료</b>(법인세조정+종합소득세) ·
+        {' '}<b>건별·기타</b>. ERP 매출계정으로 가릅니다.
+        <br />· 배부는 <b>직접비(인건비)만</b> 합니다. 임차료·관리비 같은 공통비는 결산시스템에서 붙입니다.
+        <br />· 공동담당은 <b>배분 비율만큼</b> 나눠 더합니다 — 한 거래처가 두 사람에게 통째로 잡히지 않습니다.
+      </Guide>
 
       {basis === 'budget' && (
         <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', margin: '6px 0' }}>

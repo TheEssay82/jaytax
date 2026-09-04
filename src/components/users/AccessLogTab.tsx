@@ -4,6 +4,7 @@
 // 그러려면 **월 단위로 훑을 수 있고, 위험한 것이 먼저 눈에 띄어야** 한다.
 // 그래서 기본 조회를 이번 달로 두고, 주민번호·홈택스PW 열람을 따로 세어 위에 올린다.
 import { useEffect, useMemo, useState } from 'react';
+import Guide from '../common/Guide';
 import { kstDateTime } from '../../lib/format';
 import {
   listAccessLog, verifyAccessLog, ACTIONS, actionLabel,
@@ -56,14 +57,14 @@ export default function AccessLogTab() {
     <div className="card">
       <div className="chdr">🔎 접속기록 점검</div>
 
-      <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
-        「개인정보의 안전성 확보조치 기준」 <b>제8조</b> — 누가·언제·<b>어디서(IP)</b> 접속해
-        <b> 누구의</b> 개인정보를 <b>무엇을</b> 했는지 남깁니다.
-        주민등록번호를 다루므로 <b>2년 이상 보관</b>해야 합니다(제8조제1항 단서 제2호).
-        <br />이 기록은 <b>고치거나 지울 수 없습니다</b> — 표에 수정·삭제 권한 자체를 두지 않았고,
-        줄마다 앞줄의 해시를 물고 있어 한 줄만 빠져도 <b>[무결성 검증]</b>에서 드러납니다.
-        <br /><b>월 1회 이상</b> 이 화면을 훑고, 낯선 IP·과한 열람이 있는지 확인해 주세요.
-      </div>
+      <Guide id="accesslog" label="법 근거와 무결성 자세히" defaultOpen
+        summary={<><b>월 1회 이상</b> 이 화면을 훑고, 낯선 IP·과한 열람이 있는지 확인해 주세요.</>}>
+        · 「개인정보의 안전성 확보조치 기준」 <b>제8조</b> — 누가·언제·<b>어디서(IP)</b> 접속해
+        {' '}<b>누구의</b> 개인정보를 <b>무엇을</b> 했는지 남깁니다.
+        <br />· 주민등록번호를 다루므로 <b>2년 이상 보관</b>해야 합니다(제8조제1항 단서 제2호).
+        <br />· 이 기록은 <b>고치거나 지울 수 없습니다</b> — 표에 수정·삭제 권한 자체를 두지 않았고,
+        {' '}줄마다 앞줄의 해시를 물고 있어 한 줄만 빠져도 <b>[무결성 검증]</b>에서 드러납니다.
+      </Guide>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-end', margin: '10px 0' }}>
         <label style={{ fontSize: 'var(--fs-1)' }}>기간<br />

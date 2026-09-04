@@ -1,6 +1,7 @@
 // 거래처관리 › 매출계약등록 (거래처관리 2.0.0 · step 2)
 // 매출유형 트리 선택(cascade) + leaf 플래그 조건입력 + 발생/청구단위 + 청구주기·분할 + 담당 + 날짜 + 무료/할인.
 import { useEffect, useMemo, useState } from 'react';
+import Guide from '../common/Guide';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
@@ -1372,17 +1373,21 @@ function RenewTaxPanel({ onClose, onDone }: { onClose: () => void; onDone: () =>
 
         {rows && (
           <>
-            <div className="alert-i" style={{ fontSize: 'var(--fs-1)' }}>
-              갱신분은 <b style={{ color: 'var(--warn)' }}>미계약</b> 상태로 만들어집니다 — 연말이 지나기 전에는 매출확정으로 보지 않기 때문입니다.
-              체결되면 계약을 열어 '계약 확정'에 체크하세요(목록에서 계약상태로 걸러볼 수 있습니다).
-              계약금액·담당CPA·담당직원을 그대로 이어받습니다. 정우철 담당분은 세무조정수수료관리에서 청구를 확정하면
-              그 금액으로 다시 맞춰집니다. <b>올해 세무조정을 하지 않는 거래처는 체크를 빼세요.</b>
+            <Guide id="contract-renew" label="갱신 규칙 자세히"
+              summary={<>
+                갱신분은 <b style={{ color: 'var(--warn)' }}>미계약</b> 상태로 만들어집니다.
+                {' '}<b>올해 세무조정을 하지 않는 거래처는 체크를 빼세요.</b>
+              </>}>
+              · 연말이 지나기 전에는 매출확정으로 보지 않기 때문입니다. 체결되면 계약을 열어 '계약 확정'에
+              {' '}체크하세요(목록에서 계약상태로 걸러볼 수 있습니다).
+              <br />· 계약금액·담당CPA·담당직원을 그대로 이어받습니다. 정우철 담당분은 세무조정수수료관리에서
+              {' '}청구를 확정하면 그 금액으로 다시 맞춰집니다.
               <br />· <b>이관·종료</b>한 거래처는 <b>갱신할 수 없습니다</b> — 일이 다른 사무소로 넘어갔거나 거래가 끝났기 때문입니다.
               {blockedCount > 0 && <> 지금 <b>{blockedCount}건</b>이 그렇습니다.</>}
               <br />· <b>폐업</b>은 갱신합니다 — 청산이 아닌 이상 <b>폐업 연도 신고는 우리가 합니다</b>
-              (개인도 본인 계약이 살아 있으면 종합소득세를 우리가 합니다).
+              {' '}(개인도 본인 계약이 살아 있으면 종합소득세를 우리가 합니다).
               <br />· 이미 갱신된 건도 선택에서 빠져 있습니다.
-            </div>
+            </Guide>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '8px 0' }}>
               <input placeholder="🔍 코드·거래처·담당CPA·유형" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
               <button className="btn-sm" onClick={() => setPick(new Set(view.filter((r) => !r.alreadyRenewed && !r.blocked).map((r) => r.id)))}>보이는 건 전체선택</button>
