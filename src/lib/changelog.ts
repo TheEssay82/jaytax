@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '2.60.1',
+    date: '2026-09-04',
+    title: '서비스 한도 — 별표가 그대로 보이던 것 수정',
+    highlights: [
+      'Supabase 설명에 <별표(**)가 그대로 보이던 것>을 고쳤습니다. 그 자리는 일반 텍스트라 강조 표시가 먹지 않습니다.',
+    ],
+  },
+  {
     version: '2.60.0',
     date: '2026-09-04',
     title: '서비스 한도 — 요금제를 올려야 할 때를 미리 알려 줍니다',

@@ -92,7 +92,7 @@ export function humanUsed(used: number | null, unit: 'bytes' | 'count'): string 
 export interface ExternalService {
   name: string;
   plan: string;
-  /** 무엇을 확인해야 하는가 */
+  /** 무엇을 확인해야 하는가. **일반 텍스트다** — 별표를 쓰면 그대로 화면에 보인다. */
   watch: string;
   url: string;
 }
@@ -105,7 +105,7 @@ export const EXTERNAL_SERVICES: ExternalService[] = [
   },
   {
     name: 'Supabase', plan: 'Free',
-    watch: '이 화면의 수치가 그것입니다. 무료 플랜은 **일주일 아무도 안 쓰면 일시정지**되는데, 매일 쓰는 앱이라 해당되지 않습니다.',
+    watch: '이 화면의 수치가 그것입니다. 무료 플랜은 일주일 아무도 안 쓰면 일시정지되는데, 매일 쓰는 앱이라 해당되지 않습니다.',
     url: 'https://supabase.com/dashboard/project/rboqmlwwwgrntasftwki/settings/billing',
   },
   {
