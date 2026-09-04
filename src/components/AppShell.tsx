@@ -26,6 +26,7 @@ import UsersTab from './users/UsersTab';
 import AccessLogTab from './users/AccessLogTab';
 import RetentionTab from './users/RetentionTab';
 import BacklogTab from './common/BacklogTab';
+import ServiceLimitsTab from './common/ServiceLimitsTab';
 import StandardsTab from './advisory/StandardsTab';
 import TaxLawTab from './advisory/TaxLawTab';
 import ConsultTab from './advisory/ConsultTab';
@@ -338,6 +339,8 @@ function TabContent({
       return <RetentionTab />;
     case 'backlog':
       return <BacklogTab />;
+    case 'service-limits':
+      return <ServiceLimitsTab />;
     case 'std-kifrs':
       return <StandardsTab />;
     case 'std-tax':

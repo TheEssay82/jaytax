@@ -114,6 +114,8 @@ export const ICON_ITEMS: (MenuItem & { icon: string })[] = [
   { id: 'retention', label: '보존기한 · 파기', icon: '🗑️', cap: 'manageUsers' },
   // 개발노트(끝난 일)의 짝 — 남은 일. 착수금 금액·내부 우선순위가 담겨 최고관리자에게만 내놓는다.
   { id: 'backlog', label: '개발 백로그', icon: '📌', cap: 'manageUsers' },
+  // 외부 서비스 요금제 한도. 넘기면 어느 날 갑자기 막히므로 미리 본다.
+  { id: 'service-limits', label: '서비스 한도', icon: '⚙️', cap: 'manageUsers' },
 ];
 
 /**
