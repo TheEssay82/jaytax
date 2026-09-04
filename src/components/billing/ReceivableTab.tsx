@@ -78,7 +78,10 @@ export default function ReceivableTab() {
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [showUploads, setShowUploads] = useState(false);
   const [showUnmatched, setShowUnmatched] = useState(false);
-  const [tab, setTab] = useState<'balance' | 'aging'>('balance');
+  // 성격이 다른 셋을 갈라 둔다 — 원장 올리기는 **월 1회**(김민섭), 잔액은 **매일**(모두),
+  // 나이는 회수 압박할 때(회계사). 전에는 한 화면이라, 잔액을 보려고 들어가도
+  // 월 1회 쓰는 원장 상자와 검산 줄을 지나야 했다. 첫 화면은 매일 보는 잔액이다.
+  const [pane, setPane] = useState<'ledger' | 'balance' | 'aging'>('balance');
   const [aging, setAging] = useState<AgingRow[]>([]);
   const [agingBusy, setAgingBusy] = useState(false);
   const [detail, setDetail] = useState<AgingRow | null>(null);
@@ -174,8 +177,9 @@ export default function ReceivableTab() {
     cpa: r.cpa, staff: r.staff, team: (r.teams ?? []).join(','),
   })), [rows]);
 
+  // 화면과 상관없이 늘 잰다 — 「6개월↑ N곳」 배지가 🕰️ 화면에 들어가 봐야 뜨면
+  // 알림 구실을 못 한다. 잔액 화면을 막지 않도록 따로 도는 약속이다.
   useEffect(() => {
-    if (tab !== 'aging') return;
     let alive = true;
     setAgingBusy(true);
     void agingReport(asOf, placeInfos, team || undefined)
@@ -186,7 +190,7 @@ export default function ReceivableTab() {
       .then((u) => { if (alive) setArUnmatched(u); })
       .catch(() => { if (alive) setArUnmatched([]); });
     return () => { alive = false; };
-  }, [tab, asOf, placeInfos, team, arUploads]);
+  }, [asOf, placeInfos, team, arUploads]);
 
   /** 미수금대장 읽기 — 저장은 확인 뒤에. */
   async function onArFile(file: File) {
@@ -266,6 +270,26 @@ export default function ReceivableTab() {
         <br />· 기초·발행·입금·나이 분석이 모두 고른 팀 것만 셉니다.
       </Guide>
 
+      {/* 화면 셋 — 숫자는 '지금 손볼 것이 있는가'를 알린다. 원장 화면에 들어가지 않아도 보이게. */}
+      <div className="pane-bar">
+        <button className={pane === 'ledger' ? 'on' : ''} onClick={() => setPane('ledger')}
+          title="ERP 부서별원장·미수금대장을 올리고 검산하는 자리 — 월 1회">
+          📥 원장 마감
+          {!up && <span className="pane-bdg warn">이 달 미등록</span>}
+          {unmatched.length > 0 && <span className="pane-bdg warn">못 붙은 입금 {unmatched.length}</span>}
+        </button>
+        <button className={pane === 'balance' ? 'on' : ''} onClick={() => setPane('balance')}
+          title="거래처별로 얼마가 남았는지 — 매일 보는 자리">
+          💰 거래처별 잔액
+        </button>
+        <button className={pane === 'aging' ? 'on' : ''} onClick={() => setPane('aging')}
+          title="남은 채권을 나이별로 — 회수 압박할 때">
+          🕰️ 미수금 나이
+          {overdueRows.length > 0 && <span className="pane-bdg">6개월↑ {overdueRows.length}곳</span>}
+        </button>
+      </div>
+
+      {pane === 'ledger' && (<>
       {/* ── 어디까지 올렸나 ── */}
       <div style={{ marginTop: 10 }}>
         <button className="btn-sm" onClick={() => setShowUploads((v) => !v)}>
@@ -388,7 +412,8 @@ export default function ReceivableTab() {
           </div>
           <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 3 }}>
             원장은 <b>그 부서 전체</b>(우리 담당이 아닌 거래처 포함)이고, 우리 쪽은 <b>거래처관리에 등록된 곳</b>만입니다 —
-            두 숫자가 다른 것이 정상입니다. 우리 거래처만 놓고 보려면 아래 표를 보세요.
+            두 숫자가 다른 것이 정상입니다. 우리 거래처만 놓고 보려면{' '}
+            <button className="lnk" onClick={() => setPane('balance')}>💰 거래처별 잔액</button> 으로 가세요.
           </div>
         </div>
       )}
@@ -429,16 +454,12 @@ export default function ReceivableTab() {
           onExclude={(ids, on) => run(() => excludeReceipts(ids, on), on ? '✓ 제외했습니다' : '✓ 되돌렸습니다')} />
       )}
 
-      <div style={{ display: 'flex', gap: 4, margin: '12px 0 8px' }}>
-        <button className={tab === 'balance' ? 'btn-p' : 'btn-sm'} onClick={() => setTab('balance')}>
-          거래처별 잔액
-        </button>
-        <button className={tab === 'aging' ? 'btn-p' : 'btn-sm'} onClick={() => setTab('aging')}>
-          🕰️ 미수금 나이(aging){overdueRows.length > 0 ? ` · 6개월↑ ${overdueRows.length}곳` : ''}
-        </button>
-      </div>
-
-      {tab === 'aging' && (
+      {/* 미수금대장도 **월 1회 올리는 것**이라 여기 둔다 — 부서별원장과 같은 일이다.
+          올린 결과(나이)는 🕰️ 화면에서 본다. */}
+      <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--rule-2)' }}>
+        <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--navy)', marginBottom: 7 }}>
+          🕰️ 미수금대장 — 채권 나이의 근거
+        </div>
         <AgingLedgerBox
           ym={ym} team={team} uploads={arUploads} preview={arPreview} busy={busy} canWrite={canWrite}
           unmatched={arUnmatched}
@@ -452,8 +473,10 @@ export default function ReceivableTab() {
           }, '✓ 미수금대장을 반영했습니다')}
           onAssign={(name, opt) => run(() => assignArClient(name, opt.entityId, opt.id).then(() => undefined), '✓ 연결했습니다')}
           onExclude={(name, on) => run(() => excludeArClient(name, on).then(() => undefined), on ? '✓ 제외했습니다' : '✓ 되돌렸습니다')} />
-      )}
-      {tab === 'aging' && (
+      </div>
+      </>)}
+
+      {pane === 'aging' && (
         <AgingPanel
           rows={agingView} asOf={asOf} busy={agingBusy || busy} source={agingSource}
           q={q} setQ={setQ} overdueOnly={overdueOnly} setOverdueOnly={setOverdueOnly}
@@ -467,7 +490,7 @@ export default function ReceivableTab() {
       )}
       {detail && <AgingDetail row={detail} asOf={asOf} onClose={() => setDetail(null)} />}
 
-      {tab === 'balance' && (<>
+      {pane === 'balance' && (<>
       <div className="sbar">
         <input placeholder="🔍 거래처·사업장·코드·담당CPA" value={q} onChange={(e) => setQ(e.target.value)} />
         <label style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>

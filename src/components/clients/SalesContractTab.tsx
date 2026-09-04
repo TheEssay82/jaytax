@@ -481,22 +481,6 @@ export default function SalesContractTab() {
           총 {stats.total} · 감사 {stats.aud} · tax {stats.tax}
           {stats.pending > 0 && <span style={{ color: '#b45309', fontWeight: 700 }}> · 미계약 {stats.pending}</span>}
         </span>
-        <button className="btn-sm" onClick={() => setShowCodeHelp(true)} title="매출계약코드 규칙 보기">📖 코드안내</button>
-        {canWrite && (
-          <button className="btn-sm btn-sm-blue" onClick={() => setShowRenew(true)} title="전년 세무조정(법인세·종합소득세) 계약을 올해 귀속으로 복제">
-            🔄 세무조정 계약 갱신
-          </button>
-        )}
-        {role === 'superuser' && contracts.some((c) => !c.contractCode) && (
-          <button
-            className="btn-sm btn-sm-blue"
-            disabled={codeFixing}
-            onClick={() => void fixMissingCodes()}
-            title="SQL 로 적재돼 코드가 비어 있는 계약에 규칙대로 코드를 부여합니다"
-          >
-            {codeFixing ? '부여 중…' : `🏷 코드없는 ${contracts.filter((c) => !c.contractCode).length}건 코드부여`}
-          </button>
-        )}
         {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
       </div>
       {error && <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)', marginBottom: 8 }}>{error}</div>}
@@ -515,6 +499,32 @@ export default function SalesContractTab() {
           </ul>
         </div>
       )}
+
+      {/* 도구 — **연 1~2회** 쓰는 것들. 매일 보는 표를 밀어내지 않도록 접어 둔다.
+          코드부여는 '코드 없는 계약이 있을 때'만 나오므로 그때만 눈에 띈다. */}
+      <details className="toolbar">
+        <summary>🛠️ 도구</summary>
+        <div className="toolbar-body">
+          <button className="btn-sm" onClick={() => setShowCodeHelp(true)} title="매출계약코드 규칙 보기">📖 코드안내</button>
+          {canWrite && (
+            <button className="btn-sm btn-sm-blue" onClick={() => setShowRenew(true)} title="전년 세무조정(법인세·종합소득세) 계약을 올해 귀속으로 복제">
+              🔄 세무조정 계약 갱신
+            </button>
+          )}
+          {role === 'superuser' && contracts.some((c) => !c.contractCode) && (
+            <button className="btn-sm btn-sm-blue" disabled={codeFixing}
+              onClick={() => void fixMissingCodes()}
+              title="SQL 로 적재돼 코드가 비어 있는 계약에 규칙대로 코드를 부여합니다">
+              {codeFixing ? '부여 중…' : `🏷 코드없는 ${contracts.filter((c) => !c.contractCode).length}건 코드부여`}
+            </button>
+          )}
+          {role === 'superuser' && (
+            <div style={{ flexBasis: '100%' }}>
+              <ContractImportPanel entities={entities} contracts={contracts} onImported={load} />
+            </div>
+          )}
+        </div>
+      </details>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <span style={{ display: 'flex', gap: 2 }}>
@@ -624,8 +634,6 @@ export default function SalesContractTab() {
           </div>
         </div>
       )}
-
-      {role === 'superuser' && <ContractImportPanel entities={entities} contracts={contracts} onImported={load} />}
 
       {viewMode === 'box' && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>

@@ -321,3 +321,31 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
 .guide details[open] .guide-more-btn::before{transform:rotate(90deg)}
 .guide-more-btn:hover{color:var(--ink-2)}
 .guide-more{margin-top:7px;font-size:var(--fs-2);color:var(--ink-2)}
+
+/* 홈 「내 할 일」 — 0건인 것. 지우지 않고 한 줄로 접어 둔다. */
+.todo-zero{font-size:var(--fs-1);color:var(--ink-3);background:var(--surface);border:1px solid var(--rule-2);border-radius:999px;padding:4px 11px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.todo-zero b{color:var(--ink-4);font-weight:600}
+.todo-zero:hover{border-color:var(--rule);color:var(--ink-2);background:var(--surface-2)}
+
+/* 화면 고르는 줄 — 한 메뉴 안에서 성격이 다른 화면을 가를 때(수금·미수금, 발행요청·감사팀).
+   숫자 배지는 '그 화면에 지금 손볼 것이 있는가'를 들어가지 않고도 알리는 자리다. */
+.pane-bar{display:flex;gap:5px;flex-wrap:wrap;margin:12px 0 10px}
+.pane-bar button{font-size:var(--fs-2);font-weight:600;padding:7px 14px;border-radius:8px;border:1px solid var(--rule);background:var(--surface);color:var(--ink-2);cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+.pane-bar button:hover{background:var(--surface-2)}
+.pane-bar button.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.pane-bdg{font-size:var(--fs-0);font-weight:700;padding:1px 6px;border-radius:999px;background:var(--rule-2);color:var(--ink-2)}
+.pane-bar button.on .pane-bdg{background:rgba(255,255,255,.22);color:#fff}
+.pane-bdg.warn{background:var(--warn-bg);color:var(--warn)}
+.pane-bar button.on .pane-bdg.warn{background:var(--gold);color:#fff}
+/* 글 속에서 다른 화면으로 보내는 자리 — 단추처럼 보이면 문장이 끊긴다. */
+.lnk{background:none;border:0;padding:0;font:inherit;color:var(--navy);font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.lnk:hover{color:var(--gold-ink)}
+
+/* 도구 서랍 — 연 1~2회 쓰는 것을 접어 둔다. 매일 보는 표가 위로 올라온다. */
+.toolbar{margin-bottom:10px}
+.toolbar>summary{cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-1);color:var(--ink-3);border:1px solid var(--rule-2);border-radius:7px;padding:5px 11px;list-style:none;user-select:none}
+.toolbar>summary::-webkit-details-marker{display:none}
+.toolbar>summary::before{content:'▸';font-size:9px;transition:transform .12s}
+.toolbar[open]>summary::before{transform:rotate(90deg)}
+.toolbar>summary:hover{color:var(--ink-2);background:var(--surface-2)}
+.toolbar-body{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;margin-top:8px;padding:10px 12px;border:1px solid var(--rule-2);border-radius:8px;background:var(--surface-2)}

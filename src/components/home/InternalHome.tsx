@@ -95,6 +95,10 @@ export default function InternalHome({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, user?.id]);
 
+  // 다 세기 전에는 전부 위에 크게 둔다 — 0으로 보이다가 숫자가 튀어 오르면 눈이 어지럽다.
+  const openTodos = loaded ? myTodos.filter((t) => (counts[t.key] ?? 0) > 0) : myTodos;
+  const doneTodos = loaded ? myTodos.filter((t) => (counts[t.key] ?? 0) === 0) : [];
+
   const ready = READY.filter((s) => s.allow(role));
   const coming = COMING.filter((s) => s.allow(role));
   const latest = CHANGELOG[0];
@@ -119,26 +123,49 @@ export default function InternalHome({
       {/* 공지사항 전광판 — 로그인 직후 가장 먼저 보이도록 '내 할 일' 위에 둔다 */}
       <AnnouncementBar />
 
-      {/* 내 할 일 */}
-      <SectionTitle>내 할 일{loaded && myTodos.length === 0 ? ' · 표시할 항목이 없습니다' : ''}</SectionTitle>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 11, marginBottom: 22 }}>
-        {myTodos.map((t) => {
-          const c = C[t.color];
-          const n = counts[t.key] ?? 0;
-          return (
-            <button key={t.key} onClick={() => onNavigate(t.tab)} style={{ textAlign: 'left', background: c[0], border: `1px solid ${c[1]}`, borderRadius: 14, padding: '14px 15px', cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 18 }}>{t.emoji}</span>
-                <span style={{ fontSize: 'var(--fs-3)', color: c[2] }}>↗</span>
-              </div>
-              <div style={{ fontSize: 27, fontWeight: 700, color: c[3], marginTop: 10, lineHeight: 1 }}>
-                {loaded ? n : '–'}<span style={{ fontSize: 'var(--fs-3)', fontWeight: 400, color: c[2] }}> 건</span>
-              </div>
-              <div style={{ fontSize: 'var(--fs-2)', color: c[2], marginTop: 6, lineHeight: 1.35 }}>{t.label}</div>
+      {/* 내 할 일 — **할 일이 있는 것만 크게.** 0건은 아래 한 줄로 접는다.
+          로그인 직후 가장 먼저 보는 자리인데, 예전에는 0건 타일 넷이 자리를 똑같이 먹어
+          '오늘 뭘 해야 하나'가 묻혔다. 0건도 지우지는 않는다 — 그 업무가 있다는 것과
+          '지금은 없다'는 것 자체가 정보이고, 눌러서 화면으로 갈 수도 있어야 한다. */}
+      <SectionTitle>
+        내 할 일
+        {loaded && myTodos.length === 0 && ' · 표시할 항목이 없습니다'}
+        {loaded && myTodos.length > 0 && openTodos.length === 0 && ' · 지금 할 일이 없습니다'}
+      </SectionTitle>
+
+      {openTodos.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 11, marginBottom: doneTodos.length ? 10 : 22 }}>
+          {openTodos.map((t) => {
+            const c = C[t.color];
+            const n = counts[t.key] ?? 0;
+            return (
+              <button key={t.key} onClick={() => onNavigate(t.tab)} style={{ textAlign: 'left', background: c[0], border: `1px solid ${c[1]}`, borderRadius: 14, padding: '14px 15px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 18 }}>{t.emoji}</span>
+                  <span style={{ fontSize: 'var(--fs-3)', color: c[2] }}>↗</span>
+                </div>
+                <div style={{ fontSize: 27, fontWeight: 700, color: c[3], marginTop: 10, lineHeight: 1 }}>
+                  {n}<span style={{ fontSize: 'var(--fs-3)', fontWeight: 400, color: c[2] }}> 건</span>
+                </div>
+                <div style={{ fontSize: 'var(--fs-2)', color: c[2], marginTop: 6, lineHeight: 1.35 }}>{t.label}</div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 0건 — 한 줄. 눌러서 그 화면으로는 갈 수 있다. */}
+      {doneTodos.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 22 }}>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)' }}>비어 있음</span>
+          {doneTodos.map((t) => (
+            <button key={t.key} onClick={() => onNavigate(t.tab)} className="todo-zero"
+              title={`${t.label} — 지금 0건입니다. 눌러서 화면으로 갑니다.`}>
+              {t.emoji} {t.label} <b>0</b>
             </button>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* 바로가기 */}
       <SectionTitle hint="흐린 타일은 준비 중">바로가기</SectionTitle>
