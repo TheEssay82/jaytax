@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { listEntityIndex, type EntityIndexRow } from '../../lib/bizRegistryApi';
 import { setNavQuery } from '../../lib/navSearch';
 import { hit, digitsHit } from '../../lib/paletteSearch';
+import ClientCard from './ClientCard';
 
 /** 거래처를 고르면 갈 화면. 검색어를 들고 간다. */
 const ENTITY_TARGETS = [
@@ -29,6 +30,8 @@ export default function CommandPalette(
   const [sel, setSel] = useState(0);
   const [ents, setEnts] = useState<EntityIndexRow[] | null>(null);
   const [entPick, setEntPick] = useState<EntityIndexRow | null>(null);
+  /** 고른 거래처의 한 장 요약. 팔레트를 닫고 이것을 띄운다. */
+  const [cardOf, setCardOf] = useState<EntityIndexRow | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 열고 닫기 — Ctrl+K / ⌘K, ESC.
@@ -84,11 +87,18 @@ export default function CommandPalette(
   function choose(r: typeof cur) {
     if (!r) return;
     if (r.kind === 'screen') { onGo(r.tab); setOpen(false); return; }
-    if (r.kind === 'client') { setEntPick(r.ent); setSel(0); return; }
+    if (r.kind === 'client') { setCardOf(r.ent); setOpen(false); return; }
     // goto — 고른 거래처 이름을 목적 화면의 검색칸까지 들고 간다.
     setNavQuery(r.tab, entPick?.name ?? '');
     onGo(r.tab);
     setOpen(false);
+  }
+
+  if (cardOf) {
+    return (
+      <ClientCard entityId={cardOf.id} name={cardOf.name}
+        onClose={() => setCardOf(null)} onGo={onGo} />
+    );
   }
 
   if (!open) return null;

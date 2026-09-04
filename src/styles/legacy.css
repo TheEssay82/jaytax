@@ -385,3 +385,17 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
   .card.rep{padding:14px 16px}
   .rep-sub{margin-top:6px}
 }
+
+/* 거래처 한 장 — Ctrl+K 에서 거래처를 고르면 뜨는 읽기 전용 요약. */
+.cc{width:min(760px,94vw);margin-top:8vh;max-height:84vh;overflow:auto}
+.cc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-top:14px}
+.cc-box{border:1px solid var(--rule-2);border-radius:8px;padding:11px 13px;background:var(--surface-2)}
+.cc-label{font-size:var(--fs-0);font-weight:700;color:var(--ink-3);letter-spacing:.04em;margin-bottom:5px}
+.cc-main{font-size:var(--fs-4);font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+.cc-sub{font-size:var(--fs-1);color:var(--ink-3);margin-top:2px}
+.cc-body{margin-top:7px;padding-top:7px;border-top:1px solid var(--rule-2)}
+.cc-line{font-size:var(--fs-1);color:var(--ink-2);line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-dim{font-size:var(--fs-1);color:var(--ink-3);white-space:normal}
+.cc-warn{color:var(--warn);font-weight:600}
+.cc-recent{margin-top:12px;border:1px solid var(--rule-2);border-radius:8px;padding:11px 13px}
+.cc-go{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule-2)}

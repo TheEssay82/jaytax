@@ -5,8 +5,9 @@
 // 실제로 청구한 금액은 여기서 세지 않는다 — 그것은 기장등청구관리 › **매출통계**의 몫이다.
 // 두 화면이 다른 숫자를 내놓는 것은 정상이다(이쪽은 계약, 저쪽은 청구 기록).
 import { useEffect, useMemo, useState } from 'react';
+import { annualize } from '../../lib/annualize';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
-import { listSalesContracts, type SalesContract, type BillingCycle } from '../../lib/salesContractApi';
+import { listSalesContracts, type SalesContract } from '../../lib/salesContractApi';
 import { listBizContacts, type BizContact } from '../../lib/bizContactApi';
 import { findNode } from '../../lib/salesContractTaxonomy';
 import { scrollBox, stickyTop, useColWidths, ResizeHandle, clip } from './tableKit';
@@ -20,9 +21,6 @@ import { listActualsForYear, type MonthlyActual } from '../../lib/revenueActualA
 const TEAMS = ['감사team', 'taxteam'] as const;
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
-// 연환산 계수 — 주기별로 1년치로 환산해 비교 가능하게
-const CYCLE_MULT: Record<BillingCycle, number> = { 월: 12, 분기: 4, 반기: 2, 연: 1, 발생시: 1, 건: 1 };
-const annualize = (c: SalesContract) => (c.amount || 0) * (CYCLE_MULT[c.billingCycle] ?? 1);
 // 매출유형 대분류(팀 아래 첫 레벨) 라벨
 const topLabel = (code: string) => findNode(code)?.path[0]?.label ?? '기타';
 
