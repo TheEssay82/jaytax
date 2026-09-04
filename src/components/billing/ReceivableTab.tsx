@@ -6,6 +6,7 @@
 // 원장에는 사업자번호가 없어 **거래처코드**로 사업장에 붙인다.
 // 화면 위에서 우리 계산과 원장 숫자를 나란히 놓아, 어긋나면 바로 보이게 했다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMineOnly } from '../../lib/mineOnly';
 import { EmptyRow } from '../common/Empty';
 import { useEscape } from '../../lib/useEscape';
 import Loading from '../common/Loading';
@@ -63,7 +64,8 @@ interface Row {
 }
 
 export default function ReceivableTab() {
-  const { readonly, role } = useAuth();
+  const { readonly, role, profileName } = useAuth();
+  const mineOnly = useMineOnly();
   const canWrite = !readonly && role !== 'per_head_accountant';
 
   const [ym, setYm] = useState(prevMonth);
@@ -158,13 +160,15 @@ export default function ReceivableTab() {
 
   const view = useMemo(() => {
     let l = rows;
+    // 여기서 「내 것」은 담당회계사 또는 담당직원이다.
+    if (mineOnly && profileName) l = l.filter((r) => r.cpa === profileName || r.staff === profileName);
     if (onlyOpen) l = l.filter((r) => Math.round(r.balance) !== 0);
     if (q.trim()) {
       const k = q.trim().toLowerCase();
       l = l.filter((r) => (r.code + r.name + r.placeName + r.cpa).toLowerCase().includes(k));
     }
     return l;
-  }, [rows, q, onlyOpen]);
+  }, [rows, q, onlyOpen, mineOnly, profileName]);
 
   const sum = (f: (r: Row) => number) => view.reduce((s, r) => s + f(r), 0);
 
@@ -264,6 +268,7 @@ export default function ReceivableTab() {
           <option value="taxteam">taxteam (기장24팀)</option>
           <option value="감사team">감사팀 (2본부5팀)</option>
         </select>
+        {mineOnly && <span className="mine-tag">내 것만</span>}
         {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
       </div>
       {err && <div className="alert-w">{err}</div>}

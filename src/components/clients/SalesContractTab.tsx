@@ -1,6 +1,7 @@
 // 거래처관리 › 매출계약등록 (거래처관리 2.0.0 · step 2)
 // 매출유형 트리 선택(cascade) + leaf 플래그 조건입력 + 발생/청구단위 + 청구주기·분할 + 담당 + 날짜 + 무료/할인.
 import { useEffect, useMemo, useState } from 'react';
+import { useMineOnly } from '../../lib/mineOnly';
 import Empty, { EmptyRow } from '../common/Empty';
 import { useEscape } from '../../lib/useEscape';
 import { useUnsaved } from '../../lib/unsaved';
@@ -103,6 +104,10 @@ interface TaxOffer { entityId: string; placeId: string | null; kind: '법인' | 
 
 export default function SalesContractTab() {
   const { readonly, role, profileName } = useAuth();
+  const mineOnly = useMineOnly();
+  // 여기서 「내 것」은 **담당CPA 이거나 담당직원**이다 — 매출계약은 두 자리가 다 붙는다.
+  const isMine = (c: SalesContract) =>
+    c.effectiveCpa === profileName || c.effectiveStaff.some((st) => st.staffName === profileName);
   const canWrite = !readonly && role !== 'per_head_accountant'; // 인당회계사는 조회 전용
   const canPivot = role !== 'team_member'; // 집계(피봇)는 기장팀원(김민섭·김동주 등)에게 숨김
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
@@ -227,13 +232,13 @@ export default function SalesContractTab() {
   const orderedCols = tv.orderCols(COLUMNS);            // 개인 표시순서 적용
   const shownCols = orderedCols.filter((c) => !tv.isHidden(c.key));
   const tableW = shownCols.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 96 : 0);
-  const tableRows = useMemo(() => contracts.filter((c) => COLUMNS.every((col) => {
+  const tableRows = useMemo(() => contracts.filter((c) => (!mineOnly || isMine(c)) && COLUMNS.every((col) => {
     const fv = (colF[col.key] || '').trim().toLowerCase();
     if (!fv) return true;
     // 귀속 필터가 연도 숫자면 정산연도 판정(계속계약은 운영연도 이후 포함) — 그 외엔 일반 부분일치
     if (col.key === 'year' && /^\d{4}$/.test(fv)) return contractInYear(c, Number(fv));
     return col.val(c).toLowerCase().includes(fv);
-  })), [contracts, colF]); // eslint-disable-line react-hooks/exhaustive-deps
+  })), [contracts, colF, mineOnly, profileName]); // eslint-disable-line react-hooks/exhaustive-deps
   const sortedRows = useMemo(() => {
     if (!sort) return tableRows;
     const col = COLUMNS.find((c) => c.key === sort.key);
@@ -363,13 +368,14 @@ export default function SalesContractTab() {
 
   const view = useMemo(() => {
     let list = contracts;
+    if (mineOnly) list = list.filter(isMine);
     if (teamFilter) list = list.filter((c) => c.team === teamFilter);
     if (q.trim()) {
       const s = q.trim().toLowerCase();
       list = list.filter((c) => entName(c.entityId).toLowerCase().includes(s) || pathLabel(c.categoryCode).toLowerCase().includes(s) || (c.effectiveCpa || '').toLowerCase().includes(s));
     }
     return list;
-  }, [contracts, teamFilter, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [contracts, teamFilter, q, mineOnly, profileName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
     const total = contracts.length;
@@ -491,6 +497,7 @@ export default function SalesContractTab() {
           총 {stats.total} · 감사 {stats.aud} · tax {stats.tax}
           {stats.pending > 0 && <span style={{ color: '#b45309', fontWeight: 700 }}> · 미계약 {stats.pending}</span>}
         </span>
+        {mineOnly && <span className="mine-tag">내 것만 · {contracts.filter(isMine).length}건</span>}
         {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
       </div>
       {error && <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)', marginBottom: 8 }}>{error}</div>}

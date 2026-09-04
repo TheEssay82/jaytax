@@ -9,6 +9,7 @@
 // 매출계약을 그때그때 전개하던 것이 예전 방식이다. 계약은 이제 **대사용 참고자료**다 —
 // 실무는 전월을 복사해 고치는 것이고, 계약이 늘 최신인 것도 아니기 때문이다.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { getMineOnly } from '../../lib/mineOnly';
 import { useEscape } from '../../lib/useEscape';
 import Loading from '../common/Loading';
 import Guide from '../common/Guide';
@@ -61,7 +62,7 @@ function ReconcileModal({ rows, ym, busy, canWrite, me, isMine, onClose, onAdd, 
 }) {
   useEscape(onClose);
   const [sel, setSel] = useState<Set<number>>(new Set());
-  const [mineOnly, setMineOnly] = useState(false);
+  const [mineOnly, setMineOnly] = useState(getMineOnly());
   // 걸러도 원본 번호(i)로 고르므로, 필터를 껐다 켜도 선택이 흐트러지지 않는다.
   const shown = rows.map((r, i) => [r, i] as const).filter(([r]) => !mineOnly || isMine(r.staff));
   const toggle = (i: number) => setSel((p) => { const n = new Set(p); if (n.has(i)) n.delete(i); else n.add(i); return n; });
@@ -220,7 +221,9 @@ export default function InvoiceRequestTab() {
   const [correct, setCorrect] = useState<{ origin: InvoiceRequest | null } | null>(null);
   const [logs, setLogs] = useState<DraftLog[]>([]);  // 이번 달 초안 변경 기록
   const [showLog, setShowLog] = useState(false);
-  const [mineOnly, setMineOnly] = useState(false);   // 내 담당만 보기
+  // 헤더의 「내 것만」을 켜 두었으면 이 화면도 켠 채로 연다.
+  // 화면 안 토글은 남긴다 — 여기서만 잠깐 전체를 보고 싶을 때가 있다.
+  const [mineOnly, setMineOnly] = useState(getMineOnly());
   const [noStaffOnly, setNoStaffOnly] = useState(false);   // 담당 미지정만 보기
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3000); };

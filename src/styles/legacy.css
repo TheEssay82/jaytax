@@ -416,3 +416,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
 .empty{display:flex;flex-direction:column;align-items:center;gap:7px;padding:26px 16px;text-align:center}
 .empty-t{font-size:var(--fs-2);color:var(--ink-2);font-weight:600}
 .empty-h{font-size:var(--fs-1);color:var(--ink-3);max-width:46ch;line-height:1.6}
+
+/* 「내 것만 보기」 — 켜져 있으면 눈에 띄어야 한다. 걸러 놓은 줄 모르고
+   「자료가 없네」로 읽는 일이 가장 위험하다. */
+.mine-sw{margin-left:6px;display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-1);color:rgba(255,255,255,.72);background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16);border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit;white-space:nowrap}
+.mine-sw:hover{background:rgba(255,255,255,.16);color:#fff}
+.mine-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.3);flex-shrink:0}
+.mine-sw.on{background:var(--gold);border-color:var(--gold);color:#fff;font-weight:700}
+.mine-sw.on .mine-dot{background:#fff}
+/* 화면 안에서 「지금 걸러져 있다」를 알리는 꼬리표 */
+.mine-tag{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-0);font-weight:700;color:var(--gold-ink);background:var(--gold-bg);border:1px solid #EBD9AE;border-radius:999px;padding:2px 8px;white-space:nowrap}

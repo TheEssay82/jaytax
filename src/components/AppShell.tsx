@@ -22,6 +22,7 @@ import StaffRevenueTab from './billing/StaffRevenueTab';
 import CommandPalette, { type PaletteTarget } from './common/CommandPalette';
 import { useFitTableHeights } from '../lib/fillHeight';
 import { unsavedLabels, useBeforeUnloadGuard } from '../lib/unsaved';
+import { setMineOnly, useMineOnly } from '../lib/mineOnly';
 import ReceivableOpeningTab from './billing/ReceivableOpeningTab';
 import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
@@ -78,6 +79,7 @@ function Shell() {
   // 표가 화면 아래 끝까지 차게 한다 — 화면이 바뀌면 다시 잰다.
   useFitTableHeights(`${curTab}-${reloadKey}`);
   useBeforeUnloadGuard();
+  const mineOnly = useMineOnly();
 
   // 권한 필터링된 메뉴 그룹/아이콘.
   //  · 외부인: 정해진 조회 메뉴만(EXTERNAL_ALLOWED_TABS), 아이콘 메뉴 없음.
@@ -282,6 +284,18 @@ function Shell() {
           title="화면·거래처를 이름으로 바로 찾습니다 (Ctrl+K)">
           🔍 찾기 <kbd>Ctrl</kbd><kbd>K</kbd>
         </button>
+
+        {!isExternal && (
+          <button className={`mine-sw${mineOnly ? ' on' : ''}`}
+            onClick={() => setMineOnly(!mineOnly)}
+            aria-pressed={mineOnly}
+            title={mineOnly
+              ? '지금 내 담당만 보고 있습니다. 누르면 전체가 보입니다.'
+              : '매출계약·수금미수금·현황조회·발행요청이 내 담당만 보이게 됩니다.'}>
+            <span className="mine-dot" />
+            내 것만
+          </button>
+        )}
 
         {/* 우측: 아이콘 메뉴 + 사용자 정보 + 액션 */}
         <div className="h-right">

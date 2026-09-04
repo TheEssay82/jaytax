@@ -5,6 +5,8 @@
 // 실제로 청구한 금액은 여기서 세지 않는다 — 그것은 기장등청구관리 › **매출통계**의 몫이다.
 // 두 화면이 다른 숫자를 내놓는 것은 정상이다(이쪽은 계약, 저쪽은 청구 기록).
 import { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { useMineOnly } from '../../lib/mineOnly';
 import Loading from '../common/Loading';
 import { annualize } from '../../lib/annualize';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
@@ -26,6 +28,8 @@ const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 const topLabel = (code: string) => findNode(code)?.path[0]?.label ?? '기타';
 
 export default function BizStatusTab() {
+  const { profileName } = useAuth();
+  const mineOnly = useMineOnly();
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [contracts, setContracts] = useState<SalesContract[]>([]);
   const [contacts, setContacts] = useState<BizContact[]>([]);
@@ -89,6 +93,10 @@ export default function BizStatusTab() {
 
   const view = useMemo(() => {
     let list = rows;
+    // 여기서 「내 것」은 담당CPA 또는 담당직원이다(한 거래처에 여럿이면 이름이 이어 붙는다).
+    if (mineOnly && profileName) {
+      list = list.filter((r) => r.cpa === profileName || r.staff.split(/[,·]/).includes(profileName));
+    }
     if (kindF) list = list.filter((r) => r.kind === kindF);
     if (natF) list = list.filter((r) => r.nature === natF);
     if (q.trim()) { const s = q.trim().toLowerCase(); list = list.filter((r) => r.name.toLowerCase().includes(s) || r.code.toLowerCase().includes(s) || r.cpa.toLowerCase().includes(s) || r.staff.toLowerCase().includes(s)); }
@@ -99,7 +107,7 @@ export default function BizStatusTab() {
       const va = (a as any)[sort.key] ?? '', vb = (b as any)[sort.key] ?? ''; // eslint-disable-line @typescript-eslint/no-explicit-any
       return String(va).localeCompare(String(vb), 'ko') * dir;
     });
-  }, [rows, kindF, natF, q, sort]);
+  }, [rows, kindF, natF, q, sort, mineOnly, profileName]);
 
   // 통계
   const stat = useMemo(() => {
@@ -166,7 +174,10 @@ export default function BizStatusTab() {
         📈 현황및예산조회
         <span className="sub">계약에서 내다본 앞으로의 매출</span>
       </div>
-      <div className="rep-sub">연환산 매출 · 월별 추이 · 예산 비교</div>
+      <div className="rep-sub">
+        연환산 매출 · 월별 추이 · 예산 비교
+        {mineOnly && <span className="mine-tag" style={{ marginLeft: 8 }}>아래 거래처 표만 내 것</span>}
+      </div>
       <div className="rep-hint">
         💡 <b>앞을 보는 화면</b>입니다 — 계약이 이대로 굴러갈 때의 숫자입니다.
         실제로 청구·발행한 금액은 기장등청구관리 › <b>매출통계</b>에서 봅니다.

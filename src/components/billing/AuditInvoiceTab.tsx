@@ -12,6 +12,7 @@
 // 월 셀렉터는 두지 않는다 — 감사팀은 '이 달 것'이라는 개념이 약하고, 기한이 지난 건은
 // 몇 달 전 것이라도 지금 청구한다. 기간은 3층의 조회 조건일 뿐이다.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { getMineOnly } from '../../lib/mineOnly';
 import Loading from '../common/Loading';
 import Guide from '../common/Guide';
 import { useAuth } from '../../context/AuthContext';
@@ -82,7 +83,9 @@ export default function AuditInvoiceTab() {
   const [pickR, setPickR] = useState<Set<string>>(new Set());   // 2층 선택
   const [issuedDate, setIssuedDate] = useState(todayYmd);
   const [soon, setSoon] = useState(false);        // 다가오는 것(30일)도 볼까
-  const [mineOnly, setMineOnly] = useState(false);
+  // 헤더의 「내 것만」을 켜 두었으면 이 화면도 켠 채로 연다.
+  // 화면 안 토글은 남긴다 — 여기서만 잠깐 전체를 보고 싶을 때가 있다.
+  const [mineOnly, setMineOnly] = useState(getMineOnly());
   const [showForm, setShowForm] = useState(false);
   const [correct, setCorrect] = useState<{ origin: InvoiceRequest | null } | null>(null);
   /** 제안을 고쳐서 넘기는 창. 제안은 알림이지 요청이 아니므로 한 번 손볼 자리를 둔다. */
