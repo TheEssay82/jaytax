@@ -65,6 +65,17 @@ const MEAS: Measure<RevenueFact>[] = [
 const dimOf = (key: string): Dim<RevenueFact> =>
   DIMS.find((d) => d.key === key) as unknown as Dim<RevenueFact>;
 
+/**
+ * 배수(수입÷인건비)에 붙일 신호색. **값이 색을 정한다** — 예쁘라고 칠하지 않는다.
+ * 전체 평균을 기준선으로 삼아 위/근처/아래로 가른다(±5%).
+ */
+function sigClass(ratio: number, avg: number): string {
+  if (!avg) return '';
+  if (ratio >= avg * 1.05) return 'sig sig-hi';
+  if (ratio <= avg * 0.95) return 'sig sig-low';
+  return 'sig sig-mid';
+}
+
 /** 표에 그릴 한 줄. 소계 줄은 인건비를 붙이지 않는다(아래 자식 줄에서 이미 센다). */
 interface Row {
   key: string;
@@ -180,6 +191,8 @@ export default function BudgetTab() {
   const totCost = counted.reduce((s, r) => s + r.cost, 0);
   const totSupply = sumOf(counted, 'supply');
   const exSupply = sumOf(exempted, 'supply');
+  /** 신호색의 기준선 — 전체 평균 배수. */
+  const avgRatio = totCost > 0 ? totSupply / totCost : 0;
   const cut = kstYm();
 
   if (!allowed) {
@@ -194,14 +207,24 @@ export default function BudgetTab() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+      <div className="rep-title">
+        📊 예산 분석
+        <span className="sub">
+          {fyLabel(fy)} · {isAudit ? '감사팀' : 'taxteam'} · {BASIS_LABEL[basis]}
+        </span>
+      </div>
+      <div className="rep-sub">
+        {isAudit ? '담당회계사별 수입' : '인건비 대비 수입 성과'}
+      </div>
+
+      <div className="rep-controls">
         <select value={fy} onChange={(e) => setFy(Number(e.target.value))} style={{ fontWeight: 700 }}>
           {[curFy + 1, curFy, curFy - 1, curFy - 2].map((y) => (
             <option key={y} value={y}>{fyLabel(y)}</option>
           ))}
         </select>
         <select value={basis} onChange={(e) => setBasis(e.target.value as Basis)}
-          style={{ fontWeight: 700, color: basis === 'budget' ? '#1A2B52' : '#92400E' }}
+          style={{ fontWeight: 700, color: basis === 'budget' ? 'var(--navy)' : 'var(--warn)' }}
           title={BASIS_LABEL[basis]}>
           {(Object.keys(BASIS_LABEL) as Basis[]).map((b) => (
             <option key={b} value={b}>{BASIS_LABEL[b]}</option>
@@ -212,7 +235,7 @@ export default function BudgetTab() {
           <option value="감사team">감사팀</option>
         </select>
         {isAudit ? (
-          <span style={{ fontSize: 11.5, color: '#92400E', fontWeight: 700 }}>구분: 담당회계사</span>
+          <span style={{ fontSize: 11.5, color: 'var(--warn)', fontWeight: 700 }}>구분: 담당회계사</span>
         ) : (
           <select value={axis} onChange={(e) => setAxis(e.target.value as Axis)}>
             <option value="staff">담당직원별</option>
@@ -222,14 +245,19 @@ export default function BudgetTab() {
         <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => void load()}>새로고침</button>
       </div>
 
-      <div className="alert-i" style={{ fontSize: 11.5 }}>
-        <b>수입 − 인건비 = 기여</b>. 맡은 거래처에서 나오는(나올) 매출에서 그 사람의 총부담비용을 뺀 것입니다.
-        <br />· <b>배수 = 수입 ÷ 인건비</b> — 인건비 1원당 얼마를 벌어들였는가입니다. <b>2.00×</b> 면 인건비의
-        두 배를 벌어온 것입니다. 기여 금액만 보면 사람마다 인건비 규모가 달라 비교가 어긋나는데, 배수는 그 차이를 지웁니다.
-        <br />· 수입은 셋으로 갈라 봅니다 — <b>기장(월별)</b> · <b>조정수수료</b>(법인세조정+종합소득세) ·
-        {' '}<b>건별·기타</b>. ERP 매출계정으로 가릅니다.
-        <br />· 배부는 <b>직접비(인건비)만</b> 합니다. 임차료·관리비 같은 공통비는 결산 시스템을 만들 때 붙입니다.
-        <br />· 공동담당은 <b>배분 비율만큼</b> 나눠 더합니다 — 한 거래처가 두 사람에게 통째로 잡히지 않습니다.
+      <div className="rep-hint">
+        💡 <b>배수 = 수입 ÷ 인건비</b> — 인건비 1원당 얼마를 벌어들였는지 나타냅니다.
+        {' '}<b>기여 = 수입 − 인건비</b>.
+        <details style={{ marginTop: 6 }}>
+          <summary style={{ cursor: 'pointer', color: 'var(--ink-3)', fontSize: 11.5 }}>셈법 자세히</summary>
+          <div style={{ marginTop: 6, color: 'var(--ink-2)' }}>
+            · 기여 금액만 보면 사람마다 인건비 규모가 달라 비교가 어긋납니다. <b>배수는 그 차이를 지웁니다.</b>
+            <br />· 수입은 셋으로 갈라 봅니다 — <b>기장(월별)</b> · <b>조정수수료</b>(법인세조정+종합소득세) ·
+            {' '}<b>건별·기타</b>. ERP 매출계정으로 가릅니다.
+            <br />· 배부는 <b>직접비(인건비)만</b> 합니다. 임차료·관리비 같은 공통비는 결산시스템에서 붙입니다.
+            <br />· 공동담당은 <b>배분 비율만큼</b> 나눠 더합니다 — 한 거래처가 두 사람에게 통째로 잡히지 않습니다.
+          </div>
+        </details>
       </div>
 
       {basis === 'budget' && (
@@ -253,7 +281,9 @@ export default function BudgetTab() {
       )}
       {err && <div className="alert-e" style={{ fontSize: 11.5 }}>{err}</div>}
 
-      <table className="tbl" style={{ fontSize: 11.5 }}>
+      {/* 칸이 많아 좁은 화면에서는 표만 가로로 민다 — 페이지가 통째로 밀리면 제목까지 사라진다. */}
+      <div className="tbl-scroll">
+      <table className="tbl-rep">
         <thead>
           <tr>
             <th style={{ minWidth: 110 }}>
@@ -305,7 +335,8 @@ export default function BudgetTab() {
                 }}>
                   {noCost ? '—' : won(margin)}
                 </td>
-                <td className="r" style={{ color: '#666' }}>
+                <td className={noCost || !r.cost ? '' : sigClass(supply / r.cost, avgRatio)}
+                  style={noCost || !r.cost ? { color: 'var(--ink-4)' } : undefined}>
                   {noCost || !r.cost ? '—' : `${(supply / r.cost).toFixed(2)}×`}
                 </td>
                 <td>
@@ -336,7 +367,9 @@ export default function BudgetTab() {
             <td className="r" style={{ color: totSupply - totCost >= 0 ? '#065F46' : '#991B1B' }}>
               {isAudit ? '—' : won(totSupply - totCost)}
             </td>
-            <td className="r">{!isAudit && totCost ? `${(totSupply / totCost).toFixed(2)}×` : '—'}</td>
+            <td className={!isAudit && totCost ? 'sig sig-sum' : ''}>
+              {!isAudit && totCost ? `${(totSupply / totCost).toFixed(2)}×` : '—'}
+            </td>
             <td></td>
           </tr>
           {exempted.length > 0 && (
@@ -361,9 +394,19 @@ export default function BudgetTab() {
           )}
         </tfoot>
       </table>
+      </div>
+
+      {!isAudit && avgRatio > 0 && (
+        <div className="legend">
+          <span><i style={{ background: 'var(--good-bg)' }} /> 평균 위</span>
+          <span><i style={{ background: 'var(--warn-bg)' }} /> 평균 근처</span>
+          <span><i style={{ background: 'var(--bad-bg)' }} /> 평균 아래</span>
+          <span><i style={{ background: 'var(--navy-bg)' }} /> 전체 평균 {avgRatio.toFixed(2)}×</span>
+        </div>
+      )}
 
       {exempted.length > 0 && (
-        <div style={{ fontSize: 11.5, color: '#666', marginTop: 8 }}>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginTop: 8 }}>
           ℹ️ {exempted.map((r) => r.person).join('·')} 님은 <b>인건비 대상이 아니어서</b> 기여·배수를 따지지
           않습니다 — 인건비 없이 수입만 합치면 배수가 부풀려집니다.
         </div>
@@ -379,7 +422,7 @@ export default function BudgetTab() {
 
       {!isAudit && (
         <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-          <button className="btn-sm" disabled={readonly}
+          <button className="btn-rep" disabled={readonly}
             onClick={() => void (async () => {
               if (!confirm(`FY${fy - 1} 인건비를 FY${fy} 로 복사합니다. 이미 있는 사람은 덮어씁니다.`)) return;
               const n = await copyStaffCostFrom(fy - 1, fy);

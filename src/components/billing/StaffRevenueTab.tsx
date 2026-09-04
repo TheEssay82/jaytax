@@ -47,8 +47,7 @@ export default function StaffRevenueTab() {
         ))}
       </div>
       {sub === 'budget' ? (
-        <div className="card">
-          <div className="chdr">💵 예산 — 수입 대비 인건비</div>
+        <div className="card rep">
           <BudgetTab />
         </div>
       ) : <StatsPanel />}
