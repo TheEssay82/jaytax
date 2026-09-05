@@ -80,8 +80,11 @@ export const MENU_GROUPS: MenuGroup[] = [
         id: 'doc-send',
         label: '📄 문서발송관리',
         children: [
-          { id: 'doc-request', label: '✉️ 발송요청' },
-          { id: 'doc-process', label: '🖨️ 발송요청 처리', cap: 'viewDispatch' },
+          // 요청과 처리는 **같은 건이 지나가는 두 단계**라 한 화면에서 탭으로 오간다.
+          // 메뉴를 둘로 두면 「내가 올린 게 처리됐나」를 보려고 메뉴를 왔다 갔다 해야 했다.
+          // 처리 탭은 등급으로 갈리므로(viewDispatch) 화면 안에서 감춘다 — 메뉴에는 cap 을
+          // 걸지 않는다. 걸면 요청만 쓰는 인당회계사에게 메뉴 자체가 사라진다.
+          { id: 'doc-send-work', label: '✉️ 발송요청 및 처리' },
           { id: 'doc-status', label: '📊 발송업무 현황' },
         ],
       },

@@ -37,8 +37,7 @@ import ConsultTab from './advisory/ConsultTab';
 import LibraryTab from './advisory/LibraryTab';
 import ConsultLogTab from './advisory/ConsultLogTab';
 import AiUsageTab from './advisory/AiUsageTab';
-import DocSendRequestTab from './docsend/DocSendRequestTab';
-import DocSendProcessTab from './docsend/DocSendProcessTab';
+import DocSendTab from './docsend/DocSendTab';
 import DocSendStatusTab from './docsend/DocSendStatusTab';
 import EvidenceTab from './evidence/EvidenceTab';
 import ConfirmRegisterTab from './confirm/ConfirmRegisterTab';
@@ -49,6 +48,12 @@ import InternalHome from './home/InternalHome';
 import PlaceholderTab from './common/PlaceholderTab';
 import DevNotesModal from './common/DevNotesModal';
 import { MENU_GROUPS, ICON_ITEMS, menuAllowed, groupAllowed, type MenuItem } from '../lib/menu';
+
+/** 옛 탭 주소 → 지금 화면. 합치거나 이름을 바꿀 때 여기 한 줄을 더한다. */
+const TAB_ALIAS: Record<string, string> = {
+  'doc-request': 'doc-send-work',
+  'doc-process': 'doc-send-work',
+};
 
 export default function AppShell() {
   return (
@@ -104,14 +109,18 @@ function Shell() {
   const navItems = visibleGroups.flatMap((g) => g.items.flatMap((it) => it.children ?? [it]));
   // 접근 가능한 전체 탭 id 집합 (방어용). 내부홈은 외부인 제외 전원에게 허용(로고 클릭 랜딩).
   const allowedIds = new Set<string>([...navItems.map((it) => it.id), ...visibleIcons.map((it) => it.id)]);
+  // 옛 주소를 새 화면으로 잇는다 — 홈 타일·즐겨찾기가 「발송요청 및 처리」로 합쳐지기 전
+  // 주소를 가리키고 있어, 이어 두지 않으면 엉뚱한 첫 화면으로 튕긴다.
+  for (const [old, now] of Object.entries(TAB_ALIAS)) if (allowedIds.has(now)) allowedIds.add(old);
   if (!isExternal) allowedIds.add('home');
   // 기본 탭: 접근 가능하면 현재 탭, 아니면 첫 접근가능 탭
   const firstItem = visibleGroups[0]?.items[0];
   const firstAllowed = (firstItem?.children ? firstItem.children[0]?.id : firstItem?.id) ?? 'wizard';
   const cur = allowedIds.has(curTab) ? curTab : firstAllowed;
 
-  // 현재 탭이 속한 대분류 (버튼 강조용)
-  const activeGroupId = visibleGroups.find((g) => g.items.some((it) => it.id === cur || it.children?.some((c) => c.id === cur)))?.id ?? null;
+  // 현재 탭이 속한 대분류 (버튼 강조용). 옛 주소로 들어왔으면 이어진 화면으로 찾는다.
+  const curCanon = TAB_ALIAS[cur] ?? cur;
+  const activeGroupId = visibleGroups.find((g) => g.items.some((it) => it.id === curCanon || it.children?.some((c) => c.id === curCanon)))?.id ?? null;
 
   // 바깥 클릭 / ESC 로 드롭다운 닫기
   useEffect(() => {
@@ -189,8 +198,8 @@ function Shell() {
   ];
 
   const curLabel =
-    navItems.find((it) => it.id === cur)?.label ??
-    visibleIcons.find((it) => it.id === cur)?.label ??
+    navItems.find((it) => it.id === curCanon)?.label ??
+    visibleIcons.find((it) => it.id === curCanon)?.label ??
     '';
 
   return (
@@ -429,10 +438,12 @@ function TabContent({
     case 'receivable-opening':
       return <ReceivableOpeningTab />;
     // 일반업무관리 › 문서발송관리
+    case 'doc-send-work':
     case 'doc-request':
-      return <DocSendRequestTab />;
+      return <DocSendTab />;
+    // 홈의 「처리 대기 발송요청」 타일은 처리 자리로 바로 연다.
     case 'doc-process':
-      return <DocSendProcessTab />;
+      return <DocSendTab initial="process" />;
     case 'doc-status':
       return <DocSendStatusTab />;
     // 일반업무관리 › 증빙 자료실
