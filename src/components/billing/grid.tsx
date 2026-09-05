@@ -25,6 +25,11 @@ export interface GridCol<T> {
   /** 바닥 합계행에 더할 값. */
   sum?: (row: T) => number;
   /**
+   * 합계행 칸을 **직접 그린다**(sum 대신). 숫자를 더해서 될 일이 아닐 때 쓴다 —
+   * 조회현황의 발송률·회수율처럼 진행 막대를 그려야 하는 자리.
+   */
+  foot?: (rows: T[]) => React.ReactNode;
+  /**
    * 여러 줄이 들어가는 칸(주소·사유·메모가 아래에 붙는 자리).
    * 기본은 한 줄로 자르고 …으로 줄인다 — 켜면 자르지 않고 줄을 늘린다.
    */
@@ -174,7 +179,7 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, detail, empty, maxHeig
   filterBg?: string;
 }) {
   const { view, shown, rowsView, sort, toggleSort, filters, setFilter, locked } = grid;
-  const hasSum = shown.some((c) => c.sum);
+  const hasSum = shown.some((c) => c.sum || c.foot);
   const headKeys = select ? (select.headerKeys ?? select.selectableKeys) : [];
   const allPicked = !!select && headKeys.length > 0 && headKeys.every((k) => select.picked.has(k));
 
@@ -286,11 +291,12 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, detail, empty, maxHeig
             <tr style={{ background: '#f5efdd', fontWeight: 700, position: 'sticky', bottom: 0 }}>
               {select && <td></td>}
               {shown.map((c, i) => (
-                <td key={c.key} style={{ textAlign: c.num ? 'right' : 'left', ...clip }}>
+                <td key={c.key} style={{ textAlign: c.num ? 'right' : 'left', ...(c.foot ? {} : clip) }}>
                   {/* 금액은 **반올림해서** 낸다 — 소수를 그냥 더하면 부동소수 오차가 남아
                       「214,926,221.947」 같은 합계가 나온다. */}
-                  {c.sum ? Math.round(rowsView.reduce((s, r) => s + (c.sum!(r) || 0), 0)).toLocaleString('ko-KR')
-                    : i === 0 ? (footerLabel ?? `합계 ${rowsView.length}건`) : ''}
+                  {c.foot ? c.foot(rowsView)
+                    : c.sum ? Math.round(rowsView.reduce((s, r) => s + (c.sum!(r) || 0), 0)).toLocaleString('ko-KR')
+                      : i === 0 ? (footerLabel ?? `합계 ${rowsView.length}건`) : ''}
                 </td>
               ))}
             </tr>

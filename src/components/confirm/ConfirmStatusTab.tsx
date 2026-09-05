@@ -2,6 +2,9 @@
 // 2025 control sheet 의 '총괄시트' 자리. 다만 숫자를 손으로 적지 않고 조회처에서 집계한다.
 // 전자/실물을 나눠 발송·회수를 보여주고, 반송 건은 펼쳐서 사유까지 확인한다.
 import { useEffect, useMemo, useState } from 'react';
+import { Grid, GridExport, useGrid, type GridCol } from '../billing/grid';
+import { ColumnSettings } from '../clients/tableKit';
+import Empty from '../common/Empty';
 import {
   listConfirmations,
   listFiscalYears,
@@ -53,6 +56,66 @@ export default function ConfirmStatusTab() {
     [rows, items],
   );
   const total = useMemo(() => sumProgress(perClient.map((x) => x.progress)), [perClient]);
+
+  type Row = { conf: typeof perClient[number]['conf']; progress: typeof perClient[number]['progress'] };
+
+  // 표는 Grid 한 부품으로 그린다 — 정렬·열 필터·열 숨김/순서·너비·복사/엑셀이 함께 온다.
+  // 발송률·회수율은 **숫자로 정렬**되고 화면에는 막대로 그려진다. 합계줄의 막대는 foot 로 직접 그린다.
+  const cols: GridCol<Row>[] = useMemo(() => [
+    { key: 'company', label: '거래처명', width: 190, value: (x) => x.conf.companyName,
+      cell: (x) => <b style={{ color: 'var(--navy)' }}>{x.conf.companyName}</b> },
+    { key: 'total', label: '조회처', width: 62, num: true, value: (x) => x.progress.total,
+      sum: (x) => x.progress.total },
+    { key: 'elec', label: '전자 발송/회수', width: 100, value: (x) => x.progress.elecSent,
+      style: { textAlign: 'center', color: '#1E40AF' },
+      cell: (x) => (x.progress.elecTotal
+        ? `${x.progress.elecSent} / ${x.progress.elecCollected}`
+        : <span style={{ color: 'var(--ink-4)' }}>—</span>),
+      foot: () => `${total.elecSent} / ${total.elecCollected}` },
+    { key: 'post', label: '실물 발송/회수', width: 100, value: (x) => x.progress.postSent,
+      style: { textAlign: 'center', color: 'var(--warn)' },
+      cell: (x) => (x.progress.postTotal
+        ? `${x.progress.postSent} / ${x.progress.postCollected}`
+        : <span style={{ color: 'var(--ink-4)' }}>—</span>),
+      foot: () => `${total.postSent} / ${total.postCollected}` },
+    { key: 'sentRate', label: '발송률', width: 124, num: true,
+      value: (x) => pct(x.progress.sent, x.progress.total),
+      cell: (x) => <Meter value={pct(x.progress.sent, x.progress.total)} label={`${x.progress.sent}/${x.progress.total}`} color="#1E40AF" />,
+      foot: () => <Meter value={pct(total.sent, total.total)} label={`${total.sent}/${total.total}`} color="#1E40AF" /> },
+    { key: 'collRate', label: '회수율', width: 124, num: true,
+      value: (x) => pct(x.progress.collected, x.progress.sent),
+      cell: (x) => <Meter value={pct(x.progress.collected, x.progress.sent)} label={`${x.progress.collected}/${x.progress.sent}`} color="#059669" />,
+      foot: () => <Meter value={pct(total.collected, total.sent)} label={`${total.collected}/${total.sent}`} color="#059669" /> },
+    { key: 'returned', label: '반송', width: 58, num: true, value: (x) => x.progress.returned,
+      style: { textAlign: 'center' },
+      cell: (x) => (x.progress.returned > 0
+        ? <b style={{ color: 'var(--bad)' }}>{x.progress.returned}</b>
+        : <span style={{ color: 'var(--ink-4)' }}>—</span>),
+      foot: () => (total.returned
+        ? <b style={{ color: 'var(--bad)' }}>{total.returned}</b>
+        : <span style={{ color: 'var(--ink-4)' }}>—</span>) },
+    { key: 'firstSent', label: '최초발송일', width: 96, value: (x) => x.progress.firstSentDate ?? '',
+      style: { textAlign: 'center' },
+      cell: (x) => (x.progress.firstSentDate
+        ? x.progress.firstSentDate.replace(/-/g, '.')
+        : <span style={{ color: 'var(--ink-4)' }}>—</span>) },
+    { key: 'act', label: '조서 · 이력', width: 86, value: () => '',
+      style: { textAlign: 'center' },
+      cell: (x) => (
+        <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
+          <button className="btn-sm" style={{ fontSize: 'var(--fs-0)', padding: '1px 6px' }}
+            title="이 거래처의 진행현황 조서를 엑셀로 내려받습니다"
+            onClick={() => void exportConfirmationSheet(x.conf, items[x.conf.id] ?? [])}>⬇</button>
+          <button className="btn-sm" style={{ fontSize: 'var(--fs-0)', padding: '1px 6px' }}
+            title="이 거래처의 발송·회수 처리 기록"
+            onClick={() => setAuditFor({ id: x.conf.id, title: x.conf.companyName })}>🕘</button>
+        </div>
+      ) },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [total, items]);
+  const grid = useGrid('confirm-status', cols, perClient, { key: 'collRate', dir: 'asc' });
+  const tblH = Math.max(260, Math.round(window.innerHeight * 0.52));
+
 
   /** 반송 건이 있는 거래처만 추린다(조치가 필요한 목록) */
   const returnedList = useMemo(
@@ -142,87 +205,20 @@ export default function ConfirmStatusTab() {
         >
           🕘 변경이력
         </button>
+        {/* 서식 있는 총괄 엑셀은 위에 그대로 두고, 표를 그대로 옮기는 복사만 더한다. */}
+        <GridExport grid={grid} name={`조회현황_${year}`} csv={false} />
+        <ColumnSettings cols={grid.ordered} view={grid.view} />
+        {grid.filterCount > 0 && (
+          <button className="btn-sm" onClick={grid.clearFilters}>열 필터 지우기 ({grid.filterCount})</button>
+        )}
       </div>
 
       {/* 거래처별 현황 */}
-      <div className="tbl-scroll">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>거래처명</th>
-              <th style={{ width: 62, textAlign: 'center' }}>조회처</th>
-              <th style={{ width: 92, textAlign: 'center' }}>전자 발송/회수</th>
-              <th style={{ width: 92, textAlign: 'center' }}>실물 발송/회수</th>
-              <th style={{ width: 120, textAlign: 'center' }}>발송률</th>
-              <th style={{ width: 120, textAlign: 'center' }}>회수율</th>
-              <th style={{ width: 58, textAlign: 'center' }}>반송</th>
-              <th style={{ width: 96, textAlign: 'center' }}>최초발송일</th>
-              <th style={{ width: 82, textAlign: 'center' }}>조서 · 이력</th>
-            </tr>
-          </thead>
-          <tbody>
-            {perClient.length === 0 && (
-              <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 24 }}>
-                {year}년에 등록된 조회서가 없습니다.
-              </td></tr>
-            )}
-            {perClient.map(({ conf: c, progress: p }) => (
-              <tr key={c.id}>
-                <td style={{ fontSize: 'var(--fs-2)' }}><b style={{ color: 'var(--navy)' }}>{c.companyName}</b></td>
-                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{p.total}</td>
-                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: '#1E40AF' }}>
-                  {p.elecTotal ? `${p.elecSent} / ${p.elecCollected}` : <span style={{ color: 'var(--ink-4)' }}>—</span>}
-                </td>
-                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: 'var(--warn)' }}>
-                  {p.postTotal ? `${p.postSent} / ${p.postCollected}` : <span style={{ color: 'var(--ink-4)' }}>—</span>}
-                </td>
-                <td><Meter value={pct(p.sent, p.total)} label={`${p.sent}/${p.total}`} color="#1E40AF" /></td>
-                <td><Meter value={pct(p.collected, p.sent)} label={`${p.collected}/${p.sent}`} color="#059669" /></td>
-                <td style={{ textAlign: 'center' }}>
-                  {p.returned > 0
-                    ? <b style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)' }}>{p.returned}</b>
-                    : <span style={{ color: 'var(--ink-4)' }}>—</span>}
-                </td>
-                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>
-                  {p.firstSentDate ? p.firstSentDate.replace(/-/g, '.') : <span style={{ color: 'var(--ink-4)' }}>—</span>}
-                </td>
-                <td style={{ textAlign: 'center' }}>
-                  <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
-                    <button
-                      className="btn-sm"
-                      style={{ fontSize: 'var(--fs-0)', padding: '1px 6px' }}
-                      title="이 거래처의 진행현황 조서를 엑셀로 내려받습니다"
-                      onClick={() => void exportConfirmationSheet(c, items[c.id] ?? [])}
-                    >
-                      ⬇
-                    </button>
-                    <button
-                      className="btn-sm"
-                      style={{ fontSize: 'var(--fs-0)', padding: '1px 6px' }}
-                      title="이 거래처의 발송·회수 처리 기록"
-                      onClick={() => setAuditFor({ id: c.id, title: c.companyName })}
-                    >
-                      🕘
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {perClient.length > 0 && (
-              <tr style={{ background: '#FaF8F4', fontWeight: 700 }}>
-                <td style={{ fontSize: 'var(--fs-2)' }}>합계</td>
-                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{total.total}</td>
-                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: '#1E40AF' }}>{total.elecSent} / {total.elecCollected}</td>
-                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', color: 'var(--warn)' }}>{total.postSent} / {total.postCollected}</td>
-                <td><Meter value={pct(total.sent, total.total)} label={`${total.sent}/${total.total}`} color="#1E40AF" /></td>
-                <td><Meter value={pct(total.collected, total.sent)} label={`${total.collected}/${total.sent}`} color="#059669" /></td>
-                <td style={{ textAlign: 'center', color: total.returned ? '#B91C1C' : '#CCC' }}>{total.returned || '—'}</td>
-                <td colSpan={2}></td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <Grid grid={grid} rowKey={(x) => x.conf.id} maxHeight={tblH}
+        footerLabel="합계"
+        empty={<Empty text={`${year}년에 등록된 조회서가 없습니다`}
+          hint={grid.filterCount > 0 ? '열 아래 칸에 넣은 값으로 걸러서 비었습니다.' : '조회서등록에서 먼저 등록합니다.'}
+          action={grid.filterCount > 0 ? { label: '열 필터 지우기', onClick: grid.clearFilters } : undefined} />} />
 
       {auditFor && (
         <ConfirmAuditModal
