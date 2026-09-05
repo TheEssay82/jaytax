@@ -1,5 +1,8 @@
 // 문서발송 › 발송요청 — 공통 문서정보 + 수신자 다중선택(거래처관리 › 거래처담당자등록 연동, 스냅샷) 요청 등록/목록/수정
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Grid, useGrid, type GridCol } from '../billing/grid';
+import { ColumnSettings } from '../clients/tableKit';
+import Empty from '../common/Empty';
 import { useEscape } from '../../lib/useEscape';
 import { todayYmd } from '../../lib/format';
 import { useAuth } from '../../context/AuthContext';
@@ -231,6 +234,121 @@ export default function DocSendRequestTab() {
     }
   }
 
+  // 기본 3단계는 항상, 후속상태(반송·재발송완료)는 건이 있을 때만 표시
+  const counts = [...SEND_STATUS, ...POST_SEND_STATUS]
+    .map((s) => ({ s, n: reqs.filter((r) => r.status === s).length }))
+    .filter((c) => (SEND_STATUS as readonly string[]).includes(c.s) || c.n > 0);
+  // batch_id 별 요청 수(묶음 배지는 2건 이상일 때만)
+  const batchCounts: Record<string, number> = {};
+  for (const r of reqs) if (r.batchId) batchCounts[r.batchId] = (batchCounts[r.batchId] || 0) + 1;
+  const attCount = (r: SendRequest) => (r.batchId ? (attByBatch[r.batchId]?.length ?? 0) : 0);
+
+  /** 열 필터의 상태 후보 — 지금 자료에 있는 값에서 뽑는다. */
+  const statusOpts = useMemo(
+    () => [...new Set(view.map((r) => r.status).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')),
+    [view],
+  );
+
+  // 표는 Grid 한 부품으로 그린다 — 정렬·열 필터·열 숨김/순서·너비가 함께 온다.
+  // 「수정」을 누르면 그 줄이 통째로 폼으로 바뀐다(부품의 replace).
+  const cols: GridCol<SendRequest>[] = useMemo(() => [
+    { key: 'requestDate', label: '의뢰일자', width: 84, value: (r) => r.requestDate ?? '',
+      cell: (r) => r.requestDate?.replace(/-/g, '.') ?? '' },
+    { key: 'requester', label: '의뢰인', width: 76, value: (r) => r.requester },
+    { key: 'company', label: '거래처 · 수신자', width: 210, wrap: true,
+      value: (r) => `${r.companyName}${r.recipientName ? ` ${r.recipientName}` : ''}`,
+      cell: (r) => (
+        <>
+          <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
+          {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {r.recipientName} {r.recipientTitle}</span>}
+          {r.batchId && batchCounts[r.batchId] > 1 && (
+            <span className="bdg b-on" style={{ marginLeft: 5, fontSize: 9 }} title="여러 수신자 묶음">묶음 {batchCounts[r.batchId]}</span>
+          )}
+        </>
+      ) },
+    { key: 'workType', label: '업무구분', width: 88, value: (r) => r.workType },
+    { key: 'sendKind', label: '송부종류', width: 88, value: (r) => r.sendKind },
+    { key: 'docName', label: '문서명', width: 180, value: (r) => r.docName ?? '',
+      cell: (r) => <span title={r.docName || undefined}>{r.docName || <span style={{ color: 'var(--ink-4)' }}>—</span>}</span> },
+    { key: 'copies', label: '부수', width: 50, num: true, value: (r) => r.copies },
+    { key: 'seal', label: '날인', width: 66, value: (r) => (r.sealRequired ? '날인요' : ''),
+      style: { textAlign: 'center' }, cell: (r) => (r.sealRequired ? '🔖 날인요' : '—') },
+    { key: 'deadline', label: '기한', width: 62, value: (r) => r.deadline ?? '',
+      style: { textAlign: 'center' },
+      cell: (r) => (r.deadline === '긴급' ? <b style={{ color: 'var(--bad)' }}>긴급</b> : r.deadline) },
+    { key: 'att', label: '첨부', width: 54, value: (r) => attCount(r) || '',
+      style: { textAlign: 'center' },
+      cell: (r) => (
+        <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '1px 7px', color: attCount(r) ? 'var(--navy)' : 'var(--ink-4)' }}
+          title={attCount(r) ? '첨부파일 보기/다운로드' : '첨부 없음 (클릭해 추가)'}
+          onClick={() => setAttachFor(r)}>📎 {attCount(r) || ''}</button>
+      ) },
+    { key: 'sentDate', label: '발송일', width: 84, value: (r) => r.sentDate ?? '',
+      style: { textAlign: 'center' },
+      cell: (r) => (r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: 'var(--ink-4)' }}>—</span>) },
+    { key: 'tracking', label: '등기번호', width: 130, value: (r) => r.trackingNo ?? '',
+      style: { textAlign: 'center' }, cell: (r) => <TrackingLink no={r.trackingNo} /> },
+    { key: 'status', label: '상태', width: 96, value: (r) => r.status, opts: statusOpts, wrap: true,
+      style: { textAlign: 'center' },
+      cell: (r) => (
+        <>
+          <span className="bdg" style={{ fontSize: 'var(--fs-0)', ...statusStyle(r.status) }}>{r.status}</span>
+          {r.statusNote && (
+            <div style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)', marginTop: 2 }} title={`사유: ${r.statusNote}`}>{r.statusNote}</div>
+          )}
+        </>
+      ) },
+    ...(canWrite ? [{
+      key: 'act', label: '관리', width: 86, value: () => '', wrap: true,
+      cell: (r: SendRequest) => {
+        if (r.status === '미접수') {
+          return (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button className="btn-sm btn-sm-blue" title="수정" onClick={() => { setEditId(r.id); setShowAdd(false); }}>✏️</button>
+              <button className="btn-sm btn-sm-del" title="삭제" onClick={() => handleDelete(r)}>🗑</button>
+            </div>
+          );
+        }
+        if (r.status === '반송' && isMine(r)) {
+          return (
+            <button className="btn-sm"
+              style={{ fontSize: 'var(--fs-0)', padding: '2px 6px', background: '#FEF3C7', color: 'var(--warn)', fontWeight: 700 }}
+              title="주소 등을 확인한 뒤 재발송을 요청합니다"
+              onClick={() => setResendFor(r)}>🔄 재발송요청</button>
+          );
+        }
+        if (r.status !== '취소') {
+          return (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button className="btn-sm" style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}
+                title="필요 없어졌거나 잘못 처리된 요청을 취소합니다(기록은 남습니다)"
+                onClick={() => void handleCancel(r)}>🚫</button>
+              {isSuper && (
+                <button className="btn-sm btn-sm-del"
+                  title="최고관리자 삭제 — 처리 이력이 있는 건입니다(이력에는 원본이 남습니다)"
+                  onClick={() => handleDelete(r)}>🗑</button>
+              )}
+            </div>
+          );
+        }
+        // 취소된 건 — 최고관리자만 완전 삭제 가능
+        return (
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)' }}>취소됨</span>
+            {isSuper && (
+              <button className="btn-sm btn-sm-del" title="최고관리자 삭제 (이력에는 원본이 남습니다)"
+                onClick={() => handleDelete(r)}>🗑</button>
+            )}
+          </div>
+        );
+      },
+    } as GridCol<SendRequest>] : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [statusOpts, attByBatch, canWrite, isSuper, batchCounts]);
+  // 고치는 중에는 정렬·필터를 잠근다 — 바꾸면 고치던 줄이 화면 밖으로 밀려난다.
+  const grid = useGrid('docsend-request', cols, view, { key: 'requestDate', dir: 'desc' }, !!editId);
+  const tblH = Math.max(260, Math.round(window.innerHeight * 0.52));
+
   if (loading) {
     return (
       <div className="card">
@@ -240,14 +358,7 @@ export default function DocSendRequestTab() {
     );
   }
 
-  // 기본 3단계는 항상, 후속상태(반송·재발송완료)는 건이 있을 때만 표시
-  const counts = [...SEND_STATUS, ...POST_SEND_STATUS]
-    .map((s) => ({ s, n: reqs.filter((r) => r.status === s).length }))
-    .filter((c) => (SEND_STATUS as readonly string[]).includes(c.s) || c.n > 0);
-  // batch_id 별 요청 수(묶음 배지는 2건 이상일 때만)
-  const batchCounts: Record<string, number> = {};
-  for (const r of reqs) if (r.batchId) batchCounts[r.batchId] = (batchCounts[r.batchId] || 0) + 1;
-  const attCount = (r: SendRequest) => (r.batchId ? (attByBatch[r.batchId]?.length ?? 0) : 0);
+
 
   return (
     <div className="card">
@@ -287,140 +398,36 @@ export default function DocSendRequestTab() {
         {!searching && (
           <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', whiteSpace: 'nowrap' }}>· 전체 내역·처리현황은 ‘발송업무 현황’에서</span>
         )}
+        <span style={{ display: 'inline-flex', gap: 4, marginLeft: 'auto' }}>
+          {grid.filterCount > 0 && (
+            <button className="btn-sm" onClick={grid.clearFilters} disabled={!!editId}>열 필터 지우기 ({grid.filterCount})</button>
+          )}
+          <ColumnSettings cols={grid.ordered} view={grid.view} onMessage={flash} />
+        </span>
       </div>
 
-      <div className="tbl-scroll">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>의뢰일자</th>
-              <th>의뢰인</th>
-              <th>거래처 · 수신자</th>
-              <th>업무구분</th>
-              <th>송부종류</th>
-              <th>문서명</th>
-              <th style={{ textAlign: 'center' }}>부수</th>
-              <th style={{ textAlign: 'center' }}>날인</th>
-              <th style={{ textAlign: 'center' }}>기한</th>
-              <th style={{ textAlign: 'center' }}>첨부</th>
-              <th style={{ textAlign: 'center' }}>발송일</th>
-              <th style={{ textAlign: 'center' }}>등기번호</th>
-              <th style={{ textAlign: 'center' }}>상태</th>
-              {canWrite && <th style={{ width: 72 }}>관리</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {view.length === 0 && (
-              <tr><td colSpan={canWrite ? 14 : 13} style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 24 }}>발송요청이 없습니다.</td></tr>
-            )}
-            {view.map((r) =>
-              editId === r.id ? (
-                <tr key={r.id}>
-                  <td colSpan={canWrite ? 14 : 13} style={{ background: '#EEF6FF' }}>
-                    <EditRequestForm req={r} clients={clients} onSave={(c, rc) => handleSaveEdit(r.id, c, rc)} onCancel={() => setEditId(null)} />
-                  </td>
-                </tr>
-              ) : (
-                <tr key={r.id}>
-                  <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.requestDate?.replace(/-/g, '.')}</td>
-                  <td style={{ fontSize: 'var(--fs-2)' }}>{r.requester}</td>
-                  <td style={{ fontSize: 'var(--fs-2)' }}>
-                    <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
-                    {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {r.recipientName} {r.recipientTitle}</span>}
-                    {r.batchId && batchCounts[r.batchId] > 1 && (
-                      <span className="bdg b-on" style={{ marginLeft: 5, fontSize: 9 }} title="여러 수신자 묶음">묶음 {batchCounts[r.batchId]}</span>
-                    )}
-                  </td>
-                  <td style={{ fontSize: 'var(--fs-2)' }}>{r.workType}</td>
-                  <td style={{ fontSize: 'var(--fs-2)' }}>{r.sendKind}</td>
-                  <td className="doc-name" style={{ fontSize: 'var(--fs-2)' }} title={r.docName || undefined}>{r.docName || <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
-                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-2)' }}>{r.copies}</td>
-                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{r.sealRequired ? '🔖 날인요' : '—'}</td>
-                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{r.deadline === '긴급' ? <b style={{ color: '#dc2626' }}>긴급</b> : r.deadline}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    <button
-                      className="btn-sm"
-                      style={{ fontSize: 'var(--fs-1)', padding: '1px 7px', color: attCount(r) ? '#1A2B52' : '#bbb' }}
-                      title={attCount(r) ? '첨부파일 보기/다운로드' : '첨부 없음 (클릭해 추가)'}
-                      onClick={() => setAttachFor(r)}
-                    >
-                      📎 {attCount(r) || ''}
-                    </button>
-                  </td>
-                  <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>
-                    {r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: 'var(--ink-4)' }}>—</span>}
-                  </td>
-                  <td style={{ textAlign: 'center' }}><TrackingLink no={r.trackingNo} /></td>
-                  <td style={{ textAlign: 'center' }}>
-                    <span className="bdg" style={{ fontSize: 'var(--fs-0)', ...statusStyle(r.status) }}>{r.status}</span>
-                    {r.statusNote && (
-                      <div
-                        style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)', marginTop: 2, maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                        title={`사유: ${r.statusNote}`}
-                      >
-                        {r.statusNote}
-                      </div>
-                    )}
-                  </td>
-                  {canWrite && (
-                    <td>
-                      {r.status === '미접수' ? (
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button className="btn-sm btn-sm-blue" title="수정" onClick={() => { setEditId(r.id); setShowAdd(false); }}>✏️</button>
-                          <button className="btn-sm btn-sm-del" title="삭제" onClick={() => handleDelete(r)}>🗑</button>
-                        </div>
-                      ) : r.status === '반송' && isMine(r) ? (
-                        <button
-                          className="btn-sm"
-                          style={{ fontSize: 'var(--fs-0)', padding: '2px 6px', background: '#FEF3C7', color: 'var(--warn)', fontWeight: 700 }}
-                          title="주소 등을 확인한 뒤 재발송을 요청합니다"
-                          onClick={() => setResendFor(r)}
-                        >
-                          🔄 재발송요청
-                        </button>
-                      ) : r.status !== '취소' ? (
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button
-                            className="btn-sm"
-                            style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}
-                            title="필요 없어졌거나 잘못 처리된 요청을 취소합니다(기록은 남습니다)"
-                            onClick={() => void handleCancel(r)}
-                          >
-                            🚫
-                          </button>
-                          {isSuper && (
-                            <button
-                              className="btn-sm btn-sm-del"
-                              title="최고관리자 삭제 — 처리 이력이 있는 건입니다(이력에는 원본이 남습니다)"
-                              onClick={() => handleDelete(r)}
-                            >
-                              🗑
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        // 취소된 건 — 최고관리자만 완전 삭제 가능
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                          <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)' }}>취소됨</span>
-                          {isSuper && (
-                            <button
-                              className="btn-sm btn-sm-del"
-                              title="최고관리자 삭제 (이력에는 원본이 남습니다)"
-                              onClick={() => handleDelete(r)}
-                            >
-                              🗑
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ),
-            )}
-          </tbody>
-        </table>
-      </div>
+      {editId && (
+        // 고치는 중에는 줄이 밀려나면 안 된다 — 정렬·필터를 바꾸면 그 줄이 화면 밖으로
+        // 사라져 어디를 고치고 있었는지 잃는다. 그래서 잠그고 그 사실을 알린다.
+        <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
+          ✏️ <b>고치는 중입니다</b> — 저장하거나 취소할 때까지 정렬·열 필터는 잠깁니다.
+        </div>
+      )}
+
+      <Grid grid={grid} rowKey={(r) => r.id} maxHeight={tblH}
+        detail={{
+          isOpen: () => false,
+          render: () => null,
+          replace: (r) => (editId === r.id ? (
+            <div style={{ background: '#EEF6FF', padding: '6px 8px' }}>
+              <EditRequestForm req={r} clients={clients}
+                onSave={(c, rc) => handleSaveEdit(r.id, c, rc)} onCancel={() => setEditId(null)} />
+            </div>
+          ) : null),
+        }}
+        empty={<Empty text="발송요청이 없습니다"
+          hint={grid.filterCount > 0 ? '열 아래 칸에 넣은 값으로 걸러서 비었습니다.' : '＋ 새 발송요청으로 올립니다.'}
+          action={grid.filterCount > 0 ? { label: '열 필터 지우기', onClick: grid.clearFilters } : undefined} />} />
 
       {resendFor && (
         <ResendModal

@@ -38,7 +38,14 @@ export interface GridSort { key: string; dir: 'asc' | 'desc' }
  * 표 상태 훅 — 정렬·필터·열설정을 들고, 걸러 정렬한 행(rowsView)을 돌려준다.
  * cols 는 매 렌더 새로 만들어도 되지만(행 수가 수십 건), 부모에서 useMemo 하면 더 좋다.
  */
-export function useGrid<T>(viewKey: string, cols: GridCol<T>[], rows: T[], defaultSort?: GridSort) {
+export function useGrid<T>(
+  viewKey: string, cols: GridCol<T>[], rows: T[], defaultSort?: GridSort,
+  /**
+   * 줄을 고치는 중이면 켠다 — 정렬·열 필터가 잠긴다.
+   * 고치는 중에 순서가 바뀌면 그 줄이 화면 밖으로 밀려나 어디를 고치고 있었는지 잃는다.
+   */
+  locked = false,
+) {
   const view = useTableView(viewKey);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [sort, setSort] = useState<GridSort | null>(defaultSort ?? null);
@@ -67,13 +74,16 @@ export function useGrid<T>(viewKey: string, cols: GridCol<T>[], rows: T[], defau
     }
   }
 
-  const toggleSort = (key: string) =>
+  const toggleSort = (key: string) => {
+    if (locked) return;
     setSort((s) => (s?.key === key ? (s.dir === 'asc' ? { key, dir: 'desc' } : null) : { key, dir: 'asc' }));
+  };
 
   return {
-    view, ordered, shown, rowsView, sort, toggleSort,
-    filters, setFilter: (k: string, v: string) => setFilters((p) => ({ ...p, [k]: v })),
-    clearFilters: () => setFilters({}),
+    view, ordered, shown, rowsView, sort, toggleSort, locked,
+    filters,
+    setFilter: (k: string, v: string) => { if (!locked) setFilters((p) => ({ ...p, [k]: v })); },
+    clearFilters: () => { if (!locked) setFilters({}); },
     filterCount: Object.values(filters).filter((v) => v.trim()).length,
   };
 }
@@ -163,7 +173,7 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, detail, empty, maxHeig
   headBg?: string;
   filterBg?: string;
 }) {
-  const { view, shown, rowsView, sort, toggleSort, filters, setFilter } = grid;
+  const { view, shown, rowsView, sort, toggleSort, filters, setFilter, locked } = grid;
   const hasSum = shown.some((c) => c.sum);
   const headKeys = select ? (select.headerKeys ?? select.selectableKeys) : [];
   const allPicked = !!select && headKeys.length > 0 && headKeys.every((k) => select.picked.has(k));
@@ -186,9 +196,10 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, detail, empty, maxHeig
             )}
             {shown.map((c) => (
               <th key={c.key} onClick={() => toggleSort(c.key)}
-                title="클릭: 정렬 · 우측 끝 드래그: 너비 조절 · 더블클릭: 내용에 맞춤"
+                title={locked ? '고치는 중에는 정렬이 잠깁니다' : '클릭: 정렬 · 우측 끝 드래그: 너비 조절 · 더블클릭: 내용에 맞춤'}
                 style={{
-                  ...thc, ...clip, height: 26, cursor: 'pointer', userSelect: 'none',
+                  ...thc, ...clip, height: 26, cursor: locked ? 'not-allowed' : 'pointer', userSelect: 'none',
+                  opacity: locked ? .6 : 1,
                   textAlign: c.num ? 'right' : 'left', ...stickyTop(0, headBg),
                 }}>
                 {c.label}{sort?.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ' ⇅'}
@@ -201,7 +212,9 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, detail, empty, maxHeig
             {select && <th style={{ padding: 2, ...stickyTop(26, filterBg) }}></th>}
             {shown.map((c) => (
               <th key={c.key} style={{ padding: 2, ...stickyTop(26, filterBg) }}>
-                <ColFilter opts={c.opts} value={filters[c.key] || ''} onChange={(v) => setFilter(c.key, v)} />
+                <span style={{ opacity: locked ? .5 : 1, pointerEvents: locked ? 'none' : undefined, display: 'block' }}>
+                  <ColFilter opts={c.opts} value={filters[c.key] || ''} onChange={(v) => setFilter(c.key, v)} />
+                </span>
               </th>
             ))}
           </tr>
