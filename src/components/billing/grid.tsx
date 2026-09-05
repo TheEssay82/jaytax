@@ -123,6 +123,13 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, detail, empty, maxHeig
   select?: {
     /** 지금 고른 키 */ picked: Set<string>;
     /** 한 건 토글 */ toggle: (key: string) => void;
+    /**
+     * Shift+클릭에서 할 일(있으면 체크박스에 안내가 붙는다).
+     * 발송요청 처리에서 「같은 문서의 수신자 전체」를 한 번에 고르는 데 쓴다.
+     */
+    shiftToggle?: (row: T) => void;
+    /** Shift+클릭 안내 글. */
+    shiftHint?: string;
     /** 체크박스를 그릴 행(보이는 행 중 고를 수 있는 것) */ selectableKeys: string[];
     /** 머리글 전체선택이 고를 행. 없으면 selectableKeys 전부. */ headerKeys?: string[];
     /** 전체선택/해제 */ setAll: (keys: string[] | null) => void;
@@ -142,6 +149,11 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, detail, empty, maxHeig
     render: (row: T) => React.ReactNode;
     /** 줄을 누르면 펼침/접힘. 주면 줄에 손 모양 커서가 붙는다. */
     onToggle?: (row: T) => void;
+    /**
+     * 줄을 **통째로 다른 것으로 바꾼다**(고치는 폼 등). 무언가를 돌려주면 평소 칸 대신
+     * 그것이 그려진다. 여기서도 colSpan 은 부품이 맞춘다.
+     */
+    replace?: (row: T) => React.ReactNode | null;
   };
   /** 비었을 때. 글 한 줄이어도 되고, 다음에 할 일을 담은 <Empty> 를 넣어도 된다. */
   empty: React.ReactNode;
@@ -206,15 +218,36 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, detail, empty, maxHeig
           {rowsView.map((r) => {
             const k = rowKey(r);
             const open = detail?.isOpen(r) ?? false;
+            const swap = detail?.replace?.(r) ?? null;
+            const span = shown.length + (select ? 1 : 0);
+            // 줄을 통째로 바꾼 동안에는 그 줄만 보여 준다 — 칸이 폼으로 대체된다.
+            if (swap) {
+              return (
+                <tr key={k}>
+                  <td colSpan={span} style={{ padding: 0 }}>{swap}</td>
+                </tr>
+              );
+            }
             return (
               <React.Fragment key={k}>
               <tr
                 style={{ ...(detail?.onToggle ? { cursor: 'pointer' } : {}), ...rowStyle?.(r) }}
                 onClick={detail?.onToggle ? () => detail.onToggle!(r) : undefined}>
                 {select && (
-                  <td style={{ textAlign: 'center' }}>
+                  // 체크박스는 **onChange 하나로만** 다룬다. onClick 에서 Shift 를 처리하고
+                  // preventDefault 를 해도 React 는 체크박스의 onChange 를 그 click 에서 따로
+                  // 부른다. 예전 코드는 그래서 Shift 로 묶음을 더한 직후 onChange 가 누른 줄을
+                  // 도로 빼 버렸다 — 한 줄짜리 묶음에서는 아무 일도 안 일어나고, 여러 줄
+                  // 묶음에서는 누른 줄만 빠졌다. 네이티브 이벤트에서 Shift 를 읽어 한 곳에서 가른다.
+                  <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                     {select.selectableKeys.includes(k) || select.picked.has(k) ? (
-                      <input type="checkbox" checked={select.picked.has(k)} onChange={() => select.toggle(k)} />
+                      <input type="checkbox" checked={select.picked.has(k)}
+                        title={select.shiftToggle ? select.shiftHint : undefined}
+                        onChange={(e) => {
+                          const shift = (e.nativeEvent as MouseEvent).shiftKey;
+                          if (shift && select.shiftToggle) select.shiftToggle(r);
+                          else select.toggle(k);
+                        }} />
                     ) : null}
                   </td>
                 )}
@@ -228,9 +261,7 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, detail, empty, maxHeig
               {open && (
                 // colSpan 은 **지금 보이는 열 수**로 저절로 맞는다 — 열을 숨겨도 어긋나지 않는다.
                 <tr>
-                  <td colSpan={shown.length + (select ? 1 : 0)} style={{ padding: 0 }}>
-                    {detail!.render(r)}
-                  </td>
+                  <td colSpan={span} style={{ padding: 0 }}>{detail!.render(r)}</td>
                 </tr>
               )}
               </React.Fragment>

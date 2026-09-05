@@ -1,6 +1,9 @@
 // 문서발송 › 발송요청 처리 — 권한자(최고관리자·기장팀장·기장팀원)가 발송 상태·발송일·등기번호를 처리
 // 흐름: 미접수 → (처리 시작) 진행중 → 발송일 입력·완료 → 발송완료. 등기번호는 우체국 조회 딥링크.
 import { useEffect, useMemo, useState } from 'react';
+import { Grid, useGrid, type GridCol } from '../billing/grid';
+import { ColumnSettings } from '../clients/tableKit';
+import Empty from '../common/Empty';
 import { todayYmd } from '../../lib/format';
 import { useAuth } from '../../context/AuthContext';
 import { can } from '../../lib/roles';
@@ -128,6 +131,105 @@ export default function DocSendProcessTab() {
   const selCompletable = selected.filter((r) => r.status === '진행중' || r.status === '재발송요청');
 
   /** 선택 건에 같은 작업을 순차 적용. 일부 실패해도 나머지는 진행하고 결과를 요약한다. */
+  /** 열 필터의 상태 후보 — 지금 자료에 있는 값에서 뽑는다. */
+  const statusOpts = useMemo(
+    () => [...new Set(view.map((r) => r.status).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')),
+    [view],
+  );
+
+  // 표는 Grid 한 부품으로 그린다 — 정렬·열 필터·열 숨김/순서·너비가 함께 온다.
+  // 처리 상자(발송일·등기번호 / 반송·재발송)는 부품의 detail 로 줄 아래에 편다.
+  const cols: GridCol<SendRequest>[] = useMemo(() => [
+    { key: 'status', label: '상태', width: 92, value: (r) => r.status, opts: statusOpts, wrap: true,
+      cell: (r) => (
+        <>
+          <span className="bdg" style={{ fontSize: 'var(--fs-0)', ...statusStyle(r.status) }}>{r.status}</span>
+          {r.statusNote && (
+            <div style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)', marginTop: 2 }} title={r.statusNote}>{r.statusNote}</div>
+          )}
+        </>
+      ) },
+    { key: 'requestDate', label: '의뢰일자', width: 84, value: (r) => r.requestDate ?? '',
+      cell: (r) => r.requestDate?.replace(/-/g, '.') ?? '' },
+    { key: 'requester', label: '의뢰인', width: 76, value: (r) => r.requester },
+    // 발송담당자가 봉투를 쓸 수 있도록 주소·연락처를 함께 보여준다 — 이 화면의 핵심 정보다.
+    { key: 'company', label: '거래처 · 수신자', width: 250, wrap: true,
+      value: (r) => `${r.companyName}${r.recipientName ? ` ${r.recipientName}` : ''}`,
+      cell: (r) => (
+        <>
+          <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
+          {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {r.recipientName} {r.recipientTitle}</span>}
+          {r.address ? (
+            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink)', marginTop: 2, whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>
+              📮 {r.address}
+              {r.phone && <span style={{ color: 'var(--ink-3)' }}>　☎ {r.phone}</span>}
+            </div>
+          ) : (
+            r.workType === '퀵서비스' && (
+              <div style={{ fontSize: 'var(--fs-0)', color: '#b45309', marginTop: 2 }}>⚠️ 주소 미입력</div>
+            )
+          )}
+        </>
+      ) },
+    { key: 'workType', label: '업무구분', width: 88, value: (r) => r.workType },
+    { key: 'sendKind', label: '송부종류', width: 88, value: (r) => r.sendKind },
+    { key: 'docName', label: '문서명', width: 180, wrap: true, value: (r) => r.docName ?? '',
+      cell: (r) => (
+        <span title={r.docName || undefined}>
+          {r.docName || <span style={{ color: 'var(--ink-4)' }}>—</span>}
+          {r.etcRequest && (
+            <div style={{ fontSize: 'var(--fs-0)', color: '#8a5a00', marginTop: 2, whiteSpace: 'pre-wrap' }} title="기타요청사항">📝 {r.etcRequest}</div>
+          )}
+        </span>
+      ) },
+    { key: 'copies', label: '부수', width: 50, num: true, value: (r) => r.copies },
+    { key: 'seal', label: '날인', width: 50, value: (r) => (r.sealRequired ? '필요' : ''),
+      style: { textAlign: 'center' }, cell: (r) => (r.sealRequired ? '🔖' : '—') },
+    { key: 'deadline', label: '기한', width: 62, value: (r) => r.deadline ?? '',
+      style: { textAlign: 'center' },
+      cell: (r) => (r.deadline === '긴급' ? <b style={{ color: 'var(--bad)' }}>긴급</b> : r.deadline) },
+    { key: 'att', label: '첨부', width: 54, value: (r) => attCount(r) || '',
+      style: { textAlign: 'center' },
+      cell: (r) => (
+        <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '1px 7px', color: attCount(r) ? 'var(--navy)' : 'var(--ink-4)' }}
+          title="첨부파일 보기/다운로드" onClick={(e) => { e.stopPropagation(); setAttachFor(r); }}>📎 {attCount(r) || ''}</button>
+      ) },
+    { key: 'sentDate', label: '발송일', width: 84, value: (r) => r.sentDate ?? '',
+      cell: (r) => (r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: 'var(--ink-4)' }}>—</span>) },
+    { key: 'tracking', label: '등기번호', width: 130, value: (r) => r.trackingNo ?? '',
+      cell: (r) => <TrackingLink no={r.trackingNo} /> },
+    { key: 'act', label: '처리', width: 150, value: () => '', wrap: true,
+      cell: (r) => {
+        const isPost = r.status === '발송완료' || r.status === '반송' || r.status === '재발송완료';
+        const isActive = r.status === '진행중' || r.status === '재발송요청';
+        const open = openId === r.id;
+        if (!canProcess) return <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>조회전용</span>;
+        return (
+          <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+            {r.status === '미접수' && (
+              <button className="btn-sm btn-p" style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }}
+                onClick={() => void startProcessing(r)}>▶ 처리 시작</button>
+            )}
+            {(isActive || isPost) && (
+              <button className="btn-sm btn-sm-blue" style={{ fontSize: 'var(--fs-1)' }}
+                title={isPost ? '반송·재발송완료 등 후속 처리' : undefined}
+                onClick={() => setOpenId((id) => (id === r.id ? null : r.id))}>
+                {open ? '접기' : isPost ? '✏️ 상태' : '✏️ 처리'}
+              </button>
+            )}
+            {r.status !== '취소' && (
+              <button className="btn-sm" style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}
+                onClick={() => void cancel(r)}
+                title="필요 없어진 요청을 취소합니다(기록은 남고 대기열에서 빠집니다)">🚫 취소</button>
+            )}
+          </div>
+        );
+      } },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [statusOpts, attByBatch, canProcess, openId]);
+  const grid = useGrid('docsend-process', cols, view, { key: 'requestDate', dir: 'asc' });
+  const tblH = Math.max(260, Math.round(window.innerHeight * 0.52));
+
   async function runBulk(targets: SendRequest[], job: (r: SendRequest) => Promise<void>, label: string) {
     if (!targets.length) return;
     setBulkBusy(true);
@@ -332,54 +434,36 @@ export default function DocSendProcessTab() {
         </div>
       )}
 
-      <div className="tbl-scroll">
-        <table className="tbl">
-          <thead>
-            <tr>
-              {canProcess && <th style={{ width: 30, textAlign: 'center' }} title="일괄처리 선택">☑</th>}
-              <th style={{ textAlign: 'center' }}>상태</th>
-              <th>의뢰일자</th>
-              <th>의뢰인</th>
-              <th>거래처 · 수신자</th>
-              <th>업무구분</th>
-              <th>송부종류</th>
-              <th>문서명</th>
-              <th style={{ textAlign: 'center' }}>부수</th>
-              <th style={{ textAlign: 'center' }}>날인</th>
-              <th style={{ textAlign: 'center' }}>기한</th>
-              <th style={{ textAlign: 'center' }}>첨부</th>
-              <th>발송일</th>
-              <th>등기번호</th>
-              <th style={{ width: 130 }}>처리</th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.length === 0 && (
-              <tr><td colSpan={canProcess ? 15 : 14} style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 24 }}>처리할 발송요청이 없습니다.</td></tr>
-            )}
-            {view.map((r) => (
-              <ProcessRow
-                key={r.id}
-                r={r}
-                canProcess={canProcess}
-                checked={sel.has(r.id)}
-                onCheck={() => toggleSel(r.id)}
-                onCheckBatch={() => toggleBatch(r.batchId)}
-                attCount={attCount(r)}
-                open={openId === r.id}
-                onOpenAttach={() => setAttachFor(r)}
-                onStart={() => startProcessing(r)}
-                onToggle={() => setOpenId((id) => (id === r.id ? null : r.id))}
-                onSaveProgress={(d, t) => saveProgress(r, d, t)}
-                onComplete={(d, t) => complete(r, d, t)}
-                onRevert={(to) => revert(r, to)}
-                onChangeStatus={(to, note) => changeStatus(r, to, note)}
-                onCancel={() => cancel(r)}
-              />
-            ))}
-          </tbody>
-        </table>
+      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', marginBottom: 5 }}>
+        {grid.filterCount > 0 && (
+          <button className="btn-sm" onClick={grid.clearFilters}>열 필터 지우기 ({grid.filterCount})</button>
+        )}
+        <ColumnSettings cols={grid.ordered} view={grid.view} />
       </div>
+
+      <Grid grid={grid} rowKey={(r) => r.id} maxHeight={tblH}
+        rowStyle={(r) => (sel.has(r.id) ? { background: '#F3F8FF' } : {})}
+        select={canProcess ? {
+          picked: sel,
+          toggle: (k) => toggleSel(k),
+          shiftToggle: (r) => toggleBatch(r.batchId),
+          shiftHint: '일괄처리 선택 (Shift+클릭: 같은 문서의 수신자 전체)',
+          selectableKeys: grid.rowsView.map((r) => r.id),
+          setAll: (keys) => setSel(new Set(keys ?? [])),
+        } : undefined}
+        detail={{
+          isOpen: (r) => openId === r.id,
+          render: (r) => (
+            <ProcessBox r={r}
+              onSaveProgress={(d, t) => void saveProgress(r, d, t)}
+              onComplete={(d, t) => void complete(r, d, t)}
+              onRevert={(to) => void revert(r, to)}
+              onChangeStatus={(to, note) => void changeStatus(r, to, note)} />
+          ),
+        }}
+        empty={<Empty text="처리할 발송요청이 없습니다"
+          hint={grid.filterCount > 0 ? '열 아래 칸에 넣은 값으로 걸러서 비었습니다.' : '요청이 올라오면 여기 쌓입니다.'}
+          action={grid.filterCount > 0 ? { label: '열 필터 지우기', onClick: grid.clearFilters } : undefined} />} />
 
       {attachFor && (
         <AttachmentsModal
@@ -396,171 +480,63 @@ export default function DocSendProcessTab() {
 }
 
 // 등기번호 → 우체국 조회(새 창)
-function ProcessRow({
-  r,
-  canProcess,
-  attCount,
-  open,
-  onOpenAttach,
-  onStart,
-  onToggle,
-  onSaveProgress,
-  onComplete,
-  onRevert,
-  onChangeStatus,
-  onCancel,
-  checked,
-  onCheck,
-  onCheckBatch,
-}: {
+/**
+ * 줄 아래에 펴는 처리 상자.
+ *  · 진행중·재발송요청 → 발송일·등기번호를 넣고 마감
+ *  · 발송완료·반송·재발송완료 → 사유를 남기고 후속 처리
+ * 표의 열 수는 부품(Grid)이 맞추므로 여기서는 내용만 그린다.
+ */
+function ProcessBox({ r, onSaveProgress, onComplete, onRevert, onChangeStatus }: {
   r: SendRequest;
-  canProcess: boolean;
-  checked: boolean;
-  onCheck: () => void;
-  onCheckBatch: () => void;
-  attCount: number;
-  open: boolean;
-  onOpenAttach: () => void;
-  onStart: () => void;
-  onToggle: () => void;
   onSaveProgress: (sentDate: string, trackingNo: string) => void;
   onComplete: (sentDate: string, trackingNo: string) => void;
   onRevert: (to: string) => void;
   onChangeStatus: (to: string, note: string) => void;
-  onCancel: () => void;
 }) {
   const [sentDate, setSentDate] = useState(r.sentDate || todayYmd());
   const [trackingNo, setTrackingNo] = useState(r.trackingNo || '');
   const [note, setNote] = useState(r.statusNote || '');
   const isPost = r.status === '발송완료' || r.status === '반송' || r.status === '재발송완료';
-  // 발송일·등기번호를 입력해 마감하는 단계(진행중 → 발송완료 / 재발송요청 → 재발송완료)
   const isActive = r.status === '진행중' || r.status === '재발송요청';
 
-  return (
-    <>
-      <tr style={checked ? { background: '#F3F8FF' } : undefined}>
-        {canProcess && (
-          <td style={{ textAlign: 'center' }}>
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={onCheck}
-              onClick={(e) => { if (e.shiftKey) { e.preventDefault(); onCheckBatch(); } }}
-              title="일괄처리 선택 (Shift+클릭: 같은 문서의 수신자 전체)"
-            />
-          </td>
-        )}
-        <td style={{ textAlign: 'center' }}>
-          <span className="bdg" style={{ fontSize: 'var(--fs-0)', ...statusStyle(r.status) }}>{r.status}</span>
-          {r.statusNote && (
-            <div style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)', marginTop: 2, maxWidth: 96, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.statusNote}>
-              {r.statusNote}
-            </div>
-          )}
-        </td>
-        <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.requestDate?.replace(/-/g, '.')}</td>
-        <td style={{ fontSize: 'var(--fs-2)' }}>{r.requester}</td>
-        {/* 발송담당자가 봉투를 쓸 수 있도록 주소·우편번호·연락처를 함께 보여준다.
-            전자 발송이 아니라 실제 우편이므로 수취인 주소가 이 화면의 핵심 정보다. */}
-        <td style={{ fontSize: 'var(--fs-2)', minWidth: 200 }}>
-          <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
-          {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {r.recipientName} {r.recipientTitle}</span>}
-          {r.address ? (
-            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink)', marginTop: 2, whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>
-              📮 {r.address}
-              {r.phone && <span style={{ color: 'var(--ink-3)' }}>　☎ {r.phone}</span>}
-            </div>
-          ) : (
-            r.workType === '퀵서비스' && (
-              <div style={{ fontSize: 'var(--fs-0)', color: '#b45309', marginTop: 2 }}>⚠️ 주소 미입력</div>
-            )
-          )}
-        </td>
-        <td style={{ fontSize: 'var(--fs-2)' }}>{r.workType}</td>
-        <td style={{ fontSize: 'var(--fs-2)' }}>{r.sendKind}</td>
-        <td className="doc-name" style={{ fontSize: 'var(--fs-2)' }} title={r.docName || undefined}>
-          {r.docName || <span style={{ color: 'var(--ink-4)' }}>—</span>}
-          {r.etcRequest && (
-            <div style={{ fontSize: 'var(--fs-0)', color: '#8a5a00', marginTop: 2, whiteSpace: 'pre-wrap' }} title="기타요청사항">📝 {r.etcRequest}</div>
-          )}
-        </td>
-        <td style={{ textAlign: 'center', fontSize: 'var(--fs-2)' }}>{r.copies}</td>
-        <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{r.sealRequired ? '🔖' : '—'}</td>
-        <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{r.deadline === '긴급' ? <b style={{ color: '#dc2626' }}>긴급</b> : r.deadline}</td>
-        <td style={{ textAlign: 'center' }}>
-          <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '1px 7px', color: attCount ? '#1A2B52' : '#bbb' }} title="첨부파일 보기/다운로드" onClick={onOpenAttach}>📎 {attCount || ''}</button>
-        </td>
-        <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
-        <td><TrackingLink no={r.trackingNo} /></td>
-        <td>
-          {!canProcess ? (
-            <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>조회전용</span>
-          ) : (
-            <>
-              {r.status === '미접수' && (
-                <button className="btn-sm btn-p" style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }} onClick={onStart}>▶ 처리 시작</button>
-              )}
-              {isActive && (
-                <button className="btn-sm btn-sm-blue" style={{ fontSize: 'var(--fs-1)' }} onClick={onToggle}>{open ? '접기' : '✏️ 처리'}</button>
-              )}
-              {isPost && (
-                <button className="btn-sm btn-sm-blue" style={{ fontSize: 'var(--fs-1)' }} onClick={onToggle} title="반송·재발송완료 등 후속 처리">{open ? '접기' : '✏️ 상태'}</button>
-              )}
-              {r.status !== '취소' && (
-                <button
-                  className="btn-sm"
-                  style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}
-                  onClick={onCancel}
-                  title="필요 없어진 요청을 취소합니다(기록은 남고 대기열에서 빠집니다)"
-                >
-                  🚫 취소
-                </button>
-              )}
-            </>
-          )}
-        </td>
-      </tr>
-      {open && canProcess && isActive && (
-        <tr>
-          <td colSpan={15} style={{ background: '#EEF6FF' }}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', padding: '4px 2px' }}>
-              <div className="frow" style={{ minWidth: 170 }}>
-                <span className="fl">발송일<span className="req">*</span></span>
-                <input type="date" value={sentDate} onChange={(e) => setSentDate(e.target.value)} />
-              </div>
-              <div className="frow" style={{ minWidth: 220 }}>
-                <span className="fl">등기번호 <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>(등기인 경우)</span></span>
-                <input value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} placeholder="예: 1234567890123" />
-              </div>
-              <button className="btn-sm btn-sm-blue" onClick={() => onSaveProgress(sentDate, trackingNo)}>💾 저장(진행중 유지)</button>
-              <button className="btn-p" onClick={() => onComplete(sentDate, trackingNo)}>
-                {r.status === '재발송요청' ? '✅ 재발송완료' : '✅ 완료(발송완료)'}
-              </button>
-              <button className="btn-sm" onClick={() => onRevert('미접수')} title="요청자가 다시 수정·삭제할 수 있도록 미접수로 되돌립니다">↩ 미접수로</button>
-            </div>
-          </td>
-        </tr>
-      )}
-      {open && canProcess && isPost && (
-        <tr>
-          <td colSpan={15} style={{ background: '#FEF9F3' }}>
-            <div style={{ padding: '4px 2px' }}>
-              <div style={{ fontSize: 'var(--fs-1)', color: '#8a5a00', marginBottom: 6 }}>
-                발송완료 이후 <b>반송</b>(수취 실패 등) 또는 <b>재발송완료</b>로 후속 처리할 수 있습니다. 사유를 남겨 두면 현황에서 함께 확인됩니다.
-              </div>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <div className="frow" style={{ flex: '1 1 340px', minWidth: 240 }}>
-                  <span className="fl">사유 <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>(반송 시 필수)</span></span>
-                  <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 수취인 부재로 반송 / 주소 보완 후 재발송" />
-                </div>
-                <button className="btn-sm btn-sm-del" onClick={() => onChangeStatus('반송', note)}>↪ 반송</button>
-                <button className="btn-p" onClick={() => onChangeStatus('재발송완료', note)}>✅ 재발송완료</button>
-                <button className="btn-sm" onClick={() => onRevert('진행중')} title="진행중으로 되돌리기">↩ 진행중으로</button>
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
+  if (isActive) {
+    return (
+      <div style={{ background: '#EEF6FF', padding: '8px 10px' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="frow" style={{ minWidth: 170 }}>
+            <span className="fl">발송일<span className="req">*</span></span>
+            <input type="date" value={sentDate} onChange={(e) => setSentDate(e.target.value)} />
+          </div>
+          <div className="frow" style={{ minWidth: 220 }}>
+            <span className="fl">등기번호 <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>(등기인 경우)</span></span>
+            <input value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} placeholder="예: 1234567890123" />
+          </div>
+          <button className="btn-sm btn-sm-blue" onClick={() => onSaveProgress(sentDate, trackingNo)}>💾 저장(진행중 유지)</button>
+          <button className="btn-p" onClick={() => onComplete(sentDate, trackingNo)}>
+            {r.status === '재발송요청' ? '✅ 재발송완료' : '✅ 완료(발송완료)'}
+          </button>
+          <button className="btn-sm" onClick={() => onRevert('미접수')} title="요청자가 다시 수정·삭제할 수 있도록 미접수로 되돌립니다">↩ 미접수로</button>
+        </div>
+      </div>
+    );
+  }
+  if (isPost) {
+    return (
+      <div style={{ background: '#FEF9F3', padding: '8px 10px' }}>
+        <div style={{ fontSize: 'var(--fs-1)', color: '#8a5a00', marginBottom: 6 }}>
+          발송완료 이후 <b>반송</b>(수취 실패 등) 또는 <b>재발송완료</b>로 후속 처리할 수 있습니다. 사유를 남겨 두면 현황에서 함께 확인됩니다.
+        </div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="frow" style={{ flex: '1 1 340px', minWidth: 240 }}>
+            <span className="fl">사유 <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>(반송 시 필수)</span></span>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 수취인 부재로 반송 / 주소 보완 후 재발송" />
+          </div>
+          <button className="btn-sm btn-sm-del" onClick={() => onChangeStatus('반송', note)}>↪ 반송</button>
+          <button className="btn-p" onClick={() => onChangeStatus('재발송완료', note)}>✅ 재발송완료</button>
+          <button className="btn-sm" onClick={() => onRevert('진행중')} title="진행중으로 되돌리기">↩ 진행중으로</button>
+        </div>
+      </div>
+    );
+  }
+  return null;
 }
