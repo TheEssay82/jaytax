@@ -2,7 +2,7 @@
 //
 // **최고관리자 전용**(menu.ts cap: manageUsers). 착수금 금액·내부 우선순위가 들어 있다.
 // 내용은 src/lib/backlog.ts 에 있고, 고치면 배포가 필요하다(개발노트와 같다).
-import { BACKLOG, BACKLOG_PLAN, BACKLOG_WHY, BACKLOG_AS_OF, type Tone, type BacklogItem } from '../../lib/backlog';
+import { BACKLOG, BACKLOG_PLAN, BACKLOG_UI_PLAN, BACKLOG_WHY, BACKLOG_AS_OF, type Tone, type BacklogItem } from '../../lib/backlog';
 
 /** 꼬리표 색 — 뜻을 나른다. due=시한/위험, gold=주목, plain=사실. */
 const TAG_STYLE: Record<Tone, { background: string; color: string }> = {
@@ -110,8 +110,26 @@ export default function BacklogTab() {
             </div>
           ))}
         </div>
+        {/* 편의성·디자인은 **다른 줄기**다. 위 순서와 섞으면 무엇이 급한지 흐려진다. */}
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--rule)' }}>
+          <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>
+            쓰기 편하게 하는 일 — 위와 다른 줄기입니다
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            {BACKLOG_UI_PLAN.map((p) => (
+              <div key={p.step} style={{ display: 'grid', gridTemplateColumns: '26px 1fr', gap: 10 }}>
+                <span style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#A9761F' }}>{p.step}</span>
+                <span style={{ fontSize: 'var(--fs-2)', lineHeight: 1.6, color: 'var(--ink)' }}>
+                  <b style={{ color: 'var(--navy)' }}>{p.text}</b>
+                  {p.note && <span style={{ color: 'var(--ink-3)' }}> · {p.note}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div style={{
-          marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--rule)',
+          marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--rule)',
           fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.75,
         }}>
           {bold(BACKLOG_WHY)}
