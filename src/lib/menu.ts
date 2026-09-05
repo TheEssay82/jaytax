@@ -68,7 +68,9 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'std-tax', label: '⚖️ 세법 검색' },
       { id: 'consult', label: '🧑‍💼 상담진행' },
       { id: 'consult-log', label: '🗂️ 상담기록' },
-      { id: 'library', label: '📁 자료실' },
+      // 📁 자료실은 메뉴에서 뺐다(2026-09-05) — 올린 자료가 0건이었고,
+      // 일반업무관리의 「자료실」(옛 증빙 자료실)과 이름이 겹쳐 어디로 가야 할지 헷갈렸다.
+      // 화면과 표(library_documents)는 그대로 두었으므로 되살리려면 이 줄만 되돌리면 된다.
       { id: 'ai-usage', label: '📊 AI 사용량', cap: 'viewAiUsage' },
     ],
   },
@@ -88,7 +90,7 @@ export const MENU_GROUPS: MenuGroup[] = [
           { id: 'doc-status', label: '📊 발송업무 현황' },
         ],
       },
-      { id: 'evidence', label: '📑 증빙 자료실' },
+      { id: 'evidence', label: '📁 자료실' },
       {
         id: 'inquiry-send',
         label: '📮 조회서 발송관리',

@@ -446,7 +446,7 @@ function TabContent({
       return <DocSendTab initial="process" />;
     case 'doc-status':
       return <DocSendStatusTab />;
-    // 일반업무관리 › 증빙 자료실
+    // 일반업무관리 › 자료실
     case 'evidence':
       return <EvidenceTab />;
     // 일반업무관리 › 기타 중분류

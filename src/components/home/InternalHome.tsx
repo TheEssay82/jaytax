@@ -50,10 +50,9 @@ type ShortcutDef = { key: string; label: string; emoji: string; color: ColorKey;
 const READY: ShortcutDef[] = [
   { key: 'clients', label: '거래처관리', emoji: '🏢', color: 'purple', tab: 'biz-register', allow: (r) => r !== 'external' },
   { key: 'doc', label: '문서발송관리', emoji: '📄', color: 'blue', tab: 'doc-request', allow: (r) => r !== 'external' },
-  { key: 'evidence', label: '증빙 자료실', emoji: '📑', color: 'blue', tab: 'evidence', allow: (r) => r !== 'external' },
+  { key: 'evidence', label: '자료실', emoji: '📁', color: 'blue', tab: 'evidence', allow: (r) => r !== 'external' },
   { key: 'bill', label: '청구서 작성', emoji: '🧾', color: 'amber', tab: 'wizard', allow: (r) => can(r, 'saveInvoice') },
   { key: 'consult', label: '상담진행', emoji: '🧑‍💼', color: 'teal', tab: 'consult', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member'].includes(r) },
-  { key: 'library', label: '자료실', emoji: '📁', color: 'teal', tab: 'library', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member'].includes(r) },
   { key: 'inquiry', label: '조회서 발송', emoji: '📮', color: 'blue', tab: 'conf-register', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member', 'per_head_accountant'].includes(r) },
 ];
 

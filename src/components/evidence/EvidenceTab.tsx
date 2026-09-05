@@ -1,4 +1,5 @@
-// 증빙 자료실 — 일반업무관리 대분류. 각종 계약서·증빙 자료를 업로드·검색·다운로드한다.
+// 자료실 — 일반업무관리 대분류. 각종 계약서·증빙 자료를 올리고 찾고 내려받는다.
+// 2026-09-05 「증빙 자료실」에서 이름을 줄였다(상담관리의 자료실을 없애 겹칠 일이 없다).
 //  열람은 외부인 제외 전 직원(인당회계사 포함), 업로드는 읽기전용·외부인 제외, 수정·삭제는 업로더/관리자(RLS 0038).
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
@@ -80,7 +81,7 @@ export default function EvidenceTab() {
   return (
     <div className="card">
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        📑 증빙 자료실
+        📁 자료실
         <span style={{ marginLeft: 'auto' }}>
           <button className="btn-sm" onClick={reload}>↻ 새로고침</button>
         </span>
