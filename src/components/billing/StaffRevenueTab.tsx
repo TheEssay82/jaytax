@@ -8,6 +8,7 @@
 //
 // 기간은 **사업연도(7/1~익년 6/30)** 가 기본이다. FY2026 = 2026-07~2027-06.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import PivotDrillModal, { type DrillTarget } from './PivotDrillModal';
 import MultiPick from '../common/MultiPick';
 import {
   EMPTY_FILTER, isAll, passes, passesAny, type MultiFilter,
@@ -156,6 +157,11 @@ function StatsPanel() {
     [filtered, rowKey, subKey],
   );
   const max = Math.max(1, ...p.rows.map((r) => p.rowTotal.get(r) ?? 0));
+  // 셀을 누르면 그 칸에 담긴 청구 한 건 한 건을 본다 — 거기서 원자료를 내려받는다.
+  const [drillAt, setDrillAt] = useState<DrillTarget | null>(null);
+  const openDrill = (rowName: string | null, colName: string | null) => setDrillAt({
+    rowName, colName, rowLabel: dimOf(rowKey).label, colLabel: dimOf(colKey).label,
+  });
   const filterCount = [cpaF, staffF, typeF, erpF].filter((f) => !isAll(f)).length;
 
   function copyTsv() {
@@ -268,7 +274,12 @@ function StatsPanel() {
             필터 초기화 ({filterCount})
           </button>
         )}
-        <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={copyTsv}
+        <button className="btn-sm" style={{ marginLeft: 'auto' }}
+          title="지금 걸린 조건의 청구 한 건 한 건을 봅니다 — 거기서 엑셀로 내려받습니다"
+          onClick={() => openDrill(null, null)}>
+          🔎 원자료 ({filtered.length})
+        </button>
+        <button className="btn-sm" onClick={copyTsv}
           title="지금 표를 탭으로 구분해 복사합니다 — 엑셀에 그대로 붙습니다">
           📋 엑셀로 복사
         </button>
@@ -372,7 +383,10 @@ function StatsPanel() {
               <tr key={r}>
                 <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{r}</td>
                 <td className="r" style={{ color: 'var(--ink-3)' }}>{p.counts.get(r) ?? 0}</td>
-                <td className="r" style={{ fontWeight: 700 }}>{fmt(p.rowTotal.get(r) ?? 0)}</td>
+                <td className="r cellable" style={{ fontWeight: 700 }}
+                  title="이 줄에 담긴 청구를 봅니다" onClick={() => openDrill(r, null)}>
+                  {fmt(p.rowTotal.get(r) ?? 0)}
+                </td>
                 <td>
                   <span style={{
                     display: 'block', height: 10, borderRadius: 5,
@@ -383,8 +397,10 @@ function StatsPanel() {
                 {p.cols.map((c) => {
                   const v = p.cell.get(`${r}|${c}`);
                   return (
-                    <td key={c} className="r" style={{ color: 'var(--ink-2)' }}>
-                      {v ? fmt(v) : <span style={{ color: '#DDD' }}>—</span>}
+                    <td key={c} className={v ? 'r cellable' : 'r'} style={{ color: 'var(--ink-2)' }}
+                      title={v ? '이 칸에 담긴 청구를 봅니다' : undefined}
+                      onClick={v ? () => openDrill(r, c) : undefined}>
+                      {v ? fmt(v) : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                     </td>
                   );
                 })}
@@ -448,6 +464,11 @@ function StatsPanel() {
           </>
         )}
       </div>
+
+      {drillAt && (
+        <PivotDrillModal facts={filtered} row={dimOf(rowKey)} col={dimOf(colKey)}
+          target={drillAt} onClose={() => setDrillAt(null)} />
+      )}
     </div>
   );
 }

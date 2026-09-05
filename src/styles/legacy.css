@@ -442,3 +442,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
 .mp-row:hover{background:var(--surface-2)}
 .mp-empty{padding:14px;text-align:center;color:var(--ink-3);font-size:var(--fs-1)}
 .mp-foot{display:flex;align-items:center;gap:6px;font-size:var(--fs-0);color:var(--ink-3);padding-top:6px}
+
+/* 피벗 셀 속내 창 */
+.drill{width:min(1000px,95vw);margin-top:7vh;max-height:86vh;overflow:auto}
+/* 누를 수 있는 숫자 칸 — 눌러서 속을 볼 수 있다는 것이 보여야 한다. */
+.cellable{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;text-decoration-color:var(--ink-4)}
+.cellable:hover{background:var(--navy-bg);color:var(--navy)}
