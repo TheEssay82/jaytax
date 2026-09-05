@@ -28,9 +28,10 @@ import {
   agingReport, notifyOverdue, listArUnmatched, type AgingRow, type AgingSource,
 } from '../../lib/agingApi';
 import {
-  parseArLedger, attachEntities, saveArItems, listArUploads, assignArClient, excludeArClient,
-  type ArRead, type ArUpload,
+  parseArLedger, attachEntities, saveArItems, listArUploads, listArItems, assignArClient, excludeArClient,
+  type ArItem, type ArRead, type ArUpload,
 } from '../../lib/arLedgerApi';
+import { balanceOf, bucketOf, hasAnything } from '../../lib/receivableCalc';
 import { AgingPanel, AgingDetail } from './AgingPanel';
 import { AgingLedgerBox } from './AgingLedgerBox';
 
@@ -62,7 +63,7 @@ const prevMonth = () => {
 interface Row {
   placeId: string; entityId: string; code: string; name: string; placeName: string;
   cpa: string; staff: string; teams: string[];
-  opening: number; issued: number; paid: number; balance: number;
+  opening: number; issued: number; cancelled: number; paid: number; writeoff: number; balance: number;
 }
 
 export default function ReceivableTab() {
@@ -76,6 +77,7 @@ export default function ReceivableTab() {
   const [openings, setOpenings] = useState<ReceivableOpening[]>([]);
   const [reqs, setReqs] = useState<InvoiceRequest[]>([]);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [arItems, setArItems] = useState<ArItem[]>([]);
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const [preview, setPreview] = useState<(LedgerRead & { fileName: string }) | null>(null);
   const [loading, setLoading] = useState(true);
@@ -108,10 +110,12 @@ export default function ReceivableTab() {
       setErr(null);
       const ents = entities.length ? entities : await listBizEntities();
       if (!entities.length) setEntities(ents);
-      const [o, r, rc, up] = await Promise.all([
+      const [o, r, rc, up, ai] = await Promise.all([
         listReceivableOpenings(), listInvoiceRequests(), listReceipts(), listUploads(),
+        // 대손(당기대손액)은 ERP 미수금대장에서 온다.
+        listArItems(),
       ]);
-      setOpenings(o); setReqs(r); setReceipts(rc); setUploads(up); setPreview(null);
+      setOpenings(o); setReqs(r); setReceipts(rc); setUploads(up); setArItems(ai); setPreview(null);
       setArUploads(await listArUploads());
       setArPreview(null);
     } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); }
@@ -129,7 +133,7 @@ export default function ReceivableTab() {
           name: corpDisplayName(e.name, e.corpForm, e.corpFormPosition), placeName: p.placeName,
           cpa: p.cpa || '', staff: (p.staff ?? []).map((x) => x.staffName).join(','),
           teams: p.salesTeams ?? [],
-          opening: 0, issued: 0, paid: 0, balance: 0,
+          opening: 0, issued: 0, cancelled: 0, paid: 0, writeoff: 0, balance: 0,
         });
       }
     }
@@ -142,9 +146,20 @@ export default function ReceivableTab() {
     for (const q0 of reqs) {
       if (q0.ym > ym) continue;
       if (team && q0.team !== team) continue;
-      if (q0.status !== '발행완료' && q0.status !== '수정발행') continue;   // 요청만 된 건 아직 채권이 아니다
+      const b = bucketOf(q0);          // 요청만 된 건·요청 단계 취소는 채권이 아니다
+      if (!b) continue;
       const r = q0.placeId ? byPlace.get(q0.placeId) : null;
-      if (r) r.issued += q0.total;
+      if (!r) continue;
+      if (b === 'issued') r.issued += q0.total;
+      else r.cancelled += Math.abs(q0.total);   // (−)수정발행을 「취소」 칸에 양수로
+    }
+    // 대손은 ERP 미수금대장의 당기대손액에서 온다 — 달마다의 움직임이라 누계로 더한다.
+    for (const a of arItems) {
+      if (a.ym > ym) continue;
+      if (team && a.team !== team) continue;
+      if (!a.writeoff) continue;
+      const r = a.placeId ? byPlace.get(a.placeId) : null;
+      if (r) r.writeoff += a.writeoff;
     }
     for (const c of receipts) {
       if (c.ym > ym) continue;
@@ -154,11 +169,11 @@ export default function ReceivableTab() {
     }
     const out: Row[] = [];
     for (const r of byPlace.values()) {
-      r.balance = r.opening + r.issued - r.paid;
-      if (r.opening || r.issued || r.paid) out.push(r);
+      r.balance = balanceOf(r);
+      if (hasAnything(r)) out.push(r);
     }
     return out.sort((a, b) => b.balance - a.balance);
-  }, [entities, openings, reqs, receipts, ym, team]);
+  }, [entities, openings, reqs, receipts, arItems, ym, team]);
 
   const view = useMemo(() => {
     let l = rows;
@@ -184,12 +199,20 @@ export default function ReceivableTab() {
     { key: 'place', label: '사업장', width: 150, value: (r) => r.placeName },
     { key: 'cpa', label: '담당CPA', width: 76, value: (r) => r.cpa },
     { key: 'staff', label: '담당직원', width: 84, value: (r) => r.staff },
-    { key: 'opening', label: '기초', width: 96, num: true, value: (r) => r.opening, sum: (r) => r.opening,
+    // 열 이름에 **언제 것인지**를 적는다 — 「기초」만 보면 어느 시점인지 알 수 없다.
+    { key: 'opening', label: `기초(${OPENING_AS_OF})`, width: 104, num: true,
+      value: (r) => r.opening, sum: (r) => r.opening,
       cell: (r) => <span style={{ color: 'var(--ink-3)' }}>{r.opening ? won(r.opening) : ''}</span> },
     { key: 'issued', label: '발행', width: 96, num: true, value: (r) => r.issued, sum: (r) => r.issued,
       cell: (r) => (r.issued ? won(r.issued) : '') },
+    // (−)수정발행 — 이미 나간 것을 무른 것. 채권에서 뺀다.
+    { key: 'cancelled', label: '취소', width: 92, num: true, value: (r) => r.cancelled, sum: (r) => r.cancelled,
+      cell: (r) => <span style={{ color: 'var(--bad)' }}>{r.cancelled ? `−${won(r.cancelled)}` : ''}</span> },
     { key: 'paid', label: '입금', width: 96, num: true, value: (r) => r.paid, sum: (r) => r.paid,
       cell: (r) => <span style={{ color: 'var(--good)' }}>{r.paid ? won(r.paid) : ''}</span> },
+    // 장기미수를 털어 낸 것. ERP 미수금대장의 당기대손액에서 온다.
+    { key: 'writeoff', label: '대손', width: 92, num: true, value: (r) => r.writeoff, sum: (r) => r.writeoff,
+      cell: (r) => <span style={{ color: 'var(--warn)' }}>{r.writeoff ? won(r.writeoff) : ''}</span> },
     { key: 'balance', label: '미수금', width: 104, num: true, value: (r) => r.balance, sum: (r) => r.balance,
       // 음수는 붉게 — 입금이 채권보다 많다는 뜻이라 눈에 걸려야 한다.
       cell: (r) => <b style={{ color: r.balance < 0 ? 'var(--bad)' : 'var(--navy)' }}>{won(r.balance)}</b> },
@@ -284,7 +307,9 @@ export default function ReceivableTab() {
         💰 수금·미수금
         <input type="month" value={ym} onChange={(e) => { if (e.target.value) setYm(e.target.value); }}
           style={{ fontWeight: 700 }} title="이 달까지의 누계로 미수금을 계산합니다 — 아무 달이나 지정할 수 있습니다" />
-        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>까지 누계</span>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
+          까지 누계 · <b>VAT 포함</b>
+        </span>
         <span style={{ display: 'inline-flex', gap: 3 }}>
           <button className="btn-sm" onClick={() => setYm(shiftYm(ym, -1))} title="한 달 앞으로">◀</button>
           <button className="btn-sm" onClick={() => setYm(prevMonth())} title="지난달로">지난달</button>
@@ -300,10 +325,18 @@ export default function ReceivableTab() {
       {err && <div className="alert-w">{err}</div>}
 
       <Guide id="receivable" label="셈법 자세히"
-        summary={<><b>미수금 = 기초 + 발행 − 입금</b> (모두 부가세 포함). 위에서 고른 <b>팀 기준</b>입니다.</>}>
-        · 기초는 {OPENING_AS_OF} 잔액, 발행은 <b>발행완료</b>된 건, 입금은 ERP 부서별원장의 <b>외상매출금 대변</b>입니다.
+        summary={<>
+          <b>미수금 = 기초 + 발행 − 취소 − 입금 − 대손</b>.
+          {' '}모든 금액은 <b>부가세 포함</b>이고, <b>{ym}까지 누계</b> · 위에서 고른 <b>팀</b> 기준입니다.
+        </>}>
+        · <b>기초</b> — <b>{OPENING_AS_OF}</b> 시점의 잔액입니다. 그 앞의 청구는 계약에 연결되어 있지 않아
+        {' '}사업장마다 한 줄로 넣어 두었습니다.
+        <br />· <b>발행</b> — <b>발행완료</b>된 세금계산서. 요청만 올라간 건은 아직 채권이 아닙니다.
+        <br />· <b>취소</b> — 이미 나간 것을 무른 <b>(−)수정세금계산서</b>입니다.
+        {' '}요청 단계에서 취소한 건은 <b>세금계산서가 나간 적이 없어</b> 여기 들어오지 않습니다.
+        <br />· <b>입금</b> — ERP 부서별원장의 <b>외상매출금 대변</b>입니다.
+        <br />· <b>대손</b> — ERP 미수금대장의 <b>당기대손액</b>. 장기미수를 털어 낸 것입니다.
         <br />· ERP는 입금을 청구건에 연결하지 않으므로(입금 전표에 거래#가 없습니다) <b>사업장 단위</b>로만 잡습니다.
-        <br />· 기초·발행·입금·나이 분석이 모두 고른 팀 것만 셉니다.
       </Guide>
 
       {/* 화면 셋 — 숫자는 '지금 손볼 것이 있는가'를 알린다. 원장 화면에 들어가지 않아도 보이게. */}
@@ -534,7 +567,11 @@ export default function ReceivableTab() {
         </label>
         <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>
           {view.length}곳 · 기초 {won(sum((r) => r.opening))} · 발행 {won(sum((r) => r.issued))}
-          {' · '}입금 {won(sum((r) => r.paid))} · <b style={{ color: 'var(--navy)' }}>미수 {won(sum((r) => r.balance))}</b>
+          {sum((r) => r.cancelled) > 0 && <> · 취소 <span style={{ color: 'var(--bad)' }}>−{won(sum((r) => r.cancelled))}</span></>}
+          {' · '}입금 {won(sum((r) => r.paid))}
+          {sum((r) => r.writeoff) > 0 && <> · 대손 <span style={{ color: 'var(--warn)' }}>{won(sum((r) => r.writeoff))}</span></>}
+          {' · '}<b style={{ color: 'var(--navy)' }}>미수 {won(sum((r) => r.balance))}</b>
+          <span style={{ color: 'var(--ink-3)' }}> (VAT 포함)</span>
         </span>
         <span style={{ display: 'inline-flex', gap: 4, marginLeft: 'auto' }}>
           {grid.filterCount > 0 && (
