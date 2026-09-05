@@ -1,6 +1,9 @@
 // 문서발송 › 발송업무 현황 — 요청·처리 전체 내역 조회(읽기 전용 대시보드)
 // 기본은 처리중(미접수+진행중)만, '발송완료'는 상태 필터로만 표시.
 import { useEffect, useMemo, useState } from 'react';
+import { Grid, GridExport, useGrid, type GridCol } from '../billing/grid';
+import { ColumnSettings } from '../clients/tableKit';
+import Empty from '../common/Empty';
 import {
   listSendRequests,
   listAttachments,
@@ -49,8 +52,8 @@ export default function DocSendStatusTab() {
   const [workF, setWorkF] = useState('');
   const [reqF, setReqF] = useState('');
   const [q, setQ] = useState('');
-  const [sortBySent, setSortBySent] = useState(false); // false=의뢰일자, true=발송일
-  const [sortDir, setSortDir] = useState(-1); // -1 최신순
+  const [sortBySent] = useState(false); // false=의뢰일자, true=발송일
+  const [sortDir] = useState(-1); // -1 최신순 (표 안 정렬은 Grid 의 제목행이 맡는다)
   const [attachFor, setAttachFor] = useState<SendRequest | null>(null);
 
   // 기간 필터 — 기준일(의뢰일자/발송일) + 시작·종료. 비우면 전체 기간.
@@ -152,11 +155,71 @@ export default function DocSendStatusTab() {
 
   const attCount = (r: SendRequest) => (r.batchId ? (attByBatch[r.batchId]?.length ?? 0) : 0);
 
-  function toggleSort(bySent: boolean) {
-    if (sortBySent === bySent) setSortDir((d) => -d);
-    else { setSortBySent(bySent); setSortDir(-1); }
-  }
-  const sortMark = (bySent: boolean) => (sortBySent === bySent ? (sortDir === -1 ? ' ▼' : ' ▲') : '');
+  /** 열 필터의 상태 후보 — 지금 자료에 실제로 있는 값에서 뽑는다(고정 목록을 또 두면 어긋난다). */
+  const statusOpts = useMemo(
+    () => [...new Set(view.map((r) => r.status).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')),
+    [view],
+  );
+
+  // 표는 Grid 한 부품으로 그린다 — 정렬·열 필터·열 숨김/순서·너비·복사/엑셀이 함께 온다.
+  // 열이 열셋이라 좁은 화면에서 넘치는데, 그전에는 숨길 방법이 없었다.
+  const cols: GridCol<SendRequest>[] = useMemo(() => [
+    { key: 'status', label: '상태', width: 92, value: (r) => r.status, opts: statusOpts, wrap: true,
+      cell: (r) => (
+        <>
+          <span className="bdg" style={{ fontSize: 'var(--fs-0)', ...statusStyle(r.status) }}>{r.status}</span>
+          {r.statusNote && (
+            <div style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)', marginTop: 2 }} title={`사유: ${r.statusNote}`}>
+              {r.statusNote}
+            </div>
+          )}
+        </>
+      ) },
+    { key: 'requestDate', label: '의뢰일자', width: 84, value: (r) => r.requestDate ?? '',
+      cell: (r) => r.requestDate?.replace(/-/g, '.') ?? '' },
+    { key: 'requester', label: '의뢰인', width: 76, value: (r) => r.requester },
+    { key: 'company', label: '거래처 · 수신자', width: 210, wrap: true,
+      value: (r) => `${r.companyName}${r.recipientName ? ` ${r.recipientName}` : ''}`,
+      cell: (r) => (
+        <span title={r.address ? `${r.address}${r.phone ? ` · ☎ ${r.phone}` : ''}` : undefined}>
+          <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
+          {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {r.recipientName} {r.recipientTitle}</span>}
+          {r.address && <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 1 }}>📮 {r.address}</div>}
+        </span>
+      ) },
+    { key: 'workType', label: '업무구분', width: 92, value: (r) => r.workType },
+    { key: 'sendKind', label: '송부종류', width: 92, value: (r) => r.sendKind },
+    { key: 'docName', label: '문서명', width: 190, wrap: true, value: (r) => r.docName ?? '',
+      cell: (r) => (
+        <span title={r.docName || undefined}>
+          {r.docName || <span style={{ color: 'var(--ink-4)' }}>—</span>}
+          {r.etcRequest && (
+            <div style={{ fontSize: 'var(--fs-0)', color: '#8a5a00', marginTop: 2, whiteSpace: 'pre-wrap' }} title="기타요청사항">
+              📝 {r.etcRequest}
+            </div>
+          )}
+        </span>
+      ) },
+    { key: 'copies', label: '부수', width: 50, num: true, value: (r) => r.copies },
+    { key: 'seal', label: '날인', width: 50, value: (r) => (r.sealRequired ? '필요' : ''),
+      style: { textAlign: 'center' }, cell: (r) => (r.sealRequired ? '🔖' : '—') },
+    { key: 'deadline', label: '기한', width: 62, value: (r) => r.deadline ?? '',
+      style: { textAlign: 'center' },
+      cell: (r) => (r.deadline === '긴급' ? <b style={{ color: 'var(--bad)' }}>긴급</b> : r.deadline) },
+    { key: 'att', label: '첨부', width: 54, value: (r) => attCount(r) || '',
+      style: { textAlign: 'center' },
+      cell: (r) => (
+        <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '1px 7px', color: attCount(r) ? 'var(--navy)' : 'var(--ink-4)' }}
+          title="첨부파일 보기/다운로드" onClick={() => setAttachFor(r)}>📎 {attCount(r) || ''}</button>
+      ) },
+    { key: 'sentDate', label: '발송일', width: 84, value: (r) => r.sentDate ?? '',
+      cell: (r) => (r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: 'var(--ink-4)' }}>—</span>) },
+    { key: 'tracking', label: '등기번호', width: 130, value: (r) => r.trackingNo ?? '',
+      cell: (r) => (r.trackingNo ? <TrackingLink no={r.trackingNo} /> : <span style={{ color: 'var(--ink-4)' }}>—</span>) },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [attByBatch, statusOpts]);
+  const grid = useGrid('docsend-status', cols, view, { key: 'requestDate', dir: 'desc' });
+  const tblH = Math.max(260, Math.round(window.innerHeight * 0.52));
 
   if (loading) {
     return (
@@ -244,6 +307,12 @@ export default function DocSendStatusTab() {
         >
           ⬇ 엑셀
         </button>
+        {/* 서식 있는 엑셀은 위에 그대로 두고, 표를 그대로 옮기는 복사와 열 설정만 더한다. */}
+        <GridExport grid={grid} name="발송업무현황" csv={false} />
+        <ColumnSettings cols={grid.ordered} view={grid.view} />
+        {grid.filterCount > 0 && (
+          <button className="btn-sm" onClick={grid.clearFilters}>열 필터 지우기 ({grid.filterCount})</button>
+        )}
       </div>
 
       {/* 기간 필터 — 과거 기록 조회용. 기준일을 발송일로 바꾸면 실제 발송된 시점으로 집계된다. */}
@@ -315,74 +384,10 @@ export default function DocSendStatusTab() {
         </span>
       </div>
 
-      <div className="tbl-scroll">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'center' }}>상태</th>
-              <th onClick={() => toggleSort(false)} style={{ cursor: 'pointer' }}>의뢰일자{sortMark(false)}</th>
-              <th>의뢰인</th>
-              <th>거래처 · 수신자</th>
-              <th>업무구분</th>
-              <th>송부종류</th>
-              <th>문서명</th>
-              <th style={{ textAlign: 'center' }}>부수</th>
-              <th style={{ textAlign: 'center' }}>날인</th>
-              <th style={{ textAlign: 'center' }}>기한</th>
-              <th style={{ textAlign: 'center' }}>첨부</th>
-              <th onClick={() => toggleSort(true)} style={{ cursor: 'pointer' }}>발송일{sortMark(true)}</th>
-              <th>등기번호</th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.length === 0 && (
-              <tr><td colSpan={13} style={{ textAlign: 'center', color: 'var(--ink-4)', padding: 24 }}>표시할 발송건이 없습니다.</td></tr>
-            )}
-            {view.map((r) => (
-              <tr key={r.id}>
-                <td style={{ textAlign: 'center' }}>
-                  <span className="bdg" style={{ fontSize: 'var(--fs-0)', ...statusStyle(r.status) }}>{r.status}</span>
-                  {r.statusNote && (
-                    <div
-                      style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)', marginTop: 2, maxWidth: 110, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                      title={`사유: ${r.statusNote}`}
-                    >
-                      {r.statusNote}
-                    </div>
-                  )}
-                </td>
-                <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.requestDate?.replace(/-/g, '.')}</td>
-                <td style={{ fontSize: 'var(--fs-2)' }}>{r.requester}</td>
-                <td style={{ fontSize: 'var(--fs-2)' }} title={r.address ? `${r.address}${r.phone ? ` · ☎ ${r.phone}` : ''}` : undefined}>
-                  <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
-                  {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {r.recipientName} {r.recipientTitle}</span>}
-                  {r.address && <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240 }}>📮 {r.address}</div>}
-                </td>
-                <td style={{ fontSize: 'var(--fs-2)' }}>{r.workType}</td>
-                <td style={{ fontSize: 'var(--fs-2)' }}>{r.sendKind}</td>
-                <td className="doc-name" style={{ fontSize: 'var(--fs-2)' }} title={r.docName || undefined}>
-                  {r.docName || <span style={{ color: 'var(--ink-4)' }}>—</span>}
-                  {r.etcRequest && (
-                    <div style={{ fontSize: 'var(--fs-0)', color: '#8a5a00', marginTop: 2, whiteSpace: 'pre-wrap' }} title="기타요청사항">📝 {r.etcRequest}</div>
-                  )}
-                </td>
-                <td style={{ textAlign: 'center', fontSize: 'var(--fs-2)' }}>{r.copies}</td>
-                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{r.sealRequired ? '🔖' : '—'}</td>
-                <td style={{ textAlign: 'center', fontSize: 'var(--fs-1)' }}>{r.deadline === '긴급' ? <b style={{ color: '#dc2626' }}>긴급</b> : r.deadline}</td>
-                <td style={{ textAlign: 'center' }}>
-                  <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '1px 7px', color: attCount(r) ? '#1A2B52' : '#bbb' }} title="첨부파일 보기/다운로드" onClick={() => setAttachFor(r)}>📎 {attCount(r) || ''}</button>
-                </td>
-                <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.sentDate ? r.sentDate.replace(/-/g, '.') : <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
-                <td>
-                  {r.trackingNo ? (
-                    <TrackingLink no={r.trackingNo} />
-                  ) : <span style={{ color: 'var(--ink-4)' }}>—</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Grid grid={grid} rowKey={(r) => r.id} maxHeight={tblH}
+        empty={<Empty text="표시할 발송건이 없습니다"
+          hint={grid.filterCount > 0 ? '열 아래 칸에 넣은 값으로 걸러서 비었습니다.' : '기간이나 조건을 바꿔 보세요.'}
+          action={grid.filterCount > 0 ? { label: '열 필터 지우기', onClick: grid.clearFilters } : undefined} />} />
 
       {attachFor && (
         <AttachmentsModal

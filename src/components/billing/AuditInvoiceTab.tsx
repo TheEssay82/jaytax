@@ -31,7 +31,7 @@ import {
   AUDIT_TEAM, type AuditProposal,
 } from '../../lib/auditInvoiceApi';
 import { FINAL_APPROVER } from '../../lib/invoiceMonthApi';
-import { Grid, useGrid, type GridCol } from './grid';
+import { Grid, GridExport, useGrid, type GridCol } from './grid';
 import { ProposalRequestModal, type ProposalEdit } from './ProposalRequestModal';
 import { ColumnSettings } from '../clients/tableKit';
 import { CorrectionModal } from './CorrectionModal';
@@ -616,6 +616,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           )}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             {propGrid.filterCount > 0 && <button className="btn-sm" onClick={propGrid.clearFilters}>필터 초기화</button>}
+            <GridExport grid={propGrid} name="감사팀_청구제안" onMessage={flash} />
             <ColumnSettings cols={propGrid.ordered} view={propGrid.view} onMessage={flash} />
           </span>
         </div>
@@ -800,6 +801,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           )}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             {workGrid.filterCount > 0 && <button className="btn-sm" onClick={workGrid.clearFilters}>필터 초기화</button>}
+            <GridExport grid={workGrid} name="감사팀_발행처리" onMessage={flash} />
             <ColumnSettings cols={workGrid.ordered} view={workGrid.view} onMessage={flash} />
           </span>
         </div>
@@ -839,6 +841,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           </span>
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             {histGrid.filterCount > 0 && <button className="btn-sm" onClick={histGrid.clearFilters}>필터 초기화</button>}
+            <GridExport grid={histGrid} name="감사팀_발행이력" onMessage={flash} />
             <ColumnSettings cols={histGrid.ordered} view={histGrid.view} onMessage={flash} />
           </span>
         </div>

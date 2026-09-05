@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import {
   ColFilter, ResizeHandle, clip, stickyTop, useTableView,
 } from '../clients/tableKit';
+import { copyTable, downloadCsv, stamp } from '../../lib/tableExport';
 
 export interface GridCol<T> {
   key: string;
@@ -23,6 +24,11 @@ export interface GridCol<T> {
   opts?: readonly string[];
   /** 바닥 합계행에 더할 값. */
   sum?: (row: T) => number;
+  /**
+   * 여러 줄이 들어가는 칸(주소·사유·메모가 아래에 붙는 자리).
+   * 기본은 한 줄로 자르고 …으로 줄인다 — 켜면 자르지 않고 줄을 늘린다.
+   */
+  wrap?: boolean;
   style?: React.CSSProperties;
 }
 
@@ -75,6 +81,39 @@ export function useGrid<T>(viewKey: string, cols: GridCol<T>[], rows: T[], defau
 export type GridState<T> = ReturnType<typeof useGrid<T>>;
 
 /**
+ * 표를 그대로 복사·내려받는 단추.
+ * **보이는 그대로** 나간다 — 숨긴 열은 빠지고, 정렬·필터가 적용된 순서 그대로다.
+ * 화면과 다른 것이 나오면 붙여 넣고 나서 다시 맞춰야 하므로 그렇게 맞춘다.
+ */
+export function GridExport<T>({ grid, name, onMessage, csv = true }: {
+  grid: GridState<T>; name: string; onMessage?: (t: string) => void;
+  /**
+   * CSV 단추를 낼지. **서식까지 갖춘 엑셀 저장이 이미 있는 화면은 false** 로 둔다 —
+   * 여기 CSV 로 바꾸면 서식·머리글·시트 구성을 잃어 오히려 나빠진다.
+   */
+  csv?: boolean;
+}) {
+  const head = grid.shown.map((c) => c.label);
+  const body = () => grid.rowsView.map((r) => grid.shown.map((c) => c.value(r) ?? ''));
+  return (
+    <span style={{ display: 'inline-flex', gap: 4 }}>
+      <button className="btn-sm" title="지금 보이는 표를 탭으로 갈라 복사합니다 — 엑셀에 그대로 붙습니다"
+        onClick={() => void copyTable(head, body())
+          .then(() => onMessage?.(`✓ ${grid.rowsView.length}줄을 복사했습니다`))
+          .catch(() => onMessage?.('복사가 막혀 있습니다 — 엑셀 단추를 쓰세요'))}>
+        📋 복사
+      </button>
+      {csv && (
+        <button className="btn-sm" title="지금 보이는 표를 CSV 파일로 내려받습니다"
+          onClick={() => { downloadCsv(`${name}_${stamp()}`, head, body()); onMessage?.('✓ 내려받았습니다'); }}>
+          📥 엑셀
+        </button>
+      )}
+    </span>
+  );
+}
+
+/**
  * 표 본체. 선택 체크박스 열은 select 를 주면 맨 앞에 붙는다.
  * 합계행은 sum 을 가진 열이 하나라도 있으면 나온다.
  */
@@ -89,7 +128,8 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340
     /** 전체선택/해제 */ setAll: (keys: string[] | null) => void;
   };
   rowStyle?: (row: T) => React.CSSProperties;
-  empty: string;
+  /** 비었을 때. 글 한 줄이어도 되고, 다음에 할 일을 담은 <Empty> 를 넣어도 된다. */
+  empty: React.ReactNode;
   maxHeight?: number;
   /** 합계행 맨 왼쪽에 넣을 설명. 없으면 '합계 N건'. */
   footerLabel?: string;
@@ -141,7 +181,10 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340
         </thead>
         <tbody>
           {rowsView.length === 0 && (
-            <tr><td colSpan={shown.length + (select ? 1 : 0)} style={{ textAlign: 'center', padding: 20, color: 'var(--ink-4)' }}>
+            <tr><td colSpan={shown.length + (select ? 1 : 0)}
+              style={typeof empty === 'string'
+                ? { textAlign: 'center', padding: 20, color: 'var(--ink-4)' }
+                : { padding: 0 }}>
               {empty}
             </td></tr>
           )}
@@ -157,7 +200,8 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340
                   </td>
                 )}
                 {shown.map((c) => (
-                  <td key={c.key} style={{ ...clip, textAlign: c.num ? 'right' : 'left', ...c.style }}>
+                  <td key={c.key}
+                    style={{ ...(c.wrap ? {} : clip), textAlign: c.num ? 'right' : 'left', ...c.style }}>
                     {c.cell ? c.cell(r) : c.value(r)}
                   </td>
                 ))}

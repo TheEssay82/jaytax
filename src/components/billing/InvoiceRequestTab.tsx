@@ -27,7 +27,7 @@ import {
   candidateFromDraft, draftFromCandidate, reconcileDrafts, listDraftLog, changeSummary,
   type InvoiceDraft, type ReconcileRow, type DraftLog,
 } from '../../lib/invoiceDraftApi';
-import { Grid, useGrid, type GridCol } from './grid';
+import { Grid, GridExport, useGrid, type GridCol } from './grid';
 import { ColumnSettings } from '../clients/tableKit';
 import { CorrectionModal } from './CorrectionModal';
 import { WorkflowManual } from './WorkflowManual';
@@ -860,6 +860,7 @@ ${noContract ? `
           )}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             {candGrid.filterCount > 0 && <button className="btn-sm" onClick={candGrid.clearFilters}>필터 초기화 ({candGrid.filterCount})</button>}
+            <GridExport grid={candGrid} name={`청구예정_${ym}`} onMessage={flash} />
             <ColumnSettings cols={candGrid.ordered} view={candGrid.view} onMessage={flash} />
           </span>
         </div>
@@ -906,6 +907,7 @@ ${noContract ? `
           )}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             {reqGrid.filterCount > 0 && <button className="btn-sm" onClick={reqGrid.clearFilters}>필터 초기화 ({reqGrid.filterCount})</button>}
+            <GridExport grid={reqGrid} name={`발행요청_${ym}`} onMessage={flash} />
             <ColumnSettings cols={reqGrid.ordered} view={reqGrid.view} onMessage={flash} />
           </span>
         </div>

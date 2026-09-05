@@ -6,8 +6,10 @@
 // 원장에는 사업자번호가 없어 **거래처코드**로 사업장에 붙인다.
 // 화면 위에서 우리 계산과 원장 숫자를 나란히 놓아, 어긋나면 바로 보이게 했다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Grid, GridExport, useGrid, type GridCol } from './grid';
+import { ColumnSettings } from '../clients/tableKit';
 import { useMineOnly } from '../../lib/mineOnly';
-import { EmptyRow } from '../common/Empty';
+import Empty from '../common/Empty';
 import { useEscape } from '../../lib/useEscape';
 import Loading from '../common/Loading';
 import { takeNavQuery } from '../../lib/navSearch';
@@ -171,6 +173,30 @@ export default function ReceivableTab() {
   }, [rows, q, onlyOpen, mineOnly, profileName]);
 
   const sum = (f: (r: Row) => number) => view.reduce((s, r) => s + f(r), 0);
+
+  // 표는 Grid 한 부품으로 그린다 — 정렬·열 필터·열 숨김/순서·너비·복사/엑셀이 함께 온다.
+  // 열이 여덟이라 좁은 화면에서 넘치는데, 그전에는 숨길 방법이 없었다.
+  const balCols: GridCol<Row>[] = useMemo(() => [
+    { key: 'code', label: '코드', width: 84, value: (r) => r.code,
+      cell: (r) => <span style={{ fontFamily: 'monospace', fontSize: 'var(--fs-0)' }}>{r.code}</span> },
+    { key: 'name', label: '거래처', width: 150, value: (r) => r.name,
+      cell: (r) => <b style={{ color: 'var(--navy)' }}>{r.name}</b> },
+    { key: 'place', label: '사업장', width: 150, value: (r) => r.placeName },
+    { key: 'cpa', label: '담당CPA', width: 76, value: (r) => r.cpa },
+    { key: 'staff', label: '담당직원', width: 84, value: (r) => r.staff },
+    { key: 'opening', label: '기초', width: 96, num: true, value: (r) => r.opening, sum: (r) => r.opening,
+      cell: (r) => <span style={{ color: 'var(--ink-3)' }}>{r.opening ? won(r.opening) : ''}</span> },
+    { key: 'issued', label: '발행', width: 96, num: true, value: (r) => r.issued, sum: (r) => r.issued,
+      cell: (r) => (r.issued ? won(r.issued) : '') },
+    { key: 'paid', label: '입금', width: 96, num: true, value: (r) => r.paid, sum: (r) => r.paid,
+      cell: (r) => <span style={{ color: 'var(--good)' }}>{r.paid ? won(r.paid) : ''}</span> },
+    { key: 'balance', label: '미수금', width: 104, num: true, value: (r) => r.balance, sum: (r) => r.balance,
+      // 음수는 붉게 — 입금이 채권보다 많다는 뜻이라 눈에 걸려야 한다.
+      cell: (r) => <b style={{ color: r.balance < 0 ? 'var(--bad)' : 'var(--navy)' }}>{won(r.balance)}</b> },
+  ], []);
+  const grid = useGrid('receivable-balance', balCols, view, { key: 'balance', dir: 'desc' });
+  // Grid 는 높이를 스스로 정하지 않으므로(작은 표에 쓰이던 부품이다) 여기서 화면에 맞춘다.
+  const balanceH = Math.max(260, Math.round(window.innerHeight * 0.52));
 
   /** 나이 분석의 기준일 = 고른 달의 말일. 오늘이 그 달 안이면 오늘로 본다. */
   const asOf = useMemo(() => {
@@ -510,50 +536,30 @@ export default function ReceivableTab() {
           {view.length}곳 · 기초 {won(sum((r) => r.opening))} · 발행 {won(sum((r) => r.issued))}
           {' · '}입금 {won(sum((r) => r.paid))} · <b style={{ color: 'var(--navy)' }}>미수 {won(sum((r) => r.balance))}</b>
         </span>
+        <span style={{ display: 'inline-flex', gap: 4, marginLeft: 'auto' }}>
+          {grid.filterCount > 0 && (
+            <button className="btn-sm" onClick={grid.clearFilters}>열 필터 지우기 ({grid.filterCount})</button>
+          )}
+          <GridExport grid={grid} name={`미수금_${team}_${ym}`} onMessage={flash} />
+          <ColumnSettings cols={grid.ordered} view={grid.view} onMessage={flash} />
+        </span>
       </div>
 
-      <div className="tbl-scroll">
-        <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
-          <thead>
-            <tr>
-              <th>코드</th><th>거래처</th><th>사업장</th><th>담당CPA</th>
-              <th className="r">기초</th><th className="r">발행</th><th className="r">입금</th><th className="r">미수금</th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.length === 0 && (
-              <EmptyRow colSpan={8} text="해당하는 거래처가 없습니다"
-                hint={onlyOpen
-                  ? `「잔액 있는 곳만」이 켜져 있습니다 — 끄면 잔액 0인 곳까지 ${rows.length}곳이 보입니다.`
-                  : `전체는 ${rows.length}곳입니다. 검색어나 팀을 확인해 주세요.`}
-                action={onlyOpen
-                  ? { label: '잔액 0인 곳도 보기', onClick: () => setOnlyOpen(false) }
-                  : (q ? { label: '검색어 지우기', onClick: () => setQ('') } : undefined)} />
-            )}
-            {view.map((r) => (
-              <tr key={r.placeId}>
-                <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-0)' }}>{r.code}</td>
-                <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{r.name}</td>
-                <td>{r.placeName}</td>
-                <td style={{ fontSize: 'var(--fs-1)' }}>{r.cpa}</td>
-                <td className="r" style={{ color: 'var(--ink-3)' }}>{r.opening ? won(r.opening) : ''}</td>
-                <td className="r">{r.issued ? won(r.issued) : ''}</td>
-                <td className="r" style={{ color: 'var(--good)' }}>{r.paid ? won(r.paid) : ''}</td>
-                <td className="r" style={{ fontWeight: 700, color: r.balance < 0 ? '#c33' : '#1A2B52' }}>{won(r.balance)}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
-              <td colSpan={4}>합계 {view.length}곳</td>
-              <td className="r">{won(sum((r) => r.opening))}</td>
-              <td className="r">{won(sum((r) => r.issued))}</td>
-              <td className="r">{won(sum((r) => r.paid))}</td>
-              <td className="r">{won(sum((r) => r.balance))}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+      <Grid grid={grid} rowKey={(r) => r.placeId} maxHeight={balanceH}
+        footerLabel={`합계 ${grid.rowsView.length}곳`}
+        empty={
+          <Empty text="해당하는 거래처가 없습니다"
+            hint={onlyOpen
+              ? `「잔액 있는 곳만」이 켜져 있습니다 — 끄면 잔액 0인 곳까지 ${rows.length}곳이 보입니다.`
+              : grid.filterCount > 0
+                ? '열 아래 칸에 넣은 값으로 걸러서 비었습니다.'
+                : `전체는 ${rows.length}곳입니다. 검색어나 팀을 확인해 주세요.`}
+            action={onlyOpen
+              ? { label: '잔액 0인 곳도 보기', onClick: () => setOnlyOpen(false) }
+              : grid.filterCount > 0
+                ? { label: '열 필터 지우기', onClick: grid.clearFilters }
+                : (q ? { label: '검색어 지우기', onClick: () => setQ('') } : undefined)} />
+        } />
       </>)}
     </div>
   );
