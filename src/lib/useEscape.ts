@@ -11,6 +11,16 @@ import { useEffect } from 'react';
 /** 지금 떠 있는 창들. 마지막이 맨 위. */
 const stack: symbol[] = [];
 
+/** 이 창이 맨 위인가 — ESC 는 **가장 나중에 뜬 창만** 닫는다. */
+export function isTop(me: symbol, s: symbol[] = stack): boolean {
+  return s[s.length - 1] === me;
+}
+/** 창을 목록에서 뺀다(닫힐 때). 없으면 아무 일도 하지 않는다. */
+export function drop(me: symbol, s: symbol[] = stack): void {
+  const i = s.indexOf(me);
+  if (i >= 0) s.splice(i, 1);
+}
+
 export function useEscape(onClose: () => void, active = true): void {
   useEffect(() => {
     if (!active) return;
@@ -18,7 +28,7 @@ export function useEscape(onClose: () => void, active = true): void {
     stack.push(me);
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (stack[stack.length - 1] !== me) return;   // 내 위에 다른 창이 있다
+      if (!isTop(me)) return;   // 내 위에 다른 창이 있다
       e.stopPropagation();
       onClose();
     };
@@ -26,8 +36,7 @@ export function useEscape(onClose: () => void, active = true): void {
     window.addEventListener('keydown', onKey, true);
     return () => {
       window.removeEventListener('keydown', onKey, true);
-      const i = stack.indexOf(me);
-      if (i >= 0) stack.splice(i, 1);
+      drop(me);
     };
   }, [onClose, active]);
 }

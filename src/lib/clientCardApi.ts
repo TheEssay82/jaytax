@@ -10,6 +10,7 @@ import { supabase } from './supabase';
 import { annualize } from './annualize';
 import { buildStaffIndex, resolveStaff, type ContractStaffRow, type PlaceStaffRow, type PlaceRef } from './contractStaff';
 import { listArItems } from './arLedgerApi';
+import { isOver6m } from './aging';
 
 export interface CardPlace {
   id: string; name: string; bizRegNo: string;
@@ -32,14 +33,6 @@ export interface ClientCard {
   /** ERP 미수금대장 기준. 대장이 아직 없으면 null — **추정하지 않는다.** */
   receivable: { asOfYm: string; balance: number; over6mCount: number } | null;
   recent: CardInvoice[];
-}
-
-/** 6개월 넘게 남은 채권인가 — 발행일 기준. */
-function isOver6m(issued: string | null, asOfYm: string): boolean {
-  if (!issued) return false;
-  const [y, m] = asOfYm.split('-').map(Number);
-  const cut = new Date(y, m - 1 - 6, 1);
-  return new Date(issued) < cut;
 }
 
 export async function loadClientCard(entityId: string): Promise<ClientCard> {

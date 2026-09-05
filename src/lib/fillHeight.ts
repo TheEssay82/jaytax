@@ -11,9 +11,17 @@
 import { useLayoutEffect } from 'react';
 
 /** 이보다 작아지면 차라리 페이지를 굴리는 편이 낫다. */
-const MIN = 220;
+export const MIN = 220;
 /** 창 바닥과의 숨 쉴 틈. */
-const GAP = 18;
+export const GAP = 18;
+
+/**
+ * 표에 줄 높이 — 셈만 따로 뺀다(브라우저 없이 검사할 수 있게).
+ * `top` 은 문서 맨 위에서 표까지, `viewport` 는 창 높이.
+ */
+export function heightFor(top: number, viewport: number, gap = GAP, min = MIN): number {
+  return Math.max(min, Math.round(viewport - top - gap));
+}
 
 /** 같은 값이면 쓰지 않는다 — 쓰면 다시 크기가 바뀌고, 관찰자가 또 불려 맴돈다. */
 function set(el: HTMLElement, px: number): void {
@@ -35,7 +43,7 @@ export function fitTableHeights(): void {
   if (els.length === 0) return;
 
   const y = window.scrollY;
-  for (const el of els) set(el, window.innerHeight - (el.getBoundingClientRect().top + y) - GAP);
+  for (const el of els) set(el, heightFor(el.getBoundingClientRect().top + y, window.innerHeight));
 
   // 표 **아래**에 남는 것(카드 안쪽 여백·카드 아래 여백·본문 아래 패딩)은 화면마다 다르고
   // CSS 로는 알 수 없다. 그래서 실제로 얼마나 넘쳤는지를 보고 그만큼 한 번 더 조인다.

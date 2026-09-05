@@ -67,3 +67,17 @@ export function summarize(items: AgingItem[]): {
   }
   return { total, overdue, buckets };
 }
+
+/**
+ * 6개월 넘게 남은 채권인가 — **발행일** 기준.
+ *
+ * 거래처 한 장(ClientCard)에서 「6개월↑ N건」을 셀 때 쓴다.
+ * 기준은 대장의 귀속월(YYYY-MM)이고, 그 달의 1일에서 여섯 달을 뺀 날이 자르는 선이다.
+ * 발행일을 모르면 **오래된 것으로 보지 않는다** — 모르는 것을 단정하지 않는다.
+ */
+export function isOver6m(issued: string | null, asOfYm: string): boolean {
+  if (!issued) return false;
+  const [y, m] = asOfYm.split('-').map(Number);
+  const cut = new Date(y, m - 1 - 6, 1);
+  return new Date(issued) < cut;
+}

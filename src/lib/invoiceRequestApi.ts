@@ -3,6 +3,9 @@
 // 흐름: 매출계약에서 그 달 청구예정을 전개(billingSchedule) → 발행요청 생성 → 발행완료(세계번호·발행일).
 // 금액은 요청 시점 스냅샷으로 굳힌다 — 계약이 나중에 바뀌어도 이미 나간 요청·발행 이력은 그대로여야 한다.
 import { supabase, assertWrote } from './supabase';
+import {
+  candidateKey, isCandidate, pickDocEmail, pickPlace, takenKeys, erpAccountOf,
+} from './invoiceCandidates';
 import { billingItemsForMonth } from './billingSchedule';
 import { listSalesContracts, type SalesContract } from './salesContractApi';
 import { corpDisplayName, type BizEntityFull } from './bizRegistryApi';
@@ -26,13 +29,7 @@ export type ErpAccount = (typeof ERP_ACCOUNTS)[number];
  *  · 가치평가·실사·자문 등 = 기타용역수입
  * 기업진단수입·경영자문수입·임의감사수입은 대응하는 매출유형이 아직 없어 화면에서 직접 고른다.
  */
-export function erpAccountOf(categoryCode: string): ErpAccount {
-  const c = categoryCode || '';
-  if (c === 'TAX.BOOK' || c === 'TAX.FILING.VAT' || c === 'TAX.FILING.WHT') return '기장대리수입';
-  if (c.startsWith('TAX.FILING') || c.startsWith('AUD.SVC.FILING')) return '세무조정수입';
-  if (c === 'AUD.AUDIT') return '회계감사수입';
-  return '기타용역수입';
-}
+export { erpAccountOf } from './invoiceCandidates';
 
 /**
  * 발행요청 상태.
@@ -171,16 +168,6 @@ export interface InvoiceCandidate {
  * 세금계산서 수신 이메일 고르기.
  * 사업장 담당자 > 대표연락처 > 아무 담당자 순. 거래처에 전용 필드가 생기면 그쪽이 우선이 된다.
  */
-function pickDocEmail(contacts: BizContact[], placeId: string | null): string {
-  // 이직·퇴사로 접어 둔 담당자에게 보내면 안 된다.
-  const cs = contacts.filter((c) => c.email.trim() && c.active);
-  if (!cs.length) return '';
-  return (placeId ? cs.find((c) => c.placeId === placeId && c.isPrimary)?.email : '')
-    || (placeId ? cs.find((c) => c.placeId === placeId)?.email : '')
-    || cs.find((c) => c.isPrimary)?.email
-    || cs[0].email;
-}
-
 /**
  * 그 달에 청구할 계약 항목을 펼쳐 발행요청 후보로 만든다.
  * 이미 요청된 건(취소 제외)은 빼고 돌려준다.
@@ -198,10 +185,7 @@ export async function listInvoiceCandidates(
   for (const c of contacts) {
     const l = byEntity.get(c.entityId); if (l) l.push(c); else byEntity.set(c.entityId, [c]);
   }
-  const taken = new Set(
-    existing.filter((r) => r.status !== '취소')
-      .map((r) => `${r.contractId ?? ''}|${r.installmentId ?? ''}`),
-  );
+  const taken = takenKeys(existing);
   const entMap = new Map(entities.map((e) => [e.id, e]));
 
   const out: InvoiceCandidate[] = [];
@@ -210,11 +194,10 @@ export async function listInvoiceCandidates(
     const items = billingItemsForMonth(c, ym);
     if (!items.length) continue;
     const e = entMap.get(c.entityId);
-    const place = e?.places.find((p) => p.id === c.placeId) ?? e?.places.find((p) => p.isHeadquarters) ?? e?.places[0];
+    const place = pickPlace(e?.places ?? [], c.placeId);
     for (const it of items) {
-      const key = `${c.id}|${it.installmentId ?? ''}`;
-      if (taken.has(key)) continue;
-      if (it.net <= 0) continue;
+      const key = candidateKey(c.id, it.installmentId);
+      if (!isCandidate(key, it.net, taken)) continue;
       out.push({
         key,
         entityId: c.entityId,

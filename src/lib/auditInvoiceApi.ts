@@ -10,7 +10,10 @@ import { supabase } from './supabase';
 import { todayYmd } from './format';
 import { billingItemsForMonth } from './billingSchedule';
 import { listSalesContracts } from './salesContractApi';
-import { erpAccountOf, listInvoiceRequests, type InvoiceCandidate } from './invoiceRequestApi';
+import { listInvoiceRequests, type InvoiceCandidate } from './invoiceRequestApi';
+import {
+  byUrgency, candidateKey, erpAccountOf, pickPlace, shouldPropose, takenKeys,
+} from './invoiceCandidates';
 import { corpDisplayName, type BizEntityFull } from './bizRegistryApi';
 import { listBizContacts } from './bizContactApi';
 
@@ -44,24 +47,22 @@ export async function listAuditProposals(
     listBizContacts(),
     listNotifiedKeys(),
   ]);
-  const taken = new Set(
-    existing.filter((r) => r.status !== '취소').map((r) => `${r.contractId ?? ''}|${r.installmentId ?? ''}`),
-  );
+  const taken = takenKeys(existing);
   const entMap = new Map(entities.map((e) => [e.id, e]));
   const out: AuditProposal[] = [];
 
   for (const c of contracts) {
     if (c.team !== AUDIT_TEAM) continue;
     const e = entMap.get(c.entityId);
-    const place = e?.places.find((p) => p.id === c.placeId) ?? e?.places.find((p) => p.isHeadquarters) ?? e?.places[0];
+    const place = pickPlace(e?.places ?? [], c.placeId);
     for (const it of c.installments) {
-      if (!it.dueDate || it.billedAt) continue;
-      const over = daysBetween(it.dueDate, today);
-      if (over < -withinDays) continue;                       // 아직 멀었다
-      const key = `${c.id}|${it.id ?? ''}`;
+      const over = it.dueDate ? daysBetween(it.dueDate, today) : 0;
+      if (!shouldPropose(it, over, withinDays)) continue;
+      const dueDate = it.dueDate!;   // shouldPropose 가 없는 건을 이미 걸렀다
+      const key = candidateKey(c.id, it.id);
       if (taken.has(key)) continue;
       // 금액은 청구엔진을 그대로 쓴다 — 할인이 걸린 계약도 같은 값이 나오게.
-      const ym = it.dueDate.slice(0, 7);
+      const ym = dueDate.slice(0, 7);
       const item = billingItemsForMonth(c, ym).find((x) => x.installmentId === (it.id ?? null));
       const net = item ? item.net : Math.round(it.amount);
       if (net <= 0) continue;
@@ -86,14 +87,14 @@ export async function listAuditProposals(
         erpAccount: erpAccountOf(c.categoryCode),
         docEmail: cs.find((x) => x.placeId === place?.id && x.isPrimary)?.email
           ?? cs.find((x) => x.isPrimary)?.email ?? cs[0]?.email ?? '',
-        dueDate: it.dueDate,
+        dueDate,
         overdueDays: over,
         notified: notices.has(key),
       });
     }
   }
   // 오래 지난 것부터 — 밀린 순서가 곧 급한 순서다.
-  return out.sort((a, b) => b.overdueDays - a.overdueDays || a.companyName.localeCompare(b.companyName, 'ko'));
+  return out.sort(byUrgency);
 }
 
 /**

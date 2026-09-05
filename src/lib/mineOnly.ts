@@ -28,7 +28,8 @@ export function setMineOnly(v: boolean): void {
   for (const f of listeners) f();
 }
 
-function subscribe(f: () => void): () => void {
+/** 값이 바뀔 때 알려 준다. React 가 쓰고, 테스트가 「헛되이 알리지 않는지」를 본다. */
+export function subscribe(f: () => void): () => void {
   listeners.add(f);
   return () => { listeners.delete(f); };
 }
