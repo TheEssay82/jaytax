@@ -1,5 +1,9 @@
 // 청구기록 탭 — 원본 rHistory 포팅 (목록·필터·정렬·상세펼침·수정·삭제·청구서 PDF)
 import { useEffect, useMemo, useState } from 'react';
+import Loading from '../common/Loading';
+import { Grid, GridExport, useGrid, type GridCol } from '../billing/grid';
+import { ColumnSettings } from '../clients/tableKit';
+import Empty from '../common/Empty';
 import { createPortal } from 'react-dom';
 import type { BillingRecord } from '../../types';
 import { useBillingData } from '../../hooks/useBillingData';
@@ -37,8 +41,9 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
   const [filter, setFilter] = useState('');
   const [year, setYear] = useState('');
   const [biz, setBiz] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('fiscalYear');
-  const [sortDir, setSortDir] = useState(-1);
+  // 표 안 정렬은 Grid 의 제목행이 맡는다. 여기 둘은 목록을 처음 세울 때의 기본 순서다.
+  const [sortKey] = useState<SortKey>('fiscalYear');
+  const [sortDir] = useState(-1);
   const [expandId, setExpandId] = useState<string | null>(null);
 
   const allYears = useMemo(
@@ -60,13 +65,65 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
     return arr;
   }, [records, year, biz, filter, sortKey, sortDir]);
 
-  function sort(key: SortKey) {
-    if (sortKey === key) setSortDir((d) => d * -1);
-    else {
-      setSortKey(key);
-      setSortDir(1);
-    }
-  }
+  // 표는 Grid 한 부품으로 그린다 — 정렬·열 필터·열 숨김/순서·너비·복사/엑셀이 함께 온다.
+  // 상세 펼침은 부품의 detail 로 넘긴다(colSpan 을 부품이 알아서 맞춘다).
+  const cols: GridCol<BillingRecord>[] = useMemo(() => [
+    { key: 'fiscalYear', label: '귀속연도', width: 74, value: (r) => r.fiscalYear,
+      cell: (r) => `${r.fiscalYear}년` },
+    { key: 'bizType', label: '구분', width: 74, value: (r) => r.bizType, opts: ['법인', '개인'],
+      cell: (r) => (
+        <>
+          <span className={`bdg ${r.bizType === '법인' ? 'b-law' : 'b-per'}`}>{r.bizType}</span>
+          {isNewForYear(records, { id: r.selClientId || '', companyName: r.companyName }, r.fiscalYear)
+            && <> <span className="bdg b-new">신규</span></>}
+        </>
+      ) },
+    { key: 'manager', label: '담당자', width: 74, value: (r) => r.manager },
+    { key: 'companyName', label: '거래처명', width: 170, value: (r) => r.companyName,
+      cell: (r) => (
+        <>
+          <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
+          {r.status === 'draft' && <> <span className="bdg-draft">작성중</span></>}
+        </>
+      ) },
+    { key: 'rev', label: '매출액', width: 108, num: true, value: (r) => r.rev || 0, sum: (r) => r.rev || 0,
+      style: { fontFamily: 'monospace' }, cell: (r) => fm(r.rev || 0) },
+    { key: 'A', label: '기본보수A', width: 100, num: true, value: (r) => r.A || 0, sum: (r) => r.A || 0,
+      style: { fontFamily: 'monospace' }, cell: (r) => fm(r.A || 0) },
+    { key: 'C', label: '보수총계C', width: 100, num: true, value: (r) => r.C || 0, sum: (r) => r.C || 0,
+      style: { fontFamily: 'monospace', color: 'var(--ink-2)' }, cell: (r) => fm(r.C || 0) },
+    { key: 'disc', label: '할인⑧', width: 92, num: true, value: (r) => r.disc || 0, sum: (r) => r.disc || 0,
+      style: { fontFamily: 'monospace', color: 'var(--bad)' },
+      cell: (r) => (r.disc ? `-${fm(r.disc)}` : '-') },
+    { key: 'D', label: '총보수D', width: 100, num: true, value: (r) => r.D || 0, sum: (r) => r.D || 0,
+      style: { fontFamily: 'monospace' }, cell: (r) => fm(r.D || 0) },
+    { key: 'VAT', label: 'VAT⑨', width: 92, num: true, value: (r) => r.VAT || 0, sum: (r) => r.VAT || 0,
+      style: { fontFamily: 'monospace', color: 'var(--ink-3)' }, cell: (r) => fm(r.VAT || 0) },
+    { key: 'grand', label: '최종청구금액', width: 116, num: true, value: (r) => r.grand || 0, sum: (r) => r.grand || 0,
+      style: { fontFamily: 'monospace' },
+      cell: (r) => <b style={{ color: 'var(--navy)' }}>{fm(r.grand || 0)}</b> },
+    { key: 'savedAt', label: '저장일', width: 84, value: (r) => r.savedAt ?? '',
+      style: { color: 'var(--ink-3)' }, cell: (r) => dt(r.savedAt) },
+    { key: 'act', label: '관리', width: 150, value: () => '',
+      // 단추를 누를 때 줄이 펼쳐지지 않게 여기서 이벤트를 끊는다.
+      cell: (r) => (
+        <div style={{ display: 'flex', gap: 3 }} onClick={(e) => e.stopPropagation()}>
+          <button className="btn-sm" onClick={() => setPrintRec(r)} title="청구서 PDF/인쇄">📄 PDF</button>
+          {r.status === 'draft' && canFinalize && (
+            <button className="btn-sm btn-sm-navy" onClick={() => void finalize(r)}>확정</button>
+          )}
+          {(canFinalize || (r.status === 'draft' && isOwnRecord(r, user?.id ?? '', profileName))) && (
+            <button className="btn-sm" onClick={() => edit(r)}>✏️</button>
+          )}
+          {(canDelete || (r.status === 'draft' && isOwnRecord(r, user?.id ?? '', profileName))) && (
+            <button className="btn-sm btn-sm-del" onClick={() => void del(r)}>🗑</button>
+          )}
+        </div>
+      ) },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [records, canFinalize, canDelete, user?.id, profileName]);
+  const grid = useGrid('billing-history', cols, view, { key: 'fiscalYear', dir: 'desc' });
+  const tblH = Math.max(260, Math.round(window.innerHeight * 0.52));
 
   async function del(r: BillingRecord) {
     if (!confirm(`'${r.companyName}' ${r.fiscalYear}년 청구기록을 삭제하시겠습니까?`)) return;
@@ -104,18 +161,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
     }
   }
 
-  const sum = (f: (r: BillingRecord) => number) => view.reduce((s, r) => s + (f(r) || 0), 0);
-
-  if (loading) {
-    return (
-      <div className="card">
-        <div className="chdr">📋 청구기록</div>
-        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>
-      </div>
-    );
-  }
-
-  const ind = (k: SortKey) => (sortKey === k ? (sortDir > 0 ? ' ▲' : ' ▼') : ' ⇅');
+  if (loading) return <Loading title="📋 청구기록" rows={10} />;
 
   return (
     <div className="card">
@@ -145,97 +191,31 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
           <option value="법인">법인</option>
           <option value="개인">개인</option>
         </select>
+        <span style={{ display: 'inline-flex', gap: 4, marginLeft: 'auto' }}>
+          {grid.filterCount > 0 && (
+            <button className="btn-sm" onClick={grid.clearFilters}>열 필터 지우기 ({grid.filterCount})</button>
+          )}
+          <GridExport grid={grid} name="청구기록" />
+          <ColumnSettings cols={grid.ordered} view={grid.view} />
+        </span>
       </div>
 
-      <div className="tbl-scroll">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th onClick={() => sort('fiscalYear')} style={{ cursor: 'pointer' }}>
-                귀속연도{ind('fiscalYear')}
-              </th>
-              <th>구분</th>
-              <th onClick={() => sort('manager')} style={{ cursor: 'pointer' }}>
-                담당자{ind('manager')}
-              </th>
-              <th onClick={() => sort('companyName')} style={{ cursor: 'pointer' }}>
-                거래처명{ind('companyName')}
-              </th>
-              <th className="r" onClick={() => sort('rev')} style={{ cursor: 'pointer' }}>
-                매출액{ind('rev')}
-              </th>
-              <th className="r" onClick={() => sort('A')} style={{ cursor: 'pointer' }}>
-                기본보수A{ind('A')}
-              </th>
-              <th className="r" onClick={() => sort('C')} style={{ cursor: 'pointer' }}>
-                보수총계C{ind('C')}
-              </th>
-              <th className="r" onClick={() => sort('disc')} style={{ cursor: 'pointer' }}>
-                할인⑧{ind('disc')}
-              </th>
-              <th className="r" onClick={() => sort('D')} style={{ cursor: 'pointer' }}>
-                총보수D{ind('D')}
-              </th>
-              <th className="r" onClick={() => sort('VAT')} style={{ cursor: 'pointer' }}>
-                VAT⑨{ind('VAT')}
-              </th>
-              <th className="r" onClick={() => sort('grand')} style={{ cursor: 'pointer' }}>
-                최종청구금액{ind('grand')}
-              </th>
-              <th>저장일</th>
-              <th>관리</th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.length === 0 && (
-              <tr>
-                <td colSpan={13} style={{ textAlign: 'center', padding: 24, color: 'var(--ink-4)' }}>
-                  기록 없음
-                </td>
-              </tr>
-            )}
-            {view.map((r) => (
-              <HistRow
-                key={r.id}
-                r={r}
-                expanded={expandId === r.id}
-                isNew={isNewForYear(records, { id: r.selClientId || '', companyName: r.companyName }, r.fiscalYear)}
-                onToggle={() => setExpandId((id) => (id === r.id ? null : r.id))}
-                onEdit={() => edit(r)}
-                onDel={() => del(r)}
-                onFinalize={() => finalize(r)}
-                onPrint={() => setPrintRec(r)}
-                canDelete={canDelete || (r.status === 'draft' && isOwnRecord(r, user?.id ?? '', profileName))}
-                canFinalize={canFinalize}
-                canEdit={canFinalize || (r.status === 'draft' && isOwnRecord(r, user?.id ?? '', profileName))}
-              />
-            ))}
-          </tbody>
-          {view.length > 0 && (
-            <tfoot style={{ background: '#F5F1EB', fontWeight: 700 }}>
-              <tr style={{ borderTop: '2px solid var(--navy)' }}>
-                <td colSpan={4} style={{ padding: '7px 9px' }}>
-                  합계 ({view.length}건)
-                </td>
-                <td className="r" style={{ fontFamily: 'monospace' }}>{fm(sum((r) => r.rev))}</td>
-                <td className="r" style={{ fontFamily: 'monospace' }}>{fm(sum((r) => r.A))}</td>
-                <td className="r" style={{ fontFamily: 'monospace' }}>{fm(sum((r) => r.C))}</td>
-                <td className="r" style={{ fontFamily: 'monospace', color: '#DC2626' }}>
-                  -{fm(sum((r) => r.disc))}
-                </td>
-                <td className="r" style={{ fontFamily: 'monospace' }}>{fm(sum((r) => r.D))}</td>
-                <td className="r" style={{ fontFamily: 'monospace', color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>
-                  {fm(sum((r) => r.VAT))}
-                </td>
-                <td className="r" style={{ fontFamily: 'monospace', color: 'var(--navy)' }}>
-                  {fm(sum((r) => r.grand))}
-                </td>
-                <td colSpan={2}></td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
+      <Grid grid={grid} rowKey={(r) => r.id} maxHeight={tblH}
+        footerLabel={`합계 (${grid.rowsView.length}건)`}
+        detail={{
+          isOpen: (r) => expandId === r.id,
+          onToggle: (r) => setExpandId((id) => (id === r.id ? null : r.id)),
+          render: (r) => <HistDetail r={r} />,
+        }}
+        empty={<Empty text="기록 없음"
+          hint={grid.filterCount > 0 || filter || year || biz
+            ? '조건을 걸어서 비었습니다.'
+            : '청구서를 작성해 저장하면 여기 쌓입니다.'}
+          action={grid.filterCount > 0
+            ? { label: '열 필터 지우기', onClick: grid.clearFilters }
+            : (filter || year || biz)
+              ? { label: '조건 지우기', onClick: () => { setFilter(''); setYear(''); setBiz(''); } }
+              : undefined} />} />
 
       {printRec &&
         createPortal(
@@ -254,162 +234,86 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
   );
 }
 
-interface RowProps {
-  r: BillingRecord;
-  expanded: boolean;
-  isNew: boolean;
-  onToggle: () => void;
-  onEdit: () => void;
-  onDel: () => void;
-  onFinalize: () => void;
-  onPrint: () => void;
-  canDelete: boolean;
-  canFinalize: boolean;
-  canEdit: boolean;
-}
-
-function HistRow({ r, expanded, isNew, onToggle, onEdit, onDel, onFinalize, onPrint, canDelete, canFinalize, canEdit }: RowProps) {
+/** 줄을 펼쳤을 때 아래에 나오는 상세 — 업무량 측정 내역까지.
+ *  표의 열 수는 부품(Grid)이 알아서 맞추므로 여기서는 내용만 그린다. */
+function HistDetail({ r }: { r: BillingRecord }) {
   return (
-    <>
-      <tr onClick={onToggle} title="클릭: 업무량 상세" style={{ cursor: 'pointer' }}>
-        <td>{r.fiscalYear}년</td>
-        <td>
-          <span className={`bdg ${r.bizType === '법인' ? 'b-law' : 'b-per'}`}>{r.bizType}</span>
-          {isNew && (
-            <>
-              {' '}
-              <span className="bdg b-new">신규</span>
-            </>
-          )}
-        </td>
-        <td>{r.manager}</td>
-        <td style={{ fontWeight: 700, color: 'var(--navy)' }}>
-          {r.companyName}
-          {r.status === 'draft' && (
-            <>
-              {' '}
-              <span className="bdg-draft">작성중</span>
-            </>
-          )}
-        </td>
-        <td className="r" style={{ fontFamily: 'monospace' }}>{fm(r.rev || 0)}</td>
-        <td className="r" style={{ fontFamily: 'monospace' }}>{fm(r.A || 0)}</td>
-        <td className="r" style={{ fontFamily: 'monospace', color: 'var(--ink-2)' }}>{fm(r.C || 0)}</td>
-        <td className="r" style={{ fontFamily: 'monospace', color: '#DC2626' }}>
-          {r.disc ? '-' + fm(r.disc) : '-'}
-        </td>
-        <td className="r" style={{ fontFamily: 'monospace' }}>{fm(r.D || 0)}</td>
-        <td className="r" style={{ fontFamily: 'monospace', color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>{fm(r.VAT || 0)}</td>
-        <td className="r" style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--navy)' }}>
-          {fm(r.grand || 0)}
-        </td>
-        <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{dt(r.savedAt)}</td>
-        <td>
-          <div style={{ display: 'flex', gap: 3 }} onClick={(e) => e.stopPropagation()}>
-            <button className="btn-sm" onClick={onPrint} title="청구서 PDF/인쇄">
-              📄 PDF
-            </button>
-            {r.status === 'draft' && canFinalize && (
-              <button className="btn-sm btn-sm-navy" onClick={onFinalize}>
-                확정
-              </button>
-            )}
-            {canEdit && (
-              <button className="btn-sm btn-sm-grn" onClick={onEdit}>
-                수정
-              </button>
-            )}
-            {canDelete && (
-              <button className="btn-sm btn-sm-del" onClick={onDel}>
-                🗑
-              </button>
-            )}
-          </div>
-        </td>
-      </tr>
-      {expanded && (
-        <tr>
-          <td colSpan={13}>
-            <div className="hdet">
-              <div className="hdet-grid">
-                <div className="hdet-item">
-                  <label>기본업무보수 A)</label>
-                  <strong>{fm(r.A || 0)}원</strong>
-                </div>
-                <div className="hdet-item">
-                  <label>추가업무보수 B)</label>
-                  <strong>{fm(r.Btot || 0)}원</strong>
-                </div>
-                <div className="hdet-item">
-                  <label>보수총계 C) ← 할인 전</label>
-                  <strong style={{ color: 'var(--navy)' }}>{fm(r.C || 0)}원</strong>
-                </div>
-                <div className="hdet-item">
-                  <label>할인금액 ⑧</label>
-                  <strong style={{ color: '#DC2626' }}>-{fm(r.disc || 0)}원</strong>
-                </div>
-                <div className="hdet-item">
-                  <label>총보수합계 D)</label>
-                  <strong>{fm(r.D || 0)}원</strong>
-                </div>
-                <div className="hdet-item">
-                  <label>VAT ⑨</label>
-                  <strong>{fm(r.VAT || 0)}원</strong>
-                </div>
-                <div className="hdet-item">
-                  <label>최종 청구금액</label>
-                  <strong style={{ fontSize: 'var(--fs-4)', color: 'var(--navy)' }}>{fm(r.grand || 0)}원</strong>
-                </div>
-                <div className="hdet-item">
-                  <label>할인 사유</label>
-                  <strong>{r.discContent || '-'}</strong>
-                </div>
+          <div className="hdet">
+            <div className="hdet-grid">
+              <div className="hdet-item">
+                <label>기본업무보수 A)</label>
+                <strong>{fm(r.A || 0)}원</strong>
               </div>
-              <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--ink-2)', margin: '8px 0 4px' }}>
-                업무량 측정 내역
+              <div className="hdet-item">
+                <label>추가업무보수 B)</label>
+                <strong>{fm(r.Btot || 0)}원</strong>
               </div>
-              <div className="wf-grid">
-                <div className="wf-item">
-                  <span>방문상담</span>
-                  {r.visitCount || '-'} / {r.visitDiff || '-'}
-                </div>
-                <div className="wf-item">
-                  <span>전화상담</span>
-                  {r.phoneCount || '-'} / {r.phoneDiff || '-'}
-                </div>
-                <div className="wf-item">
-                  <span>기장업무</span>
-                  {r.장부P || 'X'}
-                  {r.장부P === 'O' ? ` (${r.장부A}/${r.장부D})` : ''}
-                </div>
-                <div className="wf-item">
-                  <span>결산업무</span>
-                  {r.결산P || 'X'}
-                  {r.결산P === 'O' ? ` (${r.결산A}/${r.결산D})` : ''}
-                </div>
-                <div className="wf-item">
-                  <span>조정업무</span>
-                  {r.조정P || 'X'}
-                  {r.조정P === 'O' ? ` (${r.조정A}/${r.조정D})` : ''}
-                </div>
-                <div className="wf-item">
-                  <span>원가계산</span>
-                  {r.원가P || 'X'}
-                  {r.원가P === 'O' ? ` (${r.원가A}/${r.원가D})` : ''}
-                </div>
-                <div className="wf-item">
-                  <span>증빙발행</span>
-                  {r.evCount || '-'}
-                </div>
-                <div className="wf-item">
-                  <span>기타</span>
-                  {r.otherContent || '-'}
-                </div>
+              <div className="hdet-item">
+                <label>보수총계 C) ← 할인 전</label>
+                <strong style={{ color: 'var(--navy)' }}>{fm(r.C || 0)}원</strong>
+              </div>
+              <div className="hdet-item">
+                <label>할인금액 ⑧</label>
+                <strong style={{ color: '#DC2626' }}>-{fm(r.disc || 0)}원</strong>
+              </div>
+              <div className="hdet-item">
+                <label>총보수합계 D)</label>
+                <strong>{fm(r.D || 0)}원</strong>
+              </div>
+              <div className="hdet-item">
+                <label>VAT ⑨</label>
+                <strong>{fm(r.VAT || 0)}원</strong>
+              </div>
+              <div className="hdet-item">
+                <label>최종 청구금액</label>
+                <strong style={{ fontSize: 'var(--fs-4)', color: 'var(--navy)' }}>{fm(r.grand || 0)}원</strong>
+              </div>
+              <div className="hdet-item">
+                <label>할인 사유</label>
+                <strong>{r.discContent || '-'}</strong>
               </div>
             </div>
-          </td>
-        </tr>
-      )}
-    </>
+            <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: 'var(--ink-2)', margin: '8px 0 4px' }}>
+              업무량 측정 내역
+            </div>
+            <div className="wf-grid">
+              <div className="wf-item">
+                <span>방문상담</span>
+                {r.visitCount || '-'} / {r.visitDiff || '-'}
+              </div>
+              <div className="wf-item">
+                <span>전화상담</span>
+                {r.phoneCount || '-'} / {r.phoneDiff || '-'}
+              </div>
+              <div className="wf-item">
+                <span>기장업무</span>
+                {r.장부P || 'X'}
+                {r.장부P === 'O' ? ` (${r.장부A}/${r.장부D})` : ''}
+              </div>
+              <div className="wf-item">
+                <span>결산업무</span>
+                {r.결산P || 'X'}
+                {r.결산P === 'O' ? ` (${r.결산A}/${r.결산D})` : ''}
+              </div>
+              <div className="wf-item">
+                <span>조정업무</span>
+                {r.조정P || 'X'}
+                {r.조정P === 'O' ? ` (${r.조정A}/${r.조정D})` : ''}
+              </div>
+              <div className="wf-item">
+                <span>원가계산</span>
+                {r.원가P || 'X'}
+                {r.원가P === 'O' ? ` (${r.원가A}/${r.원가D})` : ''}
+              </div>
+              <div className="wf-item">
+                <span>증빙발행</span>
+                {r.evCount || '-'}
+              </div>
+              <div className="wf-item">
+                <span>기타</span>
+                {r.otherContent || '-'}
+              </div>
+            </div>
+          </div>
   );
 }

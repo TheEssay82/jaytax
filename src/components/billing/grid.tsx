@@ -117,7 +117,7 @@ export function GridExport<T>({ grid, name, onMessage, csv = true }: {
  * 표 본체. 선택 체크박스 열은 select 를 주면 맨 앞에 붙는다.
  * 합계행은 sum 을 가진 열이 하나라도 있으면 나온다.
  */
-export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340, footerLabel, headBg = '#f4efe4', filterBg = '#faf7f0' }: {
+export function Grid<T>({ grid, rowKey, select, rowStyle, detail, empty, maxHeight = 340, footerLabel, headBg = '#f4efe4', filterBg = '#faf7f0' }: {
   grid: GridState<T>;
   rowKey: (row: T) => string;
   select?: {
@@ -128,6 +128,21 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340
     /** 전체선택/해제 */ setAll: (keys: string[] | null) => void;
   };
   rowStyle?: (row: T) => React.CSSProperties;
+  /**
+   * 줄 아래에 펼치는 상세.
+   *
+   * 왜 부품에 두는가: 화면마다 손으로 `colSpan={13}` 을 적고 있었는데, 열을 하나 더하면
+   * 그 숫자도 같이 고쳐야 하고 안 고치면 상세 상자가 표 밖으로 삐져나간다.
+   * 여기서는 **부품이 지금 보이는 열 수를 알고 있으므로** 저절로 맞는다.
+   */
+  detail?: {
+    /** 이 줄이 지금 펼쳐져 있나. */
+    isOpen: (row: T) => boolean;
+    /** 펼쳤을 때 아래에 그릴 것. */
+    render: (row: T) => React.ReactNode;
+    /** 줄을 누르면 펼침/접힘. 주면 줄에 손 모양 커서가 붙는다. */
+    onToggle?: (row: T) => void;
+  };
   /** 비었을 때. 글 한 줄이어도 되고, 다음에 할 일을 담은 <Empty> 를 넣어도 된다. */
   empty: React.ReactNode;
   maxHeight?: number;
@@ -190,8 +205,12 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340
           )}
           {rowsView.map((r) => {
             const k = rowKey(r);
+            const open = detail?.isOpen(r) ?? false;
             return (
-              <tr key={k} style={rowStyle?.(r)}>
+              <React.Fragment key={k}>
+              <tr
+                style={{ ...(detail?.onToggle ? { cursor: 'pointer' } : {}), ...rowStyle?.(r) }}
+                onClick={detail?.onToggle ? () => detail.onToggle!(r) : undefined}>
                 {select && (
                   <td style={{ textAlign: 'center' }}>
                     {select.selectableKeys.includes(k) || select.picked.has(k) ? (
@@ -206,6 +225,15 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340
                   </td>
                 ))}
               </tr>
+              {open && (
+                // colSpan 은 **지금 보이는 열 수**로 저절로 맞는다 — 열을 숨겨도 어긋나지 않는다.
+                <tr>
+                  <td colSpan={shown.length + (select ? 1 : 0)} style={{ padding: 0 }}>
+                    {detail!.render(r)}
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
             );
           })}
         </tbody>
@@ -215,7 +243,9 @@ export function Grid<T>({ grid, rowKey, select, rowStyle, empty, maxHeight = 340
               {select && <td></td>}
               {shown.map((c, i) => (
                 <td key={c.key} style={{ textAlign: c.num ? 'right' : 'left', ...clip }}>
-                  {c.sum ? rowsView.reduce((s, r) => s + c.sum!(r), 0).toLocaleString('ko-KR')
+                  {/* 금액은 **반올림해서** 낸다 — 소수를 그냥 더하면 부동소수 오차가 남아
+                      「214,926,221.947」 같은 합계가 나온다. */}
+                  {c.sum ? Math.round(rowsView.reduce((s, r) => s + (c.sum!(r) || 0), 0)).toLocaleString('ko-KR')
                     : i === 0 ? (footerLabel ?? `합계 ${rowsView.length}건`) : ''}
                 </td>
               ))}
