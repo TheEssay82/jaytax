@@ -426,3 +426,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
 .mine-sw.on .mine-dot{background:#fff}
 /* 화면 안에서 「지금 걸러져 있다」를 알리는 꼬리표 */
 .mine-tag{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-0);font-weight:700;color:var(--gold-ink);background:var(--gold-bg);border:1px solid #EBD9AE;border-radius:999px;padding:2px 8px;white-space:nowrap}
+
+/* 여럿 고르기 필터 — 엑셀 피벗의 체크박스. */
+.mp{position:relative;display:inline-block}
+.mp-btn{font-size:var(--fs-1);padding:4px 9px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);color:var(--ink-2);cursor:pointer;font-family:inherit;white-space:nowrap}
+.mp-btn b{color:var(--ink);font-weight:600}
+.mp-btn.on{border-color:var(--gold);background:var(--gold-bg)}
+.mp-btn.on b{color:var(--gold-ink);font-weight:700}
+.mp-caret{color:var(--ink-4);font-size:9px}
+.mp-pop{position:absolute;z-index:80;top:calc(100% + 4px);left:0;min-width:220px;max-width:300px;background:var(--surface);border:1px solid var(--rule);border-radius:8px;box-shadow:0 10px 28px rgba(20,28,45,.18);padding:8px}
+.mp-q{width:100%;font-size:var(--fs-1);padding:4px 7px;margin-bottom:6px}
+.mp-acts{display:flex;gap:4px;margin-bottom:6px}
+.mp-list{max-height:240px;overflow:auto;border-top:1px solid var(--rule-2);border-bottom:1px solid var(--rule-2);padding:4px 0}
+.mp-row{display:flex;align-items:center;gap:6px;font-size:var(--fs-2);padding:3px 4px;border-radius:4px;cursor:pointer;white-space:nowrap}
+.mp-row:hover{background:var(--surface-2)}
+.mp-empty{padding:14px;text-align:center;color:var(--ink-3);font-size:var(--fs-1)}
+.mp-foot{display:flex;align-items:center;gap:6px;font-size:var(--fs-0);color:var(--ink-3);padding-top:6px}

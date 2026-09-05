@@ -6,6 +6,7 @@
 //
 // 여기서는 **사실(fact) 한 줄씩만** 만들고, 어떤 축으로 묶을지는 화면이 정한다(엑셀 피벗처럼).
 import { supabase } from './supabase';
+import { revenueKind as kindOf, typeTopFromErp } from './revenueClassify';
 import { listSalesContracts } from './salesContractApi';
 import { erpAccountOf } from './invoiceRequestApi';
 import { listBizEntities } from './bizRegistryApi';
@@ -56,12 +57,7 @@ export interface RevenueFact {
  * 매출계정(청구)·항목(실적)을 세 갈래로 정규화한다.
  * 엑셀이 '총 기장료수입 / 조정료합계 / 기타수입'으로 갈라 보던 그 구분이다.
  */
-export function revenueKind(s: string): RevenueFact['kind'] {
-  const v = (s || '').trim();
-  if (v.includes('세무조정')) return '세무조정';
-  if (['기장', '기장대리수입', '원천', '신고대리', '컨설팅', '경영자문수입'].includes(v)) return '기장료';
-  return '기타';
-}
+export { revenueKind } from './revenueClassify';
 
 /**
  * 기간 안의 청구 사실을 모은다. 취소분은 뺀다.
@@ -105,14 +101,16 @@ export async function listRevenueFacts(
       erpAccount: r.erp_account ?? '',
       company: r.company_name ?? '',
       place: r.place_name ?? '',
-      typeTop: code ? (findNode(code)?.path[0]?.label ?? '기타') : '',
+      // 계약이 있으면 계약에서, 없으면 ERP 매출계정에서 미룬다 — 그래야 (미지정) 칸에
+      // 「기장료 (−)수정」 같은 것이 떨어지지 않는다.
+      typeTop: code ? (findNode(code)?.path[0]?.label ?? '기타') : typeTopFromErp(r.erp_account ?? ''),
       typeFull: code ? pathLabel(code) : '',
       billingCycle: c?.billingCycle ?? '',
       phase: r.phase ?? '',
       status: r.status ?? '',
       supply: Number(r.supply_amount) || 0,
       origin: '청구' as const,
-      kind: revenueKind(r.erp_account ?? ''),
+      kind: kindOf(r.erp_account ?? ''),
       bizType: '',
     };
   });
@@ -157,7 +155,7 @@ async function listActualFacts(
       status: '실적',
       supply: Number(r.amount) || 0,
       origin: '실적' as const,
-      kind: revenueKind(cat),
+      kind: kindOf(cat),
       bizType: (r.biz_type ?? '').trim(),
     };
   });
@@ -372,7 +370,7 @@ export async function listForecastFacts(
       status: c.confirmed ? '예상' : '예상(미확정)',
       supply,
       origin: '예상' as const,
-      kind: revenueKind(erpAccountOf(code)),
+      kind: kindOf(erpAccountOf(code)),
       bizType: c.occurrenceUnit === '개인' ? '개인' : c.occurrenceUnit === '법인' ? '법인' : '',
     });
   }

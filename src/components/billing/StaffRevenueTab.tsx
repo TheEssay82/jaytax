@@ -8,6 +8,10 @@
 //
 // 기간은 **사업연도(7/1~익년 6/30)** 가 기본이다. FY2026 = 2026-07~2027-06.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import MultiPick from '../common/MultiPick';
+import {
+  EMPTY_FILTER, isAll, passes, passesAny, type MultiFilter,
+} from '../../lib/multiFilter';
 import { EmptyRow } from '../common/Empty';
 import Loading from '../common/Loading';
 import Guide from '../common/Guide';
@@ -74,10 +78,14 @@ function StatsPanel() {
   /** '실적' 이미 청구한 것 · '예상' 계약대로라면 나올 것. 원천이 달라 섞지 않는다. */
   const [basis, setBasis] = useState<'actual' | 'forecast'>('actual');
   const [subKey, setSubKey] = useState('staff');
-  const [cpaF, setCpaF] = useState('');
-  const [staffF, setStaffF] = useState('');
-  const [typeF, setTypeF] = useState('');
-  const [erpF, setErpF] = useState('');
+  // 필터는 **고른 값들의 묶음**이다 — 여럿 고르기와 「특정 값만 빼기」가 둘 다 된다.
+  const [cpaF, setCpaF] = useState<MultiFilter>(EMPTY_FILTER);
+  const [staffF, setStaffF] = useState<MultiFilter>(EMPTY_FILTER);
+  const [typeF, setTypeF] = useState<MultiFilter>(EMPTY_FILTER);
+  const [erpF, setErpF] = useState<MultiFilter>(EMPTY_FILTER);
+  const clearFilters = () => {
+    setCpaF(EMPTY_FILTER); setStaffF(EMPTY_FILTER); setTypeF(EMPTY_FILTER); setErpF(EMPTY_FILTER);
+  };
 
   const [facts, setFacts] = useState<RevenueFact[]>([]);
   const [logs, setLogs] = useState<StaffChangeLog[]>([]);
@@ -130,13 +138,12 @@ function StatsPanel() {
     };
   }, [facts]);
 
-  const filtered = useMemo(() => facts.filter((f) => {
-    if (cpaF && f.cpa !== cpaF) return false;
-    if (staffF && !f.shares.some((s) => s.name === staffF)) return false;
-    if (typeF && f.typeTop !== typeF) return false;
-    if (erpF && f.erpAccount !== erpF) return false;
-    return true;
-  }), [facts, cpaF, staffF, typeF, erpF]);
+  const filtered = useMemo(() => facts.filter((f) => (
+    passes(cpaF, f.cpa)
+    && passesAny(staffF, f.shares.map((s) => s.name))
+    && passes(typeF, f.typeTop)
+    && passes(erpF, f.erpAccount)
+  )), [facts, cpaF, staffF, typeF, erpF]);
 
   const p = useMemo(
     () => pivot(filtered, dimOf(rowKey), dimOf(colKey), value),
@@ -149,7 +156,7 @@ function StatsPanel() {
     [filtered, rowKey, subKey],
   );
   const max = Math.max(1, ...p.rows.map((r) => p.rowTotal.get(r) ?? 0));
-  const filterCount = [cpaF, staffF, typeF, erpF].filter(Boolean).length;
+  const filterCount = [cpaF, staffF, typeF, erpF].filter((f) => !isAll(f)).length;
 
   function copyTsv() {
     const head = ['', ...p.cols, '합계'].join('\t');
@@ -252,12 +259,12 @@ function StatsPanel() {
           </label>
         )}
         <span style={{ color: '#ddd' }}>|</span>
-        <Filter label="담당회계사" value={cpaF} onChange={setCpaF} opts={opts.cpa} />
-        <Filter label="담당직원" value={staffF} onChange={setStaffF} opts={opts.staff} />
-        <Filter label="매출유형" value={typeF} onChange={setTypeF} opts={opts.type} />
-        <Filter label="매출계정" value={erpF} onChange={setErpF} opts={opts.erp} />
+        <MultiPick title="담당회계사" opts={opts.cpa} value={cpaF} onChange={setCpaF} />
+        <MultiPick title="담당직원" opts={opts.staff} value={staffF} onChange={setStaffF} />
+        <MultiPick title="매출유형" opts={opts.type} value={typeF} onChange={setTypeF} />
+        <MultiPick title="매출계정" opts={opts.erp} value={erpF} onChange={setErpF} />
         {filterCount > 0 && (
-          <button className="btn-sm" onClick={() => { setCpaF(''); setStaffF(''); setTypeF(''); setErpF(''); }}>
+          <button className="btn-sm" onClick={clearFilters}>
             필터 초기화 ({filterCount})
           </button>
         )}
@@ -305,7 +312,7 @@ function StatsPanel() {
                     ? `필터 ${filterCount}개가 걸려 있습니다.`
                     : '기간이나 팀을 바꿔 보세요. 앱을 쓰기 전 기간은 2025실적 자료에서 옵니다.'}
                   action={filterCount > 0
-                    ? { label: '필터 초기화', onClick: () => { setCpaF(''); setStaffF(''); setTypeF(''); setErpF(''); } }
+                    ? { label: '필터 초기화', onClick: clearFilters }
                     : undefined} />
               )}
               {sum2.rows.map((r) => (
@@ -358,7 +365,7 @@ function StatsPanel() {
                   ? `필터 ${filterCount}개가 걸려 있습니다.`
                   : '기간이나 팀을 바꿔 보세요. 앱을 쓰기 전 기간은 2025실적 자료에서 옵니다.'}
                 action={filterCount > 0
-                  ? { label: '필터 초기화', onClick: () => { setCpaF(''); setStaffF(''); setTypeF(''); setErpF(''); } }
+                  ? { label: '필터 초기화', onClick: clearFilters }
                   : undefined} />
             )}
             {p.rows.map((r) => (
@@ -448,18 +455,3 @@ function StatsPanel() {
 /** 열 이름이 'YYYY-MM' 이면 짧게. */
 const colLabel = (c: string) => (/^\d{4}-\d{2}$/.test(c) ? c.slice(2) : c);
 
-function Filter({ label, value, onChange, opts }: {
-  label: string; value: string; onChange: (v: string) => void; opts: string[];
-}) {
-  if (!opts.length) return null;
-  return (
-    <label style={{ fontSize: 'var(--fs-1)', display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-      {label}
-      <select value={value} onChange={(e) => onChange(e.target.value)}
-        style={{ fontWeight: value ? 700 : 400, color: value ? '#1A2B52' : undefined }}>
-        <option value="">전체</option>
-        {opts.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </label>
-  );
-}
