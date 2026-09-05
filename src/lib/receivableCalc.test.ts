@@ -53,3 +53,25 @@ test('대손만 있어도 표에 세운다 — 대손이 있었다는 사실이 
 test('취소만 있어도 표에 세운다', () => {
   assert.equal(hasAnything({ opening: 0, issued: 0, cancelled: 100, paid: 0, writeoff: 0 }), true);
 });
+
+// ── 수정발행의 부호 (2026-09-06 실제 사고) ─────────────────
+test('(+)수정발행「되살리기」는 채권을 늘린다 — 취소가 아니다', () => {
+  // ㈜제이엠스토리: 「(−)크레딧 소멸분 되살리기」 +165,000 을 취소로 세어
+  // 미수금이 0 이어야 하는데 −330,000 으로 나왔다.
+  assert.equal(bucketOf(m('수정발행', 165000)), 'issued');
+  assert.equal(bucketOf(m('수정발행', -165000)), 'cancelled');
+});
+
+test('제이엠스토리 실제 값 — 미수금이 0 이 된다', () => {
+  const { issued, cancelled } = splitIssued([
+    m('수정발행', 165000),   // 2026-06 되살리기
+    m('발행완료', 165000),   // 2026-07
+    m('취소', 165000),       // 2026-08 요청 취소 — 채권 아님
+  ]);
+  assert.deepEqual({ issued, cancelled }, { issued: 330000, cancelled: 0 });
+  assert.equal(balanceOf({ opening: 2530000, issued, cancelled, paid: 2860000, writeoff: 0 }), 0);
+});
+
+test('0 원 수정발행은 발행 쪽 — 음수일 때만 취소다', () => {
+  assert.equal(bucketOf(m('수정발행', 0)), 'issued');
+});

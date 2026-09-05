@@ -150,8 +150,8 @@ export default function ReceivableTab() {
       if (!b) continue;
       const r = q0.placeId ? byPlace.get(q0.placeId) : null;
       if (!r) continue;
-      if (b === 'issued') r.issued += q0.total;
-      else r.cancelled += Math.abs(q0.total);   // (−)수정발행을 「취소」 칸에 양수로
+      if (b === 'issued') r.issued += q0.total;          // 발행완료 + (+)되살리기
+      else r.cancelled += Math.abs(q0.total);            // (−)되돌리기를 「취소」 칸에 양수로
     }
     // 대손은 ERP 미수금대장의 당기대손액에서 온다 — 달마다의 움직임이라 누계로 더한다.
     for (const a of arItems) {
@@ -331,9 +331,11 @@ export default function ReceivableTab() {
         </>}>
         · <b>기초</b> — <b>{OPENING_AS_OF}</b> 시점의 잔액입니다. 그 앞의 청구는 계약에 연결되어 있지 않아
         {' '}사업장마다 한 줄로 넣어 두었습니다.
-        <br />· <b>발행</b> — <b>발행완료</b>된 세금계산서. 요청만 올라간 건은 아직 채권이 아닙니다.
+        <br />· <b>발행</b> — <b>발행완료</b>된 세금계산서와 <b>(+)수정발행</b>(되살리기)입니다.
+        {' '}요청만 올라간 건은 아직 채권이 아닙니다.
         <br />· <b>취소</b> — 이미 나간 것을 무른 <b>(−)수정세금계산서</b>입니다.
-        {' '}요청 단계에서 취소한 건은 <b>세금계산서가 나간 적이 없어</b> 여기 들어오지 않습니다.
+        {' '}<b>수정발행은 부호로 갈립니다</b> — (−)되돌리기는 여기, (+)되살리기는 발행 쪽입니다.
+        <br />· 요청 단계에서 취소한 건은 <b>세금계산서가 나간 적이 없어</b> 어느 칸에도 들어오지 않습니다.
         <br />· <b>입금</b> — ERP 부서별원장의 <b>외상매출금 대변</b>입니다.
         <br />· <b>대손</b> — ERP 미수금대장의 <b>당기대손액</b>. 장기미수를 털어 낸 것입니다.
         <br />· ERP는 입금을 청구건에 연결하지 않으므로(입금 전표에 거래#가 없습니다) <b>사업장 단위</b>로만 잡습니다.
