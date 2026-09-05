@@ -1,5 +1,6 @@
 // 거래처담당자(외부 연락처) biz_contact 데이터 접근 + 기존 doc_contacts 1회성 이관. 거래처관리 2.0.0 step3.
 import { supabase, assertWrote } from './supabase';
+import { stripHonorific } from './honorific';
 import { todayYmd } from './format';
 
 export interface BizContact {
@@ -48,7 +49,10 @@ export interface ContactInput {
 function toRow(c: Partial<ContactInput>): Record<string, unknown> {
   const r: Record<string, unknown> = {};
   const s = (k: string, v: unknown) => { if (v !== undefined) r[k] = v; };
-  s('entity_id', c.entityId); s('place_id', c.placeId ?? undefined); s('contact_name', c.contactName);
+  // 이름 끝의 「님」은 저장할 때 뗀다 — 화면이 호칭을 따로 붙이므로 그냥 두면 두 번 붙는다.
+  // 2026-09-05 에 실제로 47건이 「공나영 대표님 님」으로 보이고 있었다.
+  s('entity_id', c.entityId); s('place_id', c.placeId ?? undefined);
+  s('contact_name', c.contactName === undefined ? undefined : stripHonorific(c.contactName));
   s('honorific', c.honorific); s('position', c.position); s('phone', c.phone); s('fax', c.fax); s('email', c.email);
   s('address', c.address); s('is_primary', c.isPrimary); s('note', c.note);
   s('active', c.active); s('left_at', c.leftAt ?? undefined); s('left_note', c.leftNote);

@@ -2,6 +2,7 @@
 // 거래처(법인/개인)의 외부 담당자(연락처) 관리. 여기가 담당자 정보의 유일한 등록·수정 창구이며,
 // 문서발송 발송요청·조회서등록은 0070 별칭 동기화로 이 데이터를 그대로 쓴다.
 import { useEffect, useMemo, useState } from 'react';
+import { displayName } from '../../lib/honorific';
 import { EmptyRow } from '../common/Empty';
 import Loading from '../common/Loading';
 import { useAuth } from '../../context/AuthContext';
@@ -90,7 +91,7 @@ export default function BizContactsTab() {
     { key: 'code', label: '코드', val: (r) => r.e?.code ?? '', w: 60 },
     { key: 'name', label: '거래처', val: (r) => (r.e ? corpDisplayName(r.e.name, r.e.corpForm, r.e.corpFormPosition) : ''), w: 150 },
     { key: 'place', label: '사업장', val: (r) => placeName(r.e, r.c.placeId), w: 100 },
-    { key: 'contact', label: '담당자', val: (r) => `${r.c.contactName} ${r.c.honorific}`.trim(), w: 110 },
+    { key: 'contact', label: '담당자', val: (r) => displayName(r.c.contactName, r.c.honorific), w: 110 },
     { key: 'position', label: '직책', val: (r) => r.c.position, w: 80 },
     { key: 'primary', label: '대표', val: (r) => (r.c.isPrimary ? '대표' : ''), w: 46, opts: ['대표'] },
     { key: 'phone', label: '연락처', val: (r) => r.c.phone, w: 120 },
@@ -258,7 +259,7 @@ export default function BizContactsTab() {
               <div key={c.id} id={`contact-${c.id}`}
                 style={editId === c.id ? { outline: '2px solid #c9a54a', borderRadius: 4 } : undefined}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--fs-1)', flexWrap: 'wrap', padding: '2px 0' }}>
-                  <b style={{ textDecoration: c.active ? undefined : 'line-through' }}>{c.contactName} {c.honorific}</b>
+                  <b style={{ textDecoration: c.active ? undefined : 'line-through' }}>{displayName(c.contactName, c.honorific)}</b>
                   {!c.active && (
                     <span style={{ fontSize: 9.5, background: 'var(--ink-3)', color: '#fff', padding: '1px 5px', borderRadius: 3 }}
                       title={`${c.leftAt ?? ''} ${c.leftNote ?? ''}`.trim()}>이직·퇴사</span>

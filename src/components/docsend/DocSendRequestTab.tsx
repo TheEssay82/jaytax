@@ -1,5 +1,6 @@
 // 문서발송 › 발송요청 — 공통 문서정보 + 수신자 다중선택(거래처관리 › 거래처담당자등록 연동, 스냅샷) 요청 등록/목록/수정
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { displayName } from '../../lib/honorific';
 import { Grid, useGrid, type GridCol } from '../billing/grid';
 import { ColumnSettings } from '../clients/tableKit';
 import Empty from '../common/Empty';
@@ -589,7 +590,7 @@ function ContactSearch({
               onClick={() => { onPick(cl, ct); setQ(''); }}
               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', border: 'none', borderBottom: '1px solid #F0ECE4', background: '#fff', cursor: 'pointer', fontSize: 'var(--fs-2)' }}
             >
-              <b>{ct.contactName}</b> <span style={{ color: 'var(--ink-3)' }}>{ct.honorific}</span> · <span style={{ color: 'var(--navy)' }}>{cl.companyName}</span> <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>({cl.accountant})</span>
+              <b>{displayName(ct.contactName, ct.honorific)}</b> · <span style={{ color: 'var(--navy)' }}>{cl.companyName}</span> <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>({cl.accountant})</span>
             </button>
           ))}
         </div>
