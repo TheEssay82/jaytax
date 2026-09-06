@@ -13,6 +13,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Guide from '../common/Guide';
 import StaffCostTab from './StaffCostTab';
+import PivotDrillModal, { type DrillTarget } from './PivotDrillModal';
+import { type SplitLike } from '../../lib/pivotDrill';
 import {
   listRenewalCandidates, listRenewalPicks, saveRenewalPick, renewalFacts,
   pickedTotal, type RenewalCandidate, type RenewalPick,
@@ -70,6 +72,15 @@ const dimOf = (key: string): Dim<RevenueFact> =>
   DIMS.find((d) => d.key === key) as unknown as Dim<RevenueFact>;
 
 /**
+ * 드릴다운의 **열 축** — 예산 표의 열은 축이 아니라 「값 여러 개」(기장·조정·건별)라
+ * 그대로는 되찾을 수 없다. 그래서 수입 종류를 축인 척 감싼다.
+ * 이름을 열 제목과 **똑같이** 두어야 팝업 제목이 화면과 어긋나지 않는다.
+ */
+const KIND_SPLIT: SplitLike<RevenueFact> = {
+  split: (f) => [{ name: KINDS.find((k) => k.is(f))?.label ?? '건별·기타', weight: 1 }],
+};
+
+/**
  * 배수(수입÷인건비)에 붙일 신호색. **값이 색을 정한다** — 예쁘라고 칠하지 않는다.
  * 전체 평균을 기준선으로 삼아 위/근처/아래로 가른다(±5%).
  */
@@ -93,6 +104,8 @@ interface Row {
   exempt: boolean;
   /** 인건비를 안분했는가(2단계에서 한 사람이 여러 회계사에 걸칠 때). */
   split: boolean;
+  /** 이 줄을 되찾을 때 쓸 이름 — 2단계 잎이면 「회계사|직원」이다. */
+  drillName: string;
 }
 
 /**
@@ -144,6 +157,12 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
   const [cands, setCands] = useState<RenewalCandidate[]>([]);
   const [picks, setPicks] = useState<Map<string, RenewalPick>>(new Map());
   const [showRenew, setShowRenew] = useState(false);
+  /**
+   * 셀을 누르면 그 칸에 담긴 줄을 본다. 되찾는 규칙은 **표를 만든 규칙과 같아야** 하므로
+   * (2단계일 때는 회계사와 직원을 함께 맞춰야 한다) 같은 dim 을 엮어 쓴다.
+   */
+  const [drillAt, setDrillAt] = useState<DrillTarget | null>(null);
+  const [drillLeaf, setDrillLeaf] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -196,6 +215,37 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
   );
   const renewTotal = pickedTotal(cands, picks);
 
+  /** 1단계(회계사 또는 직원) 축. 소계 줄을 되찾을 때 쓴다. */
+  const topSplit: SplitLike<RevenueFact> = useMemo(() => {
+    const rd = dimOf(isAudit || axis === 'cpa-staff' ? 'cpa' : 'staff');
+    return { split: (f) => rd.split(f) };
+  }, [isAudit, axis]);
+  /**
+   * 잎 줄 축. 2단계(회계사 › 직원)에서는 **둘을 한 이름으로 엮는다** —
+   * 회계사만 맞추면 그 회계사 아래 다른 직원의 줄까지 딸려 와 합계가 셀 값과 어긋난다.
+   */
+  const leafSplit: SplitLike<RevenueFact> = useMemo(() => {
+    const rd = dimOf(isAudit || axis === 'cpa-staff' ? 'cpa' : 'staff');
+    const sd = !isAudit && axis === 'cpa-staff' ? dimOf('staff') : null;
+    if (!sd) return { split: (f) => rd.split(f) };
+    return {
+      split: (f) => rd.split(f).flatMap(
+        (r) => sd.split(f).map((x) => ({ name: `${r.name} › ${x.name}`, weight: r.weight * x.weight })),
+      ),
+    };
+  }, [isAudit, axis]);
+
+  const rowAxisLabel = isAudit || axis === 'cpa-staff' ? '담당회계사' : '담당직원';
+  /** 셀 하나 열기. leaf=true 면 2단계 이름(회계사|직원)으로 맞춘다. */
+  const openDrill = (rowName: string | null, kindLabel: string | null, leaf: boolean) => {
+    setDrillLeaf(leaf);
+    setDrillAt({
+      rowName, colName: kindLabel,
+      rowLabel: leaf && !isAudit && axis === 'cpa-staff' ? '담당회계사 › 담당직원' : rowAxisLabel,
+      colLabel: '수입 종류',
+    });
+  };
+
   const { rows, leaves } = useMemo(() => {
     const rowDim = dimOf(isAudit || axis === 'cpa-staff' ? 'cpa' : 'staff');
     const subDim = !isAudit && axis === 'cpa-staff' ? dimOf('staff') : null;
@@ -227,7 +277,10 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
           cost = full;
         }
       }
-      return { key: r.key, sub: r.sub, leaf, person, values: r.values, cost, exempt, split };
+      return {
+        key: r.key, sub: r.sub, leaf, person, values: r.values, cost, exempt, split,
+        drillName: subDim && isSub ? `${r.key} › ${r.sub}` : r.key,
+      };
     });
 
     // 소계 줄의 인건비 = 그 아래 자식 줄의 합.
@@ -381,12 +434,22 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
                   {r.split && <span style={{ fontSize: 'var(--fs-0)', color: 'var(--warn)' }}> 안분</span>}
                 </td>
                 <td className="r" style={{ color: 'var(--ink-2)' }}>{r.values.clients ?? 0}</td>
-                {KINDS.map((k) => (
-                  <td key={k.key} className="r" style={{ color: (r.values[k.key] ?? 0) ? undefined : '#CCC' }}>
-                    {won(r.values[k.key] ?? 0)}
-                  </td>
-                ))}
-                <td className="r" style={{ fontWeight: 700 }}>{won(supply)}</td>
+                {KINDS.map((k) => {
+                  const v = r.values[k.key] ?? 0;
+                  return (
+                    <td key={k.key} className={v ? 'r cellable' : 'r'}
+                      style={{ color: v ? undefined : '#CCC' }}
+                      title={v ? '이 칸에 담긴 매출을 봅니다' : undefined}
+                      onClick={v ? () => openDrill(r.drillName, k.label, !!r.sub || !isSubtotal) : undefined}>
+                      {won(v)}
+                    </td>
+                  );
+                })}
+                <td className={supply ? 'r cellable' : 'r'} style={{ fontWeight: 700 }}
+                  title={supply ? '이 줄에 담긴 매출을 봅니다' : undefined}
+                  onClick={supply ? () => openDrill(r.drillName, null, !!r.sub || !isSubtotal) : undefined}>
+                  {won(supply)}
+                </td>
                 <td className="r" style={{ color: noCost ? '#999' : r.cost ? '#666' : '#c33' }}>
                   {isAudit ? '—' : r.exempt ? '대상 아님' : r.person === '(미지정)' ? '—'
                     : r.cost ? won(r.cost) : '미등록'}
@@ -423,8 +486,16 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
               {!isAudit && <span style={{ fontWeight: 400, fontSize: 'var(--fs-0)', color: 'var(--ink-2)' }}> (인건비 대상)</span>}
             </td>
             <td className="r">{sumOf(counted, 'clients')}</td>
-            {KINDS.map((k) => <td key={k.key} className="r">{won(sumOf(counted, k.key))}</td>)}
-            <td className="r">{won(totSupply)}</td>
+            {KINDS.map((k) => (
+              <td key={k.key} className="r cellable" title="전체에서 이 종류를 봅니다"
+                onClick={() => openDrill(null, k.label, false)}>
+                {won(sumOf(counted, k.key))}
+              </td>
+            ))}
+            <td className="r cellable" title="전체 매출을 봅니다"
+              onClick={() => openDrill(null, null, false)}>
+              {won(totSupply)}
+            </td>
             <td className="r">{isAudit ? '—' : won(totCost)}</td>
             <td className="r" style={{ color: totSupply - totCost >= 0 ? '#065F46' : '#991B1B' }}>
               {isAudit ? '—' : won(totSupply - totCost)}
@@ -480,6 +551,13 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
           ({sumOf(unassigned, 'clients')}곳) 있습니다 — 누구의 기여로도 잡히지 않습니다.
           매출계약이나 거래처에 담당을 넣어 주세요.
         </div>
+      )}
+
+      {drillAt && (
+        // 되찾는 줄은 **표를 만든 그 자료**(체크한 갱신 대상 포함)여야 한다 —
+        // 다른 것을 쓰면 팝업 합계가 셀 값과 어긋난다.
+        <PivotDrillModal facts={allFacts} row={drillLeaf ? leafSplit : topSplit} col={KIND_SPLIT}
+          target={drillAt} onClose={() => setDrillAt(null)} />
       )}
 
       {cands.length > 0 && (
