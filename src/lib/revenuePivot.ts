@@ -42,19 +42,35 @@ export interface Measure<F = PivotFact> {
   where?: (f: F) => boolean;
 }
 
-export const MEASURES: Measure[] = [
-  { key: 'clients', label: '거래처 수', agg: 'clients' },
-  { key: 'count', label: '건수', agg: 'count' },
-  { key: 'book', label: '기장료수입', agg: 'sum', where: (f) => f.kind === '기장료' },
-  { key: 'adj', label: '조정료', agg: 'sum', where: (f) => f.kind === '세무조정' },
-  { key: 'etc', label: '기타수입', agg: 'sum', where: (f) => f.kind === '기타' },
-  { key: 'supply', label: '합계(공급가액)', agg: 'sum' },
-  // 엑셀에서 「평균 월 기장료」로 보시던 것(2026-09-06 요구). **단가**를 보는 자리다 —
-  // 합계는 거래처를 많이 맡은 사람이 크고, 평균은 한 곳당 얼마를 받는지를 말한다.
-  { key: 'avgClient', label: '거래처당 평균', agg: 'avg' },
-  { key: 'avgBook', label: '거래처당 기장료', agg: 'avg', where: (f) => f.kind === '기장료' },
-  { key: 'avgAdj', label: '거래처당 조정료', agg: 'avg', where: (f) => f.kind === '세무조정' },
-];
+export const MEASURES: Measure[] = measuresFor(12);
+
+/**
+ * 값 목록 — **기간의 개월 수**를 받는다. 「평균 월 기장료」가 그 수로 나뉘기 때문이다.
+ *
+ * 왜 개월 수가 필요한가: 엑셀에서 보시던 「평균 월 기장료」(김준성 개인 88,571 …)는
+ * **월 단가**다. 그런데 피벗이 더하는 것은 기간 전체의 금액이라, 12 로 나누지 않으면
+ * 열두 배로 보인다. 기간을 석 달만 잡으면 3 으로 나누어야 하므로 상수로 둘 수 없다.
+ */
+export function measuresFor(months: number): Measure[] {
+  const m = Math.max(1, months);
+  return [
+    { key: 'clients', label: '거래처 수', agg: 'clients' },
+    { key: 'count', label: '건수', agg: 'count' },
+    { key: 'book', label: '기장료수입', agg: 'sum', where: (f) => f.kind === '기장료' },
+    { key: 'adj', label: '조정료', agg: 'sum', where: (f) => f.kind === '세무조정' },
+    { key: 'etc', label: '기타수입', agg: 'sum', where: (f) => f.kind === '기타' },
+    { key: 'supply', label: '합계(공급가액)', agg: 'sum' },
+    // ── 단가. 합계는 많이 맡은 사람이 크고, 단가는 **한 곳당 얼마를 받는지**를 말한다.
+    // 「월기장료」는 달마다 받는 돈이라 개월 수로 나눈다(엑셀의 「평균 월 기장료」).
+    {
+      key: 'avgBookM', label: '평균 월기장료', agg: 'avg',
+      where: (f) => f.kind === '기장료', pick: (f) => f.supply / m,
+    },
+    // 조정료는 한 해에 한 번 받는 돈이라 월로 나누지 않는다 — 나누면 뜻이 없다.
+    { key: 'avgAdj', label: '거래처당 조정료', agg: 'avg', where: (f) => f.kind === '세무조정' },
+    { key: 'avgClient', label: '거래처당 합계', agg: 'avg' },
+  ];
+}
 
 /** 표의 한 줄. 2단계면 부모 아래에 자식 줄이 붙는다. */
 export interface PivotRow {

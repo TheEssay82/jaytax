@@ -16,7 +16,7 @@ import {
 import { EmptyRow } from '../common/Empty';
 import Loading from '../common/Loading';
 import Guide from '../common/Guide';
-import { pivotMulti, MEASURES } from '../../lib/revenuePivot';
+import { pivotMulti, measuresFor } from '../../lib/revenuePivot';
 import { todayYmd, kstDateTime } from '../../lib/format';
 import { listStaffChangeLog, type StaffChangeLog } from '../../lib/invoiceStaffApi';
 import {
@@ -158,10 +158,20 @@ function StatsPanel() {
    * 단가를 보는 것은 따로 마음먹고 하는 일이라 스위치로 둔다(2026-09-06 요구).
    */
   const [showAvg, setShowAvg] = useState(false);
-  const cols = useMemo(() => MEASURES.filter((m) => showAvg || m.agg !== 'avg'), [showAvg]);
+  /**
+   * 「평균 월기장료」는 **기간의 개월 수**로 나눈다 — 12개월을 보면 12로, 석 달을 보면 3으로.
+   * 그래야 어느 기간을 골라도 같은 뜻의 월 단가가 나온다.
+   */
+  const months = useMemo(() => {
+    const [fy2, fm] = from.split('-').map(Number);
+    const [ty, tm] = to.split('-').map(Number);
+    return Math.max(1, (ty - fy2) * 12 + (tm - fm) + 1);
+  }, [from, to]);
+  const measures = useMemo(() => measuresFor(months), [months]);
+  const cols = useMemo(() => measures.filter((m) => showAvg || m.agg !== 'avg'), [measures, showAvg]);
   // 요약표(엑셀 모양) — 행 2단계 × 값 여러 개. 교차표와 달리 열 축을 쓰지 않는다.
   const sum2 = useMemo(
-    () => pivotMulti(filtered, dimOf(rowKey), subKey === 'none' ? null : dimOf(subKey), MEASURES),
+    () => pivotMulti(filtered, dimOf(rowKey), subKey === 'none' ? null : dimOf(subKey), measures),
     [filtered, rowKey, subKey],
   );
   const max = Math.max(1, ...p.rows.map((r) => p.rowTotal.get(r) ?? 0));

@@ -76,11 +76,14 @@ export async function listRevenueFacts(
   const rows = (data as any[]) ?? [];
   if (!rows.length) return [];
 
-  const [contracts, shareMap] = await Promise.all([
+  const [contracts, shareMap, ents] = await Promise.all([
     listSalesContracts(),
     listInvoiceStaff(rows.map((r) => r.id)),
+    listBizEntities(),
   ]);
   const conMap = new Map(contracts.map((c) => [c.id, c]));
+  // 법인/개인은 **거래처**에 있다. 청구 기록에는 없으므로 계약 → 거래처로 이어 찾는다.
+  const kindOfEntity = new Map<string, string>(ents.map((e) => [e.id, e.kind ?? '']));
 
   return rows.map((r) => {
     const c = r.contract_id ? conMap.get(r.contract_id) : undefined;
@@ -111,7 +114,8 @@ export async function listRevenueFacts(
       supply: Number(r.supply_amount) || 0,
       origin: '청구' as const,
       kind: kindOf(r.erp_account ?? ''),
-      bizType: '',
+      // 청구 기록 자체에는 법인/개인이 없다 — 계약이 가리키는 거래처에서 가져온다.
+      bizType: (c ? kindOfEntity.get(c.entityId) : '') ?? '',
     };
   });
   /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -260,6 +264,9 @@ export const DIMS: Dim[] = [
   { key: 'typeTop', label: '매출유형(대분류)', split: (f) => one(f.typeTop) },
   { key: 'typeFull', label: '매출유형(전체)', split: (f) => one(f.typeFull) },
   { key: 'cycle', label: '청구주기', split: (f) => one(f.billingCycle) },
+  // 엑셀 피벗이 늘 함께 보던 축 — 「기장담당 × 법인/개인」. 기장료 단가가 법인과
+  // 개인이 크게 달라, 이 축 없이는 평균이 두 집단을 섞어 버린다.
+  { key: 'bizType', label: '법인/개인', split: (f) => one(f.bizType) },
   { key: 'phase', label: '구분(계약금·잔금)', split: (f) => one(f.phase) },
   { key: 'company', label: '거래처', split: (f) => one(f.company) },
   // 개인 거래처는 이름과 상호가 다르다 — 엑셀은 상호로 적혀 있어 대조할 때 이 축이 필요하다.
@@ -349,6 +356,7 @@ export async function listForecastFacts(
   // 엑셀은 상호로 적혀 있어, 사업장을 채워 두지 않으면 같은 곳을 다른 곳으로 읽게 된다.
   const placeOf = new Map<string, string>();
   for (const e of ents) for (const pl of e.places ?? []) placeOf.set(pl.id, pl.placeName);
+  const kindOfEntity = new Map<string, string>(ents.map((e) => [e.id, e.kind ?? '']));
   const out: RevenueFact[] = [];
   for (const c of contracts) {
     if (!c.confirmed && !opts.includeDraft) continue;
@@ -377,7 +385,9 @@ export async function listForecastFacts(
       supply,
       origin: '예상' as const,
       kind: kindOf(erpAccountOf(code)),
-      bizType: c.occurrenceUnit === '개인' ? '개인' : c.occurrenceUnit === '법인' ? '법인' : '',
+      // 법인/개인은 **거래처**에서 가져온다 — 계약의 occurrenceUnit 은 '사업장' 처럼
+      // 다른 값이 섞여 있어(2026-09-07 확인) 그것으로 가르면 36,800,000 이 (미지정)에 떨어졌다.
+      bizType: kindOfEntity.get(c.entityId) ?? '',
     });
   }
   return out;
