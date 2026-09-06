@@ -13,6 +13,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Guide from '../common/Guide';
 import StaffCostTab from './StaffCostTab';
+import {
+  listRenewalCandidates, listRenewalPicks, saveRenewalPick, renewalFacts,
+  pickedTotal, type RenewalCandidate, type RenewalPick,
+} from '../../lib/budgetRenewalApi';
 import { useAuth } from '../../context/AuthContext';
 import {
   listBudgetFacts, listForecastFacts, listRevenueAll, fyOf, fyLabel, fyRange, kstYm,
@@ -133,6 +137,13 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
   const [axis, setAxis] = useState<Axis>('staff');
   const [costs, setCosts] = useState<StaffCost[]>([]);
   const [facts, setFacts] = useState<RevenueFact[]>([]);
+  /**
+   * 계약갱신 대상 — 앞 해에는 있었는데 이번 해에 계약이 없는 것.
+   * **계약을 만들지 않고** 여기서 체크한 것만 예산에 더한다(사장님 지시 2026-09-06).
+   */
+  const [cands, setCands] = useState<RenewalCandidate[]>([]);
+  const [picks, setPicks] = useState<Map<string, RenewalPick>>(new Map());
+  const [showRenew, setShowRenew] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -145,13 +156,15 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
     try {
       const { from, to } = fyRange(fy);
       const t = team || undefined;
-      const [cs, fs] = await Promise.all([
+      const [cs, fs, cd, pk] = await Promise.all([
         listStaffCost(fy),
         basis === 'budget' ? listBudgetFacts(fy, t, { includeDraft: true })
           : basis === 'forecast' ? listForecastFacts(from, to, t, { includeDraft: true })
             : listRevenueAll(from, to, t),
+        listRenewalCandidates(fy, t),
+        listRenewalPicks(fy),
       ]);
-      setCosts(cs); setFacts(fs);
+      setCosts(cs); setFacts(fs); setCands(cd); setPicks(pk);
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setLoading(false); }
   }, [allowed, fy, basis, team]);
@@ -171,15 +184,27 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
    * 아래 걸치면 인건비를 양쪽에 통째로 놓을 수 없다 — 합계가 두 배가 된다. 수입 비율로
    * 나누면 소계·합계가 그대로 맞아떨어지고 각 칸의 배수도 뜻이 산다.
    */
+  /**
+   * 예산이 세는 줄 = 실제 매출 + **체크한 갱신 대상**.
+   *
+   * 「실적만」 으로 보고 있을 때는 섞지 않는다 — 실적은 이미 일어난 일이라
+   * 아직 계약도 없는 갱신 예정을 거기 더하면 지난 일을 지어내는 셈이 된다.
+   */
+  const allFacts = useMemo(
+    () => (basis === 'actual' ? facts : [...facts, ...renewalFacts(fy, cands, picks)]),
+    [facts, basis, fy, cands, picks],
+  );
+  const renewTotal = pickedTotal(cands, picks);
+
   const { rows, leaves } = useMemo(() => {
     const rowDim = dimOf(isAudit || axis === 'cpa-staff' ? 'cpa' : 'staff');
     const subDim = !isAudit && axis === 'cpa-staff' ? dimOf('staff') : null;
-    const t = pivotMulti(facts, rowDim, subDim, MEAS);
+    const t = pivotMulti(allFacts, rowDim, subDim, MEAS);
 
     // 안분 기준 — 그 사람의 전체 수입(모든 회계사 아래를 합친 것).
     const wholeOf = new Map<string, number>();
     if (subDim) {
-      for (const r of pivotMulti(facts, subDim, null, MEAS).rows) {
+      for (const r of pivotMulti(allFacts, subDim, null, MEAS).rows) {
         wholeOf.set(r.key, r.values.supply ?? 0);
       }
     }
@@ -213,7 +238,7 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
       }
     }
     return { rows: out, leaves: out.filter((r) => r.leaf) };
-  }, [facts, isAudit, axis, costOf]);
+  }, [allFacts, isAudit, axis, costOf]);
 
   // 합계는 **잎 줄만** 센다 — 소계까지 더하면 두 번 센다.
   const counted = leaves.filter((r) => !r.exempt);
@@ -457,7 +482,138 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
         </div>
       )}
 
+      {cands.length > 0 && (
+        <RenewalBox fy={fy} cands={cands} picks={picks} total={renewTotal}
+          show={showRenew} onToggle={() => setShowRenew((v) => !v)} readonly={readonly}
+          onChange={(next) => setPicks(next)} />
+      )}
 
+
+    </div>
+  );
+}
+
+/**
+ * 계약갱신 대상 — **앞 해에는 있었는데 이번 해에 계약이 없는 것**.
+ *
+ * 법인세조정·종합소득세처럼 해마다 새 계약 줄이 필요한 일은, 갱신을 잊으면 아무 표시 없이
+ * 예상매출만 조용히 낮아진다. 2026-09-06 에 실제로 FY2025 연 계약 8건이 FY2026 으로
+ * 넘어오지 않았고 그중 하나(문지훈 님 종합소득세)는 계속해야 할 건이었다.
+ *
+ * ⚠️ **여기서 계약을 만들지 않는다**(사장님 지시). 매출계약등록은 실제로 맺은 것만 담고,
+ *    예산은 "이렇게 될 것 같다"를 세는 자리다. 그래서 체크는 계약을 건드리지 않고
+ *    budget_renewal 표에만 남으며, 켜 둔 것만 위 표의 수입에 더해진다.
+ *
+ * 접어 둔 채로 시작하되 **몇 건인지와 더해진 금액은 접힌 채로도 보인다** — 펼치지 않으면
+ * 무엇이 빠졌는지 모르는 것이 애초의 문제였기 때문이다.
+ */
+function RenewalBox({ fy, cands, picks, total, show, onToggle, onChange, readonly }: {
+  fy: number;
+  cands: RenewalCandidate[];
+  picks: Map<string, RenewalPick>;
+  total: number;
+  show: boolean;
+  onToggle: () => void;
+  onChange: (next: Map<string, RenewalPick>) => void;
+  readonly: boolean;
+}) {
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const on = (id: string) => picks.get(id)?.include ?? false;
+  const onCount = cands.filter((c) => on(c.prevId)).length;
+
+  /** 체크·금액을 바꾼다. 화면을 먼저 바꾸고 저장한다 — 되돌릴 때는 저장 실패를 알린다. */
+  async function put(c: RenewalCandidate, include: boolean, amount: number | null) {
+    const next = new Map(picks);
+    next.set(c.prevId, { prevId: c.prevId, include, amount });
+    onChange(next);
+    setBusy(c.prevId); setErr('');
+    try {
+      await saveRenewalPick(fy, c.prevId, include, amount);
+    } catch (e) {
+      onChange(picks);                                  // 저장 못 했으면 화면도 되돌린다
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally { setBusy(''); }
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button className="btn-sm" onClick={onToggle} style={{ fontWeight: 700 }}>
+        {show ? '▾' : '▸'} 🔁 계약갱신 대상 {cands.length}건
+        {onCount > 0
+          ? <span style={{ color: 'var(--good)' }}> · {onCount}건 반영 (+{won(total)})</span>
+          : <span style={{ color: 'var(--ink-3)' }}> · 반영 없음</span>}
+      </button>
+
+      {show && (
+        <>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', margin: '6px 0' }}>
+            {fyLabel(fy - 1)} 에는 있었는데 <b>{fyLabel(fy)} 에 계약이 없는</b> 건입니다.
+            체크하면 <b>위 표의 수입에 더해집니다</b> — <b>계약은 만들어지지 않습니다</b>.
+            금액을 비워 두면 앞 해 금액을 그대로 씁니다.
+          </div>
+          {err && <div className="alert-e" style={{ fontSize: 'var(--fs-1)' }}>{err}</div>}
+          <div className="tbl-wide">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th style={{ width: 42 }}>반영</th>
+                  <th>거래처</th>
+                  <th>매출유형</th>
+                  <th>담당</th>
+                  <th className="r">{fyLabel(fy - 1)} 금액</th>
+                  <th className="r" style={{ width: 120 }}>{fyLabel(fy)} 금액</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cands.map((c) => {
+                  const p = picks.get(c.prevId);
+                  const use = on(c.prevId);
+                  return (
+                    <tr key={c.prevId} style={use ? { background: '#ECFDF5' } : undefined}>
+                      <td style={{ textAlign: 'center' }}>
+                        <input type="checkbox" checked={use} disabled={readonly || busy === c.prevId}
+                          onChange={(e) => void put(c, e.target.checked, p?.amount ?? null)} />
+                      </td>
+                      <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{c.company}</td>
+                      <td style={{ color: 'var(--ink-2)' }}>{c.categoryCode}</td>
+                      <td style={{ color: 'var(--ink-2)' }}>
+                        {c.cpa || <span style={{ color: 'var(--ink-4)' }}>—</span>}
+                        {c.staff.length > 0 && ` · ${c.staff.join('·')}`}
+                      </td>
+                      <td className="r" style={{ color: 'var(--ink-3)' }}>{won(c.prevAmount)}</td>
+                      <td className="r">
+                        <input
+                          value={p?.amount == null ? '' : String(p.amount)}
+                          placeholder={won(c.prevAmount)}
+                          disabled={readonly || !use}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/[^\d]/g, '');
+                            void put(c, true, v === '' ? null : Number(v));
+                          }}
+                          style={{ width: '100%', textAlign: 'right' }} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
+                  <td colSpan={4}>반영 {onCount}건</td>
+                  <td className="r" style={{ color: 'var(--ink-3)' }}>
+                    {won(cands.reduce((s, c) => s + c.prevAmount, 0))}
+                  </td>
+                  <td className="r" style={{ color: 'var(--good)' }}>+{won(total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginTop: 6 }}>
+            담당회계사·담당직원은 <b>앞 해 계약의 것</b>을 그대로 씁니다.
+            실제로 계약을 등록하시면 이 목록에서 저절로 빠집니다.
+          </div>
+        </>
+      )}
     </div>
   );
 }
