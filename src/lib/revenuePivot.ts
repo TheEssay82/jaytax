@@ -17,7 +17,28 @@ export interface PivotFact {
   kind: '세무조정' | '기장료' | '기타';
   /** 담당직원 배분. 비어 있으면 미지정. 합이 100 이다. */
   shares: { name: string; share: number }[];
+  // ── 아래 셋은 단가(평균)를 셀 때만 쓴다. 없으면 그 규칙이 느슨해질 뿐 깨지지 않는다.
+  /** 청구주기(계약). 「월정액」을 가릴 때 쓴다. */
+  billingCycle?: string;
+  /** 사업장(상호). 평균의 **분모**다 — 없으면 거래처로 갈음한다. */
+  place?: string;
+  /** 귀속월. 실적의 단가를 낼 때 **나눌 달**을 세는 데 쓴다. */
+  ym?: string;
+  /** 매출계정. 청구주기가 없는 옛 실적 자료에서 월정액을 가릴 때 쓴다. */
+  erpAccount?: string;
 }
+
+/**
+ * **월정액 계약인가** — 기장뿐 아니라 원천·컨설팅까지. 엑셀의 「월기장료」가 이것이다.
+ *
+ * 청구·예상은 계약의 청구주기로 가른다. 그런데 **옛 실적 자료(FY2025 이전)에는
+ * 청구주기가 없다** — 계약에 연결되어 있지 않기 때문이다. 그때는 매출계정으로 가른다:
+ * 「기장·컨설팅·원천」은 달마다 받는 돈이고, 「세무조정·신고대리」는 한 해에 한 번이다
+ * (2026-09-07 실측 — 세무조정은 열두 달 중 다섯 달에만 찍힌다).
+ */
+const MONTHLY_ACCOUNTS = new Set(['기장', '컨설팅', '원천', '기장대리수입']);
+export const isMonthlyFact = (f: PivotFact): boolean =>
+  (f.billingCycle ? f.billingCycle === '월' : MONTHLY_ACCOUNTS.has((f.erpAccount ?? '').trim()));
 
 /** 축 하나 — 사실 한 줄을 어떤 이름으로 묶을지. 한 줄이 여러 칸에 나뉠 수 있다. */
 export interface Dim<F = PivotFact> {
@@ -40,6 +61,21 @@ export interface Measure<F = PivotFact> {
   pick?: (f: F) => number;
   /** 이 줄을 셈에 넣을지. 없으면 전부. */
   where?: (f: F) => boolean;
+  /**
+   * 평균의 **분모를 무엇으로 셀지**. 없으면 거래처(company).
+   * 「평균 월기장료」는 <b>사업장</b>으로 센다 — 한 거래처가 사업장을 셋 맡기면
+   * 단가는 셋으로 나뉘어야 한다(시파사가 그런 자리다).
+   */
+  unit?: (f: F) => string;
+  /**
+   * true 면 **그 칸에 실제로 매출이 잡힌 달 수**로 한 번 더 나눈다.
+   *
+   * 실적을 볼 때 필요하다 — 창구를 열두 달로 잡아도 여섯 달만 청구된 사업장은
+   * 12 로 나누면 단가가 절반으로 보인다. 「단가가 낮다」와 「몇 달만 청구했다」는
+   * 다른 이야기이고, 사장님이 찾으시는 것은 앞엣것이다(2026-09-07).
+   * 예상은 한 줄에 기간 전체 금액이 담기므로 이 방식을 쓰지 않는다(pick 으로 나눈다).
+   */
+  perMonth?: boolean;
 }
 
 export const MEASURES: Measure[] = measuresFor(12);
@@ -51,8 +87,10 @@ export const MEASURES: Measure[] = measuresFor(12);
  * **월 단가**다. 그런데 피벗이 더하는 것은 기간 전체의 금액이라, 12 로 나누지 않으면
  * 열두 배로 보인다. 기간을 석 달만 잡으면 3 으로 나누어야 하므로 상수로 둘 수 없다.
  */
-export function measuresFor(months: number): Measure[] {
+export function measuresFor(months: number, forecast = false): Measure[] {
   const m = Math.max(1, months);
+  /** 평균의 분모 — 사업장. 한 거래처가 사업장을 여럿 맡기면 그만큼 나뉜다. */
+  const place = (f: PivotFact) => f.place || f.company;
   return [
     { key: 'clients', label: '거래처 수', agg: 'clients' },
     { key: 'count', label: '건수', agg: 'count' },
@@ -62,10 +100,18 @@ export function measuresFor(months: number): Measure[] {
     { key: 'supply', label: '합계(공급가액)', agg: 'sum' },
     // ── 단가. 합계는 많이 맡은 사람이 크고, 단가는 **한 곳당 얼마를 받는지**를 말한다.
     // 「월기장료」는 달마다 받는 돈이라 개월 수로 나눈다(엑셀의 「평균 월 기장료」).
-    {
-      key: 'avgBookM', label: '평균 월기장료', agg: 'avg',
-      where: (f) => f.kind === '기장료', pick: (f) => f.supply / m,
-    },
+    // 「평균 월기장료」 — **월정액 계약(기장·원천·컨설팅)의 사업장당 월 단가**.
+    // 실적은 그 칸에 청구가 잡힌 달 수로 나누고(perMonth), 예상은 한 줄에 기간 전체
+    // 금액이 담기므로 창구의 개월 수로 나눈다(pick).
+    forecast
+      ? {
+        key: 'avgBookM', label: '평균 월기장료', agg: 'avg',
+        where: isMonthlyFact, unit: place, pick: (f) => f.supply / m,
+      }
+      : {
+        key: 'avgBookM', label: '평균 월기장료', agg: 'avg',
+        where: isMonthlyFact, unit: place, perMonth: true,
+      },
     // 조정료는 한 해에 한 번 받는 돈이라 월로 나누지 않는다 — 나누면 뜻이 없다.
     { key: 'avgAdj', label: '거래처당 조정료', agg: 'avg', where: (f) => f.kind === '세무조정' },
     { key: 'avgClient', label: '거래처당 합계', agg: 'avg' },
@@ -92,6 +138,10 @@ export interface PivotTable {
   total: Record<string, number>;
 }
 
+/** 줄의 귀속월. PivotFact 최소 모양에는 없으므로 있으면 쓰고 없으면 한 덩어리로 본다. */
+const monthOf = (f: unknown): string =>
+  (typeof f === 'object' && f !== null && 'ym' in f ? String((f as { ym: unknown }).ym) : '') || '-';
+
 interface Bucket {
   sum: Record<string, number>;
   clients: Set<string>;
@@ -101,8 +151,12 @@ interface Bucket {
    * 전체 거래처가 아니다. 전체로 나누면 기장을 안 맡는 곳까지 분모에 들어가 단가가 낮아진다.
    */
   avgClients: Record<string, Set<string>>;
+  /** 평균을 낼 때 나눌 **달**. perMonth 인 측정값만 채운다. */
+  avgMonths: Record<string, Set<string>>;
 }
-const newBucket = (): Bucket => ({ sum: {}, clients: new Set(), count: 0, avgClients: {} });
+const newBucket = (): Bucket => ({
+  sum: {}, clients: new Set(), count: 0, avgClients: {}, avgMonths: {},
+});
 
 function add<F extends PivotFact>(b: Bucket, f: F, w: number, ms: Measure<F>[]) {
   b.clients.add(f.company);
@@ -114,7 +168,8 @@ function add<F extends PivotFact>(b: Bucket, f: F, w: number, ms: Measure<F>[]) 
     b.sum[m.key] = (b.sum[m.key] ?? 0) + v;
     // 0 원짜리 줄은 분모에 넣지 않는다 — 기장료 없는 신고대리 건까지 세면 평균이 꺼진다.
     if (m.agg === 'avg' && v !== 0) {
-      (b.avgClients[m.key] ??= new Set()).add(f.company);
+      (b.avgClients[m.key] ??= new Set()).add(m.unit ? m.unit(f) : f.company);
+      if (m.perMonth) (b.avgMonths[m.key] ??= new Set()).add(monthOf(f));
     }
   }
 }
@@ -126,7 +181,8 @@ const read = <F,>(b: Bucket, ms: Measure<F>[]): Record<string, number> => {
     if (m.agg === 'count') { out[m.key] = b.count; continue; }
     if (m.agg === 'avg') {
       const n = b.avgClients[m.key]?.size ?? 0;
-      out[m.key] = n > 0 ? (b.sum[m.key] ?? 0) / n : 0;
+      const mm = m.perMonth ? (b.avgMonths[m.key]?.size ?? 0) : 1;
+      out[m.key] = n > 0 && mm > 0 ? (b.sum[m.key] ?? 0) / mm / n : 0;
       continue;
     }
     out[m.key] = b.sum[m.key] ?? 0;

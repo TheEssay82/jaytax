@@ -167,7 +167,8 @@ function StatsPanel() {
     const [ty, tm] = to.split('-').map(Number);
     return Math.max(1, (ty - fy2) * 12 + (tm - fm) + 1);
   }, [from, to]);
-  const measures = useMemo(() => measuresFor(months), [months]);
+  // 실적은 **청구가 잡힌 달 수**로, 예상은 **창구의 개월 수**로 나눈다 — 뜻은 같고 셈이 다르다.
+  const measures = useMemo(() => measuresFor(months, basis === 'forecast'), [months, basis]);
   const cols = useMemo(() => measures.filter((m) => showAvg || m.agg !== 'avg'), [measures, showAvg]);
   // 요약표(엑셀 모양) — 행 2단계 × 값 여러 개. 교차표와 달리 열 축을 쓰지 않는다.
   const sum2 = useMemo(
