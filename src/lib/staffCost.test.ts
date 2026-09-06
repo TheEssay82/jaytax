@@ -12,7 +12,11 @@
 // 등급으로 막으면 막으면 안 되는 사람(송현주 회계사)까지 걸리거나, 반대로 샌다.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canSeeStaffCost, isCostExempt, totalCost, COST_HIDDEN_FOR, type StaffCost } from './staffCost';
+import {
+  canSeeStaffCost, isCostExempt, totalCost, COST_HIDDEN_FOR,
+  basicTotal, monthlyTotal, bonusOf, annualOf, deriveCost, raiseOf, yearPay,
+  type StaffCost,
+} from './staffCost';
 
 // ── 자기 급여가 걸린 세 사람 ────────────────────────────
 
@@ -66,4 +70,72 @@ test('총부담비용 = 연봉+상여+퇴직금+4대보험+기타 (세전 월급
     insurance: 4_800_000, etcCost: 4_800_000, note: '',
   };
   assert.equal(totalCost(c), 65_600_000, '세전(월) 4,000,000 이 더해지면 안 된다');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * 급여 구성요소 → 총부담비용.
+ *
+ * 아래 숫자는 **지어낸 것이 아니다** — 엑셀(기장사업부현황정리_20260630기준)의
+ * 「기장담당자 현황」 시트 30~38 행에 있는 세 사람의 실제 급여표다. 그 표의
+ * 「연봉」·「인상금액」 칸과 한 칸씩 맞춰 두었으므로, 식을 잘못 고치면 여기가 먼저 깨진다.
+ * ────────────────────────────────────────────────────────────────────────── */
+test('엑셀 급여표 — 정남지 FY2026(인상 후)', () => {
+  const p = { basePay: 3_920_000, allowance: 0, mgmtAllowance: 240_000, meal: 200_000 };
+  assert.equal(basicTotal(p), 4_160_000);      // 기본급합계 — 식대는 빠진다
+  assert.equal(monthlyTotal(p), 4_360_000);    // 월급합계
+  assert.equal(bonusOf(p), 4_160_000);         // 상여 100%
+  assert.equal(annualOf(p), 56_480_000);       // 엑셀 「연봉」
+  const d = deriveCost(p);
+  assert.equal(d.annual, 52_320_000);          // 저장 칸의 annual 은 상여를 뺀 열두 달치
+  assert.equal(d.bonus, 4_160_000);
+  assert.equal(d.severance, 4_706_667);
+  assert.equal(d.insurance, 5_648_000);
+  assert.equal(d.etcCost, 5_648_000);
+  assert.equal(d.total, 72_482_667);           // DB staff_cost 의 합과 같다
+});
+
+test('엑셀 급여표 — 김민섭·김동주 FY2026(인상 후)', () => {
+  const ms = { basePay: 3_840_000, allowance: 0, mgmtAllowance: 0, meal: 200_000 };
+  assert.equal(annualOf(ms), 52_320_000);
+  assert.equal(deriveCost(ms).total, 67_144_000);
+
+  const dj = { basePay: 3_020_000, allowance: 0, mgmtAllowance: 0, meal: 200_000 };
+  assert.equal(annualOf(dj), 41_660_000);
+  assert.equal(deriveCost(dj).total, 53_463_667);
+});
+
+test('총부담은 연봉의 1.28333 배 — 퇴직 1/12 + 보험 10% + 기타 10%', () => {
+  const p = { basePay: 3_000_000, allowance: 0, mgmtAllowance: 0, meal: 0 };
+  const d = deriveCost(p);
+  assert.equal(annualOf(p), 39_000_000);
+  assert.equal(d.total, Math.round(39_000_000 * (1 + 1 / 12 + 0.1 + 0.1)));
+});
+
+test('비율은 바꿀 수 있고, 퇴직금 0 은 나누지 않는다', () => {
+  const p = { basePay: 1_200_000, allowance: 0, mgmtAllowance: 0, meal: 0 };
+  const d = deriveCost(p, { severanceDiv: 0, insuranceRate: 0, etcRate: 0 });
+  assert.equal(d.severance, 0);
+  assert.equal(d.total, annualOf(p));
+});
+
+test('인상 — 엑셀의 인상금액·인상률과 같다', () => {
+  const 정남지 = raiseOf(53_360_000, 56_480_000);
+  assert.equal(정남지?.amount, 3_120_000);
+  assert.equal((정남지!.rate * 100).toFixed(2), '5.85');
+
+  const 김민섭 = raiseOf(50_240_000, 52_320_000);
+  assert.equal(김민섭?.amount, 2_080_000);
+  assert.equal((김민섭!.rate * 100).toFixed(2), '4.14');
+
+  const 김동주 = raiseOf(39_710_000, 41_660_000);
+  assert.equal(김동주?.amount, 1_950_000);
+  assert.equal((김동주!.rate * 100).toFixed(2), '4.91');
+});
+
+test('지난 해가 없으면 인상률은 0% 가 아니라 없음이다', () => {
+  assert.equal(raiseOf(0, 50_000_000), null);
+});
+
+test('yearPay — 저장된 줄에서 엑셀 「연봉」을 되돌린다', () => {
+  assert.equal(yearPay({ annual: 52_320_000, bonus: 4_160_000 }), 56_480_000);
 });

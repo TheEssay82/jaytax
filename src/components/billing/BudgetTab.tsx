@@ -12,6 +12,7 @@
 //   · taxteam — 담당직원, 또는 담당회계사 › 담당직원 2단계(엑셀 시트 모양). 화면에서 전환한다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Guide from '../common/Guide';
+import StaffCostTab from './StaffCostTab';
 import { useAuth } from '../../context/AuthContext';
 import {
   listBudgetFacts, listForecastFacts, listRevenueAll, fyOf, fyLabel, fyRange, kstYm,
@@ -20,7 +21,7 @@ import {
 import { pivotMulti, type Dim, type Measure } from '../../lib/revenuePivot';
 import {
   listStaffCost, saveStaffCost, deleteStaffCost, copyStaffCostFrom, totalCost, canSeeStaffCost,
-  isCostExempt, type StaffCost,
+  isCostExempt, basicTotal, deriveCost, raiseOf, yearPay, type StaffCost,
 } from '../../lib/staffCostApi';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
@@ -92,7 +93,34 @@ interface Row {
   split: boolean;
 }
 
+/**
+ * 예산 — **보는 자리와 세팅하는 자리를 가른다**(2026-09-06).
+ *
+ * 그전에는 한 화면에서 매출 피벗을 보다가 「수정」을 눌러 급여를 고쳤다. 급여를 정하는 일은
+ * 표를 훑는 일과 성격이 다르다 — 사람을 고르고, 지금 구조를 보고, 호봉을 올린다. 그래서
+ * 사장님 요청대로 하부 탭을 따로 세웠다.
+ */
 export default function BudgetTab() {
+  const { role, profileName } = useAuth();
+  const allowed = canSeeStaffCost(role, profileName);
+  const [view, setView] = useState<'budget' | 'setup'>('budget');
+
+  if (!allowed) return <BudgetPanel />;
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        {([['budget', '📈 수입 대비 인건비'], ['setup', '⚙️ 인건비 세팅']] as const).map(([k, label]) => (
+          <button key={k} className={view === k ? 'btn-p' : 'btn-sm'} onClick={() => setView(k)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {view === 'setup' ? <StaffCostTab /> : <BudgetPanel />}
+    </>
+  );
+}
+
+function BudgetPanel() {
   const { role, profileName, readonly } = useAuth();
   const allowed = canSeeStaffCost(role, profileName);
 
@@ -101,6 +129,9 @@ export default function BudgetTab() {
   const [team, setTeam] = useState('taxteam');
   const [axis, setAxis] = useState<Axis>('staff');
   const [costs, setCosts] = useState<StaffCost[]>([]);
+  /** 앞 연도 인건비 — **인상률을 말하려면 견줄 것이 있어야 한다.** 없으면 인상을 말하지 않는다. */
+  const [prevCosts, setPrevCosts] = useState<StaffCost[]>([]);
+  const [showPay, setShowPay] = useState(false);
   const [facts, setFacts] = useState<RevenueFact[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -115,13 +146,14 @@ export default function BudgetTab() {
     try {
       const { from, to } = fyRange(fy);
       const t = team || undefined;
-      const [cs, fs] = await Promise.all([
+      const [cs, ps, fs] = await Promise.all([
         listStaffCost(fy),
+        listStaffCost(fy - 1),
         basis === 'budget' ? listBudgetFacts(fy, t, { includeDraft: true })
           : basis === 'forecast' ? listForecastFacts(from, to, t, { includeDraft: true })
             : listRevenueAll(from, to, t),
       ]);
-      setCosts(cs); setFacts(fs);
+      setCosts(cs); setPrevCosts(ps); setFacts(fs);
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setLoading(false); }
   }, [allowed, fy, basis, team]);
@@ -132,6 +164,13 @@ export default function BudgetTab() {
       const c = costs.find((x) => x.staffName === name);
       return c ? totalCost(c) : 0;
     }, [costs]);
+
+  /** 앞 연도의 「연봉」(상여 포함). 견줄 것이 없으면 0 — 화면이 인상을 말하지 않는다. */
+  const prevPayOf = useCallback(
+    (name: string) => {
+      const c = prevCosts.find((x) => x.staffName === name);
+      return c ? yearPay(c) : 0;
+    }, [prevCosts]);
 
   /**
    * 표 줄 만들기. 인건비를 붙이는 규칙이 여기 다 있다.
@@ -351,6 +390,8 @@ export default function BudgetTab() {
                       onClick={() => setEdit(costs.find((x) => x.staffName === r.person) ?? {
                         id: '', fy, staffName: r.person, monthly: 0, annual: 0, bonus: 0,
                         severance: 0, insurance: 0, etcCost: 0, note: '',
+                        basePay: 0, allowance: 0, mgmtAllowance: 0, meal: 0,
+                        severanceDiv: 12, insuranceRate: 0.1, etcRate: 0.1, payStep: null,
                       })}>
                       {costs.some((x) => x.staffName === r.person) ? '수정' : '입력'}
                     </button>
@@ -426,6 +467,12 @@ export default function BudgetTab() {
         </div>
       )}
 
+      {!isAudit && costs.length > 0 && (
+        <PayrollTable fy={fy} costs={costs} prevPayOf={prevPayOf} show={showPay}
+          onToggle={() => setShowPay((v) => !v)}
+          onEdit={(c) => setEdit(c)} readonly={readonly} />
+      )}
+
       {!isAudit && (
         <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
           <button className="btn-rep" disabled={readonly}
@@ -441,62 +488,81 @@ export default function BudgetTab() {
       )}
 
       {edit && (
-        <CostEditor row={edit} onClose={() => setEdit(null)}
+        <CostEditor row={edit} prevYearPay={prevPayOf(edit.staffName)}
+          onClose={() => setEdit(null)}
           onSaved={() => { setEdit(null); void load(); }} />
       )}
     </div>
   );
 }
 
-/** 인건비 한 사람 — 엑셀 표와 같은 칸을 그대로 둔다. */
-function CostEditor({ row, onClose, onSaved }: {
-  row: StaffCost; onClose: () => void; onSaved: () => void;
+/**
+ * 인건비 한 사람 — **엑셀 급여표와 같은 칸**을 그대로 둔다(2026-09-06 개편).
+ *
+ * 그전에는 연봉·상여·퇴직금·4대보험·기타 다섯 칸을 사람이 직접 넣었다. 급여가 바뀔 때마다
+ * 다섯 번 셈해야 했고, 「세전 월급으로 채우기」 버튼의 식이 **엑셀과 달랐다**
+ * (퇴직금을 ÷13 으로, 보험을 상여 뺀 연봉의 10% 로 셌다 — 둘 다 실제보다 작다).
+ *
+ * 이제 사람은 **기본금·수당·관리수당·식대**만 넣고 나머지는 deriveCost 한 곳에서 나온다.
+ * 그 식은 세 사람의 실제 급여표로 검산해 테스트에 박아 두었다.
+ */
+function CostEditor({ row, prevYearPay, onClose, onSaved }: {
+  row: StaffCost; prevYearPay: number; onClose: () => void; onSaved: () => void;
 }) {
   const [f, setF] = useState({
-    monthly: String(row.monthly || ''), annual: String(row.annual || ''),
-    bonus: String(row.bonus || ''), severance: String(row.severance || ''),
-    insurance: String(row.insurance || ''), etcCost: String(row.etcCost || ''), note: row.note,
+    basePay: String(row.basePay || ''), allowance: String(row.allowance || ''),
+    mgmtAllowance: String(row.mgmtAllowance || ''), meal: String(row.meal || ''),
+    note: row.note,
   });
+  const [rates, setRates] = useState({
+    severanceDiv: String(row.severanceDiv || 12),
+    insurancePct: String((row.insuranceRate ?? 0.1) * 100),
+    etcPct: String((row.etcRate ?? 0.1) * 100),
+  });
+  const [showRates, setShowRates] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
-  const total = num(f.annual) + num(f.bonus) + num(f.severance) + num(f.insurance) + num(f.etcCost);
 
-  /** 엑셀과 같은 채우기 — 연봉=세전×12, 4대보험·기타=연봉의 10%, 퇴직금=(연봉+상여)/13. */
-  function autoFill() {
-    const m = num(f.monthly);
-    if (!m) return alert('세전 월급을 먼저 넣어 주세요.');
-    const annual = m * 12;
-    const bonus = num(f.bonus) || 0;
-    setF((p) => ({
-      ...p,
-      annual: String(annual),
-      insurance: String(Math.round(annual * 0.1)),
-      etcCost: String(Math.round(annual * 0.1)),
-      severance: String(Math.round((annual + bonus) / 13)),
-    }));
-  }
+  const parts = {
+    basePay: num(f.basePay), allowance: num(f.allowance),
+    mgmtAllowance: num(f.mgmtAllowance), meal: num(f.meal),
+  };
+  const rateVals = {
+    severanceDiv: num(rates.severanceDiv),
+    insuranceRate: (Number(rates.insurancePct) || 0) / 100,
+    etcRate: (Number(rates.etcPct) || 0) / 100,
+  };
+  const d = deriveCost(parts, rateVals);
+  const year = yearPay(d);
+  const raise = raiseOf(prevYearPay, year);
 
   async function save() {
     setBusy(true); setErr('');
     try {
-      await saveStaffCost({
-        fy: row.fy, staffName: row.staffName,
-        monthly: num(f.monthly), annual: num(f.annual), bonus: num(f.bonus),
-        severance: num(f.severance), insurance: num(f.insurance), etcCost: num(f.etcCost),
-        note: f.note,
-      });
+      await saveStaffCost({ fy: row.fy, staffName: row.staffName, ...parts, ...rateVals, note: f.note });
       onSaved();
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
 
-  const F = ({ label, k }: { label: string; k: keyof typeof f }) => (
-    <label style={{ fontSize: 'var(--fs-1)', display: 'block' }}>
+  const F = ({ label, k, hint }: { label: string; k: keyof typeof f; hint?: string }) => (
+    <label style={{ fontSize: 'var(--fs-1)', display: 'block' }} title={hint}>
       {label}<br />
       <input value={f[k]} onChange={(e) => set(k, e.target.value.replace(/[^\d-]/g, ''))}
         style={{ width: '100%', textAlign: 'right' }} />
     </label>
+  );
+  /** 계산되어 나온 값 — 읽기만 한다. 손으로 고칠 수 없다는 것이 회색 바탕으로 보인다. */
+  const Out = ({ label, v, strong }: { label: string; v: number; strong?: boolean }) => (
+    <div style={{ fontSize: 'var(--fs-1)' }}>
+      <span style={{ color: 'var(--ink-2)' }}>{label}</span><br />
+      <div style={{
+        textAlign: 'right', padding: '3px 6px', background: '#F3F4F6',
+        borderRadius: 4, fontWeight: strong ? 700 : 400,
+        color: strong ? 'var(--navy)' : 'var(--ink-1)',
+      }}>{won(v)}</div>
+    </div>
   );
 
   return (
@@ -504,29 +570,73 @@ function CostEditor({ row, onClose, onSaved }: {
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 60,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
     }}>
-      <div className="card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, width: '100%' }}>
+      <div className="card" onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 560, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="chdr" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           💰 {row.staffName} — FY{row.fy} 인건비
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>닫기</button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          <F label="세전(월)" k="monthly" />
-          <F label="연봉" k="annual" />
-          <F label="상여" k="bonus" />
-          <F label="퇴직금" k="severance" />
-          <F label="4대보험" k="insurance" />
-          <F label="기타 지출비용" k="etcCost" />
+
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginBottom: 6 }}>
+          <b>넣는 것은 넷뿐</b>입니다 — 나머지는 급여표의 식대로 따라옵니다.
         </div>
-        <button className="btn-sm" style={{ marginTop: 8 }} onClick={autoFill}
-          title="연봉=세전×12, 4대보험·기타=연봉의 10%, 퇴직금=(연봉+상여)/13">
-          ⚡ 세전 월급으로 나머지 채우기
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          <F label="기본금" k="basePay" />
+          <F label="수당" k="allowance" />
+          <F label="관리수당" k="mgmtAllowance" />
+          <F label="식대" k="meal" hint="월급합계에는 들어가고 상여 계산에서는 빠집니다" />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 10 }}>
+          <Out label="기본급합계" v={basicTotal(parts)} />
+          <Out label="월급합계" v={d.monthly} />
+          <Out label="상여 100%" v={d.bonus} />
+          <Out label="연봉" v={year} strong />
+        </div>
+
+        {raise && (
+          <div style={{
+            marginTop: 8, fontSize: 'var(--fs-1)', padding: '5px 8px',
+            background: raise.amount >= 0 ? '#ECFDF5' : '#FEF2F2', borderRadius: 4,
+          }}>
+            FY{row.fy - 1} 연봉 {won(prevYearPay)} → <b>{won(year)}</b>
+            {' · '}인상 <b>{raise.amount >= 0 ? '+' : ''}{won(raise.amount)}</b>
+            {' ('}{(raise.rate * 100).toFixed(2)}%{')'}
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 10 }}>
+          <Out label={`퇴직금 (연봉÷${rates.severanceDiv || 0})`} v={d.severance} />
+          <Out label={`4대보험 (${rates.insurancePct || 0}%)`} v={d.insurance} />
+          <Out label={`기타 (${rates.etcPct || 0}%)`} v={d.etcCost} />
+        </div>
+
+        <button className="btn-sm" style={{ marginTop: 8 }} onClick={() => setShowRates((v) => !v)}>
+          {showRates ? '▾' : '▸'} 부대비용 비율 {showRates ? '접기' : '고치기'}
         </button>
+        {showRates && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 6 }}>
+            {([['severanceDiv', '퇴직금 — 연봉 ÷'], ['insurancePct', '4대보험 %'], ['etcPct', '기타 %']] as const)
+              .map(([k, label]) => (
+                <label key={k} style={{ fontSize: 'var(--fs-1)', display: 'block' }}>
+                  {label}<br />
+                  <input value={rates[k]}
+                    onChange={(e) => setRates((p) => ({ ...p, [k]: e.target.value.replace(/[^\d.]/g, '') }))}
+                    style={{ width: '100%', textAlign: 'right' }} />
+                </label>
+              ))}
+          </div>
+        )}
+
         <label style={{ fontSize: 'var(--fs-1)', display: 'block', marginTop: 8 }}>
           비고<br />
           <input value={f.note} onChange={(e) => set('note', e.target.value)} style={{ width: '100%' }} />
         </label>
         <div style={{ marginTop: 10, fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>
-          총부담비용 {won(total)}
+          총부담비용 {won(d.total)}
+          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-2)' }}>
+            {' '}= 연봉 + 퇴직금 + 4대보험 + 기타
+          </span>
         </div>
         {err && <div className="alert-e" style={{ fontSize: 'var(--fs-1)', marginTop: 6 }}>{err}</div>}
         <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
@@ -544,6 +654,132 @@ function CostEditor({ row, onClose, onSaved }: {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 인건비 예측 — **엑셀 급여표를 그대로 옮긴 표**(2026-09-06).
+ *
+ * 위의 예산 표는 「사람마다 인건비 얼마」 한 칸만 보여 준다. 그 한 칸이 **어떻게 나온
+ * 숫자인지**는 볼 수 없었고, 사장님이 해마다 견주시는 **앞 연도 대비 인상**도 앱에
+ * 자리가 없었다. 그래서 엑셀 급여표의 칸을 그대로 세운다 —
+ * 기본금부터 연봉까지 왼쪽에서 오른쪽으로 읽으면 셈이 따라온다.
+ *
+ * 접어 둔 채로 시작한다. 예산 표를 보러 온 사람에게 급여 명세가 먼저 펼쳐질 이유는 없다.
+ */
+function PayrollTable({ fy, costs, prevPayOf, show, onToggle, onEdit, readonly }: {
+  fy: number;
+  costs: StaffCost[];
+  prevPayOf: (name: string) => number;
+  show: boolean;
+  onToggle: () => void;
+  onEdit: (c: StaffCost) => void;
+  readonly: boolean;
+}) {
+  const rows = [...costs].sort((a, b) => b.annual - a.annual);
+  const sum = (f: (c: StaffCost) => number) => rows.reduce((s, c) => s + f(c), 0);
+  const totPrev = sum((c) => prevPayOf(c.staffName));
+  const totYear = sum(yearPay);
+  const totRaise = raiseOf(totPrev, totYear);
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button className="btn-sm" onClick={onToggle} style={{ fontWeight: 700 }}>
+        {show ? '▾' : '▸'} 💵 인건비 예측 — FY{fy} 급여표 ({rows.length}명 · 총부담 {won(sum(totalCost))})
+      </button>
+      {show && (
+        <div className="tbl-wide" style={{ marginTop: 6 }}>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>이름</th>
+                <th className="r">기본금</th>
+                <th className="r">수당</th>
+                <th className="r">관리수당</th>
+                <th className="r">기본급합계</th>
+                <th className="r">식대</th>
+                <th className="r">월급합계</th>
+                <th className="r">상여</th>
+                <th className="r">연봉</th>
+                <th className="r">FY{fy - 1} 연봉</th>
+                <th className="r">인상</th>
+                <th className="r">퇴직금</th>
+                <th className="r">4대보험</th>
+                <th className="r">기타</th>
+                <th className="r">총부담비용</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c) => {
+                const parts = {
+                  basePay: c.basePay, allowance: c.allowance,
+                  mgmtAllowance: c.mgmtAllowance, meal: c.meal,
+                };
+                // 구성요소가 비어 있는 옛 줄은 **저장된 결과값**을 그대로 보여 준다.
+                // 지어낸 구성요소를 만들어 내면 화면이 거짓말을 한다.
+                const legacy = basicTotal(parts) + parts.meal === 0;
+                const year = yearPay(c);
+                const prev = prevPayOf(c.staffName);
+                const r = raiseOf(prev, year);
+                const dash = <span style={{ color: 'var(--ink-4)' }}>—</span>;
+                return (
+                  <tr key={c.id || c.staffName}>
+                    <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{c.staffName}</td>
+                    <td className="r">{legacy ? dash : won(c.basePay)}</td>
+                    <td className="r">{legacy || !c.allowance ? dash : won(c.allowance)}</td>
+                    <td className="r">{legacy || !c.mgmtAllowance ? dash : won(c.mgmtAllowance)}</td>
+                    <td className="r" style={{ color: 'var(--ink-2)' }}>
+                      {legacy ? dash : won(basicTotal(parts))}
+                    </td>
+                    <td className="r">{legacy || !c.meal ? dash : won(c.meal)}</td>
+                    <td className="r" style={{ fontWeight: 700 }}>{won(c.monthly)}</td>
+                    <td className="r">{won(c.bonus)}</td>
+                    <td className="r" style={{ fontWeight: 700, color: 'var(--navy)' }}>{won(year)}</td>
+                    <td className="r" style={{ color: 'var(--ink-3)' }}>{prev ? won(prev) : dash}</td>
+                    <td className="r" style={{ color: r ? (r.amount >= 0 ? 'var(--good)' : 'var(--bad)') : undefined }}>
+                      {r ? `${r.amount >= 0 ? '+' : ''}${won(r.amount)} (${(r.rate * 100).toFixed(2)}%)` : dash}
+                    </td>
+                    <td className="r" style={{ color: 'var(--ink-2)' }}>{won(c.severance)}</td>
+                    <td className="r" style={{ color: 'var(--ink-2)' }}>{won(c.insurance)}</td>
+                    <td className="r" style={{ color: 'var(--ink-2)' }}>{won(c.etcCost)}</td>
+                    <td className="r" style={{ fontWeight: 700 }}>{won(totalCost(c))}</td>
+                    <td>
+                      <button className="btn-sm" disabled={readonly} onClick={() => onEdit(c)}>수정</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
+                <td>합계</td>
+                <td colSpan={5}></td>
+                <td className="r">{won(sum((c) => c.monthly))}</td>
+                <td className="r">{won(sum((c) => c.bonus))}</td>
+                <td className="r">{won(totYear)}</td>
+                <td className="r">{totPrev ? won(totPrev) : ''}</td>
+                <td className="r" style={{ color: totRaise && totRaise.amount < 0 ? 'var(--bad)' : 'var(--good)' }}>
+                  {totRaise ? `${totRaise.amount >= 0 ? '+' : ''}${won(totRaise.amount)} (${(totRaise.rate * 100).toFixed(2)}%)` : ''}
+                </td>
+                <td className="r">{won(sum((c) => c.severance))}</td>
+                <td className="r">{won(sum((c) => c.insurance))}</td>
+                <td className="r">{won(sum((c) => c.etcCost))}</td>
+                <td className="r">{won(sum(totalCost))}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+      {show && (
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginTop: 6 }}>
+          월급합계 = 기본금+수당+관리수당+식대 · 상여 = 기본급합계(식대 제외) · 연봉 = 월급합계×12+상여 ·
+          퇴직금 = 연봉÷12 · 4대보험·기타 = 연봉의 10%.
+          <b> 사람이 넣는 것은 왼쪽 네 칸뿐</b>이고 나머지는 따라옵니다.
+        </div>
+      )}
     </div>
   );
 }

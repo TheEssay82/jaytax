@@ -31,8 +31,11 @@ export interface Dim<F = PivotFact> {
 export interface Measure<F = PivotFact> {
   key: string;
   label: string;
-  /** 'sum' 은 금액을 더하고, 'clients' 는 서로 다른 거래처를 센다. */
-  agg: 'sum' | 'clients' | 'count';
+  /**
+   * 'sum' 은 금액을 더하고, 'clients' 는 서로 다른 거래처를 센다.
+   * 'avg' 는 **거래처 하나당 얼마**인가 — 금액 ÷ 그 금액이 잡힌 거래처 수다.
+   */
+  agg: 'sum' | 'clients' | 'count' | 'avg';
   /** agg='sum' 일 때 이 줄에서 뽑을 값. 없으면 supply. */
   pick?: (f: F) => number;
   /** 이 줄을 셈에 넣을지. 없으면 전부. */
@@ -46,6 +49,11 @@ export const MEASURES: Measure[] = [
   { key: 'adj', label: '조정료', agg: 'sum', where: (f) => f.kind === '세무조정' },
   { key: 'etc', label: '기타수입', agg: 'sum', where: (f) => f.kind === '기타' },
   { key: 'supply', label: '합계(공급가액)', agg: 'sum' },
+  // 엑셀에서 「평균 월 기장료」로 보시던 것(2026-09-06 요구). **단가**를 보는 자리다 —
+  // 합계는 거래처를 많이 맡은 사람이 크고, 평균은 한 곳당 얼마를 받는지를 말한다.
+  { key: 'avgClient', label: '거래처당 평균', agg: 'avg' },
+  { key: 'avgBook', label: '거래처당 기장료', agg: 'avg', where: (f) => f.kind === '기장료' },
+  { key: 'avgAdj', label: '거래처당 조정료', agg: 'avg', where: (f) => f.kind === '세무조정' },
 ];
 
 /** 표의 한 줄. 2단계면 부모 아래에 자식 줄이 붙는다. */
@@ -68,25 +76,44 @@ export interface PivotTable {
   total: Record<string, number>;
 }
 
-interface Bucket { sum: Record<string, number>; clients: Set<string>; count: number }
-const newBucket = (): Bucket => ({ sum: {}, clients: new Set(), count: 0 });
+interface Bucket {
+  sum: Record<string, number>;
+  clients: Set<string>;
+  count: number;
+  /**
+   * 평균의 **분모**. 측정값마다 따로 센다 — 기장료 평균의 분모는 「기장료가 잡힌 거래처」이지
+   * 전체 거래처가 아니다. 전체로 나누면 기장을 안 맡는 곳까지 분모에 들어가 단가가 낮아진다.
+   */
+  avgClients: Record<string, Set<string>>;
+}
+const newBucket = (): Bucket => ({ sum: {}, clients: new Set(), count: 0, avgClients: {} });
 
 function add<F extends PivotFact>(b: Bucket, f: F, w: number, ms: Measure<F>[]) {
   b.clients.add(f.company);
   b.count += 1;
   for (const m of ms) {
-    if (m.agg !== 'sum') continue;
+    if (m.agg !== 'sum' && m.agg !== 'avg') continue;
     if (m.where && !m.where(f)) continue;
-    b.sum[m.key] = (b.sum[m.key] ?? 0) + (m.pick ? m.pick(f) : f.supply) * w;
+    const v = (m.pick ? m.pick(f) : f.supply) * w;
+    b.sum[m.key] = (b.sum[m.key] ?? 0) + v;
+    // 0 원짜리 줄은 분모에 넣지 않는다 — 기장료 없는 신고대리 건까지 세면 평균이 꺼진다.
+    if (m.agg === 'avg' && v !== 0) {
+      (b.avgClients[m.key] ??= new Set()).add(f.company);
+    }
   }
 }
 
 const read = <F,>(b: Bucket, ms: Measure<F>[]): Record<string, number> => {
   const out: Record<string, number> = {};
   for (const m of ms) {
-    out[m.key] = m.agg === 'clients' ? b.clients.size
-      : m.agg === 'count' ? b.count
-        : (b.sum[m.key] ?? 0);
+    if (m.agg === 'clients') { out[m.key] = b.clients.size; continue; }
+    if (m.agg === 'count') { out[m.key] = b.count; continue; }
+    if (m.agg === 'avg') {
+      const n = b.avgClients[m.key]?.size ?? 0;
+      out[m.key] = n > 0 ? (b.sum[m.key] ?? 0) / n : 0;
+      continue;
+    }
+    out[m.key] = b.sum[m.key] ?? 0;
   }
   return out;
 };

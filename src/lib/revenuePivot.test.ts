@@ -127,3 +127,80 @@ test('자료가 없으면 빈 표', () => {
   assert.equal(t.total.supply, 0);
   assert.equal(t.total.clients, 0);
 });
+
+// ── 거래처당 평균(단가) ─────────────────────────────────
+//
+// 엑셀 「담당cpa별 월기장료평균」을 옮긴 것이다(2026-09-06). 합계는 많이 맡은 사람이
+// 크지만, 평균은 **한 곳당 얼마를 받는가**를 말한다 — 둘은 다른 질문이다.
+
+test('거래처당 평균 = 금액 ÷ 그 금액이 잡힌 거래처 수', () => {
+  const t = pivotMulti([
+    f({ company: 'A', supply: 300, kind: '기장료' }),
+    f({ company: 'B', supply: 100, kind: '기장료' }),
+  ], CPA, null, M);
+  assert.equal(t.total.book, 400);
+  assert.equal(t.total.avgBook, 200);      // 400 ÷ 2곳
+  assert.equal(t.total.avgClient, 200);
+});
+
+test('한 거래처가 여러 건이어도 분모는 **거래처 수**다', () => {
+  const t = pivotMulti([
+    f({ company: 'A', supply: 100, kind: '기장료' }),
+    f({ company: 'A', supply: 200, kind: '기장료' }),
+    f({ company: 'B', supply: 300, kind: '기장료' }),
+  ], CPA, null, M);
+  assert.equal(t.total.count, 3);
+  assert.equal(t.total.avgBook, 300);      // 600 ÷ 2곳 — 건수 3 으로 나누지 않는다
+});
+
+test('기장료 평균의 분모에 **기장료 없는 거래처**는 들어가지 않는다', () => {
+  // 신고대리만 하는 곳(기장료 0)이 분모에 끼면 단가가 실제보다 낮게 보인다.
+  const t = pivotMulti([
+    f({ company: 'A', supply: 300, kind: '기장료' }),
+    f({ company: 'B', supply: 500, kind: '세무조정' }),
+  ], CPA, null, M);
+  assert.equal(t.total.clients, 2);
+  assert.equal(t.total.avgBook, 300);      // 300 ÷ 1곳 (B 는 빠진다)
+  assert.equal(t.total.avgAdj, 500);
+  assert.equal(t.total.avgClient, 400);    // 전체 평균은 두 곳 다 센다
+});
+
+test('0 원 줄은 분모를 늘리지 않는다', () => {
+  const t = pivotMulti([
+    f({ company: 'A', supply: 300, kind: '기장료' }),
+    f({ company: 'B', supply: 0, kind: '기장료' }),
+  ], CPA, null, M);
+  assert.equal(t.total.avgBook, 300);
+});
+
+test('평균은 사람마다 따로 — 합계가 큰 사람이 단가도 높은 것은 아니다', () => {
+  const t = pivotMulti([
+    f({ cpa: '정우철', company: 'A', supply: 100, kind: '기장료' }),
+    f({ cpa: '정우철', company: 'B', supply: 100, kind: '기장료' }),
+    f({ cpa: '정우철', company: 'C', supply: 100, kind: '기장료' }),
+    f({ cpa: '김준성', company: 'D', supply: 250, kind: '기장료' }),
+  ], CPA, null, M);
+  const 정 = t.rows.find((r) => r.key === '정우철')!;
+  const 김 = t.rows.find((r) => r.key === '김준성')!;
+  assert.equal(정.values.book, 300);       // 합계는 정우철이 크지만
+  assert.equal(정.values.avgBook, 100);
+  assert.equal(김.values.book, 250);
+  assert.equal(김.values.avgBook, 250);    // 단가는 김준성이 높다
+});
+
+test('배분된 줄도 평균의 분모는 거래처 하나다', () => {
+  // 한 거래처를 둘이 나눠 맡으면 금액은 반씩, 거래처는 각자 한 곳으로 센다.
+  const t = pivotMulti([
+    f({ company: 'A', supply: 400, kind: '기장료', shares: [{ name: '갑', share: 50 }, { name: '을', share: 50 }] }),
+  ], STAFF, null, M);
+  const 갑 = t.rows.find((r) => r.key === '갑')!;
+  assert.equal(갑.values.book, 200);
+  assert.equal(갑.values.avgBook, 200);
+  assert.equal(t.total.avgBook, 400);      // 총계에서는 한 곳에 400
+});
+
+test('빈 값은 나누지 않는다 — 0으로 나눠 NaN 이 나오면 표가 깨진다', () => {
+  const t = pivotMulti([f({ supply: 0, kind: '기장료' })], CPA, null, M);
+  assert.equal(t.total.avgBook, 0);
+  assert.ok(Number.isFinite(t.total.avgAdj));
+});

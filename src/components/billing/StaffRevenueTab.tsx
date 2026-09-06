@@ -151,6 +151,14 @@ function StatsPanel() {
     [filtered, rowKey, colKey, value],
   );
   const fmt = (n: number) => (value === 'count' ? String(Math.round(n * 100) / 100) : won(n));
+
+  /**
+   * 「거래처당 평균」 열을 볼지. **기본은 꺼 둔다** — 값 여러 개 표는 이미 여섯 열이고,
+   * 평균까지 늘 펼치면 합계를 읽으러 온 사람에게 가로 스크롤부터 안긴다.
+   * 단가를 보는 것은 따로 마음먹고 하는 일이라 스위치로 둔다(2026-09-06 요구).
+   */
+  const [showAvg, setShowAvg] = useState(false);
+  const cols = useMemo(() => MEASURES.filter((m) => showAvg || m.agg !== 'avg'), [showAvg]);
   // 요약표(엑셀 모양) — 행 2단계 × 값 여러 개. 교차표와 달리 열 축을 쓰지 않는다.
   const sum2 = useMemo(
     () => pivotMulti(filtered, dimOf(rowKey), subKey === 'none' ? null : dimOf(subKey), MEASURES),
@@ -305,6 +313,16 @@ function StatsPanel() {
         </div>
       )}
 
+      {mode === 'summary' && (
+        // 단가를 보는 스위치. 「거래처당 평균」은 **더한 값이 아니라 나눈 값**이라
+        // 합계 열과 섞이면 잘못 읽힌다 — 켜면 옅은 바탕으로 갈라 보인다.
+        <label style={{ fontSize: 'var(--fs-1)', display: 'flex', alignItems: 'center', gap: 5, margin: '2px 0 6px' }}
+          title="한 거래처당 얼마를 받는지 — 엑셀에서 「평균 월 기장료」로 보시던 값입니다">
+          <input type="checkbox" checked={showAvg} onChange={(e) => setShowAvg(e.target.checked)} />
+          거래처당 <b>평균(단가)</b> 열 보기
+        </label>
+      )}
+
       {mode === 'summary' ? (
         <div className="tbl-scroll">
           <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
@@ -313,12 +331,16 @@ function StatsPanel() {
                 <th style={{ minWidth: 160 }}>
                   {dimOf(rowKey).label}{subKey !== 'none' && ` › ${dimOf(subKey).label}`}
                 </th>
-                {MEASURES.map((m) => <th key={m.key} className="r">{m.label}</th>)}
+                {cols.map((m) => (
+                  <th key={m.key} className="r" style={m.agg === 'avg' ? { background: '#FAF7EE' } : undefined}>
+                    {m.label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {sum2.rows.length === 0 && (
-                <EmptyRow colSpan={1 + MEASURES.length} text="조건에 맞는 매출이 없습니다"
+                <EmptyRow colSpan={1 + cols.length} text="조건에 맞는 매출이 없습니다"
                   hint={filterCount > 0
                     ? `필터 ${filterCount}개가 걸려 있습니다.`
                     : '기간이나 팀을 바꿔 보세요. 앱을 쓰기 전 기간은 2025실적 자료에서 옵니다.'}
@@ -334,10 +356,14 @@ function StatsPanel() {
                     : { fontWeight: 700, color: 'var(--navy)' }}>
                     {r.sub ?? (sum2.rows.some((x) => x.sub) ? `▾ ${r.key}` : r.key)}
                   </td>
-                  {MEASURES.map((m) => (
+                  {cols.map((m) => (
                     <td key={m.key} className="r"
-                      style={{ fontWeight: r.sub ? 400 : 700, color: r.sub ? '#555' : undefined }}>
-                      {m.agg === 'sum'
+                      style={{
+                        fontWeight: r.sub ? 400 : 700,
+                        color: r.sub ? '#555' : undefined,
+                        ...(m.agg === 'avg' ? { background: '#FAF7EE' } : null),
+                      }}>
+                      {m.agg === 'sum' || m.agg === 'avg'
                         ? (r.values[m.key] ? won(r.values[m.key]) : <span style={{ color: '#DDD' }}>—</span>)
                         : r.values[m.key].toLocaleString('ko-KR')}
                     </td>
@@ -348,9 +374,11 @@ function StatsPanel() {
             <tfoot>
               <tr style={{ background: '#EEF4FB', fontWeight: 700, color: 'var(--navy)' }}>
                 <td>총합계</td>
-                {MEASURES.map((m) => (
+                {cols.map((m) => (
                   <td key={m.key} className="r">
-                    {m.agg === 'sum' ? won(sum2.total[m.key]) : sum2.total[m.key].toLocaleString('ko-KR')}
+                    {m.agg === 'sum' || m.agg === 'avg'
+                      ? won(sum2.total[m.key])
+                      : sum2.total[m.key].toLocaleString('ko-KR')}
                   </td>
                 ))}
               </tr>
