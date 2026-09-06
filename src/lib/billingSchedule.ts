@@ -164,8 +164,22 @@ export function monthlyRevenue(c: SalesContract, basis: Basis, fromMonth: string
     const end = monthIndex(span.to);
     const last = end == null ? to : Math.min(end, to);
     const monthlyGross = (c.amount * (CYCLE_ANN[c.billingCycle] ?? 1)) / 12;
-    for (let mi = Math.max(start, from); mi <= last; mi++) {
-      if (inWin(mi)) out.push({ month: indexToMonth(mi), net: net(mi, monthlyGross) });
+
+    // **달마다 따로 반올림하면 안 된다.** 6,500,000 ÷ 12 = 541,666.67 을 달마다 올림하면
+    // 541,667 × 12 = 6,500,004 가 되어 연 합계가 계약금액과 어긋난다(사용자 지적 2026-09-06).
+    // 그래서 **누적으로 반올림**한다 — 그 달까지의 합을 반올림한 값에서 앞 달까지의 값을 뺀다.
+    // 이러면 이어진 어느 구간을 잘라도 합이 정확하고, 열두 달이면 계약금액과 딱 맞는다.
+    //
+    // 창구(from)보다 앞선 달도 **셈에는 넣는다**(화면에 내놓지만 않는다) — 계약이 시작된
+    // 시점부터 누적을 세야 창구를 어디서 자르든 같은 값이 나온다.
+    let exactCum = 0;      // 반올림하지 않은 누계
+    let roundedCum = 0;    // 지금까지 내놓은 값의 합
+    for (let mi = start; mi <= last; mi++) {
+      exactCum += applyDiscounts(c, monthlyGross, mi);
+      const upto = toNet(exactCum);
+      const v = upto - roundedCum;
+      roundedCum = upto;
+      if (mi >= from && inWin(mi)) out.push({ month: indexToMonth(mi), net: v });
     }
     return out;
   }

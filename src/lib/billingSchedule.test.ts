@@ -54,8 +54,33 @@ test('연 계약(감사): 청구주의=개시월 1회 전액, 발생주의=12개
 
   const acc = monthlyRevenue(c, 'accrual', '2026-01', '2026-12');
   assert.equal(acc.length, 12);
-  assert.ok(acc.every((r) => r.net === Math.round(50_000_000 / 12)));
-  assert.ok(Math.abs(periodRevenue(c, 'accrual', '2026-01', '2026-12') - 50_000_000) <= 12); // 반올림 오차 허용
+  // **열두 달을 더하면 계약금액과 정확히 같아야 한다.** 달마다 따로 반올림하면
+  // 4,166,667 × 12 = 50,000,004 가 되어 4원이 남았다(2026-09-06 수정).
+  assert.equal(periodRevenue(c, 'accrual', '2026-01', '2026-12'), 50_000_000);
+  // 달마다의 값은 1원 안쪽에서만 갈린다 — 나머지를 한 달에 몰아 주지 않는다.
+  const lo = Math.min(...acc.map((r) => r.net));
+  const hi = Math.max(...acc.map((r) => r.net));
+  assert.ok(hi - lo <= 1, `${lo}~${hi}`);
+});
+
+test('월할이 딱 떨어지지 않아도 합계는 계약금액과 정확히 같다', () => {
+  // 사용자 지적(2026-09-06) — 예상매출에 4원씩 붙어 나오던 자리.
+  for (const amount of [6_500_000, 1_900_000, 181_818, 4_784_615, 999_999]) {
+    const c = mk({ billingCycle: '연', amount, startDate: '2026-07', endDate: '2027-06' });
+    assert.equal(periodRevenue(c, 'accrual', '2026-07', '2027-06'), amount, `연 ${amount}`);
+  }
+  // 월 계약도 마찬가지 — 열두 달이면 연환산과 같다.
+  const m = mk({ billingCycle: '월', amount: 100_000, startDate: '2026-07', endDate: '2027-06' });
+  assert.equal(periodRevenue(m, 'accrual', '2026-07', '2027-06'), 1_200_000);
+});
+
+test('창구를 어디서 잘라도 이어 붙이면 전체와 같다 — 누적 반올림', () => {
+  const c = mk({ billingCycle: '연', amount: 6_500_000, startDate: '2026-07', endDate: '2027-06' });
+  const whole = periodRevenue(c, 'accrual', '2026-07', '2027-06');
+  const a = periodRevenue(c, 'accrual', '2026-07', '2026-09');
+  const b = periodRevenue(c, 'accrual', '2026-10', '2027-06');
+  assert.equal(a + b, whole);
+  assert.equal(whole, 6_500_000);
 });
 
 test('분기 계약이 한 달만 있어도 1/3 로 월할한다 — 단발로 보지 않는다', () => {

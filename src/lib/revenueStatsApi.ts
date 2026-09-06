@@ -262,6 +262,8 @@ export const DIMS: Dim[] = [
   { key: 'cycle', label: '청구주기', split: (f) => one(f.billingCycle) },
   { key: 'phase', label: '구분(계약금·잔금)', split: (f) => one(f.phase) },
   { key: 'company', label: '거래처', split: (f) => one(f.company) },
+  // 개인 거래처는 이름과 상호가 다르다 — 엑셀은 상호로 적혀 있어 대조할 때 이 축이 필요하다.
+  { key: 'place', label: '사업장(상호)', split: (f) => one(f.place || f.company) },
   { key: 'status', label: '상태', split: (f) => one(f.status) },
 ];
 
@@ -343,6 +345,10 @@ export async function listForecastFacts(
 ): Promise<RevenueFact[]> {
   const [contracts, ents] = await Promise.all([listSalesContracts(), listBizEntities()]);
   const nameOf = new Map(ents.map((e) => [e.id, e.name]));
+  // 사업장(상호) — 개인 거래처는 **이름과 상호가 다르다**(이찬혁 ↔ 정원, 원석희 ↔ 다온 …).
+  // 엑셀은 상호로 적혀 있어, 사업장을 채워 두지 않으면 같은 곳을 다른 곳으로 읽게 된다.
+  const placeOf = new Map<string, string>();
+  for (const e of ents) for (const pl of e.places ?? []) placeOf.set(pl.id, pl.placeName);
   const out: RevenueFact[] = [];
   for (const c of contracts) {
     if (!c.confirmed && !opts.includeDraft) continue;
@@ -362,7 +368,7 @@ export async function listForecastFacts(
       shares: staff.map((s) => ({ name: s.staffName, share })),
       erpAccount: erpAccountOf(code),
       company: nameOf.get(c.entityId) ?? '',
-      place: '',
+      place: (c.placeId ? placeOf.get(c.placeId) : '') ?? '',
       typeTop: top,
       typeFull: code ? pathLabel(code) : '',
       billingCycle: c.billingCycle ?? '',
