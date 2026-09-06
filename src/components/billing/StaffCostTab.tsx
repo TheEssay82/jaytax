@@ -35,13 +35,16 @@ interface Person {
   prev: StaffCost | null;
 }
 
-export default function StaffCostTab() {
+export default function StaffCostTab({ focusName = '' }: { focusName?: string }) {
   const [fy, setFy] = useState(curFy);
   const [cur, setCur] = useState<StaffCost[]>([]);
   const [prev, setPrev] = useState<StaffCost[]>([]);
+  const [showPay, setShowPay] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const [pick, setPick] = useState('');
+  // 예산 표에서 「세팅 ›」 을 눌러 건너온 사람을 펼친다.
+  const [pick, setPick] = useState(focusName);
+  useEffect(() => { if (focusName) setPick(focusName); }, [focusName]);
   const [adding, setAdding] = useState('');
 
   const load = useCallback(async () => {
@@ -163,6 +166,12 @@ export default function StaffCostTab() {
           </div>
         </div>
       )}
+
+      {cur.length > 0 && (
+        <PayrollTable fy={fy} costs={cur} show={showPay} onToggle={() => setShowPay((v) => !v)}
+          prevPayOf={(name) => { const c = prev.find((x) => x.staffName === name); return c ? yearPay(c) : 0; }}
+          onPick={(name) => { setPick(name); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
+      )}
     </div>
   );
 }
@@ -189,7 +198,6 @@ function PersonPanel({ fy, person, onSaved }: {
 
   const [step, setStep] = useState<number | null>(startStep);
   const [mgmt, setMgmt] = useState(String(base.mgmtAllowance || person.prev?.mgmtAllowance || ''));
-  const [allow, setAllow] = useState(String(base.allowance || ''));
   const [meal, setMeal] = useState(String(base.meal || person.prev?.meal || ''));
   const [note, setNote] = useState(base.note);
   const [busy, setBusy] = useState(false);
@@ -197,8 +205,10 @@ function PersonPanel({ fy, person, onSaved }: {
 
   const stepPay = step ? (payOf(step) ?? 0) : 0;
   const split = splitByStep(stepPay, num(mgmt));
+  // 「수당」은 화면에 없다 — 회사에 관리수당 말고는 수당이 없다(사용자 확정 2026-09-06).
+  // 옛 줄에 값이 남아 있으면 그대로 안고 간다. 지어서 0 으로 덮지 않는다.
   const parts = {
-    basePay: split.basePay, allowance: num(allow),
+    basePay: split.basePay, allowance: base.allowance,
     mgmtAllowance: split.mgmtAllowance, meal: num(meal),
   };
   const rates = {
@@ -310,16 +320,21 @@ function PersonPanel({ fy, person, onSaved }: {
           <input value={mgmt} onChange={(e) => setMgmt(e.target.value.replace(/[^\d]/g, ''))}
             style={{ width: '100%', textAlign: 'right' }} />
         </label>
-        <label style={{ fontSize: 'var(--fs-1)' }} title="쓰지 않는 칸입니다. 넣으면 기본급이 호봉표를 넘어섭니다">
-          수당<br />
-          <input value={allow} onChange={(e) => setAllow(e.target.value.replace(/[^\d]/g, ''))}
-            style={{ width: '100%', textAlign: 'right' }} />
-        </label>
-        <label style={{ fontSize: 'var(--fs-1)' }} title="비과세급여. 상여 계산에서는 빠집니다">
+        <label style={{ fontSize: 'var(--fs-1)' }}
+          title="비과세급여입니다. 월급합계에는 들어가고 상여 계산에서는 빠집니다">
           식대(비과세)<br />
           <input value={meal} onChange={(e) => setMeal(e.target.value.replace(/[^\d]/g, ''))}
             style={{ width: '100%', textAlign: 'right' }} />
         </label>
+        {base.allowance > 0 && (
+          // 화면에서 없앤 칸이지만 옛 줄에 값이 있으면 숨기지 않고 보여 준다.
+          <div style={{ fontSize: 'var(--fs-1)' }}>
+            수당(옛 값)<br />
+            <div style={{ textAlign: 'right', padding: '3px 6px', background: '#F3F4F6', borderRadius: 4 }}>
+              {won(base.allowance)}
+            </div>
+          </div>
+        )}
       </div>
 
       {step != null && (
@@ -397,6 +412,133 @@ function PersonPanel({ fy, person, onSaved }: {
           ℹ️ 저장된 기본급 {won(basicTotal(person.cur))} 은 호봉표에 <b>딱 맞는 칸이 없습니다</b>
           {' — '}가장 가까운 곳은 {locate(basicTotal(person.cur)).step}호봉이고
           {' '}{won(Math.abs(locate(basicTotal(person.cur)).diff))} 차이입니다.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 급여표 전체 — **엑셀 급여표를 그대로 옮긴 표**(2026-09-06).
+ *
+ * 위쪽은 한 사람을 정하는 자리이고, 여기는 **정해 놓은 것을 한눈에 견주는** 자리다.
+ * 기본금부터 총부담비용까지 왼쪽에서 오른쪽으로 읽으면 셈이 따라온다.
+ *
+ * 접어 둔 채로 시작한다 — 한 사람을 고치러 온 사람에게 전원의 급여를 먼저 펼칠 이유는 없다.
+ */
+function PayrollTable({ fy, costs, prevPayOf, show, onToggle, onPick }: {
+  fy: number;
+  costs: StaffCost[];
+  prevPayOf: (name: string) => number;
+  show: boolean;
+  onToggle: () => void;
+  onPick: (name: string) => void;
+}) {
+  const rows = [...costs].sort((a, b) => b.annual - a.annual);
+  const sum = (f: (c: StaffCost) => number) => rows.reduce((s, c) => s + f(c), 0);
+  const totPrev = sum((c) => prevPayOf(c.staffName));
+  const totYear = sum(yearPay);
+  const totRaise = raiseOf(totPrev, totYear);
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button className="btn-sm" onClick={onToggle} style={{ fontWeight: 700 }}>
+        {show ? '▾' : '▸'} 📋 급여표 전체 — {fyLabel(fy)} ({rows.length}명 · 총부담 {won(sum(totalCost))})
+      </button>
+      {show && (
+        <div className="tbl-wide" style={{ marginTop: 6 }}>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>이름</th>
+                <th className="r">호봉</th>
+                <th className="r">기본금</th>
+                <th className="r">수당</th>
+                <th className="r">관리수당</th>
+                <th className="r">기본급합계</th>
+                <th className="r">식대</th>
+                <th className="r">월급합계</th>
+                <th className="r">상여</th>
+                <th className="r">연봉</th>
+                <th className="r">FY{fy - 1} 연봉</th>
+                <th className="r">인상</th>
+                <th className="r">퇴직금</th>
+                <th className="r">4대보험</th>
+                <th className="r">기타</th>
+                <th className="r">총부담비용</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c) => {
+                const parts = {
+                  basePay: c.basePay, allowance: c.allowance,
+                  mgmtAllowance: c.mgmtAllowance, meal: c.meal,
+                };
+                // 구성요소가 비어 있는 옛 줄은 **저장된 결과값**을 그대로 보여 준다.
+                // 지어낸 구성요소를 만들어 내면 화면이 거짓말을 한다.
+                const legacy = basicTotal(parts) + parts.meal === 0;
+                const year = yearPay(c);
+                const prev = prevPayOf(c.staffName);
+                const r = raiseOf(prev, year);
+                const dash = <span style={{ color: 'var(--ink-4)' }}>—</span>;
+                return (
+                  <tr key={c.id || c.staffName}>
+                    <td style={{ fontWeight: 700, color: 'var(--navy)' }}>{c.staffName}</td>
+                    <td className="r" style={{ color: c.payStep ? 'var(--ink-1)' : 'var(--warn)' }}>
+                      {c.payStep ? `${c.payStep}호봉` : '표 밖'}
+                    </td>
+                    <td className="r">{legacy ? dash : won(c.basePay)}</td>
+                    <td className="r">{legacy || !c.allowance ? dash : won(c.allowance)}</td>
+                    <td className="r">{legacy || !c.mgmtAllowance ? dash : won(c.mgmtAllowance)}</td>
+                    <td className="r" style={{ color: 'var(--ink-2)' }}>
+                      {legacy ? dash : won(basicTotal(parts))}
+                    </td>
+                    <td className="r">{legacy || !c.meal ? dash : won(c.meal)}</td>
+                    <td className="r" style={{ fontWeight: 700 }}>{won(c.monthly)}</td>
+                    <td className="r">{won(c.bonus)}</td>
+                    <td className="r" style={{ fontWeight: 700, color: 'var(--navy)' }}>{won(year)}</td>
+                    <td className="r" style={{ color: 'var(--ink-3)' }}>{prev ? won(prev) : dash}</td>
+                    <td className="r" style={{ color: r ? (r.amount >= 0 ? 'var(--good)' : 'var(--bad)') : undefined }}>
+                      {r ? `${r.amount >= 0 ? '+' : ''}${won(r.amount)} (${(r.rate * 100).toFixed(2)}%)` : dash}
+                    </td>
+                    <td className="r" style={{ color: 'var(--ink-2)' }}>{won(c.severance)}</td>
+                    <td className="r" style={{ color: 'var(--ink-2)' }}>{won(c.insurance)}</td>
+                    <td className="r" style={{ color: 'var(--ink-2)' }}>{won(c.etcCost)}</td>
+                    <td className="r" style={{ fontWeight: 700 }}>{won(totalCost(c))}</td>
+                    <td>
+                      <button className="btn-sm" onClick={() => onPick(c.staffName)}>위에서 고치기 ↑</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: '#f5efdd', fontWeight: 700 }}>
+                <td>합계</td>
+                <td colSpan={6}></td>
+                <td className="r">{won(sum((c) => c.monthly))}</td>
+                <td className="r">{won(sum((c) => c.bonus))}</td>
+                <td className="r">{won(totYear)}</td>
+                <td className="r">{totPrev ? won(totPrev) : ''}</td>
+                <td className="r" style={{ color: totRaise && totRaise.amount < 0 ? 'var(--bad)' : 'var(--good)' }}>
+                  {totRaise ? `${totRaise.amount >= 0 ? '+' : ''}${won(totRaise.amount)} (${(totRaise.rate * 100).toFixed(2)}%)` : ''}
+                </td>
+                <td className="r">{won(sum((c) => c.severance))}</td>
+                <td className="r">{won(sum((c) => c.insurance))}</td>
+                <td className="r">{won(sum((c) => c.etcCost))}</td>
+                <td className="r">{won(sum(totalCost))}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+      {show && (
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginTop: 6 }}>
+          <b>기본급(기본금+관리수당) = 호봉표의 한 칸</b>입니다. 월급합계 = 기본급+식대 ·
+          상여 = 기본급 · 연봉 = 월급합계×12+상여 · 퇴직금 = 연봉÷12 · 4대보험·기타 = 연봉의 10%.
+          「표 밖」은 호봉표에 없는 금액이라 호봉을 붙이지 못한 줄입니다.
         </div>
       )}
     </div>
