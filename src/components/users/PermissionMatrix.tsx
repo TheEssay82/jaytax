@@ -28,6 +28,7 @@ const CAP_LABELS: Record<Capability, string> = {
   finalizeConsult: '상담기록 확정',
   viewDispatch: '발송요청 처리 조회',
   processDispatch: '발송요청 처리(쓰기)',
+  viewDevNotes: '📓 개발노트 열람',
 };
 const CAPS = Object.keys(CAP_LABELS) as Capability[];
 

@@ -60,7 +60,8 @@ export type Capability =
   | 'viewAiUsage' // AI(상담) 사용량 집계 열람 — 최고관리자 전용
   | 'finalizeConsult' // 상담기록 확정(초안↔확정) — 작성자 외에도 확정권한자 허용
   | 'viewDispatch' // 문서발송 › 발송요청 처리 '조회' — 처리권한자 + 회계사(조회전용)
-  | 'processDispatch'; // 문서발송 › 발송요청 처리(상태변경·발송일·등기번호) — 최고관리자·기장팀장·기장팀원
+  | 'processDispatch' // 문서발송 › 발송요청 처리(상태변경·발송일·등기번호) — 최고관리자·기장팀장·기장팀원
+  | 'viewDevNotes'; // 📓 개발노트(버전별 개발내역) — 기장팀장·기장팀원은 볼 수 없다
 
 // 항목별 허용 역할 (매트릭스)
 const MATRIX: Record<Capability, Role[]> = {
@@ -84,6 +85,14 @@ const MATRIX: Record<Capability, Role[]> = {
   viewDispatch: ['superuser', 'team_lead', 'team_member', 'accountant'],
   // 발송요청 처리(쓰기): 최고관리자·기장팀장·기장팀원(회계사·인당회계사·외부인 제외)
   processDispatch: ['superuser', 'team_lead', 'team_member'],
+  /**
+   * 개발노트 — **기장팀장·기장팀원은 볼 수 없다**(사장님 지시 2026-09-08).
+   *
+   * 개발내역에는 거래처 이름·금액·직원 이름이 그대로 적혀 있고, 무엇을 왜 고쳤는지까지
+   * 드러난다. 만들 때는 사장님과 나눌 말이라 자세히 적었는데 전 직원이 보고 있었다.
+   * 외부인도 볼 이유가 없다.
+   */
+  viewDevNotes: ['superuser', 'accountant', 'per_head_accountant'],
 };
 
 export function can(role: Role, cap: Capability): boolean {

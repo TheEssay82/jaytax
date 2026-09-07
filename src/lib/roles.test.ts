@@ -97,6 +97,22 @@ test('발송요청을 실제로 처리하는 것은 최고관리자·기장팀�
   assert.deepEqual(holders('processDispatch'), ['superuser', 'team_lead', 'team_member']);
 });
 
+// ── 개발노트 ────────────────────────────────────────────
+//
+// 개발내역에는 거래처 이름·금액·직원 이름이 그대로 적혀 있고, 무엇을 왜 고쳤는지까지
+// 드러난다. 사장님과 나눌 말이라 자세히 적었는데 **전 직원이 보고 있었다**(2026-09-08).
+// 다시 새지 않도록 못박는다.
+
+test('개발노트는 기장팀장·기장팀원이 볼 수 없다', () => {
+  assert.equal(can('team_lead', 'viewDevNotes'), false, '기장팀장이 개발노트를 보면 안 된다');
+  assert.equal(can('team_member', 'viewDevNotes'), false, '기장팀원이 개발노트를 보면 안 된다');
+});
+
+test('개발노트를 볼 수 있는 것은 최고관리자·회계사·인당회계사뿐 — 외부인도 안 된다', () => {
+  assert.deepEqual(holders('viewDevNotes'), ['superuser', 'accountant', 'per_head_accountant']);
+  assert.equal(can('external', 'viewDevNotes'), false);
+});
+
 // ── 최고관리자는 모든 것을 할 수 있다 ───────────────────
 
 test('최고관리자는 모든 권한을 갖는다 — 새 권한을 넣고 빠뜨리는 것을 막는다', () => {

@@ -73,6 +73,11 @@ function Shell() {
   const [showPw, setShowPw] = useState(false);
   const [showMfa, setShowMfa] = useState(false);
   const [showDevNotes, setShowDevNotes] = useState(false);
+  /**
+   * 개발노트를 볼 수 있는가 — **기장팀장·기장팀원은 볼 수 없다**(2026-09-08).
+   * 개발내역에 거래처 이름·금액·직원 이름이 그대로 적혀 있기 때문이다.
+   */
+  const canDevNotes = can(role, 'viewDevNotes');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [openSub, setOpenSub] = useState<string | null>(null); // 열린 중분류 플라이아웃 서브메뉴
   const [openPalette, setOpenPalette] = useState(0);   // 값이 바뀌면 팔레트가 열린다(단추용)
@@ -214,18 +219,27 @@ function Shell() {
         >
           <img className="h-logoimg" src="/logo2.png" alt="JAY · 세무회계 지원" />
         </button>
-        <button
-          type="button"
-          className="h-ver"
-          title="개발노트 보기"
-          onClick={() => setShowDevNotes(true)}
-          style={{
-            fontSize: 'var(--fs-1)', color: 'var(--ink-3)', fontWeight: 600, marginLeft: 6,
-            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-          }}
-        >
-          v{__APP_VERSION__} 📓
-        </button>
+        {canDevNotes ? (
+          <button
+            type="button"
+            className="h-ver"
+            title="개발노트 보기"
+            onClick={() => setShowDevNotes(true)}
+            style={{
+              fontSize: 'var(--fs-1)', color: 'var(--ink-3)', fontWeight: 600, marginLeft: 6,
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            }}
+          >
+            v{__APP_VERSION__} 📓
+          </button>
+        ) : (
+          // 볼 수 없는 사람에게는 **누를 수 없는 글자**로 둔다 — 버전은 문의할 때 필요하고,
+          // 버튼만 없애면 「눌러도 안 되는 자리」가 되어 되레 궁금해진다.
+          <span className="h-ver"
+            style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', fontWeight: 600, marginLeft: 6 }}>
+            v{__APP_VERSION__}
+          </span>
+        )}
 
         {/* 대분류 드롭다운 메뉴 */}
         <nav className="h-menus" ref={navRef}>
@@ -340,7 +354,7 @@ function Shell() {
 
       {showPw && <PasswordModal onClose={() => setShowPw(false)} />}
       {showMfa && <MfaModal onClose={() => setShowMfa(false)} />}
-      {showDevNotes && <DevNotesModal onClose={() => setShowDevNotes(false)} />}
+      {showDevNotes && canDevNotes && <DevNotesModal onClose={() => setShowDevNotes(false)} />}
 
       {readonly && (
         <div
@@ -355,7 +369,8 @@ function Shell() {
       )}
 
       <main id="main" key={`${cur}-${reloadKey}`}>
-        <TabContent cur={cur} setCurTab={setCurTab} curLabel={curLabel} onNavigate={goTab} onOpenDevNotes={() => setShowDevNotes(true)} />
+        <TabContent cur={cur} setCurTab={setCurTab} curLabel={curLabel} onNavigate={goTab}
+          onOpenDevNotes={canDevNotes ? () => setShowDevNotes(true) : null} />
       </main>
 
       {/* 어디서든 찾기 — Ctrl+K. 화면 어디에 있든 뜨도록 맨 바깥에 둔다. */}
@@ -375,7 +390,8 @@ function TabContent({
   setCurTab: (id: string) => void;
   curLabel: string;
   onNavigate: (id: string) => void;
-  onOpenDevNotes: () => void;
+  /** 개발노트를 열 수 있으면 그 함수, 볼 수 없는 등급이면 null. */
+  onOpenDevNotes: (() => void) | null;
 }) {
   switch (cur) {
     case 'home':

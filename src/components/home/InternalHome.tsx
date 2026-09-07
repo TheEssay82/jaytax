@@ -74,7 +74,8 @@ export default function InternalHome({
   onOpenDevNotes,
 }: {
   onNavigate: (tab: string) => void;
-  onOpenDevNotes: () => void;
+  /** 개발노트를 열 수 있으면 그 함수, 볼 수 없는 등급이면 null — 섹션을 아예 그리지 않는다. */
+  onOpenDevNotes: (() => void) | null;
 }) {
   const { user, role, profileName } = useAuth();
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -187,7 +188,11 @@ export default function InternalHome({
         ))}
       </div>
 
-      {/* 개발노트 */}
+      {/* 개발노트 — **기장팀장·기장팀원에게는 내놓지 않는다**(2026-09-08).
+          개발내역에 거래처 이름·금액·직원 이름이 그대로 적혀 있다. 눌러서 막히는 것이
+          아니라 있는 줄도 모르게 한다. */}
+      {onOpenDevNotes && (
+        <>
       <SectionTitle hint="최신 업데이트">개발노트</SectionTitle>
       <button onClick={onOpenDevNotes} style={{ display: 'block', width: '100%', textAlign: 'left', background: '#fff', border: '1px solid var(--rule)', borderRadius: 14, padding: '13px 15px', cursor: 'pointer' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -200,6 +205,8 @@ export default function InternalHome({
         )}
         <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 8 }}>전체 개발내역 보기 ↗</div>
       </button>
+        </>
+      )}
     </div>
   );
 }
