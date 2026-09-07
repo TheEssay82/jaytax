@@ -2,6 +2,21 @@
 //  데이터는 src/lib/changelog.ts (리포 코드). 최초 화면(홈 대시보드)이 생기면 이 목록을 위젯으로도 재사용 예정.
 import { CHANGELOG, LATEST_VERSION } from '../../lib/changelog';
 import { useEscape } from '../../lib/useEscape';
+import { emphasize } from '../../lib/emphasis';
+
+/**
+ * 개발내역 한 줄 — 꺾쇠(`<…>`)로 감싼 곳을 굵게 그린다.
+ * 한때 꺾쇠가 **글자로 그대로 보였다**(2026-09-08 수정).
+ */
+function Line({ text }: { text: string }) {
+  return (
+    <>
+      {emphasize(text).map((p, i) => (p.em
+        ? <b key={i} style={{ color: 'var(--navy)' }}>{p.text}</b>
+        : <span key={i}>{p.text}</span>))}
+    </>
+  );
+}
 
 export default function DevNotesModal({ onClose }: { onClose: () => void }) {
   useEscape(onClose);
@@ -40,12 +55,14 @@ export default function DevNotesModal({ onClose }: { onClose: () => void }) {
                 >
                   v{e.version}
                 </span>
-                <span style={{ fontWeight: 700, color: 'var(--ink-2)' }}>{e.title}</span>
+                <span style={{ fontWeight: 700, color: 'var(--ink-2)' }}><Line text={e.title} /></span>
                 <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{e.date}</span>
               </div>
               <ul style={{ margin: '8px 0 0', paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {e.highlights.map((h, j) => (
-                  <li key={j} style={{ fontSize: 'var(--fs-2)', color: '#4b5563', lineHeight: 1.55 }}>{h}</li>
+                  <li key={j} style={{ fontSize: 'var(--fs-2)', color: '#4b5563', lineHeight: 1.55 }}>
+                    <Line text={h} />
+                  </li>
                 ))}
               </ul>
             </div>

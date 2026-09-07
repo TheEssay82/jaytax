@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { can, ROLE_LABELS, type Role } from '../../lib/roles';
 import { CHANGELOG } from '../../lib/changelog';
+import { emphasize } from '../../lib/emphasis';
 import AnnouncementBar from './AnnouncementBar';
 import {
   countDispatchPending,
@@ -197,11 +198,18 @@ export default function InternalHome({
       <button onClick={onOpenDevNotes} style={{ display: 'block', width: '100%', textAlign: 'left', background: '#fff', border: '1px solid var(--rule)', borderRadius: 14, padding: '13px 15px', cursor: 'pointer' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#0F6E56', background: '#E1F5EE', border: '1px solid #9FE1CB', padding: '2px 9px', borderRadius: 20 }}>v{latest.version}</span>
-          <span style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: 'var(--ink-2)' }}>{latest.title}</span>
+          <span style={{ fontSize: 'var(--fs-3)', fontWeight: 600, color: 'var(--ink-2)' }}>
+            {emphasize(latest.title).map((p, i) => <span key={i}>{p.text}</span>)}
+          </span>
           <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{latest.date}</span>
         </div>
         {latest.highlights[0] && (
-          <div style={{ fontSize: 'var(--fs-2)', color: '#4b5563', marginTop: 7, lineHeight: 1.55 }}>{latest.highlights[0]}</div>
+          <div style={{ fontSize: 'var(--fs-2)', color: '#4b5563', marginTop: 7, lineHeight: 1.55 }}>
+            {/* 꺾쇠(`<…>`)는 강조 표시다 — 글자로 새어 나오지 않게 굵게 그린다. */}
+            {emphasize(latest.highlights[0]).map((p, i) => (p.em
+              ? <b key={i} style={{ color: 'var(--navy)' }}>{p.text}</b>
+              : <span key={i}>{p.text}</span>))}
+          </div>
         )}
         <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 8 }}>전체 개발내역 보기 ↗</div>
       </button>
