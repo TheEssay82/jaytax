@@ -83,13 +83,19 @@ const SYSTEM = `당신은 한국 회계·세무 실무 회신을 작성하는 �
   · [회계기준(원문)]: 게시된 기준서 원문 발췌 — 문단번호와 함께 인용(발췌라 앞뒤 맥락 확인 권고).
   · [회계기준(요지)]: 정리본 — "(요지)"와 원문 대조 권고를 붙인다.
   · [세법]: 법령 원문 — 법령명·조문번호·시행일을 명시하고, 핵심 문구를 "직접 인용"한 뒤 쉬운 말로 풀이한다.
-  · [예규(제목만)]: 국세청 서면질의 회신 — **회답 본문이 제공되지 않고 안건명·안건번호만 있다.** 그러므로 이것으로 결론을 내거나 회답 내용을 추정해 쓰지 않는다. '실무 유의'에 "같은 쟁점의 국세청 해석 <안건번호>(<해석일자>)가 있으니 원문 확인 권고"처럼 **안건번호와 링크만** 안내한다. 제목을 근거처럼 인용해 결론을 뒷받침하는 것은 금지한다.
+  · [예규]: 국세청·기재부의 유권해석 — **[요지]와 [회답] 본문이 함께 온다.** 실무에서 과세관청이 실제로 어떻게 보는지를 말해 주는 근거이므로 결론에 **반드시 반영**한다. 안건번호·해석일자와 함께 회답 문구를 직접 인용한다. 회답이 다른 해석사례를 인용하는 형식이면(예: "기획재정부 법인세제과-○○○을 참조") 그 인용된 문구가 실질 내용이므로 그것을 인용한다.
+  · [예규(제목만)]: 본문을 받지 못한 것 — 안건명만 있다. 이것으로 결론을 내거나 회답 내용을 추정하지 않는다. '실무 유의'에 안건번호와 링크만 안내한다.
+  · **적용 시점을 반드시 확인한다.** 예규는 "○년 ○월 이후 …하는 분부터 적용한다"처럼 적용 개시를 못박는 경우가 많고, 조문도 개정되면 문언이 달라진다. 근거들이 서로 다른 시점의 법을 말하고 있으면 **결론을 시점별로 나눠** 제시한다(예: "2024년 이전 발생분은 …, 2025.1.1. 이후 발생분은 …"). 특히 판례는 **선고 당시의 조문(구법)**을 판단한 것일 수 있으므로, 그 뒤 조문이 개정되었다면 판례의 결론을 현행법에 그대로 옮기지 않는다.
   · [판례]/[심판례]: 사건(의결)번호·선고(의결)일·요지를 적고, 사실관계 차이 가능성을 유의로 덧붙인다.
   · **판례와 심판례가 어긋나면 법원 판례가 우선이다.** 특히 대법원 판결이 있으면 그것이 최종 법리이고, 그보다 앞선(또는 그 취지에 반하는) 심판례·과세관청 해석은 그대로 따를 수 없다. 이때는 결론을 판례에 맞추고, 심판례는 "종전 심판례는 …였으나 대법원 ○○○ 판결로 정리되었다"처럼 시간 순서와 함께 설명한다. 심판례만 근거로 과세관청 쪽 결론을 내면서 상급심 판단을 빠뜨리는 일이 없도록 한다.
   · [자료실]: 사무소 내부 참고자료 발췌(예규·해석사례·개정세법·실무가이드 등 정리본) — 자료명과 함께 인용하되 "(내부자료)"로 표기하고, 결론의 핵심 근거는 가급적 법령·기준서·심판례 원문으로 뒷받침하고 내부자료는 보조로 삼는다(원출처 대조 권고).
 
-[형식] 아래 5블록을 마크다운으로 그대로 따른다:
+[형식] 아래 6블록을 마크다운으로 그대로 따른다:
 # <제목 — 쟁점을 한 줄로. 세무면 "[세무 회신]", 회계면 "[회계 회신]", 둘 다면 "[회계·세무 회신]" 접두>
+## 한눈에
+- <핵심 결론 한 줄>
+- <그 결론을 가르는 조건·기준 한 줄(시점·대상·금액 등). 조건이 없으면 결론의 직접 근거 한 줄>
+- <실무에서 지금 해야 할 일 한 줄>
 ## 질의요지
 <무엇을 물었는지 1~3문장. 제공된 사실관계·가정을 요약.>
 ## 결론
@@ -108,6 +114,7 @@ const SYSTEM = `당신은 한국 회계·세무 실무 회신을 작성하는 �
 ※ 본 회신은 AI 보조 자료입니다. 전문가 최종검토 필요 — 최종 판단·서명은 담당 회계사·세무사.
 
 [작성 지침]
+- '한눈에'는 **정확히 세 줄**, 각 줄은 한 문장으로 끝맺고 60자를 넘기지 않는다. 이 세 줄만 읽어도 답이 서게 쓴다 — "검토가 필요합니다" 같은 빈 말을 넣지 않고, 결론이 조건에 따라 갈리면 그 갈림을 둘째 줄에 적는다(예: "2024년 이전 발생분은 손금산입, 2025년 이후분은 손금불산입"). 아래 본문과 어긋나지 않게 한다.
 - 회신은 반드시 완결한다. 중간에 끊지 말고 근거·실무유의·하단 안내까지 끝맺는다.
 - 근거가 풍부하면 결론·검토를 충분히 상세하게 풀어 쓴다(빈약하게 요약하지 말 것). 각 근거는 근거 블록에 빠짐없이 정리한다.
 - 정중한 실무체. 단정·과장 금지, 불확실성은 한정어로 보존. 이모지 미사용.`;
@@ -191,21 +198,72 @@ async function extractTags(question: string, answer: string, key: string): Promi
 function stripTags(v: unknown): string {
   return String(v ?? '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
 }
-async function precKeyword(question: string, key: string): Promise<string> {
+/**
+ * **쟁점마다 검색어 하나.** 한 질문에 쟁점이 둘 이상인 경우가 흔한데
+ * (예: 「손금인정 되는가 + 귀속시기는 언제인가」) 검색어가 하나뿐이면 한쪽 근거만 모인다.
+ *
+ * 한 줄에 하나씩, 최대 3개. 각 줄은 2어절 — 법제처가 AND 매칭이라 길면 0건이 된다
+ * (`searchNarrowing` 설명 참고).
+ */
+async function precKeywords(question: string, key: string): Promise<string[]> {
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: TAG_MODEL, max_tokens: 40,
-        system: '세무·회계 질문에서 판례 검색에 쓸 핵심어를 **2개**만 공백으로 이어 한 줄로 출력한다(설명 금지). 법제처 검색은 AND 매칭이라 어절이 많으면 0건이 되므로, 쟁점을 가장 좁게 집는 명사 둘만 고른다. 예: "매입세액 안분", "장애인고용부담금 손금".',
+        model: TAG_MODEL, max_tokens: 120,
+        system: '세무·회계 질문에서 법령·판례·예규 검색에 쓸 검색어를 뽑는다. '
+          + '**질문에 담긴 쟁점마다 한 줄씩, 최대 3줄.** 쟁점이 하나면 한 줄만 쓴다. '
+          + '각 줄은 **핵심 명사 2개**를 공백으로 이어 쓴다 — 법제처 검색은 AND 매칭이라 어절이 많으면 0건이 된다. '
+          + '설명·번호·기호 없이 검색어만 줄바꿈으로 출력한다. '
+          + '예(쟁점 둘): "장애인고용부담금 손금" 줄바꿈 "장애인고용부담금 귀속시기".',
         messages: [{ role: 'user', content: question.slice(0, 1500) }],
       }),
     });
-    if (!r.ok) return '';
+    if (!r.ok) return [];
     const data = await r.json();
-    return (data.content ?? []).map((c: { text?: string }) => c.text ?? '').join('').trim().split('\n')[0].slice(0, 60);
-  } catch { return ''; }
+    const text = (data.content ?? []).map((c: { text?: string }) => c.text ?? '').join('');
+    return cleanTerms(text.split('\n'));
+  } catch { return []; }
+}
+
+/** 검색어 다듬기 — 법제처 검색이 기호에 깨지므로 한글·숫자·공백만 남긴다. 빈 것·중복은 버린다. */
+function cleanTerms(raw: string[]): string[] {
+  const out: string[] = [];
+  for (const line of raw) {
+    const t = line.replace(/["'`]/g, '').replace(/[^가-힣0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out.slice(0, 3);
+}
+
+/**
+ * 여러 검색어로 찾아 하나로 합친다.
+ *
+ * **번갈아 가며 뽑는다** — 검색어별 1위끼리, 그다음 2위끼리. 앞 검색어 것을 다 담고 나서
+ * 다음으로 넘어가면, 뒤 쟁점의 근거가 상한에 밀려 하나도 안 들어오는 일이 생긴다.
+ * 같은 건(일련번호)은 한 번만 담는다.
+ */
+async function searchTerms<T>(
+  terms: string[],
+  keyOf: (x: T) => string,
+  run: (q: string) => Promise<T[]>,
+): Promise<T[]> {
+  const lists = await Promise.all(terms.map((t) => searchNarrowing<T>(t, run)));
+  const seen = new Set<string>();
+  const out: T[] = [];
+  const deepest = lists.reduce((m, l) => Math.max(m, l.length), 0);
+  for (let i = 0; i < deepest; i += 1) {
+    for (const l of lists) {
+      const x = l[i];
+      if (!x) continue;
+      const k = keyOf(x);
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      out.push(x);
+    }
+  }
+  return out;
 }
 /**
  * **어절을 줄여 가며 찾는다.** 법제처 검색은 AND 매칭이라 어절이 많으면 0건이 된다 —
@@ -225,11 +283,11 @@ async function searchNarrowing<T>(term: string, run: (q: string) => Promise<T[]>
   return [];
 }
 
-async function fetchPrecedents(term: string, oc: string): Promise<{ type: string; ref: string; text: string }[]> {
+async function fetchPrecedents(terms: string[], oc: string): Promise<{ type: string; ref: string; text: string }[]> {
   try {
-    // 어절이 많으면 0건이 되므로 줄여 가며 찾는다 — 그전에는 폴백이 없어
-    // 검색어가 3어절만 되어도 판례가 통째로 빠졌다(2026-09-09).
-    const raw = await searchNarrowing(term, async (q) => {
+    // 어절이 많으면 0건이 되므로 줄여 가며 찾고(2026-09-09), 쟁점마다의 검색어를
+    // 번갈아 합친다(2026-09-10).
+    const raw = await searchTerms<Record<string, unknown>>(terms, (x) => String(x['판례일련번호'] ?? ''), async (q) => {
       const su = new URL('https://www.law.go.kr/DRF/lawSearch.do');
       su.searchParams.set('OC', oc); su.searchParams.set('type', 'JSON'); su.searchParams.set('target', 'prec');
       su.searchParams.set('query', q); su.searchParams.set('search', '1'); su.searchParams.set('display', '10');
@@ -246,13 +304,14 @@ async function fetchPrecedents(term: string, oc: string): Promise<{ type: string
     });
     const full: { type: string; ref: string; text: string }[] = []; // 전문 보유(강한 근거)
     const meta: { type: string; ref: string; text: string }[] = []; // 사건명만(법제처 전문 미제공)
+    // 쟁점이 여럿일 수 있어 3→4건으로 넓혔다(2026-09-10).
     for (const p of list) {
-      if (full.length >= 3 && meta.length >= 2) break;
+      if (full.length >= 4 && meta.length >= 2) break;
       const serial = String(p['판례일련번호'] ?? '');
       if (!serial) continue;
       const link = `https://www.law.go.kr/precInfoP.do?precSeq=${serial}`;
       // 전문 시도(대법원 공간판례 등)
-      if (full.length < 3) {
+      if (full.length < 4) {
         const du = new URL('https://www.law.go.kr/DRF/lawService.do');
         du.searchParams.set('OC', oc); du.searchParams.set('type', 'JSON'); du.searchParams.set('target', 'prec'); du.searchParams.set('ID', serial);
         const d = (await (await fetch(du)).json())?.PrecService;
@@ -282,7 +341,7 @@ async function fetchPrecedents(term: string, oc: string): Promise<{ type: string
 
 // ── 조세심판원 심판례 자동참조 (법제처 target=ttSpecialDecc) ──────
 // 세무 쟁점의 실제 결론(재결요지·주문·관련법령)을 근거로. 판례보다 세무 실무에 직접적.
-async function fetchTaxTribunal(term: string, oc: string): Promise<{ type: string; ref: string; text: string }[]> {
+async function fetchTaxTribunal(terms: string[], oc: string): Promise<{ type: string; ref: string; text: string }[]> {
   try {
     const search = async (q: string) => {
       const su = new URL('https://www.law.go.kr/DRF/lawSearch.do');
@@ -292,15 +351,15 @@ async function fetchTaxTribunal(term: string, oc: string): Promise<{ type: strin
       const arr = sj?.Decc?.decc;
       return Array.isArray(arr) ? arr : (arr ? [arr] : []);
     };
-    // 어절을 줄여 가며 찾는다(AND 매칭 과제약 방지). 한 번에 한 어절만 떼므로
-    // 「첫 단어 하나」로 건너뛸 때보다 쟁점이 덜 넓어진다.
-    const list = await searchNarrowing(term, search);
+    // 어절을 줄여 가며 찾고(AND 매칭 과제약 방지), 쟁점마다의 검색어를 번갈아 합친다.
+    const list = await searchTerms<Record<string, unknown>>(
+      terms, (x) => String(x['특별행정심판재결례일련번호'] ?? ''), search);
     // 심판례는 **세무 근거의 主 원천**이다(2026-09-09 실측 — 매입세액공제 3,537건).
-    // 3건만 보던 것을 5건으로 넓힌다. 조문만으로 결론이 안 나는 쟁점이 대부분이라,
+    // 3건 → 5건 → (쟁점 다중화로) 6건으로 넓혀 왔다. 조문만으로 결론이 안 나는 쟁점이 대부분이라,
     // 여기가 얇으면 회신이 「원칙만 읊고 결론을 못 내는」 글이 된다.
     const out: { type: string; ref: string; text: string }[] = [];
     for (const p of list) {
-      if (out.length >= 5) break;
+      if (out.length >= 6) break;   // 쟁점이 여럿일 수 있어 5→6건(2026-09-10)
       const serial = String(p['특별행정심판재결례일련번호'] ?? '');
       if (!serial) continue;
       const caseNo = String(p['청구번호'] ?? '');
@@ -333,11 +392,17 @@ async function fetchTaxTribunal(term: string, oc: string): Promise<{ type: strin
 // 전부 0건이어서(매입세액공제·손금·접대비 각 0건) 뺐다. 올바른 target 은 **ntsCgmExpc**
 // 이고, 같은 검색어로 2,177 / 4,296 / 428건이 나온다.
 //
-// ⚠️ **회답 본문은 오지 않는다.** 법제처 OPEN API 가 국세청 해석의 목록만 제공하고
-//    본문은 taxlaw.nts.go.kr 에 있다. 그래서 이 근거는 **결론의 논거로 쓸 수 없고**,
-//    「이 쟁점에 국세청 해석이 있으니 확인하라」는 안내로만 쓴다. 제목만 보고 회답 내용을
-//    지어내면 없는 유권해석을 만들어 내는 셈이라, 시스템 프롬프트에서도 못박는다.
-async function fetchNtsInterpretations(term: string, oc: string): Promise<{ type: string; ref: string; text: string }[]> {
+// **회답 본문까지 가져온다**(2026-09-10). 법제처는 목록만 주지만, 국세법령정보시스템
+// 상세 화면이 쓰는 JSON 을 그대로 부르면 요지와 회답 본문이 온다 — `ntsBody()` 참고.
+//
+// 제목만 보던 때 무슨 일이 있었는가: 「장애인고용부담금 손금」 회신이 대법원 2024두30809
+// 를 근거로 **손금산입**이라고만 답했다. 그런데 같은 쟁점의 기준-2026-법규법인-0031
+// (2026.6.2) 본문에는 「2024.12.31 개정 **전** 조문에는 해당하지 않으나 **개정된** 조문에는
+// 해당하고, 2025.1.1. 이후 의무 발생분부터 적용한다」고 적혀 있었다. 실제로 법인세법
+// 제21조 제5호는 「제재로서 부과되는」에서 「이유로 부과되는」으로 바뀌었고, 대법원은
+// **구법**을 판단한 것이다. 즉 답은 **사업연도로 갈리는데** 제목만 보던 회신은 그 갈림을
+// 통째로 놓쳤다. 본문 한 문단이 결론을 바꾸는 자리다.
+async function fetchNtsInterpretations(terms: string[], oc: string): Promise<{ type: string; ref: string; text: string }[]> {
   try {
     const search = async (q: string) => {
       const su = new URL('https://www.law.go.kr/DRF/lawSearch.do');
@@ -349,22 +414,69 @@ async function fetchNtsInterpretations(term: string, oc: string): Promise<{ type
       const arr = sj?.CgmExpc?.cgmExpc;
       return Array.isArray(arr) ? arr : (arr ? [arr] : []);
     };
-    const list = await searchNarrowing(term, search);
-    return list.slice(0, 5).map((p: Record<string, unknown>) => {
+    const list = await searchTerms<Record<string, unknown>>(
+      terms, (x) => String(x['법령해석일련번호'] ?? ''), search);
+    const picked = list.slice(0, 6);   // 쟁점이 여럿일 수 있어 5→6건(2026-09-10)
+    // 본문은 건마다 한 번씩 부른다. 여섯 건뿐이라 병렬로 함께 기다린다.
+    const bodies = await Promise.all(picked.map((p) => ntsBody(stripTags(p['법령해석상세링크']))));
+    return picked.map((p, i) => {
       const name = stripTags(p['안건명']);
       const no = stripTags(p['안건번호']);
       const org = stripTags(p['해석기관명']) || '국세청';
       const date = stripTags(p['해석일자']);
       const link = stripTags(p['법령해석상세링크']);
+      const b = bodies[i];
+      const head = `[안건명] ${name}`;
+      // 본문을 받았으면 논거로 쓸 수 있는 근거, 못 받았으면 예전처럼 안내로만.
+      const text = b
+        ? [head, b.gist && `[요지] ${b.gist}`, b.body && `[회답] ${b.body}`, `[원문] ${link}`]
+          .filter(Boolean).join('\n').slice(0, 2000)
+        : `${head}\n[원문] ${link}\n`
+          + '※ 회답 본문을 받지 못했다(제목·번호만). 결론의 논거로 쓰지 말고, '
+          + '관련 해석이 있다는 안내와 링크만 제시할 것.';
       return {
-        type: '예규(제목만)',
+        type: b ? '예규' : '예규(제목만)',
         ref: `${org} ${no}${date ? ` (${date})` : ''}`,
-        text: `[안건명] ${name}\n[원문] ${link}\n`
-          + '※ 회답 본문은 법제처 OPEN API 로 제공되지 않는다(제목·번호만). '
-          + '결론의 논거로 쓰지 말고, 관련 해석이 있다는 안내와 링크만 제시할 것.',
+        text,
       };
     }).filter((c) => c.ref && c.text);
   } catch { return []; }
+}
+
+/** 국세법령정보시스템 상세 조회 액션 ID(그 화면이 쓰는 값 그대로). */
+const NTS_ACTION = 'ASIQTB002PR01';
+
+/**
+ * 국세청 예규의 **요지와 회답 본문**.
+ *
+ * 법제처가 주는 상세링크(`…USEQTA002P.do?ntstDcmId=…`)의 문서번호를 뽑아,
+ * 그 화면이 쓰는 JSON 을 그대로 부른다. 인증은 없다.
+ *
+ * 실패해도 조용히 null 을 돌려준다 — 예규가 아예 안 붙는 것보다 제목만이라도 붙는 것이 낫다.
+ */
+async function ntsBody(link: string): Promise<{ gist: string; body: string } | null> {
+  try {
+    const id = /ntstDcmId=(\d+)/.exec(link || '')?.[1];
+    if (!id) return null;
+    const r = await fetch('https://taxlaw.nts.go.kr/action.do', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        // 브라우저에서 오는 것처럼 보이게 한다 — 없으면 막는 경우가 있다.
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        Referer: 'https://taxlaw.nts.go.kr/qt/USEQTA002P.do',
+      },
+      body: new URLSearchParams({
+        actionId: NTS_ACTION,
+        paramData: JSON.stringify({ dcmDVO: { ntstDcmId: id } }),
+      }).toString(),
+    });
+    if (!r.ok) return null;
+    const d = (await r.json())?.data?.[NTS_ACTION]?.dcmDVO;
+    const gist = stripTags(d?.['ntstDcmGistCntn']);
+    const body = stripTags(d?.['ntstDcmCntn']);
+    return (gist || body) ? { gist, body } : null;
+  } catch { return null; }
 }
 
 // ── 세법 조문 자동근거 (법제처 target=law: search → detail, LAW_API_OC) ──
@@ -621,14 +733,14 @@ Deno.serve(async (req) => {
     let ttCites: { type: string; ref: string; text: string }[] = [];
     let ntsCites: { type: string; ref: string; text: string }[] = [];
     if (lawOc && (doTax || includePrecedents)) {
-      let term = (await precKeyword(groundingQuery, anthropicKey))
-        .replace(/["'`]/g, '').replace(/[^가-힣0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-      if (!term) term = question.trim().replace(/[^가-힣0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+      let terms = await precKeywords(groundingQuery, anthropicKey);
+      // 한 줄도 못 뽑았으면 질문 앞머리를 그대로 쓴다 — 근거 0건보다는 낫다.
+      if (!terms.length) terms = cleanTerms([question.trim().slice(0, 40)]);
       // 국세청 예규는 심판례와 같이 **세무·공통이면 항상** 본다 — 실무의 주 근거다.
       [ttCites, ntsCites, precCites] = await Promise.all([
-        doTax ? fetchTaxTribunal(term, lawOc) : Promise.resolve([]),
-        doTax ? fetchNtsInterpretations(term, lawOc) : Promise.resolve([]),
-        (doTax || includePrecedents) ? fetchPrecedents(term, lawOc) : Promise.resolve([]),
+        doTax ? fetchTaxTribunal(terms, lawOc) : Promise.resolve([]),
+        doTax ? fetchNtsInterpretations(terms, lawOc) : Promise.resolve([]),
+        (doTax || includePrecedents) ? fetchPrecedents(terms, lawOc) : Promise.resolve([]),
       ]);
     }
 

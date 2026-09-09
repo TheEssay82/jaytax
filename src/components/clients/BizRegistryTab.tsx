@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Empty, { EmptyRow } from '../common/Empty';
 import { useEscape } from '../../lib/useEscape';
 import { useUnsaved } from '../../lib/unsaved';
+import { bizErr } from '../../lib/bizErrors';
 import { confirmDanger } from '../common/DangerConfirm';
 import Loading from '../common/Loading';
 import { takeNavQuery } from '../../lib/navSearch';
@@ -246,12 +247,26 @@ export default function BizRegistryTab() {
   }, [entities]);
 
   // ── 액션 ───────────────────────────────────────────────
+  /**
+   * 신규 거래처 등록 — **거래처 → 본사 사업장 → 담당직원**, 세 번 쓴다.
+   *
+   * 2026-09-10 에 「태양빛」이 세 번 등록됐다(L0153·L0154·L0155). 두 가지가 겹쳤다.
+   *
+   *   ① **되돌리지 않았다.** 사업장에서 실패해도 앞서 만든 거래처가 남았다. 창은 닫히지
+   *      않으니 다시 누르게 되고, 누를 때마다 **빈 거래처가 하나씩 쌓였다.**
+   *   ② **목록 새로고침 실패를 저장 실패로 알렸다.** `load()` 가 같은 try 안에 있어,
+   *      저장이 다 끝난 뒤 화면 갱신만 실패해도 「등록 실패」가 떴다. 실제로 첫 시도는
+   *      거래처·사업장이 모두 저장된 상태였다.
+   *
+   * 그래서 **저장과 화면 갱신을 갈라 놓고**, 저장이 도중에 깨지면 만들다 만 것을 지운다.
+   */
   async function handleRegister(
     ent: { kind: BizKind; name: string; corpForm: CorpForm | ''; corpFormPosition: '앞' | '뒤'; corpRegNo: string; establishedDate: string; note: string; residentNo: string },
     hq: PlaceDraft,
   ) {
+    let orphan: string | null = null;   // 되돌려야 할 거래처 id
     try {
-      const entityId = await createBizEntity({
+      orphan = await createBizEntity({
         kind: ent.kind, name: ent.name.trim(),
         corpForm: ent.kind === '법인' ? (ent.corpForm || null) : null,
         corpFormPosition: ent.kind === '법인' && ent.corpForm ? ent.corpFormPosition : null,
@@ -259,14 +274,25 @@ export default function BizRegistryTab() {
         establishedDate: ent.kind === '법인' ? ent.establishedDate || null : null,
         note: ent.note.trim(), residentNo: ent.kind === '개인' ? ent.residentNo.trim() : undefined,
       });
-      const placeId = await createBizPlace(placeInput(entityId, hq, true));
+      const placeId = await createBizPlace(placeInput(orphan, hq, true));
       for (const sid of hq.staffIds) await assignStaff(placeId, sid, staffName(sid));
-      setShowAdd(false);
-      await load();
-      flash('✓ 거래처 등록됨 (본사 사업장 포함)');
+      orphan = null;   // 여기까지 왔으면 되돌릴 것이 없다
     } catch (e) {
-      alert('등록 실패: ' + (e instanceof Error ? e.message : e));
+      // 만들다 만 거래처를 지운다. 이것까지 실패하면 알려 준다 — 조용히 남기면
+      // 사장님은 모르는 채로 빈 거래처를 안게 된다.
+      let left = false;
+      if (orphan) {
+        try { await deleteBizEntity(orphan); } catch { left = true; }
+      }
+      await load().catch(() => {});
+      alert(`등록 실패: ${bizErr(e)}${left ? '\n\n※ 만들다 만 거래처가 남았습니다. 목록에서 지워 주세요.' : ''}`);
+      return;
     }
+    // 저장은 끝났다. 여기서부터는 화면 문제일 뿐이니 「실패」라고 말하지 않는다.
+    setShowAdd(false);
+    flash('✓ 거래처 등록됨 (본사 사업장 포함)');
+    try { await load(); }
+    catch { alert('등록은 되었습니다. 다만 목록을 새로 읽지 못했으니 새로고침해 주세요.'); }
   }
   async function handleAddPlace(entityId: string, d: PlaceDraft) {
     try {
@@ -276,7 +302,7 @@ export default function BizRegistryTab() {
       await load();
       flash('✓ 사업장 추가됨');
     } catch (e) {
-      alert('추가 실패: ' + (e instanceof Error ? e.message : e));
+      alert('추가 실패: ' + bizErr(e));
     }
   }
   async function handleEditEntity(e: BizEntityFull, p: { name: string; corpForm: CorpForm | ''; corpFormPosition: '앞' | '뒤'; corpRegNo: string; establishedDate: string; note: string; residentNo: string }) {
@@ -293,7 +319,7 @@ export default function BizRegistryTab() {
       setEditEntity(null);
       await load();
       flash('✓ 거래처 수정됨');
-    } catch (er) { alert('수정 실패: ' + (er instanceof Error ? er.message : er)); }
+    } catch (er) { alert('수정 실패: ' + bizErr(er)); }
   }
   async function handleEditPlace(place: BizPlace, d: PlaceDraft) {
     try {
@@ -303,7 +329,7 @@ export default function BizRegistryTab() {
       setEditPlace(null);
       await load();
       flash('✓ 사업장 수정됨');
-    } catch (er) { alert('수정 실패: ' + (er instanceof Error ? er.message : er)); }
+    } catch (er) { alert('수정 실패: ' + bizErr(er)); }
   }
   async function handleDeleteEntity(e: BizEntityFull) {
     if (!await confirmDanger({
@@ -313,7 +339,7 @@ export default function BizRegistryTab() {
       detail: `[${e.code}] 사업장 · 담당자 · 대표이사 · 공동사업자가 모두 함께 삭제됩니다.`,
     })) return;
     try { await deleteBizEntity(e.id); await load(); flash('삭제됨'); }
-    catch (er) { alert('삭제 실패: ' + (er instanceof Error ? er.message : er)); }
+    catch (er) { alert('삭제 실패: ' + bizErr(er)); }
   }
   const toggleSelect = (id: string) => setSelected((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   async function bulkDeleteSelected() {
@@ -341,7 +367,7 @@ export default function BizRegistryTab() {
       detail: '이 사업장에 걸린 담당직원 배정도 함께 지워집니다.',
     })) return;
     try { await deleteBizPlace(p.id); await load(); flash('사업장 삭제됨'); }
-    catch (er) { alert('삭제 실패: ' + (er instanceof Error ? er.message : er)); }
+    catch (er) { alert('삭제 실패: ' + bizErr(er)); }
   }
   async function toggleStaff(place: BizPlace, sid: string) {
     try {
@@ -352,7 +378,7 @@ export default function BizRegistryTab() {
         if (place.staffStatus) await updateBizPlace(place.id, { staffStatus: null }); // 실제 배정 시 상태 해제
       }
       await load();
-    } catch (e) { alert('담당직원 변경 실패: ' + (e instanceof Error ? e.message : e)); }
+    } catch (e) { alert('담당직원 변경 실패: ' + bizErr(e)); }
   }
   // 담당직원 상태(배정예정/N/A) 즉시 토글 — 실제 직원이 있으면 먼저 해제한다(배타적).
   async function setPlaceStaffStatus(place: BizPlace, st: StaffStatus) {
@@ -361,7 +387,7 @@ export default function BizRegistryTab() {
       if (next) for (const s of place.staff) await unassignStaff(s.id);
       await updateBizPlace(place.id, { staffStatus: next });
       await load();
-    } catch (e) { alert('담당직원 상태 변경 실패: ' + (e instanceof Error ? e.message : e)); }
+    } catch (e) { alert('담당직원 상태 변경 실패: ' + bizErr(e)); }
   }
   // 표뷰 민감정보 열(주민번호·홈택스PW) — 직원들이 보고 타이핑하는 용도라 한 번에 열고 닫는다.
   // 두 정보의 열람 권한 게이트가 다르다(주민번호=내부자 전체, 홈택스PW=기장 실무자까지).
@@ -395,7 +421,7 @@ export default function BizRegistryTab() {
         : kind === 'rep' ? await revealRepResident(id)
         : await revealPlaceHometaxPw(id);
       alert(`${label}: ${v ?? '(없음)'}`);
-    } catch (e) { alert('열람 권한이 없거나 오류입니다: ' + (e instanceof Error ? e.message : e)); }
+    } catch (e) { alert('열람 권한이 없거나 오류입니다: ' + bizErr(e)); }
   }
 
   if (loading) return <Loading title="🏢 거래처등록" rows={10} />;
@@ -993,7 +1019,7 @@ function RepEditor({ entity, allEntities, canWrite, onChanged, onReveal }: {
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     try { await fn(); await onChanged(); }
-    catch (e) { alert('실패: ' + (e instanceof Error ? e.message : e)); }
+    catch (e) { alert('실패: ' + bizErr(e)); }
     finally { setBusy(false); }
   };
 
@@ -1108,7 +1134,7 @@ function PartnerSection({ entity, allEntities, canWrite, onChanged }: {
       await createBizPartner(placeId, partnerId, share ? Number(share) : null);
       setPartnerId(''); setShare('');
       await onChanged();
-    } catch (e) { alert('추가 실패: ' + (e instanceof Error ? e.message : e)); }
+    } catch (e) { alert('추가 실패: ' + bizErr(e)); }
   }
   async function del(id: string, who: string) {
     if (!await confirmDanger({ title: '공동사업자 연결을 삭제합니다', target: who })) return;
@@ -1162,7 +1188,7 @@ function RelationSection({ entity, allEntities, canWrite, onChanged }: {
       await createBizRelation(entity.id, toId, type, note.trim() || undefined);
       setToId(''); setNote('');
       await onChanged();
-    } catch (e) { alert('추가 실패: ' + (e instanceof Error ? e.message : e)); }
+    } catch (e) { alert('추가 실패: ' + bizErr(e)); }
   }
   async function del(id: string, what: string) {
     if (!await confirmDanger({ title: '개인 관계를 삭제합니다', target: what })) return;
