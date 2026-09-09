@@ -13,13 +13,15 @@ function inline(s: string): ReactNode[] {
 
 type Block = { type: 'h1' | 'h2' | 'h3' | 'hr'; node: ReactNode } | { type: 'flow'; node: ReactNode };
 
+type List = { ordered: boolean; items: string[]; start: number };
+
 export default function Markdown({ text, style, boxed = false, hideFirstH1 = false }: {
   text: string; style?: CSSProperties; boxed?: boolean; hideFirstH1?: boolean;
 }) {
   const lines = String(text || '').replace(/\r/g, '').split('\n');
   const blocks: Block[] = [];
   let para: string[] = [];
-  let list: { ordered: boolean; items: string[] } | null = null;
+  let list: List | null = null;
   let k = 0;
 
   const flushPara = () => {
@@ -28,7 +30,9 @@ export default function Markdown({ text, style, boxed = false, hideFirstH1 = fal
   const flushList = () => {
     if (list) {
       const items = list.items.map((it, i) => <li key={i} style={liStyle}>{inline(it)}</li>);
-      blocks.push({ type: 'flow', node: list.ordered ? <ol key={k++} style={olStyle}>{items}</ol> : <ul key={k++} style={ulStyle}>{items}</ul> });
+      // **글쓴이가 매긴 번호에서 시작한다.** 자동번호에만 맡기면 목록이 쪼개졌을 때
+      // 전부 1번이 된다.
+      blocks.push({ type: 'flow', node: list.ordered ? <ol key={k++} start={list.start} style={olStyle}>{items}</ol> : <ul key={k++} style={ulStyle}>{items}</ul> });
       list = null;
     }
   };
@@ -37,7 +41,9 @@ export default function Markdown({ text, style, boxed = false, hideFirstH1 = fal
   for (const raw of lines) {
     const line = raw.trimEnd();
     const t = line.trim();
-    if (!t) { flushAll(); continue; }
+    // **빈 줄이 목록을 끊지 않는다.** 항목 사이를 빈 줄로 띄운 글에서 목록이 한 개씩
+    // 쪼개져 번호가 전부 「1.」로 보였다(2026-09-10). 목록은 목록이 아닌 것이 나올 때 닫는다.
+    if (!t) { flushPara(); continue; }
 
     const h = t.match(/^(#{1,6})\s+(.*)$/);
     if (h) {
@@ -50,9 +56,9 @@ export default function Markdown({ text, style, boxed = false, hideFirstH1 = fal
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) { flushAll(); blocks.push({ type: 'hr', node: <hr key={k++} style={hrStyle} /> }); continue; }
 
     const ol = t.match(/^(\d+)[.)]\s+(.*)$/);
-    if (ol) { flushPara(); if (!list || !list.ordered) { flushList(); list = { ordered: true, items: [] }; } list.items.push(ol[2]); continue; }
+    if (ol) { flushPara(); if (!list || !list.ordered) { flushList(); list = { ordered: true, items: [], start: Number(ol[1]) || 1 }; } list.items.push(ol[2]); continue; }
     const ul = t.match(/^[-*•]\s+(.*)$/);
-    if (ul) { flushPara(); if (!list || list.ordered) { flushList(); list = { ordered: false, items: [] }; } list.items.push(ul[1]); continue; }
+    if (ul) { flushPara(); if (!list || list.ordered) { flushList(); list = { ordered: false, items: [], start: 1 }; } list.items.push(ul[1]); continue; }
 
     flushList();
     para.push(t);

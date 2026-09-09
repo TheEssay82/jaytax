@@ -1,7 +1,7 @@
 // 회신 가르기. **옛 기록이 깨지지 않는 것**이 절반이다 — 「한눈에」는 2026-09-10 에 생겼다.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bullets, parseConsultDoc, summaryLines } from './consultDoc';
+import { bullets, clipLine, parseConsultDoc, summaryLines } from './consultDoc';
 
 const FULL = `# [세무 회신] 장애인고용부담금의 손금 여부
 
@@ -107,4 +107,24 @@ test('빈 입력에도 무너지지 않는다', () => {
 
 test('bullets — •, *, - 를 모두 받는다', () => {
   assert.deepEqual(bullets('- 가\n* 나\n• 다\n라'), ['가', '나', '다']);
+});
+
+test('clipLine — 첫 문장까지만', () => {
+  assert.equal(clipLine('첫 문장입니다. 둘째 문장입니다.'), '첫 문장입니다.');
+  assert.equal(clipLine('짧은 줄'), '짧은 줄');
+  assert.equal(clipLine(''), '');
+});
+
+test('clipLine — 조문 번호의 마침표에서 끊지 않는다', () => {
+  assert.equal(
+    clipLine('소득세법 제39조제5항.5에 따라 판단합니다. 다음 문장.'),
+    '소득세법 제39조제5항.5에 따라 판단합니다.',
+  );
+});
+
+test('clipLine — 문장이 길면 글자 수로 자르고 말줄임을 붙인다', () => {
+  const long = '가'.repeat(200) + '.';
+  const s = clipLine(long, 30);
+  assert.equal(s.length, 30);
+  assert.ok(s.endsWith('…'));
 });

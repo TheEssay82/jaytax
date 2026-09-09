@@ -15,7 +15,7 @@ import {
 } from '../../lib/consultApi';
 import { TagList, TagEditor } from './TagsField';
 import ConsultDoc from './ConsultDoc';
-import { summaryLines } from '../../lib/consultDoc';
+import { clipLine, summaryLines } from '../../lib/consultDoc';
 import { confirmDanger } from '../common/DangerConfirm';
 
 export default function ConsultLogTab() {
@@ -474,7 +474,8 @@ function ClientBadge({ name }: { name: string }) {
  * 그것도 없으면 아무것도 그리지 않는다 — 빈 자리를 만들어 두느니 없는 편이 낫다.
  */
 function Peek({ md }: { md: string }) {
-  const lines = summaryLines(md, 3);
+  // 옛 회신은 결론 문단이 통째로 오므로 **문장에서 끊어** 보여 준다.
+  const lines = summaryLines(md, 3).map((l) => clipLine(l, 92)).filter(Boolean);
   if (!lines.length) return null;
   return (
     <ul style={{ margin: '7px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 3 }}>

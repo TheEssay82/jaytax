@@ -126,3 +126,20 @@ export function summaryLines(md: string, max = 3): string[] {
     .filter(Boolean)
     .slice(0, max);
 }
+
+/**
+ * 미리보기 한 줄로 줄인다 — **문장에서 끊는다.**
+ *
+ * 옛 회신은 「한눈에」가 없어 결론 문단을 그대로 가져오는데, 문단이 통째로 오면
+ * 목록에서 잘려 나가 무슨 말인지 알 수 없다. 글자 수로 뚝 자르면 말이 끊기므로
+ * **첫 문장까지만** 쓰고, 그 문장도 길면 그때 글자 수로 자른다.
+ */
+export function clipLine(s: string, max = 90): string {
+  const t = String(s ?? '').trim();
+  if (!t) return '';
+  // 마침표·물음표 뒤에 공백이나 끝이 오는 자리가 문장 끝. 「제39조제5항.」 같은 조문
+  // 번호에서 끊기지 않게 **숫자 뒤 마침표는 문장 끝으로 보지 않는다.**
+  const m = t.match(/^[\s\S]*?(?<!\d)[.?!](?=\s|$)/);
+  const first = (m ? m[0] : t).trim();
+  return first.length <= max ? first : `${first.slice(0, max - 1).trimEnd()}…`;
+}
