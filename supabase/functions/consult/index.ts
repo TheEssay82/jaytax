@@ -198,7 +198,7 @@ async function precKeyword(question: string, key: string): Promise<string> {
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
         model: TAG_MODEL, max_tokens: 40,
-        system: '세무·회계 질문에서 판례 검색에 쓸 핵심어 2~4개를 공백으로 이어 한 줄로만 출력한다(설명 금지). 예: "매입세액 안분 공통매입".',
+        system: '세무·회계 질문에서 판례 검색에 쓸 핵심어를 **2개**만 공백으로 이어 한 줄로 출력한다(설명 금지). 법제처 검색은 AND 매칭이라 어절이 많으면 0건이 되므로, 쟁점을 가장 좁게 집는 명사 둘만 고른다. 예: "매입세액 안분", "장애인고용부담금 손금".',
         messages: [{ role: 'user', content: question.slice(0, 1500) }],
       }),
     });
@@ -207,14 +207,36 @@ async function precKeyword(question: string, key: string): Promise<string> {
     return (data.content ?? []).map((c: { text?: string }) => c.text ?? '').join('').trim().split('\n')[0].slice(0, 60);
   } catch { return ''; }
 }
+/**
+ * **어절을 줄여 가며 찾는다.** 법제처 검색은 AND 매칭이라 어절이 많으면 0건이 된다 —
+ * 「장애인고용부담금 손금」은 5건인데 「장애인고용부담금 손금산입 법인세」는 0건이다
+ * (2026-09-09 실측). 검색어는 저비용 모델이 2~4개 어절로 뽑으므로, 길게 나오면
+ * 근거가 통째로 비었다.
+ *
+ * 뒤 어절부터 하나씩 떼며 처음 걸리는 것을 쓴다. 앞 어절이 대개 더 핵심이기 때문이다.
+ * 0건이면 곧바로 다음으로 넘어가므로 실제 호출은 한두 번에 끝난다.
+ */
+async function searchNarrowing<T>(term: string, run: (q: string) => Promise<T[]>): Promise<T[]> {
+  const words = term.split(/\s+/).filter(Boolean);
+  for (let n = words.length; n >= 1; n -= 1) {
+    const hit = await run(words.slice(0, n).join(' '));
+    if (hit.length) return hit;
+  }
+  return [];
+}
+
 async function fetchPrecedents(term: string, oc: string): Promise<{ type: string; ref: string; text: string }[]> {
   try {
-    const su = new URL('https://www.law.go.kr/DRF/lawSearch.do');
-    su.searchParams.set('OC', oc); su.searchParams.set('type', 'JSON'); su.searchParams.set('target', 'prec');
-    su.searchParams.set('query', term); su.searchParams.set('search', '1'); su.searchParams.set('display', '10');
-    const sj = await (await fetch(su)).json();
-    const arr = sj?.PrecSearch?.prec;
-    const raw = Array.isArray(arr) ? arr : (arr ? [arr] : []);
+    // 어절이 많으면 0건이 되므로 줄여 가며 찾는다 — 그전에는 폴백이 없어
+    // 검색어가 3어절만 되어도 판례가 통째로 빠졌다(2026-09-09).
+    const raw = await searchNarrowing(term, async (q) => {
+      const su = new URL('https://www.law.go.kr/DRF/lawSearch.do');
+      su.searchParams.set('OC', oc); su.searchParams.set('type', 'JSON'); su.searchParams.set('target', 'prec');
+      su.searchParams.set('query', q); su.searchParams.set('search', '1'); su.searchParams.set('display', '10');
+      const sj = await (await fetch(su)).json();
+      const arr = sj?.PrecSearch?.prec;
+      return (Array.isArray(arr) ? arr : (arr ? [arr] : [])) as Record<string, unknown>[];
+    });
     // **대법원 판결을 먼저 본다.** 상급심이 하급심·심판례를 뒤집는 자리라 가장 무겁다.
     // 상위 몇 건만 전문을 받아 오므로, 순서가 곧 무엇이 근거가 되느냐를 정한다.
     const list = [...raw].sort((a, b) => {
@@ -270,12 +292,9 @@ async function fetchTaxTribunal(term: string, oc: string): Promise<{ type: strin
       const arr = sj?.Decc?.decc;
       return Array.isArray(arr) ? arr : (arr ? [arr] : []);
     };
-    let list = await search(term);
-    // 다어절 검색이 0건이면 가장 앞 핵심어로 재검색(사건명 AND매칭 과제약 방지)
-    if (!list.length) {
-      const first = term.split(/\s+/)[0];
-      if (first && first !== term) list = await search(first);
-    }
+    // 어절을 줄여 가며 찾는다(AND 매칭 과제약 방지). 한 번에 한 어절만 떼므로
+    // 「첫 단어 하나」로 건너뛸 때보다 쟁점이 덜 넓어진다.
+    const list = await searchNarrowing(term, search);
     // 심판례는 **세무 근거의 主 원천**이다(2026-09-09 실측 — 매입세액공제 3,537건).
     // 3건만 보던 것을 5건으로 넓힌다. 조문만으로 결론이 안 나는 쟁점이 대부분이라,
     // 여기가 얇으면 회신이 「원칙만 읊고 결론을 못 내는」 글이 된다.
@@ -330,12 +349,7 @@ async function fetchNtsInterpretations(term: string, oc: string): Promise<{ type
       const arr = sj?.CgmExpc?.cgmExpc;
       return Array.isArray(arr) ? arr : (arr ? [arr] : []);
     };
-    let list = await search(term);
-    // 다어절이 0건이면 앞 핵심어로 재검색 — 심판례와 같은 이유(AND 매칭 과제약).
-    if (!list.length) {
-      const first = term.split(/\s+/)[0];
-      if (first && first !== term) list = await search(first);
-    }
+    const list = await searchNarrowing(term, search);
     return list.slice(0, 5).map((p: Record<string, unknown>) => {
       const name = stripTags(p['안건명']);
       const no = stripTags(p['안건번호']);
