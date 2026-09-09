@@ -129,9 +129,15 @@ function Dialog({ ask, done }: { ask: DangerAsk; done: (ok: boolean) => void }) 
 
           {typing && (
             <label style={{ display: 'block', marginTop: 14 }}>
+              {/* **조사를 붙이지 않는다.** 받아 적을 글자는 이름일 수도, 「3개 삭제」일 수도,
+                  연월일 수도 있다. 받침에 따라 을/를이 갈리므로(김효주를 · 이도현을) 어떤
+                  하나를 박아 두면 절반은 틀린다. 글자는 아래 줄에 따로 놓는다. */}
               <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>
-                확인을 위해 <b style={{ color: 'var(--ink)' }}>{word}</b> 을(를) 그대로 입력하세요
+                확인을 위해 아래 글자를 그대로 입력하세요
               </span>
+              <div style={{ marginTop: 4, fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--ink)', wordBreak: 'break-all' }}>
+                {word}
+              </div>
               <input
                 ref={inputRef}
                 type="text"
