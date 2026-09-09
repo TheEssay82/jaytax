@@ -5,6 +5,7 @@
 // 설계 원칙 셋: ① 되돌릴 수 있게 ② 먼저 보여주고 나중에 저장 ③ 판단은 사람이.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useEscape } from '../../lib/useEscape';
+import { confirmDanger } from '../common/DangerConfirm';
 import Loading from '../common/Loading';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, type BizEntityFull } from '../../lib/bizRegistryApi';
@@ -208,7 +209,15 @@ export default function ErpReconcileTab() {
             </span>
             {canWrite && !state.doneAt && (
               <button className="btn-sm" disabled={busy}
-                onClick={() => { if (confirm('올린 파일과 대사 내용을 지웁니다. 발행완료로 바꾼 건은 그대로 남습니다. 진행할까요?')) void run(() => clearSlips(ym, team), '지웠습니다'); }}>
+                onClick={async () => {
+                  if (!await confirmDanger({
+                    title: '올린 파일과 대사 내용을 지웁니다',
+                    target: `${state.fileName} · ${ym} ${team}`,
+                    detail: '발행완료로 바꾼 건은 그대로 남습니다.',
+                    okLabel: '지웁니다',
+                  })) return;
+                  void run(() => clearSlips(ym, team), '지웠습니다');
+                }}>
                 파일 지우고 다시 올리기
               </button>
             )}

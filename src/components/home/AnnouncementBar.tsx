@@ -4,6 +4,7 @@
 // · 등록·수정·삭제는 최고관리자만(오른쪽 작은 관리 버튼). 서버(RLS)에서도 막힌다.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { confirmDanger } from '../common/DangerConfirm';
 import {
   listAnnouncements,
   createAnnouncement,
@@ -328,8 +329,8 @@ function ManageModal({
                               className="btn-sm btn-sm-del"
                               title="삭제"
                               disabled={busy}
-                              onClick={() => {
-                                if (!confirm('이 공지를 삭제하시겠습니까? 되돌릴 수 없습니다.')) return;
+                              onClick={async () => {
+                                if (!await confirmDanger({ title: '공지를 삭제합니다', target: a.message })) return;
                                 void run(() => deleteAnnouncement(a.id));
                               }}
                             >

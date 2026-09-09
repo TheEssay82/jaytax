@@ -14,6 +14,7 @@
 // 급여 자료라 김민섭·김동주·정남지는 이 화면에 닿지 못한다 — 부모(BudgetTab)가 막는다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Guide from '../common/Guide';
+import { confirmDanger } from '../common/DangerConfirm';
 import Loading from '../common/Loading';
 import Empty from '../common/Empty';
 import { fyOf, fyLabel, kstYm } from '../../lib/revenueStatsApi';
@@ -393,7 +394,11 @@ function PersonPanel({ fy, person, onSaved }: {
         {person.cur?.id && (
           <button className="btn-sm btn-sm-del" disabled={busy}
             onClick={() => void (async () => {
-              if (!confirm(`${person.name} 님의 ${fyLabel(fy)} 인건비를 지웁니다.`)) return;
+              if (!await confirmDanger({
+                title: '인건비 설정을 지웁니다',
+                target: `${person.name} · ${fyLabel(fy)}`,
+                detail: '호봉 · 기본금 · 수당 · 부담률이 모두 지워집니다.',
+              })) return;
               await deleteStaffCost(person.cur!.id); onSaved();
             })()}>
             삭제

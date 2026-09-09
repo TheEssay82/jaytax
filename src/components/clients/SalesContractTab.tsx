@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMineOnly } from '../../lib/mineOnly';
 import Empty, { EmptyRow } from '../common/Empty';
 import { useEscape } from '../../lib/useEscape';
+import { confirmDanger } from '../common/DangerConfirm';
 import { useUnsaved } from '../../lib/unsaved';
 import Loading from '../common/Loading';
 import { takeNavQuery } from '../../lib/navSearch';
@@ -482,7 +483,11 @@ export default function SalesContractTab() {
     } catch (e) { alert('저장 실패: ' + (e instanceof Error ? e.message : e)); }
   }
   async function del(c: SalesContract) {
-    if (!confirm('이 매출계약을 삭제할까요? (분할·할인·담당 함께 삭제)')) return;
+    if (!await confirmDanger({
+      title: '매출계약을 삭제합니다',
+      target: [c.contractCode, placeName(c.entityId, c.placeId)].filter(Boolean).join(' · ') || '(코드 없음)',
+      detail: '분할 · 할인 · 담당이 함께 삭제됩니다.',
+    })) return;
     try { await deleteSalesContract(c.id); await load(); flash('삭제됨'); }
     catch (e) { alert('삭제 실패: ' + (e instanceof Error ? e.message : e)); }
   }

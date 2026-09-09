@@ -13,6 +13,7 @@ import {
   type EvidenceDoc,
 } from '../../lib/evidenceApi';
 import { TagEditor, TagList } from '../advisory/TagsField';
+import { confirmDanger } from '../common/DangerConfirm';
 
 const CATEGORIES = [
   '계약서',
@@ -257,7 +258,12 @@ function DocRow({ doc, canManage, onChanged }: { doc: EvidenceDoc; canManage: bo
   }
 
   async function remove() {
-    if (busy || !window.confirm('이 증빙을 삭제하시겠습니까? 파일과 정보가 함께 삭제됩니다.')) return;
+    if (busy) return;
+    if (!await confirmDanger({
+      title: '증빙을 삭제합니다',
+      target: doc.fileName,
+      detail: '올린 파일과 정보가 함께 지워집니다.',
+    })) return;
     setBusy(true);
     setErr(null);
     try {

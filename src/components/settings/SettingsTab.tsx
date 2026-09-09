@@ -1,6 +1,7 @@
 // 설정 탭 — 수수료 설정(다중 버전) + 설명 변경. 원본 rSettings 확장.
 import { useEffect, useRef, useState } from 'react';
 import type { AppConfig } from '../../types';
+import { confirmDanger } from '../common/DangerConfirm';
 import { DEFAULT_CONFIG, FEE_LABELS, HELP_TEXTS, HELP_KEYS } from '../../lib/constants';
 import { useConfig } from '../../context/ConfigContext';
 import { DEFAULT_VERSION_ID } from '../../lib/configApi';
@@ -96,7 +97,12 @@ export default function SettingsTab() {
   }
   async function doOverwrite() {
     if (isDefault) return;
-    if (!confirm(`'${label}' 버전을 덮어쓰시겠습니까?`)) return;
+    if (!await confirmDanger({
+      title: '저장된 버전을 덮어씁니다',
+      target: label,
+      detail: '지금 화면의 값으로 바뀝니다. 이전 값은 남지 않습니다.',
+      okLabel: '덮어씁니다',
+    })) return;
     setSaving(true);
     try {
       await overwrite(selectedId, draft, label.trim() || '기본');
@@ -109,7 +115,7 @@ export default function SettingsTab() {
   }
   async function doDelete() {
     if (isDefault) return;
-    if (!confirm(`'${label}' 버전을 삭제하시겠습니까?`)) return;
+    if (!await confirmDanger({ title: '저장된 버전을 삭제합니다', target: label })) return;
     setSaving(true);
     try {
       await remove(selectedId);

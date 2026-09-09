@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Grid, GridExport, useGrid, type GridCol } from './grid';
 import { ColumnSettings } from '../clients/tableKit';
+import { confirmDanger } from '../common/DangerConfirm';
 import { useMineOnly } from '../../lib/mineOnly';
 import Empty from '../common/Empty';
 import { useEscape } from '../../lib/useEscape';
@@ -476,7 +477,15 @@ export default function ReceivableTab() {
               {' = '}<b>{won(sum((r) => r.balance))}</b></span>
             {canWrite && (
               <button className="btn-sm" style={{ marginLeft: 'auto' }} disabled={busy}
-                onClick={() => { if (confirm(`${ym} ${team} 입금 기록을 지웁니다. 진행할까요?`)) void run(() => clearReceipts(ym, team), '지웠습니다'); }}>
+                onClick={async () => {
+                  if (!await confirmDanger({
+                    title: '이 달 입금 기록을 지웁니다',
+                    target: `${ym} ${team}`,
+                    detail: '발행 내역과 기초 미수금은 그대로 남습니다.',
+                    okLabel: '지웁니다',
+                  })) return;
+                  void run(() => clearReceipts(ym, team), '지웠습니다');
+                }}>
                 이 달 입금 지우기
               </button>
             )}

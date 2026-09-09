@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import type { RequestStatus, UpdateRequest } from '../../types';
 import { useRequests } from '../../hooks/useRequests';
+import { confirmDanger } from '../common/DangerConfirm';
 import { useAuth } from '../../context/AuthContext';
 import {
   createRequest,
@@ -72,8 +73,8 @@ export default function RequestsTab() {
     }
   }
 
-  async function remove(id: string) {
-    if (!confirm('삭제하시겠습니까?')) return;
+  async function remove(id: string, what: string) {
+    if (!await confirmDanger({ title: '요청을 삭제합니다', target: what, detail: '달린 댓글도 함께 지워집니다.' })) return;
     try {
       await deleteRequest(id);
       await refresh();
@@ -144,7 +145,7 @@ export default function RequestsTab() {
           r={r}
           onStatus={(s) => changeStatus(r.id, s)}
           canSetStatus={canSetStatus}
-          onDelete={() => remove(r.id)}
+          onDelete={() => void remove(r.id, `${r.requester} — ${r.content.slice(0, 40)}`)}
           onCommentAdded={refresh}
           authorName={authorName}
         />

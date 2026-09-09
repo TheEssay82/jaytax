@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Empty, { EmptyRow } from '../common/Empty';
 import { useEscape } from '../../lib/useEscape';
 import { useUnsaved } from '../../lib/unsaved';
+import { confirmDanger } from '../common/DangerConfirm';
 import Loading from '../common/Loading';
 import { takeNavQuery } from '../../lib/navSearch';
 import { useAuth } from '../../context/AuthContext';
@@ -305,7 +306,12 @@ export default function BizRegistryTab() {
     } catch (er) { alert('수정 실패: ' + (er instanceof Error ? er.message : er)); }
   }
   async function handleDeleteEntity(e: BizEntityFull) {
-    if (!confirm(`[${e.code}] ${e.name} — 귀속주체와 사업장·담당자·대표이사·공동사업자가 모두 삭제됩니다. 진행할까요?`)) return;
+    if (!await confirmDanger({
+      title: '거래처를 삭제합니다',
+      level: 'purge',
+      target: e.name,
+      detail: `[${e.code}] 사업장 · 담당자 · 대표이사 · 공동사업자가 모두 함께 삭제됩니다.`,
+    })) return;
     try { await deleteBizEntity(e.id); await load(); flash('삭제됨'); }
     catch (er) { alert('삭제 실패: ' + (er instanceof Error ? er.message : er)); }
   }
@@ -314,7 +320,13 @@ export default function BizRegistryTab() {
     const ids = [...selected];
     if (!ids.length) return;
     const names = entities.filter((e) => selected.has(e.id)).map((e) => `${e.code} ${e.name}`);
-    if (!confirm(`선택한 ${ids.length}개 거래처를 일괄 삭제합니다.\n각 거래처의 사업장·매출계약·담당자·대표이사가 모두 함께 삭제됩니다. 되돌릴 수 없습니다.\n\n${names.slice(0, 20).join('\n')}${names.length > 20 ? `\n… 외 ${names.length - 20}건` : ''}\n\n진행할까요?`)) return;
+    if (!await confirmDanger({
+      title: `거래처 ${ids.length}개를 한꺼번에 삭제합니다`,
+      level: 'purge',
+      targets: names,
+      confirmWord: `${ids.length}개 삭제`,
+      detail: '각 거래처의 사업장 · 매출계약 · 담당자 · 대표이사가 모두 함께 삭제됩니다.',
+    })) return;
     let ok = 0; const failed: string[] = [];
     for (const id of ids) { try { await deleteBizEntity(id); ok++; } catch { failed.push(entities.find((e) => e.id === id)?.name ?? id); } }
     setSelected(new Set());
@@ -323,7 +335,11 @@ export default function BizRegistryTab() {
     if (failed.length) alert('삭제 실패: ' + failed.join(', '));
   }
   async function handleDeletePlace(p: BizPlace) {
-    if (!confirm(`사업장 '${p.placeName}' 을 삭제할까요?`)) return;
+    if (!await confirmDanger({
+      title: '사업장을 삭제합니다',
+      target: p.placeName,
+      detail: '이 사업장에 걸린 담당직원 배정도 함께 지워집니다.',
+    })) return;
     try { await deleteBizPlace(p.id); await load(); flash('사업장 삭제됨'); }
     catch (er) { alert('삭제 실패: ' + (er instanceof Error ? er.message : er)); }
   }
@@ -1013,7 +1029,7 @@ function RepEditor({ entity, allEntities, canWrite, onChanged, onReveal }: {
     });
   }
   async function del(r: BizRepresentative) {
-    if (!confirm(`대표이사 '${r.repName}' 을(를) 삭제할까요?`)) return;
+    if (!await confirmDanger({ title: '대표이사를 삭제합니다', target: r.repName })) return;
     await run(async () => {
       await deleteBizRepresentative(r.id);
       setReps((p) => p.filter((x) => x.id !== r.id));
@@ -1094,7 +1110,10 @@ function PartnerSection({ entity, allEntities, canWrite, onChanged }: {
       await onChanged();
     } catch (e) { alert('추가 실패: ' + (e instanceof Error ? e.message : e)); }
   }
-  async function del(id: string) { if (confirm('공동사업자를 삭제할까요?')) { try { await deleteBizPartner(id); await onChanged(); } catch (e) { alert(e instanceof Error ? e.message : String(e)); } } }
+  async function del(id: string, who: string) {
+    if (!await confirmDanger({ title: '공동사업자 연결을 삭제합니다', target: who })) return;
+    try { await deleteBizPartner(id); await onChanged(); } catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+  }
 
   return (
     <div style={{ borderTop: '1px dashed #ddd', paddingTop: 6 }}>
@@ -1107,7 +1126,7 @@ function PartnerSection({ entity, allEntities, canWrite, onChanged }: {
             <b>{person ? `${person.code} ${person.name}` : '(삭제된 개인)'}</b>
             <span style={{ fontSize: 'var(--fs-0)', color: '#47a' }}>🏢 {place ? place.placeName : '(사업장?)'}</span>
             {pt.sharePct != null && <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>지분 {pt.sharePct}%</span>}
-            {canWrite && <button className="btn-sm btn-sm-del" onClick={() => del(pt.id)}>삭제</button>}
+            {canWrite && <button className="btn-sm btn-sm-del" onClick={() => void del(pt.id, person ? `${person.code} ${person.name}` : '(삭제된 개인)')}>삭제</button>}
           </div>
         );
       })}
@@ -1145,7 +1164,10 @@ function RelationSection({ entity, allEntities, canWrite, onChanged }: {
       await onChanged();
     } catch (e) { alert('추가 실패: ' + (e instanceof Error ? e.message : e)); }
   }
-  async function del(id: string) { if (confirm('관계를 삭제할까요?')) { try { await deleteBizRelation(id); await onChanged(); } catch (e) { alert(e instanceof Error ? e.message : String(e)); } } }
+  async function del(id: string, what: string) {
+    if (!await confirmDanger({ title: '개인 관계를 삭제합니다', target: what })) return;
+    try { await deleteBizRelation(id); await onChanged(); } catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+  }
 
   return (
     <div style={{ borderTop: '1px dashed #ddd', paddingTop: 6 }}>
@@ -1156,7 +1178,7 @@ function RelationSection({ entity, allEntities, canWrite, onChanged }: {
           <div key={r.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--fs-2)', marginBottom: 2 }}>
             <span><b>{entity.name}</b> → <b>{to ? `${to.code} ${to.name}` : '(삭제된 개인)'}</b> 의 <span style={{ color: '#a55' }}>{r.relationType}</span></span>
             {r.note && <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>({r.note})</span>}
-            {canWrite && <button className="btn-sm btn-sm-del" onClick={() => del(r.id)}>삭제</button>}
+            {canWrite && <button className="btn-sm btn-sm-del" onClick={() => void del(r.id, `${entity.name} → ${to ? to.name : '(삭제된 개인)'} 의 ${r.relationType}`)}>삭제</button>}
           </div>
         );
       })}

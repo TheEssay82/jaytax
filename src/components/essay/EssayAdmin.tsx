@@ -1,6 +1,7 @@
 // 습작 관리 (/essay/admin) — 메뉴에 노출하지 않는 숨김 URL. 로그인 + 최고관리자만 동작한다(RLS).
 // 업로드는 '제목 + Word 파일'만 받고, 변환된 본문을 미리보기로 보여준 뒤 확정해야 등록된다.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { confirmDanger } from '../common/DangerConfirm';
 import {
   bgUrl,
   createPiece,
@@ -182,10 +183,13 @@ export default function EssayAdmin() {
   /** 시험 삼아 돌려본 평가 기록을 공개 전에 비운다(작품은 유지) */
   async function resetAll() {
     if (readers.length === 0) return;
-    if (!window.confirm(`평가 기록을 모두 지웁니다.
-등록 ${readers.length}명 · 순위 제출 ${submittedCount}명 분이 사라지고 되돌릴 수 없습니다.
-작품은 그대로 남습니다. 계속할까요?`)) return;
-    if (!window.confirm('정말 지울까요? 이 작업은 되돌릴 수 없습니다.')) return;
+    if (!await confirmDanger({
+      title: '평가 기록을 모두 지웁니다',
+      level: 'purge',
+      confirmWord: '평가기록 삭제',
+      detail: `등록 ${readers.length}명 · 순위 제출 ${submittedCount}명 분이 사라집니다.\n`
+        + '작품은 그대로 남습니다.',
+    })) return;
     setBusy(true);
     setErr('');
     try {
@@ -199,7 +203,11 @@ export default function EssayAdmin() {
   }
 
   async function remove(p: EssayPiece) {
-    if (!window.confirm(`"${p.title}" 을(를) 삭제할까요? 이 글에 매겨진 순위도 함께 지워집니다.`)) return;
+    if (!await confirmDanger({
+      title: '습작을 삭제합니다',
+      target: p.title,
+      detail: '이 글에 매겨진 순위도 함께 지워집니다.',
+    })) return;
     setBusy(true);
     try {
       await deletePiece(p);

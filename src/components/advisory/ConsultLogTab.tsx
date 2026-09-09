@@ -15,6 +15,7 @@ import {
 } from '../../lib/consultApi';
 import { TagList, TagEditor } from './TagsField';
 import Markdown from '../common/Markdown';
+import { confirmDanger } from '../common/DangerConfirm';
 
 export default function ConsultLogTab() {
   const { user, role } = useAuth();
@@ -225,7 +226,8 @@ function Detail({
   }
 
   async function remove() {
-    if (busy || !window.confirm('이 상담기록을 삭제하시겠습니까? 되돌릴 수 없습니다.')) return;
+    if (busy) return;
+    if (!await confirmDanger({ title: '상담기록을 삭제합니다', target: item.title || '(제목 없음)' })) return;
     setBusy(true);
     setError(null);
     try {

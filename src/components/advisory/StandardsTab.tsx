@@ -23,6 +23,7 @@ import {
   type QnaContent,
 } from '../../lib/standardsApi';
 import { CATALOG, type CatalogItem, type StandardSet } from '../../lib/standardsCatalog';
+import { confirmDanger } from '../common/DangerConfirm';
 
 type Mode = 'search' | 'browse' | 'qna';
 
@@ -481,7 +482,12 @@ function StandardPdfSection({
   }
 
   async function remove() {
-    if (busy || !window.confirm('이 기준서의 원문 PDF를 삭제하시겠습니까? 되돌릴 수 없습니다.')) return;
+    if (busy) return;
+    if (!await confirmDanger({
+      title: '기준서 원문 PDF 를 삭제합니다',
+      target: `${set} ${no || '기준서'}`,
+      detail: '다시 올리려면 원문 파일이 필요합니다.',
+    })) return;
     setBusy(true);
     setError(null);
     try {

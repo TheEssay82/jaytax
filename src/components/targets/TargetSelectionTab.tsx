@@ -7,6 +7,7 @@
 // 담당회계사가 김준성·조현규인 세무조정은 이 시스템으로 청구하지 않는다(매출계약으로만 매출을 잡는다).
 import { useEffect, useMemo, useState } from 'react';
 import { useEscape } from '../../lib/useEscape';
+import { confirmDanger } from '../common/DangerConfirm';
 import type { Client } from '../../types';
 import { CURRENT_YEAR } from '../../lib/constants';
 import { fm, dtFmt, getRevForYear, getClientDispYears, sortIndicator } from '../../lib/format';
@@ -168,9 +169,12 @@ export default function TargetSelectionTab() {
         );
         return;
       }
-      if (!confirm(`'${c.companyName}'을(를) 청구 거래처에서 제외할까요?
-
-거래처관리의 원본은 그대로 남습니다.`)) return;
+      if (!await confirmDanger({
+        title: '청구 거래처에서 제외합니다',
+        target: c.companyName,
+        detail: '거래처관리의 원본은 그대로 남습니다.',
+        okLabel: '제외합니다',
+      })) return;
       await deleteClient(c.id);
       await refresh();
     } catch (e) {

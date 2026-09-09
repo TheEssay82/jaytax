@@ -5,6 +5,7 @@ import { Grid, useGrid, type GridCol } from '../billing/grid';
 import { ColumnSettings } from '../clients/tableKit';
 import Empty from '../common/Empty';
 import { useEscape } from '../../lib/useEscape';
+import { confirmDanger } from '../common/DangerConfirm';
 import { todayYmd } from '../../lib/format';
 import { useAuth } from '../../context/AuthContext';
 import { listDocClients, type DocClient, type DocContact } from '../../lib/docClientsApi';
@@ -216,7 +217,14 @@ export default function DocSendRequestTab() {
     finally { setTrashBusy(false); }
   }
   async function handleHardDelete(r: SendRequest) {
-    if (!confirm(`"${r.companyName} · ${r.docName || r.sendKind}"을(를) 영구삭제할까요?\n\n⚠️ 되돌릴 수 없습니다(첨부파일도 함께 삭제). 변경 로그에는 원본이 남습니다.`)) return;
+    if (!await confirmDanger({
+      title: '발송요청을 영구삭제합니다',
+      level: 'purge',
+      target: `${r.companyName} · ${r.docName || r.sendKind}`,
+      confirmWord: r.companyName,
+      detail: '첨부파일도 함께 지워집니다. 변경 로그에는 원본이 남습니다.',
+      okLabel: '영구삭제합니다',
+    })) return;
     setTrashBusy(true);
     try {
       await hardDeleteSendRequest(r.id);

@@ -10,6 +10,7 @@
 // 실무는 전월을 복사해 고치는 것이고, 계약이 늘 최신인 것도 아니기 때문이다.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getMineOnly } from '../../lib/mineOnly';
+import { confirmDanger } from '../common/DangerConfirm';
 import { useEscape } from '../../lib/useEscape';
 import Loading from '../common/Loading';
 import Guide from '../common/Guide';
@@ -368,17 +369,16 @@ export default function InvoiceRequestTab() {
         + `그 건을 먼저 ‘요청으로 되돌리기’ 하거나 취소한 뒤 다시 시도하세요.`);
       return;
     }
-    if (!confirm(`${ym} 을 처음 상태로 되돌립니다.
-
-· 청구예정 초안 ${dn}건을 지웁니다
-· 발행요청 ${n}건을 지웁니다(실적 배분도 함께)
-· 전개 기록과 ${CHECKERS.join('·')} 확인 표시를 지웁니다
-
-지운 것은 되살릴 수 없습니다. 다만 청구예정은 매출계약에서 다시 계산되므로,
-‘당월 전개’를 누르면 처음부터 다시 시작할 수 있습니다.
-
-진행할까요?`)) return;
-    if ((n > 0 || dn > 0) && !confirm(`정말 ${ym} 청구예정 ${dn}건과 발행요청 ${n}건을 지울까요? 마지막 확인입니다.`)) return;
+    if (!await confirmDanger({
+      title: `${ym} 을 처음 상태로 되돌립니다`,
+      level: 'purge',
+      target: ym,
+      detail: `· 청구예정 초안 ${dn}건을 지웁니다\n`
+        + `· 발행요청 ${n}건을 지웁니다(실적 배분도 함께)\n`
+        + `· 전개 기록과 ${CHECKERS.join('·')} 확인 표시를 지웁니다\n\n`
+        + '청구예정은 매출계약에서 다시 계산되므로 ‘당월 전개’로 처음부터 시작할 수 있습니다.',
+      okLabel: '초기화합니다',
+    })) return;
     setBusy(true);
     try {
       const { deleted } = await resetMonth(ym, 'taxteam');

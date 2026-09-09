@@ -1,6 +1,7 @@
 // 발송요청 첨부파일 모달 (조회·다운로드 + 미접수 시 추가·삭제) — 발송요청/발송요청처리 공용
 import { useState } from 'react';
 import { useEscape } from '../../lib/useEscape';
+import { confirmDanger } from '../common/DangerConfirm';
 import {
   signedAttachmentUrl,
   uploadSendFile,
@@ -64,7 +65,7 @@ export default function AttachmentsModal({
     }
   }
   async function remove(a: SendAttachment) {
-    if (!confirm(`"${a.fileName}"을(를) 삭제하시겠습니까?`)) return;
+    if (!await confirmDanger({ title: '첨부파일을 삭제합니다', target: a.fileName })) return;
     setBusy(true);
     try {
       await deleteAttachment(a);

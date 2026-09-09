@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { displayName } from '../../lib/honorific';
 import { EmptyRow } from '../common/Empty';
 import Loading from '../common/Loading';
+import { confirmDanger } from '../common/DangerConfirm';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
@@ -153,7 +154,7 @@ export default function BizContactsTab() {
     }
   }
   async function del(c: BizContact) {
-    if (!confirm(`담당자 '${c.contactName}' 을 삭제할까요?`)) return;
+    if (!await confirmDanger({ title: '거래처담당자를 삭제합니다', target: c.contactName })) return;
     try { await deleteBizContact(c.id); await load(); flash('삭제됨'); }
     catch (e) { alert('삭제 실패: ' + (e instanceof Error ? e.message : e)); }
   }

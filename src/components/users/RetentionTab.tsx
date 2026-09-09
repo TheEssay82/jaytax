@@ -3,6 +3,7 @@
 // 화면이 답해야 하는 질문은 하나다. **"지금 지워야 할 것이 있는가?"**
 // 그래서 자료마다 근거 법령·기간·경과 건수를 한 줄로 놓고, 경과한 것만 눈에 띄게 한다.
 import { useEffect, useState } from 'react';
+import { confirmDanger } from '../common/DangerConfirm';
 import Guide from '../common/Guide';
 import { kstDateTime } from '../../lib/format';
 import {
@@ -37,7 +38,14 @@ export default function RetentionTab() {
       `보존기한(${periodLabel(r.months)}) 경과 — 정기 파기`);
     if (reason === null) return;
     if (!reason.trim()) return alert('사유 없이는 파기할 수 없습니다.');
-    if (!confirm(`정말 ${r.due.toLocaleString('ko-KR')}건을 지웁니다. 되돌릴 수 없습니다.`)) return;
+    if (!await confirmDanger({
+      title: `${r.label} ${r.due.toLocaleString('ko-KR')}건을 파기합니다`,
+      level: 'purge',
+      target: r.label,
+      detail: `기준일 ${r.cutoff} 이전 자료 · 방식 ${modeLabel(r)}\n`
+        + '개인정보보호법 제21조제2항 — 복구 또는 재생되지 아니하도록 파기합니다.',
+      okLabel: '파기합니다',
+    })) return;
     setBusy(true); setErr(''); setMsg('');
     try {
       const n = await purgeRetention(r.key, reason);

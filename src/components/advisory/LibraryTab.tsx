@@ -14,6 +14,7 @@ import {
   type LibraryKind,
 } from '../../lib/libraryApi';
 import { TagEditor, TagList } from './TagsField';
+import { confirmDanger } from '../common/DangerConfirm';
 
 const KIND_CATEGORIES: Record<LibraryKind, string[]> = {
   reference: ['예규·해석사례', '개정세법', '실무 가이드', '체크리스트', '국세청 발간자료', '기타'],
@@ -259,7 +260,12 @@ function DocRow({ doc, canManage, onChanged }: { doc: LibraryDoc; canManage: boo
   }
 
   async function remove() {
-    if (busy || !window.confirm('이 자료를 삭제하시겠습니까? 파일과 정보가 함께 삭제됩니다.')) return;
+    if (busy) return;
+    if (!await confirmDanger({
+      title: '자료실 자료를 삭제합니다',
+      target: doc.title || doc.fileName,
+      detail: '올린 파일과 정보가 함께 지워집니다.',
+    })) return;
     setBusy(true);
     setErr(null);
     try {

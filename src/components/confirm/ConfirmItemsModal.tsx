@@ -3,6 +3,7 @@
 // 양식 다운로드 2종: 빈 양식(거래처 배포용) / 현재 명세(손봐서 다시 올리는 용도)
 import { useEffect, useRef, useState } from 'react';
 import { useEscape } from '../../lib/useEscape';
+import { confirmDanger } from '../common/DangerConfirm';
 import {
   listItems,
   addItems,
@@ -299,8 +300,8 @@ export default function ConfirmItemsModal({
                               className="btn-sm btn-sm-del"
                               title="삭제"
                               disabled={busy}
-                              onClick={() => {
-                                if (!confirm(`‘${it.institution}’을 삭제할까요?`)) return;
+                              onClick={async () => {
+                                if (!await confirmDanger({ title: '조회처를 삭제합니다', target: it.institution })) return;
                                 void run(async () => {
                                   await deleteItem(it.id);
                                   await renumberItems(confirmation.id); // 번호를 1..N 으로 다시 매김

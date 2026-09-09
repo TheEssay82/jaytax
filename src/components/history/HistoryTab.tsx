@@ -1,6 +1,7 @@
 // 청구기록 탭 — 원본 rHistory 포팅 (목록·필터·정렬·상세펼침·수정·삭제·청구서 PDF)
 import { useEffect, useMemo, useState } from 'react';
 import Loading from '../common/Loading';
+import { confirmDanger } from '../common/DangerConfirm';
 import { Grid, GridExport, useGrid, type GridCol } from '../billing/grid';
 import { ColumnSettings } from '../clients/tableKit';
 import Empty from '../common/Empty';
@@ -126,7 +127,7 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
   const tblH = Math.max(260, Math.round(window.innerHeight * 0.52));
 
   async function del(r: BillingRecord) {
-    if (!confirm(`'${r.companyName}' ${r.fiscalYear}년 청구기록을 삭제하시겠습니까?`)) return;
+    if (!await confirmDanger({ title: '청구기록을 삭제합니다', target: `${r.companyName} · ${r.fiscalYear}년` })) return;
     try {
       await deleteBillingRecord(r.id);
       await refresh();

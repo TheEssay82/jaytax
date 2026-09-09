@@ -20,6 +20,7 @@ import AuditInvoiceTab from './billing/AuditInvoiceTab';
 import ReceivableTab from './billing/ReceivableTab';
 import StaffRevenueTab from './billing/StaffRevenueTab';
 import CommandPalette, { type PaletteTarget } from './common/CommandPalette';
+import { DangerConfirmHost } from './common/DangerConfirm';
 import { useFitTableHeights } from '../lib/fillHeight';
 import { unsavedLabels, useBeforeUnloadGuard } from '../lib/unsaved';
 import { setMineOnly, useMineOnly } from '../lib/mineOnly';
@@ -375,6 +376,9 @@ function Shell() {
 
       {/* 어디서든 찾기 — Ctrl+K. 화면 어디에 있든 뜨도록 맨 바깥에 둔다. */}
       <CommandPalette targets={paletteTargets} onGo={goTab} openSignal={openPalette} />
+
+      {/* 되돌릴 수 없는 확인창. 창 위에 뜨는 창이라 여기, 맨 바깥에 하나만 둔다. */}
+      <DangerConfirmHost />
     </>
   );
 }
