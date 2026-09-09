@@ -14,7 +14,8 @@ import {
   type ConsultStatus,
 } from '../../lib/consultApi';
 import { TagList, TagEditor } from './TagsField';
-import Markdown from '../common/Markdown';
+import ConsultDoc from './ConsultDoc';
+import { summaryLines } from '../../lib/consultDoc';
 import { confirmDanger } from '../common/DangerConfirm';
 
 export default function ConsultLogTab() {
@@ -144,6 +145,8 @@ export default function ConsultLogTab() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {filtered.map((c) => (
+          // 한 줄짜리 목록이라 제목 말고는 아무것도 안 보였다. **결론을 목록에서 읽게** 한다 —
+          // 열어 봐야 아는 목록은 열어 볼 것을 고르는 데 쓸모가 없다.
           <button key={c.id} onClick={() => setSelected(c)} style={rowStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
               <StatusBadge status={c.status} />
@@ -151,7 +154,7 @@ export default function ConsultLogTab() {
                 <span style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#1A6E3C', whiteSpace: 'nowrap' }}>#{finalSeq.get(c.id)}</span>
               )}
               {c.clientType === 'client' && c.clientName && <ClientBadge name={c.clientName} />}
-              <span style={{ flex: 1, fontWeight: 600, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ flex: 1, fontWeight: 700, color: 'var(--navy)', fontSize: 'var(--fs-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {c.title || '(제목 없음)'}
               </span>
               <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
@@ -160,8 +163,9 @@ export default function ConsultLogTab() {
               </span>
               <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{dtFmt(c.createdAt)}</span>
             </div>
+            <Peek md={c.answerMd} />
             {c.tags.length > 0 && (
-              <div style={{ marginTop: 6 }}>
+              <div style={{ marginTop: 7 }}>
                 <TagList tags={c.tags} />
               </div>
             )}
@@ -332,7 +336,9 @@ function Detail({
             style={{ width: '100%', resize: 'vertical', lineHeight: 1.65, fontSize: 13.5, fontFamily: 'inherit' }}
           />
         ) : (
-          <Markdown text={item.answerMd} boxed hideFirstH1 />
+          // 상담진행의 초안과 **같은 부품**으로 그린다 — 저장 전후로 생김새가 달라지면
+          // 「내가 본 그 문서」가 아니게 된다. 제목은 위에 이미 있으므로 여기서는 뺀다.
+          <ConsultDoc md={item.answerMd} showTitle={false} />
         )}
       </Section>
 
@@ -461,7 +467,34 @@ function ClientBadge({ name }: { name: string }) {
   );
 }
 
+/**
+ * 목록 카드의 **결론 미리보기** — 회신의 「한눈에」 세 줄.
+ *
+ * 옛 기록에는 「한눈에」가 없으므로 `summaryLines` 가 결론에서 대신 만들어 준다.
+ * 그것도 없으면 아무것도 그리지 않는다 — 빈 자리를 만들어 두느니 없는 편이 낫다.
+ */
+function Peek({ md }: { md: string }) {
+  const lines = summaryLines(md, 3);
+  if (!lines.length) return null;
+  return (
+    <ul style={{ margin: '7px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {lines.map((t, i) => (
+        <li
+          key={i}
+          style={{
+            fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.55,
+            paddingLeft: 11, borderLeft: '2px solid var(--gold)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}
+        >
+          {t}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 const rowStyle: React.CSSProperties = {
-  textAlign: 'left', border: '1px solid var(--rule)', borderRadius: 7, padding: '10px 13px',
+  textAlign: 'left', border: '1px solid var(--rule)', borderRadius: 'var(--r)', padding: '11px 14px',
   background: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'stretch', width: '100%',
 };

@@ -15,6 +15,7 @@ import {
 } from '../../lib/consultApi';
 import LawRefPicker from './LawRefPicker';
 import { TagEditor } from './TagsField';
+import ConsultDoc from './ConsultDoc';
 import { useAuth } from '../../context/AuthContext';
 import { useClients } from '../../hooks/useClients';
 
@@ -47,6 +48,8 @@ export default function ConsultTab() {
 
   // 생성 결과 (편집 가능)
   const [answer, setAnswer] = useState<string | null>(null);
+  // 초안을 **읽는 문서**로 볼지, 마크다운 원문으로 고칠지. 기본은 읽기.
+  const [editRaw, setEditRaw] = useState(false);
   // 국외이전 전에 무엇을 가렸는지 — 직원이 눈으로 확인할 수 있어야 한다.
   const [maskedNote, setMaskedNote] = useState('');
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -205,6 +208,7 @@ export default function ConsultTab() {
     setAssumptions('');
     setSelfReview('');
     setFollowup('');
+    setEditRaw(false);
   }
 
   return (
@@ -380,6 +384,12 @@ export default function ConsultTab() {
             <span style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>회신 초안</span>
             {model && <span className="bdg" style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }} title={model}>{modelLabel(model)}</span>}
             <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
+              {/* **기본은 읽기.** 초안은 대개 읽고 판단하는 것이지 고치는 것이 아니다.
+                  고칠 때만 날 텍스트를 연다 — 마크다운 기호가 보여야 고칠 수 있으므로. */}
+              <button type="button" className="btn-sm" onClick={() => setEditRaw((v) => !v)}
+                title={editRaw ? '문서로 보기' : '마크다운 원문을 고칩니다'}>
+                {editRaw ? '📄 읽기' : '✎ 고치기'}
+              </button>
               <button type="button" className="btn-sm" onClick={copyAnswer}>
                 {copyOk ? '복사됨 ✓' : '📋 복사'}
               </button>
@@ -391,15 +401,21 @@ export default function ConsultTab() {
             </span>
           </div>
 
-          <textarea
-            value={answer}
-            onChange={(e) => { setAnswer(e.target.value); setSaved(false); }}
-            rows={22}
-            style={{
-              width: '100%', resize: 'vertical', lineHeight: 1.65, fontSize: 13.5,
-              fontFamily: 'inherit', whiteSpace: 'pre-wrap',
-            }}
-          />
+          {editRaw ? (
+            <textarea
+              value={answer}
+              onChange={(e) => { setAnswer(e.target.value); setSaved(false); }}
+              rows={22}
+              style={{
+                width: '100%', resize: 'vertical', lineHeight: 1.65, fontSize: 13.5,
+                fontFamily: 'inherit', whiteSpace: 'pre-wrap',
+              }}
+            />
+          ) : (
+            <div style={{ border: '1px solid var(--rule-2)', borderRadius: 'var(--r-lg)', background: 'var(--surface-3)', padding: '14px 14px 6px' }}>
+              <ConsultDoc md={answer} />
+            </div>
+          )}
 
           {/* 보완 재회신 — 기존 초안·근거를 유지한 채 개정 */}
           <div style={{ marginTop: 12, border: '1px dashed #d8d2c6', borderRadius: 8, padding: '10px 12px', background: '#fbfaf6' }}>
