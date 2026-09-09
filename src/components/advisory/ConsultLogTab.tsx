@@ -15,7 +15,6 @@ import {
 } from '../../lib/consultApi';
 import { TagList, TagEditor } from './TagsField';
 import ConsultDoc from './ConsultDoc';
-import { clipLine, summaryLines } from '../../lib/consultDoc';
 import { confirmDanger } from '../common/DangerConfirm';
 
 export default function ConsultLogTab() {
@@ -143,10 +142,10 @@ export default function ConsultLogTab() {
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {filtered.map((c) => (
-          // 한 줄짜리 목록이라 제목 말고는 아무것도 안 보였다. **결론을 목록에서 읽게** 한다 —
-          // 열어 봐야 아는 목록은 열어 볼 것을 고르는 데 쓸모가 없다.
+          // **제목 한 줄 + 해시태그.** 한때 결론 세 줄을 미리 보여 줬는데, 카드가 커져
+          // 한 화면에 몇 건 못 담겼다. 목록은 훑는 자리다 — 고를 수 있을 만큼만 보여 준다.
           <button key={c.id} onClick={() => setSelected(c)} style={rowStyle}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
               <StatusBadge status={c.status} />
@@ -163,9 +162,8 @@ export default function ConsultLogTab() {
               </span>
               <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{dtFmt(c.createdAt)}</span>
             </div>
-            <Peek md={c.answerMd} />
             {c.tags.length > 0 && (
-              <div style={{ marginTop: 7 }}>
+              <div style={{ marginTop: 5 }}>
                 <TagList tags={c.tags} />
               </div>
             )}
@@ -467,35 +465,7 @@ function ClientBadge({ name }: { name: string }) {
   );
 }
 
-/**
- * 목록 카드의 **결론 미리보기** — 회신의 「한눈에」 세 줄.
- *
- * 옛 기록에는 「한눈에」가 없으므로 `summaryLines` 가 결론에서 대신 만들어 준다.
- * 그것도 없으면 아무것도 그리지 않는다 — 빈 자리를 만들어 두느니 없는 편이 낫다.
- */
-function Peek({ md }: { md: string }) {
-  // 옛 회신은 결론 문단이 통째로 오므로 **문장에서 끊어** 보여 준다.
-  const lines = summaryLines(md, 3).map((l) => clipLine(l, 92)).filter(Boolean);
-  if (!lines.length) return null;
-  return (
-    <ul style={{ margin: '7px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 3 }}>
-      {lines.map((t, i) => (
-        <li
-          key={i}
-          style={{
-            fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.55,
-            paddingLeft: 11, borderLeft: '2px solid var(--gold)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}
-        >
-          {t}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 const rowStyle: React.CSSProperties = {
-  textAlign: 'left', border: '1px solid var(--rule)', borderRadius: 'var(--r)', padding: '11px 14px',
+  textAlign: 'left', border: '1px solid var(--rule)', borderRadius: 'var(--r-sm)', padding: '8px 12px',
   background: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'stretch', width: '100%',
 };

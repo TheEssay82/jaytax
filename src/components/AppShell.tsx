@@ -178,8 +178,12 @@ function Shell() {
   //
   // 옮기면 지금 화면은 통째로 사라진다. 고치던 것이 있으면 **말없이 잃지 않게** 먼저 묻는다.
   // 손을 댄 폼만 세므로(unsaved.ts), 열어만 보고 나가는 데는 걸리지 않는다.
+  //
+  // **지금 있는 화면을 다시 누르면 그 화면을 새로 연다.** 그전에는 아무 일도 하지 않았다.
+  // 그래서 상담기록에서 글 하나를 열어 둔 채 메뉴를 다시 눌러도 목록으로 돌아가지 못했다
+  // (2026-09-10). 화면 안쪽 상태(열어 둔 글·펼친 것)는 화면이 들고 있으므로, 메뉴에서
+  // 되돌리는 길은 다시 그리는 것뿐이다.
   function goTab(id: string) {
-    if (id === cur) { setOpenMenu(null); setOpenSub(null); return; }
     const pending = unsavedLabels();
     if (pending.length > 0
       && !confirm(`저장하지 않은 것이 있습니다 — ${pending.join(' · ')}.
