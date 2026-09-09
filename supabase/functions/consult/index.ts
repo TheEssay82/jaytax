@@ -83,6 +83,7 @@ const SYSTEM = `당신은 한국 회계·세무 실무 회신을 작성하는 �
   · [회계기준(원문)]: 게시된 기준서 원문 발췌 — 문단번호와 함께 인용(발췌라 앞뒤 맥락 확인 권고).
   · [회계기준(요지)]: 정리본 — "(요지)"와 원문 대조 권고를 붙인다.
   · [세법]: 법령 원문 — 법령명·조문번호·시행일을 명시하고, 핵심 문구를 "직접 인용"한 뒤 쉬운 말로 풀이한다.
+  · [예규(제목만)]: 국세청 서면질의 회신 — **회답 본문이 제공되지 않고 안건명·안건번호만 있다.** 그러므로 이것으로 결론을 내거나 회답 내용을 추정해 쓰지 않는다. '실무 유의'에 "같은 쟁점의 국세청 해석 <안건번호>(<해석일자>)가 있으니 원문 확인 권고"처럼 **안건번호와 링크만** 안내한다. 제목을 근거처럼 인용해 결론을 뒷받침하는 것은 금지한다.
   · [판례]/[심판례]: 사건(의결)번호·선고(의결)일·요지를 적고, 사실관계 차이 가능성을 유의로 덧붙인다.
   · [자료실]: 사무소 내부 참고자료 발췌(예규·해석사례·개정세법·실무가이드 등 정리본) — 자료명과 함께 인용하되 "(내부자료)"로 표기하고, 결론의 핵심 근거는 가급적 법령·기준서·심판례 원문으로 뒷받침하고 내부자료는 보조로 삼는다(원출처 대조 권고).
 
@@ -296,12 +297,53 @@ async function fetchTaxTribunal(term: string, oc: string): Promise<{ type: strin
   } catch { return []; }
 }
 
-// ⚠️ **예규·법령해석례(법제처 target=expc)는 붙이지 않았다.** 2026-09-09 에 실제로 재어 보니
-//    세법 쟁점이 거의 안 걸린다 — 매입세액공제 0건, 손금 0건, 접대비 0건(같은 검색어로
-//    조세심판례는 3,537 / 2,695 / 225건). 법제처 법령해석례는 행정부처 유권해석이 중심이고
-//    **국세청 서면질의·기획재정부 예규는 국세법령정보시스템(taxlaw.nts.go.kr)에 따로 있다.**
-//    그쪽을 붙이려면 별도 경로가 필요하다(사장님이 「더 좋은 MCP」로 보시는 자리).
-//    없는 것을 부르면 왕복만 늘고 근거는 늘지 않으므로, 확인될 때까지 넣지 않는다.
+// ── 국세청 예규(법령해석) 자동참조 (법제처 target=ntsCgmExpc) ────
+//
+// **세무 실무의 주 근거**다. 조문만으로 결론이 안 나는 쟁점에서 실무자가 실제로 보는 것이
+// 국세청 서면질의 회신이다.
+//
+// 2026-09-09 에 한 번 헛짚었다 — target='expc'(법제처 법령해석례)로 붙였다가 세법 쟁점이
+// 전부 0건이어서(매입세액공제·손금·접대비 각 0건) 뺐다. 올바른 target 은 **ntsCgmExpc**
+// 이고, 같은 검색어로 2,177 / 4,296 / 428건이 나온다.
+//
+// ⚠️ **회답 본문은 오지 않는다.** 법제처 OPEN API 가 국세청 해석의 목록만 제공하고
+//    본문은 taxlaw.nts.go.kr 에 있다. 그래서 이 근거는 **결론의 논거로 쓸 수 없고**,
+//    「이 쟁점에 국세청 해석이 있으니 확인하라」는 안내로만 쓴다. 제목만 보고 회답 내용을
+//    지어내면 없는 유권해석을 만들어 내는 셈이라, 시스템 프롬프트에서도 못박는다.
+async function fetchNtsInterpretations(term: string, oc: string): Promise<{ type: string; ref: string; text: string }[]> {
+  try {
+    const search = async (q: string) => {
+      const su = new URL('https://www.law.go.kr/DRF/lawSearch.do');
+      su.searchParams.set('OC', oc); su.searchParams.set('type', 'JSON');
+      su.searchParams.set('target', 'ntsCgmExpc');
+      su.searchParams.set('query', q); su.searchParams.set('display', '10');
+      su.searchParams.set('sort', 'ddes');   // 최신 해석부터
+      const sj = await (await fetch(su)).json();
+      const arr = sj?.CgmExpc?.cgmExpc;
+      return Array.isArray(arr) ? arr : (arr ? [arr] : []);
+    };
+    let list = await search(term);
+    // 다어절이 0건이면 앞 핵심어로 재검색 — 심판례와 같은 이유(AND 매칭 과제약).
+    if (!list.length) {
+      const first = term.split(/\s+/)[0];
+      if (first && first !== term) list = await search(first);
+    }
+    return list.slice(0, 5).map((p: Record<string, unknown>) => {
+      const name = stripTags(p['안건명']);
+      const no = stripTags(p['안건번호']);
+      const org = stripTags(p['해석기관명']) || '국세청';
+      const date = stripTags(p['해석일자']);
+      const link = stripTags(p['법령해석상세링크']);
+      return {
+        type: '예규(제목만)',
+        ref: `${org} ${no}${date ? ` (${date})` : ''}`,
+        text: `[안건명] ${name}\n[원문] ${link}\n`
+          + '※ 회답 본문은 법제처 OPEN API 로 제공되지 않는다(제목·번호만). '
+          + '결론의 논거로 쓰지 말고, 관련 해석이 있다는 안내와 링크만 제시할 것.',
+      };
+    }).filter((c) => c.ref && c.text);
+  } catch { return []; }
+}
 
 // ── 세법 조문 자동근거 (법제처 target=law: search → detail, LAW_API_OC) ──
 // 질문 → 관련 세법 식별(haiku) → 법령 조문목록 → 관련 조문 선별(haiku) → 조문 원문+시행일 근거.
@@ -547,17 +589,20 @@ Deno.serve(async (req) => {
     // 법원 판례(prec)는 커버리지가 불균일해 '판례 자동참조' 켰을 때만.
     let precCites: { type: string; ref: string; text: string }[] = [];
     let ttCites: { type: string; ref: string; text: string }[] = [];
+    let ntsCites: { type: string; ref: string; text: string }[] = [];
     if (lawOc && (doTax || includePrecedents)) {
       let term = (await precKeyword(groundingQuery, anthropicKey))
         .replace(/["'`]/g, '').replace(/[^가-힣0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
       if (!term) term = question.trim().replace(/[^가-힣0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
-      [ttCites, precCites] = await Promise.all([
+      // 국세청 예규는 심판례와 같이 **세무·공통이면 항상** 본다 — 실무의 주 근거다.
+      [ttCites, ntsCites, precCites] = await Promise.all([
         doTax ? fetchTaxTribunal(term, lawOc) : Promise.resolve([]),
+        doTax ? fetchNtsInterpretations(term, lawOc) : Promise.resolve([]),
         includePrecedents ? fetchPrecedents(term, lawOc) : Promise.resolve([]),
       ]);
     }
 
-    const citations = [...fullCites, ...gistCites, ...libCites, ...taxCites, ...law, ...ttCites, ...precCites];
+    const citations = [...fullCites, ...gistCites, ...libCites, ...taxCites, ...law, ...ntsCites, ...ttCites, ...precCites];
 
     // 2) 근거 블록 구성
     const groundingBlock = citations
