@@ -85,6 +85,7 @@ const SYSTEM = `당신은 한국 회계·세무 실무 회신을 작성하는 �
   · [세법]: 법령 원문 — 법령명·조문번호·시행일을 명시하고, 핵심 문구를 "직접 인용"한 뒤 쉬운 말로 풀이한다.
   · [예규(제목만)]: 국세청 서면질의 회신 — **회답 본문이 제공되지 않고 안건명·안건번호만 있다.** 그러므로 이것으로 결론을 내거나 회답 내용을 추정해 쓰지 않는다. '실무 유의'에 "같은 쟁점의 국세청 해석 <안건번호>(<해석일자>)가 있으니 원문 확인 권고"처럼 **안건번호와 링크만** 안내한다. 제목을 근거처럼 인용해 결론을 뒷받침하는 것은 금지한다.
   · [판례]/[심판례]: 사건(의결)번호·선고(의결)일·요지를 적고, 사실관계 차이 가능성을 유의로 덧붙인다.
+  · **판례와 심판례가 어긋나면 법원 판례가 우선이다.** 특히 대법원 판결이 있으면 그것이 최종 법리이고, 그보다 앞선(또는 그 취지에 반하는) 심판례·과세관청 해석은 그대로 따를 수 없다. 이때는 결론을 판례에 맞추고, 심판례는 "종전 심판례는 …였으나 대법원 ○○○ 판결로 정리되었다"처럼 시간 순서와 함께 설명한다. 심판례만 근거로 과세관청 쪽 결론을 내면서 상급심 판단을 빠뜨리는 일이 없도록 한다.
   · [자료실]: 사무소 내부 참고자료 발췌(예규·해석사례·개정세법·실무가이드 등 정리본) — 자료명과 함께 인용하되 "(내부자료)"로 표기하고, 결론의 핵심 근거는 가급적 법령·기준서·심판례 원문으로 뒷받침하고 내부자료는 보조로 삼는다(원출처 대조 권고).
 
 [형식] 아래 5블록을 마크다운으로 그대로 따른다:
@@ -213,7 +214,14 @@ async function fetchPrecedents(term: string, oc: string): Promise<{ type: string
     su.searchParams.set('query', term); su.searchParams.set('search', '1'); su.searchParams.set('display', '10');
     const sj = await (await fetch(su)).json();
     const arr = sj?.PrecSearch?.prec;
-    const list = Array.isArray(arr) ? arr : (arr ? [arr] : []);
+    const raw = Array.isArray(arr) ? arr : (arr ? [arr] : []);
+    // **대법원 판결을 먼저 본다.** 상급심이 하급심·심판례를 뒤집는 자리라 가장 무겁다.
+    // 상위 몇 건만 전문을 받아 오므로, 순서가 곧 무엇이 근거가 되느냐를 정한다.
+    const list = [...raw].sort((a, b) => {
+      const sc = (x: Record<string, unknown>) => (String(x['법원명'] ?? '').includes('대법원') ? 0 : 1);
+      const d = (x: Record<string, unknown>) => String(x['선고일자'] ?? '');
+      return sc(a) - sc(b) || d(b).localeCompare(d(a));   // 대법원 먼저, 그다음 최신순
+    });
     const full: { type: string; ref: string; text: string }[] = []; // 전문 보유(강한 근거)
     const meta: { type: string; ref: string; text: string }[] = []; // 사건명만(법제처 전문 미제공)
     for (const p of list) {
@@ -584,9 +592,17 @@ Deno.serve(async (req) => {
       taxCites = await fetchTaxLaw(groundingQuery, anthropicKey, lawOc);
     }
 
-    // 1-c) 판례 자동참조 (선택) — 질문에서 검색어 추출 → 법제처 판례 전문 근거
-    // 조세심판원 심판례는 세무 핵심 근거라 세무/공통이면 항상 조회(체크박스 무관).
-    // 법원 판례(prec)는 커버리지가 불균일해 '판례 자동참조' 켰을 때만.
+    // 1-c) 판례·심판례·예규 자동참조 — 질문에서 검색어 추출 → 법제처 근거
+    //
+    // ⚠️ **세무면 법원 판례도 반드시 본다**(2026-09-09 사고). 그전에는 판례가
+    //    「판례 자동참조」 체크박스를 켰을 때만 조회됐다. 그 결과 「장애인고용부담금
+    //    손금」 회신이 심판례(조심, 모두 기각=손금부인)만 보고 **손금불산입**으로
+    //    결론냈는데, 실제로는 대법원 2024두30809(2026.03.12 선고)가 「제재로서
+    //    부과되는 공과금이 아니다」라며 상고를 기각해 **손금산입**이 확정된 사안이었다.
+    //
+    //    심판례는 과세관청 단계의 판단이라 기각(과세 유지)으로 기울기 쉽다. 판례를
+    //    빼고 심판례만 보면 회신이 **체계적으로 과세관청 쪽으로 기운다** — 비용을
+    //    아끼려다 답을 뒤집는 것이라, 세무 질문에서는 켜고 끄는 선택지로 두지 않는다.
     let precCites: { type: string; ref: string; text: string }[] = [];
     let ttCites: { type: string; ref: string; text: string }[] = [];
     let ntsCites: { type: string; ref: string; text: string }[] = [];
@@ -598,7 +614,7 @@ Deno.serve(async (req) => {
       [ttCites, ntsCites, precCites] = await Promise.all([
         doTax ? fetchTaxTribunal(term, lawOc) : Promise.resolve([]),
         doTax ? fetchNtsInterpretations(term, lawOc) : Promise.resolve([]),
-        includePrecedents ? fetchPrecedents(term, lawOc) : Promise.resolve([]),
+        (doTax || includePrecedents) ? fetchPrecedents(term, lawOc) : Promise.resolve([]),
       ]);
     }
 
