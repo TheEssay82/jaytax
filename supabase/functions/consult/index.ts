@@ -24,9 +24,18 @@ function hasResidentNo(text: string): boolean {
   return false;
 }
 // 회신 작성 모델: 프런트에서 선택(기본 Sonnet, 고품질 Opus). allowlist 밖이면 기본으로.
-const DEFAULT_MODEL = 'claude-sonnet-4-6';
-const ALLOWED_MODELS = new Set(['claude-sonnet-4-6', 'claude-opus-4-8']);
-const TAG_MODEL = 'claude-haiku-4-5'; // 키워드 추출(저비용)
+// 2026-09-09 에 **한 세대 올렸다**. 4.6/4.8 을 쓰고 있었는데 지금 최신은 5 계열이다 —
+// 「AI 답변이 쓸 만하지 않다」는 지적의 첫째 원인이었다.
+const DEFAULT_MODEL = 'claude-sonnet-5';
+const ALLOWED_MODELS = new Set(['claude-sonnet-5', 'claude-opus-5']);
+const TAG_MODEL = 'claude-haiku-4-5-20251001'; // 키워드·검색어 추출(저비용) — 품질에 덜 민감
+/**
+ * **조문 선별 전용 모델.** 태그 뽑기와 같은 저비용 모델을 쓰고 있었는데, 이 일은
+ * 성격이 다르다 — 법인세법 수백 조의 **제목 목록에서 결론을 좌우할 조문을 고르는 일**이라
+ * 여기서 놓치면 근거가 통째로 비고 답이 [확인 불가]로 무너진다.
+ * 실제로 「장애인고용부담금 손금」 회신은 근거 0건으로 나갔다.
+ */
+const SELECT_MODEL = 'claude-sonnet-5';
 
 // 원문/자료실 RAG 근거 선택 — 고정 top-N 대신 '유사도 임계값 + 넉넉한 상한'으로 동적 선택.
 // (질문마다 관련 근거 수가 달라, 고정 6개는 넓은 법령형 질문에서 정작 필요한 조문을 잘라냈다.
@@ -247,7 +256,7 @@ async function fetchTaxTribunal(term: string, oc: string): Promise<{ type: strin
     const search = async (q: string) => {
       const su = new URL('https://www.law.go.kr/DRF/lawSearch.do');
       su.searchParams.set('OC', oc); su.searchParams.set('type', 'JSON'); su.searchParams.set('target', 'ttSpecialDecc');
-      su.searchParams.set('query', q); su.searchParams.set('display', '8');
+      su.searchParams.set('query', q); su.searchParams.set('display', '15');
       const sj = await (await fetch(su)).json();
       const arr = sj?.Decc?.decc;
       return Array.isArray(arr) ? arr : (arr ? [arr] : []);
@@ -258,9 +267,12 @@ async function fetchTaxTribunal(term: string, oc: string): Promise<{ type: strin
       const first = term.split(/\s+/)[0];
       if (first && first !== term) list = await search(first);
     }
+    // 심판례는 **세무 근거의 主 원천**이다(2026-09-09 실측 — 매입세액공제 3,537건).
+    // 3건만 보던 것을 5건으로 넓힌다. 조문만으로 결론이 안 나는 쟁점이 대부분이라,
+    // 여기가 얇으면 회신이 「원칙만 읊고 결론을 못 내는」 글이 된다.
     const out: { type: string; ref: string; text: string }[] = [];
     for (const p of list) {
-      if (out.length >= 3) break;
+      if (out.length >= 5) break;
       const serial = String(p['특별행정심판재결례일련번호'] ?? '');
       if (!serial) continue;
       const caseNo = String(p['청구번호'] ?? '');
@@ -284,6 +296,13 @@ async function fetchTaxTribunal(term: string, oc: string): Promise<{ type: strin
   } catch { return []; }
 }
 
+// ⚠️ **예규·법령해석례(법제처 target=expc)는 붙이지 않았다.** 2026-09-09 에 실제로 재어 보니
+//    세법 쟁점이 거의 안 걸린다 — 매입세액공제 0건, 손금 0건, 접대비 0건(같은 검색어로
+//    조세심판례는 3,537 / 2,695 / 225건). 법제처 법령해석례는 행정부처 유권해석이 중심이고
+//    **국세청 서면질의·기획재정부 예규는 국세법령정보시스템(taxlaw.nts.go.kr)에 따로 있다.**
+//    그쪽을 붙이려면 별도 경로가 필요하다(사장님이 「더 좋은 MCP」로 보시는 자리).
+//    없는 것을 부르면 왕복만 늘고 근거는 늘지 않으므로, 확인될 때까지 넣지 않는다.
+
 // ── 세법 조문 자동근거 (법제처 target=law: search → detail, LAW_API_OC) ──
 // 질문 → 관련 세법 식별(haiku) → 법령 조문목록 → 관련 조문 선별(haiku) → 조문 원문+시행일 근거.
 // 법령은 수십~수백 조라 전문 투입 불가 → Claude가 조문제목 목록에서 선별한 조문만 원문 추출.
@@ -292,7 +311,8 @@ async function haikuJson(key: string, system: string, user: string, maxTokens = 
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: TAG_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+      // 어느 법을 볼지 고르는 일 — 여기서 법을 잘못 고르면 조문 선별까지 통째로 헛돈다.
+      body: JSON.stringify({ model: SELECT_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
     });
     if (!r.ok) return null;
     const data = await r.json();
@@ -307,7 +327,8 @@ async function haikuText(key: string, system: string, user: string, maxTokens = 
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: TAG_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
+      // 조문 선별 — 근거의 質을 좌우하므로 저비용 모델을 쓰지 않는다(SELECT_MODEL 설명 참고).
+      body: JSON.stringify({ model: SELECT_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
     });
     if (!r.ok) return '';
     const data = await r.json();
@@ -343,11 +364,19 @@ async function fetchTaxLaw(question: string, key: string, oc: string): Promise<{
     // 1) 관련 세법 식별
     const idn = await haikuJson(
       key,
-      '세무·회계 질문에서 근거가 될 한국 세법 법령명을 고른다. 법제처 정식 명칭으로 최대 3개. 예: 부가가치세법, 법인세법, 소득세법, 국세기본법, 조세특례제한법, 상속세 및 증여세법, 지방세법. 규칙: (1) 필요경비·손금·경비처리·대손·감가상각처럼 개인(소득세법)과 법인(법인세법) 양쪽에 대응되는 쟁점이고 질문에서 대상이 한쪽으로 특정되지 않으면 소득세법과 법인세법을 함께 포함한다. (2) 대상이 "개인"이면 소득세법, "법인"이면 법인세법을 우선한다. (3) 시행령 조문이 꼭 필요하면 "부가가치세법 시행령"처럼 포함. 세법 쟁점이 없으면 빈 배열. 설명 없이 JSON 문자열 배열만 출력.',
+      '세무·회계 질문에서 근거가 될 한국 세법 법령명을 고른다. 법제처 정식 명칭으로 최대 3개. 예: 부가가치세법, 법인세법, 소득세법, 국세기본법, 조세특례제한법, 상속세 및 증여세법, 지방세법. 규칙: (1) 필요경비·손금·경비처리·대손·감가상각처럼 개인(소득세법)과 법인(법인세법) 양쪽에 대응되는 쟁점이고 질문에서 대상이 한쪽으로 특정되지 않으면 소득세법과 법인세법을 함께 포함한다. (2) 대상이 "개인"이면 소득세법, "법인"이면 법인세법을 우선한다. (3) 세법이 아니어도 결론의 직접 근거가 되는 법률이 있으면 포함한다(예: 장애인고용부담금 → 장애인고용촉진 및 직업재활법). 세법 쟁점이 없으면 빈 배열. 설명 없이 JSON 문자열 배열만 출력.',
       question.slice(0, 1500),
     );
-    const lawNames = Array.isArray(idn) ? idn.filter((x) => typeof x === 'string' && x.trim()).slice(0, 3) : [];
-    if (!lawNames.length) return [];
+    const picked = Array.isArray(idn) ? idn.filter((x) => typeof x === 'string' && x.trim()).slice(0, 3) : [];
+    if (!picked.length) return [];
+    // **시행령을 함께 본다.** 실무 요건(범위·한도·증빙·계산방법)은 법률이 아니라 시행령에
+    // 있는 경우가 대부분인데, 그동안 「필요하면 포함하라」고 모델에 맡겨 두어 거의 빠졌다
+    // (2026-09-09). 모델의 판단에 기대지 않고 규칙으로 붙인다.
+    const lawNames: string[] = [];
+    for (const n of picked) {
+      lawNames.push(n);
+      if (!/시행령|시행규칙/.test(n)) lawNames.push(`${n} 시행령`);
+    }
 
     const cites: { type: string; ref: string; text: string }[] = [];
     for (const name of lawNames) {
@@ -396,7 +425,7 @@ async function fetchTaxLaw(question: string, key: string, oc: string): Promise<{
       for (const mm of selText.matchAll(/제\s*(\d+)\s*조(?:\s*의\s*(\d+))?/g)) {
         wanted.add(`제${mm[1]}조${mm[2] ? '의' + mm[2] : ''}`);
       }
-      const chosen = arts.filter((a) => wanted.has(label(a))).slice(0, 5);
+      const chosen = arts.filter((a) => wanted.has(label(a))).slice(0, 4);
       for (const a of chosen) {
         cites.push({
           type: '세법',

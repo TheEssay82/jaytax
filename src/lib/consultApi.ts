@@ -29,10 +29,15 @@ export interface ConsultResult {
   maskedSummary: string;
 }
 
-/** 상담 회신에 쓸 수 있는 모델(서버 allowlist와 일치). 첫 항목이 기본값. */
+/**
+ * 상담 회신에 쓸 수 있는 모델(서버 allowlist와 일치). 첫 항목이 기본값.
+ *
+ * 2026-09-09 에 **한 세대 올렸다** — 4.6/4.8 을 쓰고 있었는데 지금 최신은 5 계열이다.
+ * 「AI 답변이 쓸 만하지 않다」는 지적의 첫 번째 원인이었다.
+ */
 export const CONSULT_MODELS = [
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (기본 · 빠름)' },
-  { id: 'claude-opus-4-8', label: 'Claude Opus 4.8 (고품질 · 느림)' },
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 (기본 · 빠름)' },
+  { id: 'claude-opus-5', label: 'Claude Opus 5 (고품질 · 느림)' },
 ] as const;
 export const DEFAULT_CONSULT_MODEL = CONSULT_MODELS[0].id;
 
@@ -117,10 +122,16 @@ export async function piiNames(): Promise<string[]> {
 export function modelLabel(id: string | null | undefined): string {
   if (!id) return '';
   const map: Record<string, string> = {
+    // 지난 회신에 남아 있는 옛 모델 이름도 그대로 읽히게 둔다 — 기록은 그때 쓴 것이 맞다.
+    'claude-opus-5': 'Anthropic Claude Opus 5',
+    'claude-sonnet-5': 'Anthropic Claude Sonnet 5',
     'claude-opus-4-8': 'Anthropic Claude Opus 4.8',
     'claude-sonnet-4-6': 'Anthropic Claude Sonnet 4.6',
     'claude-haiku-4-5-20251001': 'Anthropic Claude Haiku 4.5',
   };
+  // claude-<family>-<major> (5 계열처럼 소수점 없는 것)
+  const m5 = id.match(/^claude-(opus|sonnet|haiku)-(\d+)$/);
+  if (m5) return `Anthropic Claude ${m5[1][0].toUpperCase()}${m5[1].slice(1)} ${m5[2]}`;
   if (map[id]) return map[id];
   // claude-<family>-<ver> 패턴 일반화
   const m = id.match(/^claude-(opus|sonnet|haiku)-(\d+)-(\d+)/);
