@@ -93,6 +93,23 @@ function savedTheme(): string {
   } catch { return '밤'; }
 }
 
+/**
+ * **판 밖(단추·점·안내글)의 색은 팔레트를 따르지 않는다.**
+ *
+ * 판은 바탕이 밝을 수도 어두울 수도 있지만, 판 밖은 **언제나 어두운 막 위**다.
+ * 한때 판의 글자색을 그대로 썼더니 「종이」 바탕에서 남색 단추가 어두운 막에 묻혀
+ * **아예 보이지 않았다**(2026-09-10). 밖은 밖의 규칙을 따른다.
+ */
+const CHROME = {
+  ink: 'rgba(255,255,255,0.86)',
+  ink2: 'rgba(255,255,255,0.55)',
+  // 테두리는 **눈에 보여야 단추로 읽힌다.** 24% 는 어느 바탕에서도 2.1:1 이라
+  // 기준(비문자 3:1) 미달이었고, 단추가 「떠 있는 글자」처럼 보였다.
+  // 40% 면 가장 옅은 「종이」 막에서도 3.3:1 이 나온다(계산으로 확인).
+  rule: 'rgba(255,255,255,0.40)',
+  on: '#D9A94C',   // 고른 것 표시 — 어느 바탕에서도 같은 금색
+};
+
 /** 고른 팔레트를 아래로 흘려보낸다 — 부품마다 인자로 넘기면 코드가 지저분해진다. */
 const PaletteCtx = createContext<Palette>(THEMES.밤);
 const useT = () => useContext(PaletteCtx);
@@ -294,7 +311,7 @@ export default function ConsultSlides({ md, meta = '', onClose }: { md: string; 
 
   // 판 밖의 것들은 **눈에 띄지 않게** — 보는 사람이 슬라이드를 보게 한다.
   const chrome: CSSProperties = {
-    background: 'transparent', border: `1px solid ${T.rule}`, color: T.ink2,
+    background: 'transparent', border: `1px solid ${CHROME.rule}`, color: CHROME.ink,
     borderRadius: 7, padding: '5px 11px', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit',
   };
 
@@ -308,7 +325,7 @@ export default function ConsultSlides({ md, meta = '', onClose }: { md: string; 
       aria-label="회신 슬라이드"
     >
       <div style={{ display: 'flex', width: SHEET_W, alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 11.5, color: T.ink3, letterSpacing: '0.02em' }}>
+        <span style={{ fontSize: 11.5, color: CHROME.ink2, letterSpacing: '0.02em' }}>
           ← → · 스페이스로 넘기고 ESC 로 닫습니다
         </span>
         {/* 바탕 고르기 — 취향이 갈리는 자리라 정해 주지 않고 고르게 둔다. */}
@@ -321,8 +338,8 @@ export default function ConsultSlides({ md, meta = '', onClose }: { md: string; 
               style={{
                 ...chrome,
                 padding: '5px 10px',
-                color: name === themeName ? T.gold : T.ink3,
-                borderColor: name === themeName ? T.gold : T.rule,
+                color: name === themeName ? CHROME.on : CHROME.ink2,
+                borderColor: name === themeName ? CHROME.on : CHROME.rule,
               }}
             >
               {name}
@@ -346,14 +363,14 @@ export default function ConsultSlides({ md, meta = '', onClose }: { md: string; 
               aria-label={`${k + 1}번째 장`}
               style={{
                 width: k === i ? 18 : 7, height: 7, padding: 0, borderRadius: 4, cursor: 'pointer',
-                border: 'none', background: k === i ? T.gold : T.rule,
+                border: 'none', background: k === i ? CHROME.on : CHROME.rule,
                 transition: 'width .18s ease, background .18s ease',
               }}
             />
           ))}
         </span>
         <button style={chrome} onClick={() => go(1)} disabled={i === last}>▶</button>
-        <span style={{ ...num, fontSize: 12, color: T.ink3, minWidth: 52, textAlign: 'right' }}>{i + 1} / {slides.length}</span>
+        <span style={{ ...num, fontSize: 12, color: CHROME.ink2, minWidth: 52, textAlign: 'right' }}>{i + 1} / {slides.length}</span>
       </div>
     </div>
   );
