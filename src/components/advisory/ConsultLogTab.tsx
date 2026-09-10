@@ -15,6 +15,7 @@ import {
 } from '../../lib/consultApi';
 import { TagList, TagEditor } from './TagsField';
 import ConsultDoc from './ConsultDoc';
+import ConsultSlides from './ConsultSlides';
 import { confirmDanger } from '../common/DangerConfirm';
 
 export default function ConsultLogTab() {
@@ -190,6 +191,7 @@ function Detail({
   onChanged: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
+  const [slides, setSlides] = useState(false);   // 슬라이드로 넘겨 보기
   const [title, setTitle] = useState(item.title);
   const [answer, setAnswer] = useState(item.answerMd);
   const [tags, setTags] = useState<string[]>(item.tags);
@@ -289,6 +291,7 @@ function Detail({
 
       {/* 액션 */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+        <button className="btn-sm" onClick={() => setSlides(true)} title="슬라이드로 넘겨 봅니다">▶ 슬라이드</button>
         <button className="btn-sm" onClick={copyAnswer}>{copyOk ? '복사됨 ✓' : '📋 회신 복사'}</button>
         {isOwner && !editing && (
           <button className="btn-sm" onClick={() => setEditing(true)} disabled={busy}>✏️ 편집</button>
@@ -339,6 +342,10 @@ function Detail({
           <ConsultDoc md={item.answerMd} showTitle={false} />
         )}
       </Section>
+
+      {slides && (
+        <ConsultSlides md={item.answerMd} meta={dtFmt(item.createdAt)} onClose={() => setSlides(false)} />
+      )}
 
       {/* 근거 */}
       {item.citations.length > 0 && (

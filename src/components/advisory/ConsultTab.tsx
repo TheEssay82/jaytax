@@ -16,6 +16,7 @@ import {
 import LawRefPicker from './LawRefPicker';
 import { TagEditor } from './TagsField';
 import ConsultDoc from './ConsultDoc';
+import ConsultSlides from './ConsultSlides';
 import { useAuth } from '../../context/AuthContext';
 import { useClients } from '../../hooks/useClients';
 
@@ -50,6 +51,8 @@ export default function ConsultTab() {
   const [answer, setAnswer] = useState<string | null>(null);
   // 초안을 **읽는 문서**로 볼지, 마크다운 원문으로 고칠지. 기본은 읽기.
   const [editRaw, setEditRaw] = useState(false);
+  // 슬라이드로 넘겨 보기(사무실에서 같이 볼 때)
+  const [slides, setSlides] = useState(false);
   // 국외이전 전에 무엇을 가렸는지 — 직원이 눈으로 확인할 수 있어야 한다.
   const [maskedNote, setMaskedNote] = useState('');
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -390,6 +393,9 @@ export default function ConsultTab() {
                 title={editRaw ? '문서로 보기' : '마크다운 원문을 고칩니다'}>
                 {editRaw ? '📄 읽기' : '✎ 고치기'}
               </button>
+              <button type="button" className="btn-sm" onClick={() => setSlides(true)} title="슬라이드로 넘겨 봅니다">
+                ▶ 슬라이드
+              </button>
               <button type="button" className="btn-sm" onClick={copyAnswer}>
                 {copyOk ? '복사됨 ✓' : '📋 복사'}
               </button>
@@ -416,6 +422,8 @@ export default function ConsultTab() {
               <ConsultDoc md={answer} />
             </div>
           )}
+
+          {slides && <ConsultSlides md={answer} onClose={() => setSlides(false)} />}
 
           {/* 보완 재회신 — 기존 초안·근거를 유지한 채 개정 */}
           <div style={{ marginTop: 12, border: '1px dashed #d8d2c6', borderRadius: 8, padding: '10px 12px', background: '#fbfaf6' }}>
