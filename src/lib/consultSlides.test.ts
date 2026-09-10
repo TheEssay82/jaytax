@@ -1,7 +1,7 @@
 // 슬라이드 자르기. **한 장에 들어가는 양이 정해져 있다**는 것이 이 모듈의 존재 이유다.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BULLETS_PER_SLIDE, chunk, packProse, splitBullet, toSlides } from './consultSlides';
+import { BULLETS_PER_SLIDE, chunk, packBullets, packProse, splitBullet, toSlides } from './consultSlides';
 
 const FULL = `# [세무 회신] 접대비 한도초과액의 손금불산입과 귀속시기
 
@@ -45,12 +45,34 @@ test('질의요지는 슬라이드로 만들지 않는다 — 내가 쓴 질문�
   assert.ok(!labels.includes('질의요지'));
 });
 
-test('근거 여섯 줄은 두 장으로 쪼개고 몇 장 중 몇 장인지 남긴다', () => {
+test('짧은 근거 여섯 줄은 한 장에 들어간다 — 개수만 세던 때는 괜히 쪼갰다', () => {
   const ev = toSlides(FULL).filter((x) => x.kind === 'bullets' && x.label === '근거');
-  assert.equal(ev.length, 2);
-  assert.deepEqual(ev.map((x) => [x.part, x.parts]), [[1, 2], [2, 2]]);
+  assert.equal(ev.length, 1);
+  assert.deepEqual([ev[0].part, ev[0].parts], [1, 1]);
   assert.equal((ev[0] as { items: unknown[] }).items.length, BULLETS_PER_SLIDE);
-  assert.equal((ev[1] as { items: unknown[] }).items.length, 1);
+});
+
+test('긴 불릿은 개수가 적어도 길이에서 끊긴다 — 판 밖으로 넘쳐 잘리면 안 된다', () => {
+  const long = (n: number) => ({ lead: '조문' + n, rest: '가'.repeat(240) });
+  const pages = packBullets([long(1), long(2), long(3)]);
+  assert.equal(pages.length, 2, '244자 짜리는 두 개까지만');
+  assert.equal(pages[0].length, 2);
+  assert.equal(pages[1].length, 1);
+});
+
+test('예산보다 긴 한 줄은 버리지 않고 혼자 한 장을 쓴다', () => {
+  const huge = { lead: '조문', rest: '가'.repeat(900) };
+  const pages = packBullets([huge, { lead: '짧은 줄', rest: '' }]);
+  assert.deepEqual(pages.map((p) => p.length), [1, 1]);
+});
+
+test('짧은 줄은 개수 상한까지 담는다', () => {
+  const short = Array.from({ length: 9 }, (_, i) => ({ lead: '줄' + i, rest: '' }));
+  assert.deepEqual(packBullets(short).map((p) => p.length), [BULLETS_PER_SLIDE, 3]);
+});
+
+test('packBullets — 빈 목록이면 빈 결과', () => {
+  assert.deepEqual(packBullets([]), []);
 });
 
 test('한 장짜리 블록도 part/parts 를 갖는다', () => {

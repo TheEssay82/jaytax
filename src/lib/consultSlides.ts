@@ -10,8 +10,19 @@
  */
 import { bullets, parseConsultDoc, type SectionKey } from './consultDoc';
 
-/** 한 장에 담는 불릿 수. 멀리서도 읽히려면 이 정도가 한계다. */
-export const BULLETS_PER_SLIDE = 5;
+/**
+ * 한 장에 담는 불릿의 **개수** 상한과 **길이** 예산.
+ *
+ * 처음에는 개수만 셌다(5개씩). 그런데 근거 줄은 조문 원문 인용에 쉬운 말 풀이까지
+ * 붙어 한 줄이 200자를 넘기도 한다. 다섯 개를 담으면 판 밖으로 넘쳐 **말없이 잘렸다.**
+ * 슬라이드에서 글이 잘리는 것은 못 읽는 것보다 나쁘다 — 잘린 줄 모르기 때문이다.
+ *
+ * 그래서 **길이로 먼저 재고 개수로 막는다.** 짧은 줄(실무 유의 같은)은 개수 상한까지,
+ * 긴 줄(근거)은 두어 개에서 끊긴다.
+ */
+export const BULLETS_PER_SLIDE = 6;
+/** 불릿 한 장의 글자 수 예산. 16:9 판에서 열 줄 남짓이 들어가는 양(실측). */
+export const BULLET_CHARS = 520;
 /** 줄글 한 장의 글자 수 목표. 문단 경계에서만 자르므로 넘칠 수 있다. */
 export const PROSE_PER_SLIDE = 420;
 
@@ -44,6 +55,29 @@ export function splitBullet(s: string): SlideBullet {
 export function chunk<T>(items: T[], n: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += n) out.push(items.slice(i, i + n));
+  return out;
+}
+
+/** 불릿 한 줄의 길이 — 앞머리와 나머지를 합친 글자 수. */
+const bulletLen = (b: SlideBullet) => b.lead.length + b.rest.length;
+
+/**
+ * 불릿을 **길이 예산 + 개수 상한**으로 묶는다.
+ *
+ * 한 줄이 예산보다 길어도 버리지 않는다 — 혼자 한 장을 쓴다. 쪼개면 인용이 두 동강 나고,
+ * 빼면 근거가 사라진다. 넘치는 것이 그중 낫다.
+ */
+export function packBullets(items: SlideBullet[], chars = BULLET_CHARS, max = BULLETS_PER_SLIDE): SlideBullet[][] {
+  const out: SlideBullet[][] = [];
+  let cur: SlideBullet[] = [];
+  let len = 0;
+  for (const b of items) {
+    const n = bulletLen(b);
+    if (cur.length && (cur.length >= max || len + n > chars)) { out.push(cur); cur = []; len = 0; }
+    cur.push(b);
+    len += n;
+  }
+  if (cur.length) out.push(cur);
   return out;
 }
 
@@ -94,7 +128,7 @@ export function toSlides(md: string, meta = ''): Slide[] {
 
     const bs = bullets(sec.body);
     if (bs.length) {
-      const pages = chunk(bs.map(splitBullet), BULLETS_PER_SLIDE);
+      const pages = packBullets(bs.map(splitBullet));
       pages.forEach((items, i) => out.push({
         kind: 'bullets', label, accent: sec.key, items, part: i + 1, parts: pages.length,
       }));
