@@ -1,7 +1,7 @@
 // 슬라이드 자르기. **한 장에 들어가는 양이 정해져 있다**는 것이 이 모듈의 존재 이유다.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BULLETS_PER_SLIDE, chunk, packBullets, packProse, splitBullet, toSlides } from './consultSlides';
+import { BULLETS_PER_SLIDE, chunk, compactRest, packBullets, packProse, splitBullet, toSlides } from './consultSlides';
 
 const FULL = `# [세무 회신] 접대비 한도초과액의 손금불산입과 귀속시기
 
@@ -136,4 +136,38 @@ test('빈 입력이면 슬라이드도 없다', () => {
 test('chunk — 딱 떨어지지 않아도 마지막 조각을 남긴다', () => {
   assert.deepEqual(chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
   assert.deepEqual(chunk([], 3), []);
+});
+
+test('compactRest — 쉬운 말 풀이를 걷어낸다', () => {
+  const r = compactRest('"손금에 산입하지 아니한다" (→ 쉬운 말 풀이: 한도 계산은 수입금액 기준입니다)');
+  assert.equal(r, '"손금에 산입하지 아니한다"');
+});
+
+test('compactRest — 풀이 안에 괄호가 있어도 통째로 걷어낸다', () => {
+  const r = compactRest('원문 (→ 풀이: 제19조(손금)를 보라)');
+  assert.equal(r, '원문');
+});
+
+test('compactRest — 짧으면 그대로 둔다', () => {
+  assert.equal(compactRest('기각'), '기각');
+  assert.equal(compactRest(''), '');
+});
+
+test('compactRest — 길면 줄이고 말줄임을 붙인다', () => {
+  const long = '"' + '가'.repeat(200) + '"';
+  const r = compactRest(long, 74);
+  assert.ok(r.length <= 74, `${r.length}자`);
+  assert.ok(r.endsWith('…'));
+});
+
+test('compactRest — 인용 끝에서 끊어 따옴표가 열린 채 끝나지 않는다', () => {
+  const t = '"' + '가'.repeat(50) + '" 그리고 ' + '나'.repeat(80);
+  const r = compactRest(t, 74);
+  assert.ok(r.startsWith('"') && r.includes('"' + '가'.repeat(50) + '"'), r);
+});
+
+test('슬라이드 근거는 문서보다 짧다 — 풀이가 빠진다', () => {
+  const md = '## 근거\n- **법인세법 제25조** — "손금에 산입하지 아니한다" (→ 쉬운 말 풀이: 아주 긴 설명이 여기에 붙습니다)';
+  const s = toSlides(md)[0] as { items: { rest: string }[] };
+  assert.equal(s.items[0].rest, '"손금에 산입하지 아니한다"');
 });

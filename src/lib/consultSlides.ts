@@ -51,6 +51,41 @@ export function splitBullet(s: string): SlideBullet {
   return { lead: t, rest: '' };
 }
 
+/**
+ * 슬라이드용으로 **줄인다.**
+ *
+ * 근거 줄은 문서에서 「조문명 — "원문 직접인용" (→ 쉬운 말 풀이: …)」 꼴이다.
+ * 읽는 자리에서는 그게 맞지만 **슬라이드에는 과하다** — 한 줄이 200자를 넘어 판이 꽉 찬다.
+ *
+ * 슬라이드는 *보여주는* 자리고 문서가 *읽는* 자리다. 그래서 여기서는
+ *   · 「(→ …)」 풀이를 걷어내고
+ *   · 남은 인용도 한 조각만 남긴다
+ * 줄인 자리에는 **말줄임을 붙인다** — 줄었다는 것이 보여야 「더 있구나」를 안다.
+ * 원문은 문서 화면에 그대로 있으므로 없어지는 것은 없다.
+ */
+export function compactRest(rest: string, max = 74): string {
+  // 「(→ …)」 는 풀이다. 여는 괄호부터 짝이 맞는 닫는 괄호까지 통째로 걷어낸다.
+  let t = String(rest ?? '');
+  for (let i = t.indexOf('(→'); i >= 0; i = t.indexOf('(→')) {
+    let depth = 0, end = -1;
+    for (let j = i; j < t.length; j += 1) {
+      if (t[j] === '(') depth += 1;
+      else if (t[j] === ')') { depth -= 1; if (!depth) { end = j; break; } }
+    }
+    t = end < 0 ? t.slice(0, i) : t.slice(0, i) + t.slice(end + 1);
+  }
+  t = t.replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+
+  // 자를 자리는 **인용 끝 > 문장 끝 > 글자 수** 순으로 찾는다. 따옴표 안에서 끊으면
+  // 인용이 열린 채로 끝나 보기 흉하다.
+  const win = t.slice(0, max);
+  const q = Math.max(win.lastIndexOf('"'), win.lastIndexOf('”'));
+  const dot = win.search(/[.](?=\s|$)(?![\s\S]*[.](?=\s|$))/);
+  const cut = q > max * 0.5 ? q + 1 : dot > max * 0.5 ? dot + 1 : max - 1;
+  return `${t.slice(0, cut).trimEnd()}…`;
+}
+
 /** n개씩 끊는다. 빈 배열이면 빈 결과. */
 export function chunk<T>(items: T[], n: number): T[][] {
   const out: T[][] = [];
@@ -128,7 +163,9 @@ export function toSlides(md: string, meta = ''): Slide[] {
 
     const bs = bullets(sec.body);
     if (bs.length) {
-      const pages = packBullets(bs.map(splitBullet));
+      // 슬라이드에 담을 때만 줄인다 — 문서 화면은 원문 그대로다.
+      const compact = bs.map(splitBullet).map((b) => ({ lead: b.lead, rest: compactRest(b.rest) }));
+      const pages = packBullets(compact);
       pages.forEach((items, i) => out.push({
         kind: 'bullets', label, accent: sec.key, items, part: i + 1, parts: pages.length,
       }));

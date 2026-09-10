@@ -24,34 +24,78 @@
  *
  * 자르는 규칙은 `lib/consultSlides.ts`(순수·테스트 있음)에 있다. 여기는 그리기와 넘기기만.
  */
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { toSlides, type Slide } from '../../lib/consultSlides';
 import type { SectionKey } from '../../lib/consultDoc';
 import { useEscape } from '../../lib/useEscape';
 
 /**
- * 슬라이드 팔레트 — **여기 한 곳**만 바꾸면 판 전체가 따라온다.
- * 나중에 인쇄용 밝은 판이 필요하면 이 값들만 갈아 끼우면 된다.
+ * 슬라이드 팔레트 — 판을 이루는 값이 **여기 한 곳**에 다 있다.
+ *
+ * 바탕색은 취향이 갈리는 자리라 **고를 수 있게** 두었다. 고른 것은 브라우저에 적어 두므로
+ * 한 번만 정하면 된다. 나중에 이미지·PDF 로 뽑을 때는 「종이」가 인쇄에 맞다 —
+ * 어두운 판을 인쇄하면 잉크만 먹고 보기도 나쁘다.
  */
-const T = {
-  ink: '#F2EFE8',                      // 본문 — 순백이 아닌 따뜻한 상아색
-  ink2: 'rgba(242,239,232,0.66)',      // 보조
-  ink3: 'rgba(242,239,232,0.40)',      // 흐림(쪽 표시·꼬리말)
-  rule: 'rgba(242,239,232,0.14)',      // 가는 선
-  gold: '#D9A94C',
-  stage: 'linear-gradient(152deg, #1C2B4B 0%, #14213D 46%, #0C1626 100%)',
-  glow: 'radial-gradient(68% 52% at 10% 4%, rgba(217,169,76,0.14), transparent 60%)',
+interface Palette {
+  name: string;
+  ink: string; ink2: string; ink3: string; rule: string;
+  gold: string;
+  stage: string; glow: string;
+  accent: Record<SectionKey, string>;
+  /** 판 밖(어두운 막) 색 — 바탕이 밝으면 막도 덜 어둡게. */
+  veil: string;
+}
+
+const DARK_ACCENT = { 근거: '#9BB7E0', 실무유의: '#A9C9A8' };   // 흐린 청자 · 세이지
+const LIGHT_ACCENT = { 근거: '#3D6098', 실무유의: '#3E7A55' };
+
+const THEMES: Record<string, Palette> = {
+  // 남색 — 사무실 화면에 띄워 놓고 같이 볼 때. 글자가 뜨는 느낌이 있다.
+  밤: {
+    name: '밤',
+    ink: '#F2EFE8', ink2: 'rgba(242,239,232,0.66)', ink3: 'rgba(242,239,232,0.40)',
+    rule: 'rgba(242,239,232,0.14)', gold: '#D9A94C',
+    stage: 'linear-gradient(152deg, #1C2B4B 0%, #14213D 46%, #0C1626 100%)',
+    glow: 'radial-gradient(68% 52% at 10% 4%, rgba(217,169,76,0.14), transparent 60%)',
+    accent: { 한눈에: '#D9A94C', 결론: '#D9A94C', ...DARK_ACCENT, 질의요지: 'rgba(242,239,232,0.40)', 기타: 'rgba(242,239,232,0.40)' },
+    veil: 'rgba(7,11,20,.94)',
+  },
+  // 종이 — 앱의 베이지와 같은 결. 밝은 회의실·인쇄에 맞다.
+  종이: {
+    name: '종이',
+    ink: '#1A2B52', ink2: 'rgba(26,43,82,0.74)', ink3: 'rgba(26,43,82,0.44)',
+    rule: 'rgba(26,43,82,0.14)', gold: '#8A6218',
+    stage: 'linear-gradient(155deg, #FBF9F4 0%, #F3EFE6 55%, #ECE6D9 100%)',
+    glow: 'radial-gradient(64% 50% at 8% 2%, rgba(200,150,60,0.10), transparent 62%)',
+    accent: { 한눈에: '#8A6218', 결론: '#8A6218', ...LIGHT_ACCENT, 질의요지: 'rgba(26,43,82,0.44)', 기타: 'rgba(26,43,82,0.44)' },
+    veil: 'rgba(28,26,22,.86)',
+  },
+  // 먹 — 색을 빼고 글자만 남긴 판. 자료가 빽빽할 때 가장 조용하다.
+  먹: {
+    name: '먹',
+    ink: '#EDEAE3', ink2: 'rgba(237,234,227,0.62)', ink3: 'rgba(237,234,227,0.38)',
+    rule: 'rgba(237,234,227,0.13)', gold: '#C9A15A',
+    stage: 'linear-gradient(150deg, #24252A 0%, #1B1C20 50%, #121316 100%)',
+    glow: 'radial-gradient(62% 48% at 12% 4%, rgba(201,161,90,0.09), transparent 60%)',
+    accent: { 한눈에: '#C9A15A', 결론: '#C9A15A', 근거: '#94A9C4', 실무유의: '#9FBCA2', 질의요지: 'rgba(237,234,227,0.38)', 기타: 'rgba(237,234,227,0.38)' },
+    veil: 'rgba(10,10,12,.94)',
+  },
 };
 
-/** 블록 색 — 남색 위에서 서로 부딪히지 않게 채도를 낮춘 셋. */
-const ACCENT: Record<SectionKey, string> = {
-  한눈에: T.gold,
-  결론: T.gold,
-  근거: '#9BB7E0',      // 흐린 청자
-  실무유의: '#A9C9A8',   // 세이지
-  질의요지: T.ink3,
-  기타: T.ink3,
-};
+const THEME_KEY = 'jaytax.slideTheme';
+const THEME_NAMES = Object.keys(THEMES);
+
+/** 저장해 둔 바탕. 저장소가 막혀 있어도(사생활 보호 창 등) 무너지지 않는다. */
+function savedTheme(): string {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return v && THEMES[v] ? v : '밤';
+  } catch { return '밤'; }
+}
+
+/** 고른 팔레트를 아래로 흘려보낸다 — 부품마다 인자로 넘기면 코드가 지저분해진다. */
+const PaletteCtx = createContext<Palette>(THEMES.밤);
+const useT = () => useContext(PaletteCtx);
 
 const num: CSSProperties = { fontVariantNumeric: 'tabular-nums' };
 /** 판 너비 — 세로가 모자라면 세로에 맞춘다. 어느 창에서도 16:9 가 깨지지 않게. */
@@ -64,6 +108,7 @@ const SHEET_W = 'min(100%, calc((100vh - 168px) * 16 / 9))';
  * 어느 화면에서 봐도 같은 그림이 된다 — 내보내기 때도 이 성질이 그대로 쓰인다.
  */
 function Sheet({ n, rail, children, ghost = true }: { n: number; rail?: ReactNode; children: ReactNode; ghost?: boolean }) {
+  const T = useT();
   return (
     <div
       style={{
@@ -74,7 +119,7 @@ function Sheet({ n, rail, children, ghost = true }: { n: number; rail?: ReactNod
         overflow: 'hidden',
         position: 'relative',
         background: T.stage,
-        boxShadow: '0 24px 70px rgba(0,0,0,.5), inset 0 0 0 1px rgba(242,239,232,.07)',
+        boxShadow: `0 24px 70px rgba(0,0,0,.45), inset 0 0 0 1px ${T.rule}`,
       }}
     >
       <div aria-hidden style={{ position: 'absolute', inset: 0, background: T.glow }} />
@@ -86,7 +131,8 @@ function Sheet({ n, rail, children, ghost = true }: { n: number; rail?: ReactNod
           style={{
             ...num, position: 'absolute', right: '3.2cqw', bottom: '-2.6cqw',
             fontSize: '12cqw', fontWeight: 800, lineHeight: 1, letterSpacing: '-0.05em',
-            color: 'rgba(242,239,232,0.028)',
+            color: T.ink3,
+            opacity: 0.075,
           }}
         >
           {String(n).padStart(2, '0')}
@@ -103,6 +149,7 @@ function Sheet({ n, rail, children, ghost = true }: { n: number; rail?: ReactNod
 
 /** 판 윗머리 — 색 띠 · 블록 이름 · 쪽 표시. 장마다 같은 자리에 있어야 한 벌로 읽힌다. */
 function Rail({ label, accent, note }: { label: string; accent: string; note?: string }) {
+  const T = useT();
   return (
     <div
       style={{
@@ -118,6 +165,7 @@ function Rail({ label, accent, note }: { label: string; accent: string; note?: s
 }
 
 function One({ s, n }: { s: Slide; n: number }) {
+  const T = useT();
   if (s.kind === 'cover') {
     return (
       <Sheet n={n} ghost={false}>
@@ -161,7 +209,7 @@ function One({ s, n }: { s: Slide; n: number }) {
   }
 
   if (s.kind === 'bullets') {
-    const accent = ACCENT[s.accent];
+    const accent = T.accent[s.accent];
     return (
       <Sheet n={n} rail={<Rail label={s.label} accent={accent} note={s.parts > 1 ? `${s.part} / ${s.parts}` : undefined} />}>
         <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '2.4cqw', overflow: 'hidden' }}>
@@ -186,7 +234,7 @@ function One({ s, n }: { s: Slide; n: number }) {
   if (s.kind === 'prose') {
     const paras = s.text.replace(/\*\*/g, '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
     return (
-      <Sheet n={n} rail={<Rail label={s.label} accent={ACCENT[s.accent]} note={s.parts > 1 ? `${s.part} / ${s.parts}` : undefined} />}>
+      <Sheet n={n} rail={<Rail label={s.label} accent={T.accent[s.accent]} note={s.parts > 1 ? `${s.part} / ${s.parts}` : undefined} />}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.7cqw', overflow: 'hidden' }}>
           {paras.map((p, i) => (
             <p key={i} style={{ margin: 0, fontSize: '1.95cqw', color: T.ink2, lineHeight: 1.72, whiteSpace: 'pre-wrap', letterSpacing: '-0.008em' }}>
@@ -215,8 +263,17 @@ function One({ s, n }: { s: Slide; n: number }) {
 export default function ConsultSlides({ md, meta = '', onClose }: { md: string; meta?: string; onClose: () => void }) {
   const slides = toSlides(md, meta);
   const [i, setI] = useState(0);
+  const [themeName, setThemeName] = useState(savedTheme);
   const last = slides.length - 1;
   useEscape(onClose);
+
+  const T = THEMES[themeName] ?? THEMES.밤;
+
+  /** 바탕을 바꾸고 적어 둔다 — 한 번 정하면 다음에도 그대로 뜬다. */
+  function pickTheme(name: string) {
+    setThemeName(name);
+    try { localStorage.setItem(THEME_KEY, name); } catch { /* 저장소가 막혀 있어도 보는 데는 지장 없다 */ }
+  }
 
   const go = useCallback((d: number) => setI((v) => Math.min(last, Math.max(0, v + d))), [last]);
 
@@ -244,7 +301,7 @@ export default function ConsultSlides({ md, meta = '', onClose }: { md: string; 
   return (
     <div
       className="modal-overlay"
-      style={{ zIndex: 9500, background: 'rgba(7,11,20,.94)', flexDirection: 'column', gap: 13 }}
+      style={{ zIndex: 9500, background: T.veil, flexDirection: 'column', gap: 13 }}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -254,11 +311,29 @@ export default function ConsultSlides({ md, meta = '', onClose }: { md: string; 
         <span style={{ fontSize: 11.5, color: T.ink3, letterSpacing: '0.02em' }}>
           ← → · 스페이스로 넘기고 ESC 로 닫습니다
         </span>
-        <button style={{ ...chrome, marginLeft: 'auto' }} onClick={(e) => { e.stopPropagation(); onClose(); }}>닫기</button>
+        {/* 바탕 고르기 — 취향이 갈리는 자리라 정해 주지 않고 고르게 둔다. */}
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+          {THEME_NAMES.map((name) => (
+            <button
+              key={name}
+              onClick={() => pickTheme(name)}
+              aria-pressed={name === themeName}
+              style={{
+                ...chrome,
+                padding: '5px 10px',
+                color: name === themeName ? T.gold : T.ink3,
+                borderColor: name === themeName ? T.gold : T.rule,
+              }}
+            >
+              {name}
+            </button>
+          ))}
+        </span>
+        <button style={chrome} onClick={(e) => { e.stopPropagation(); onClose(); }}>닫기</button>
       </div>
 
       <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
-        <One s={slides[i]} n={i + 1} />
+        <PaletteCtx.Provider value={T}><One s={slides[i]} n={i + 1} /></PaletteCtx.Provider>
       </div>
 
       <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
@@ -271,7 +346,7 @@ export default function ConsultSlides({ md, meta = '', onClose }: { md: string; 
               aria-label={`${k + 1}번째 장`}
               style={{
                 width: k === i ? 18 : 7, height: 7, padding: 0, borderRadius: 4, cursor: 'pointer',
-                border: 'none', background: k === i ? T.gold : 'rgba(242,239,232,.24)',
+                border: 'none', background: k === i ? T.gold : T.rule,
                 transition: 'width .18s ease, background .18s ease',
               }}
             />
