@@ -2,7 +2,7 @@
 // 거래처(법인/개인)의 외부 담당자(연락처) 관리. 여기가 담당자 정보의 유일한 등록·수정 창구이며,
 // 문서발송 발송요청·조회서등록은 0070 별칭 동기화로 이 데이터를 그대로 쓴다.
 import { useEffect, useMemo, useState } from 'react';
-import { displayName } from '../../lib/honorific';
+import { recipientLabel } from '../../lib/honorific';
 import { EmptyRow } from '../common/Empty';
 import Loading from '../common/Loading';
 import { confirmDanger } from '../common/DangerConfirm';
@@ -92,7 +92,7 @@ export default function BizContactsTab() {
     { key: 'code', label: '코드', val: (r) => r.e?.code ?? '', w: 60 },
     { key: 'name', label: '거래처', val: (r) => (r.e ? corpDisplayName(r.e.name, r.e.corpForm, r.e.corpFormPosition) : ''), w: 150 },
     { key: 'place', label: '사업장', val: (r) => placeName(r.e, r.c.placeId), w: 100 },
-    { key: 'contact', label: '담당자', val: (r) => displayName(r.c.contactName, r.c.honorific), w: 110 },
+    { key: 'contact', label: '담당자', val: (r) => recipientLabel(r.c.contactName, r.c.position, r.c.honorific), w: 130 },
     { key: 'position', label: '직책', val: (r) => r.c.position, w: 80 },
     { key: 'primary', label: '대표', val: (r) => (r.c.isPrimary ? '대표' : ''), w: 46, opts: ['대표'] },
     { key: 'phone', label: '연락처', val: (r) => r.c.phone, w: 120 },
@@ -260,7 +260,7 @@ export default function BizContactsTab() {
               <div key={c.id} id={`contact-${c.id}`}
                 style={editId === c.id ? { outline: '2px solid #c9a54a', borderRadius: 4 } : undefined}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 'var(--fs-1)', flexWrap: 'wrap', padding: '2px 0' }}>
-                  <b style={{ textDecoration: c.active ? undefined : 'line-through' }}>{displayName(c.contactName, c.honorific)}</b>
+                  <b style={{ textDecoration: c.active ? undefined : 'line-through' }}>{recipientLabel(c.contactName, c.position, c.honorific)}</b>
                   {!c.active && (
                     <span style={{ fontSize: 9.5, background: 'var(--ink-3)', color: '#fff', padding: '1px 5px', borderRadius: 3 }}
                       title={`${c.leftAt ?? ''} ${c.leftNote ?? ''}`.trim()}>이직·퇴사</span>
@@ -336,10 +336,17 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
           </select></div>
         <div className="frow"><span className="fl">담당자명<span className="req">*</span></span>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 홍길동" /></div>
-        <div className="frow"><span className="fl">호칭 · 직책</span>
-          <span style={{ display: 'flex', gap: 6 }}>
-            <input value={honorific} onChange={(e) => setHonorific(e.target.value)} placeholder="님" style={{ width: 60 }} />
-            <input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="직책(선택)" />
+        <div className="frow"><span className="fl">직책 · 호칭</span>
+          <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="직책 — 예: 과장" style={{ width: 130 }} />
+            <input value={honorific} onChange={(e) => setHonorific(e.target.value)} placeholder="님" style={{ width: 70 }} />
+            {/* 나갈 이름을 **적는 자리에서** 보여 준다. 두 칸이 어떻게 합쳐지는지 말로
+                설명하는 것보다 한 번 보여 주는 편이 빠르다. */}
+            {name.trim() && (
+              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
+                → 문서에는 <b style={{ color: 'var(--navy)' }}>{recipientLabel(name, position, honorific)}</b> 로 나갑니다
+              </span>
+            )}
           </span></div>
         <div className="frow"><span className="fl">연락처</span>
           <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="010-0000-0000" /></div>

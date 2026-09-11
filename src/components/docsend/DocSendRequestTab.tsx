@@ -1,6 +1,6 @@
 // 문서발송 › 발송요청 — 공통 문서정보 + 수신자 다중선택(거래처관리 › 거래처담당자등록 연동, 스냅샷) 요청 등록/목록/수정
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { displayName } from '../../lib/honorific';
+import { pickTitle, recipientLabel } from '../../lib/honorific';
 import { Grid, useGrid, type GridCol } from '../billing/grid';
 import { ColumnSettings } from '../clients/tableKit';
 import Empty from '../common/Empty';
@@ -269,7 +269,7 @@ export default function DocSendRequestTab() {
       cell: (r) => (
         <>
           <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
-          {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {r.recipientName} {r.recipientTitle}</span>}
+          {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {recipientLabel(r.recipientName, r.recipientTitle)}</span>}
           {r.batchId && batchCounts[r.batchId] > 1 && (
             <span className="bdg b-on" style={{ marginLeft: 5, fontSize: 9 }} title="여러 수신자 묶음">묶음 {batchCounts[r.batchId]}</span>
           )}
@@ -532,7 +532,8 @@ function toRecipient(client: DocClient, contactId: string): SendRecipient | null
     contactId: ct.id,
     companyName: client.companyName,
     recipientName: ct.contactName,
-    recipientTitle: ct.honorific,
+    // 직함만 담는다 — 「님」은 그릴 때 붙인다(recipientLabel).
+    recipientTitle: pickTitle(ct.position, ct.honorific),
     address: ct.address,
     phone: ct.phone,
   };
@@ -598,7 +599,7 @@ function ContactSearch({
               onClick={() => { onPick(cl, ct); setQ(''); }}
               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', border: 'none', borderBottom: '1px solid #F0ECE4', background: '#fff', cursor: 'pointer', fontSize: 'var(--fs-2)' }}
             >
-              <b>{displayName(ct.contactName, ct.honorific)}</b> · <span style={{ color: 'var(--navy)' }}>{cl.companyName}</span> <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>({cl.accountant})</span>
+              <b>{recipientLabel(ct.contactName, ct.position, ct.honorific)}</b> · <span style={{ color: 'var(--navy)' }}>{cl.companyName}</span> <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>({cl.accountant})</span>
             </button>
           ))}
         </div>
@@ -697,7 +698,7 @@ function AddRequestForm({
             const missing = isQuick && !r.phone?.trim();
             return (
               <div key={r.contactId} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: `1px solid ${missing ? '#e11d48' : '#D0CCC4'}`, borderRadius: 8, padding: '4px 10px', fontSize: 'var(--fs-1)', flexWrap: 'wrap' }}>
-                <span><b>{r.companyName}</b> · {r.recipientName} {r.recipientTitle}</span>
+                <span><b>{r.companyName}</b> · {recipientLabel(r.recipientName, r.recipientTitle)}</span>
                 {isQuick ? (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     📞
@@ -806,11 +807,11 @@ function EditRequestForm({
       <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 8 }}>✏️ 발송요청 수정 (미접수)</div>
       <CommonFields c={c} setC={setC} />
       <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#345', margin: '10px 0 6px' }}>
-        · 수신자 <span style={{ fontWeight: 400, color: 'var(--ink-3)' }}>(현재: {req.companyName} · {req.recipientName} {req.recipientTitle} — 바꾸려면 검색해 선택, 미선택 시 유지)</span>
+        · 수신자 <span style={{ fontWeight: 400, color: 'var(--ink-3)' }}>(현재: {req.companyName} · {recipientLabel(req.recipientName, req.recipientTitle)} — 바꾸려면 검색해 선택, 미선택 시 유지)</span>
       </div>
       {picked && (
         <div style={{ fontSize: 'var(--fs-2)', color: '#059669', marginBottom: 6 }}>
-          → 변경: <b>{picked.companyName}</b> · {picked.recipientName} {picked.recipientTitle}
+          → 변경: <b>{picked.companyName}</b> · {recipientLabel(picked.recipientName, picked.recipientTitle)}
         </div>
       )}
       <ContactSearch clients={clients} onPick={(cl, ct) => { const rc = toRecipient(cl, ct.id); setPicked(rc); if (rc) setPhone(rc.phone); }} placeholder="🔍 바꿀 담당자 검색…" />
@@ -858,7 +859,7 @@ function ResendModal({ req, onClose, onDone }: { req: SendRequest; onClose: () =
           <div style={{ fontSize: 'var(--fs-2)', marginBottom: 10 }}>
             <b>{req.companyName}</b> · {req.docName || req.workType}
             <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)', marginTop: 2 }}>
-              {req.recipientName} {req.recipientTitle} · {req.address || '주소 없음'}
+              {recipientLabel(req.recipientName, req.recipientTitle)} · {req.address || '주소 없음'}
             </div>
           </div>
           {req.statusNote && (
@@ -914,7 +915,7 @@ function TrashModal({ rows, busy, onRestore, onHardDelete, onClose }: {
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.requestDate}</td>
-                    <td style={{ fontSize: 'var(--fs-2)' }}><b>{r.companyName}</b>{r.recipientName ? ` · ${r.recipientName} ${r.recipientTitle}` : ''}</td>
+                    <td style={{ fontSize: 'var(--fs-2)' }}><b>{r.companyName}</b>{r.recipientName ? ` · ${recipientLabel(r.recipientName, r.recipientTitle)}` : ''}</td>
                     <td style={{ fontSize: 'var(--fs-2)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.docName}>{r.docName || r.sendKind}</td>
                     <td style={{ fontSize: 'var(--fs-1)' }}>{r.status}</td>
                     <td style={{ fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' }}>{r.deletedAt ? dtTime(r.deletedAt) : ''}</td>

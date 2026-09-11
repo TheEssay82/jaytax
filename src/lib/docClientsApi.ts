@@ -11,6 +11,8 @@ export interface DocContact {
   bizContactId: string | null;
   contactName: string;
   honorific: string;
+  /** 직책(과장·팀장…). 호칭과 합쳐 「성명 + 직함 + 님」이 된다 — lib/honorific.ts pickTitle. */
+  position: string;
   phone: string;
   email: string;
   address: string;
@@ -73,6 +75,7 @@ interface ContactRow {
   biz_contact_id: string | null;
   contact_name: string;
   honorific: string;
+  position: string | null;
   phone: string | null;
   email: string | null;
   address: string | null;
@@ -98,6 +101,7 @@ function toContact(r: ContactRow): DocContact {
     bizContactId: r.biz_contact_id,
     contactName: r.contact_name || '',
     honorific: r.honorific || '님',
+    position: r.position || '',
     phone: r.phone || '',
     email: r.email || '',
     address: r.address || '',

@@ -1,6 +1,7 @@
 // 문서발송 › 발송업무 현황 — 요청·처리 전체 내역 조회(읽기 전용 대시보드)
 // 기본은 처리중(미접수+진행중)만, '발송완료'는 상태 필터로만 표시.
 import { useEffect, useMemo, useState } from 'react';
+import { recipientLabel } from '../../lib/honorific';
 import { Grid, GridExport, useGrid, type GridCol } from '../billing/grid';
 import { ColumnSettings } from '../clients/tableKit';
 import Empty from '../common/Empty';
@@ -183,7 +184,7 @@ export default function DocSendStatusTab() {
       cell: (r) => (
         <span title={r.address ? `${r.address}${r.phone ? ` · ☎ ${r.phone}` : ''}` : undefined}>
           <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
-          {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {r.recipientName} {r.recipientTitle}</span>}
+          {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {recipientLabel(r.recipientName, r.recipientTitle)}</span>}
           {r.address && <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 1 }}>📮 {r.address}</div>}
         </span>
       ) },

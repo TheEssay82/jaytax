@@ -1,6 +1,7 @@
 // 문서발송 › 발송요청 처리 — 권한자(최고관리자·기장팀장·기장팀원)가 발송 상태·발송일·등기번호를 처리
 // 흐름: 미접수 → (처리 시작) 진행중 → 발송일 입력·완료 → 발송완료. 등기번호는 우체국 조회 딥링크.
 import { useEffect, useMemo, useState } from 'react';
+import { recipientLabel } from '../../lib/honorific';
 import { Grid, useGrid, type GridCol } from '../billing/grid';
 import { ColumnSettings } from '../clients/tableKit';
 import Empty from '../common/Empty';
@@ -158,7 +159,7 @@ export default function DocSendProcessTab() {
       cell: (r) => (
         <>
           <b style={{ color: 'var(--navy)' }}>{r.companyName}</b>
-          {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {r.recipientName} {r.recipientTitle}</span>}
+          {r.recipientName && <span style={{ color: 'var(--ink-2)' }}> · {recipientLabel(r.recipientName, r.recipientTitle)}</span>}
           {r.address ? (
             <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink)', marginTop: 2, whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>
               📮 {r.address}
