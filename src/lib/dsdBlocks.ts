@@ -15,6 +15,8 @@ export { unescapeXml, escapeXml, splitParts, joinParts };
 export interface Slot { start: number; end: number; tag: string; raw: string; attrs: string }
 
 /** 안쪽에 태그가 더 없는 잎사귀 요소 — 여기에만 글자가 있다. */
+const CELL_RE = /<(T[DH])\b([^>]*)>[\s\S]*?<\/\1>/g;
+
 const LEAF = /<(P|TD|TH|TU)\b([^>]*)>([^<>]*)<\/\1>/g;
 
 export function slots(xml: string): Slot[] {
@@ -60,6 +62,8 @@ export type Block =
 export interface TableCell {
   slot: number; text: string; tag: string;
   col: number; colspan: number; rowspan: number;
+  /** 한 칸에 `<P>` 가 여럿일 때의 나머지 자리 — 되돌릴 때 다 찾아가야 한다. */
+  extra?: number[];
 }
 
 function attrNum(attrs: string, name: string): number {
@@ -162,6 +166,23 @@ export function periodMark(rows: TableCell[][]): '당기' | '전기' | null {
 
 /** 「(단위: 천원)」 표지판이면 그 단위를, 아니면 null. */
 const UNIT_MARK = /\(\s*단\s*위\s*[:：]?\s*([^)]{1,30})\)/;
+/**
+ * 문단 하나가 기간 표지판인가 — 「1) 당기」·「② 전기말」·「(2) 전기」.
+ *
+ * 「<당기>」 처럼 표로 적는 회사도 있고 문단으로 적는 회사도 있다. 넵튠 FY25 는 문단이
+ * 28곳이다(2026-09-13 실측). 놓치면 전기 표가 당기 표에서 값을 못 받아, 이월할 때
+ * 작년 값이 통째로 지워진다.
+ *
+ * 「(1) 당기법인세」처럼 뒤에 말이 더 붙으면 표지판이 아니다 — 딱 기간만 있을 때다.
+ */
+const PERIOD_PARA =
+  /^\s*(?:[([]?\s*\d{1,2}\s*[).\]]|[\u2460-\u246E\u3260-\u327B\u24DB]|[-·▪])?\s*[<〈([]?\s*(당기|전기|당분기|전분기)(?:말)?\s*[>〉)\]]?\s*$/;
+export function periodPara(text: string): '당기' | '전기' | null {
+  const m = PERIOD_PARA.exec((text ?? '').replace(/\u00a0/g, ' '));
+  if (!m) return null;
+  return m[1].startsWith('당') ? '당기' : '전기';
+}
+
 export function unitMark(rows: TableCell[][]): string | null {
   const flat = rows.flat().map((c) => c.text).join(' ').trim();
   const m = UNIT_MARK.exec(flat);
@@ -187,6 +208,12 @@ function markUnits(notes: NoteBlocks[]): void {
     let cur: string | undefined;
     let per: '당기' | '전기' | undefined;
     for (const b of n.blocks) {
+      if (b.kind === 'para') {
+        // 표 바로 앞 문단이 「1) 당기」 하나뿐이면 그것이 표지판이다.
+        const p = periodPara(b.parts[b.parts.length - 1] ?? '');
+        if (p) per = p;
+        continue;
+      }
       if (b.kind !== 'table') continue;
       const u = unitMark(b.rows);
       const p = periodMark(b.rows);
@@ -197,7 +224,10 @@ function markUnits(notes: NoteBlocks[]): void {
         continue;
       }
       if (cur) b.unit = cur;
-      if (per) b.period = per;
+      // **기간 표지판은 바로 다음 표 하나만 거느린다.** 뒤따르는 표는 남남이다 —
+      // 명진 12. 특수관계자는 「<전기>」 뒤에 자금거래·채권채무·담보제공 표가 줄줄이 오는데
+      // 앞의 둘만 전기 자료다. 단위는 다르다 — 한 번 밝히면 그 아래로 쭉 간다.
+      if (per) { b.period = per; per = undefined; }
     }
   }
 }
@@ -235,6 +265,21 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
     if (i >= a0 && i < a1) trs.push([i, i + m[0].length]);
   }
 
+  // 칸(TD·TH)의 범위와 속성. **글자는 안쪽 `<P>` 에 들어 있을 수 있다** —
+  //   <TH ROWSPAN="2"><P>특수관계 구분</P></TH>
+  // 그러면 잎사귀로 잡히는 것은 `<P>` 라서 TH 인 줄도, ROWSPAN 도 모른 채 지나갔다.
+  // 명진 12. 특수관계자 표가 통째로 어긋난 까닭이다(2026-09-13 지적).
+  const cellAt: [number, number][] = [];
+  const cellTag: string[] = [];
+  const cellAttr: string[] = [];
+  for (const m of s.matchAll(CELL_RE)) {
+    const i = m.index!;
+    if (i < a0 || i >= a1) continue;
+    cellAt.push([i, i + m[0].length]);
+    cellTag.push(m[1]);
+    cellAttr.push(m[2]);
+  }
+
   // 주석 머리로 쓰이는 문단의 자리 — 목록 규칙과 같은 결과를 쓰려고 제목 문단을 먼저 찾는다.
   const paraSlots: { slot: number; text: string; pos: number }[] = [];
   const all = slots(s);
@@ -263,6 +308,7 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
   let curTr = -1;
   let rows: TableCell[][] = [];
   let row: TableCell[] = [];
+  let curCell = -1;
 
   const flushTable = () => {
     if (row.length) { rows.push(row); row = []; }
@@ -295,12 +341,24 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
       }
       return;
     }
-    if (t !== curTbl) { flushTable(); curTbl = t; curTr = owner(sl.start, trs); }
+    if (t !== curTbl) { flushTable(); curTbl = t; curTr = owner(sl.start, trs); curCell = -1; }
     const r = owner(sl.start, trs);
-    if (r !== curTr) { if (row.length) rows.push(row); row = []; curTr = r; }
+    if (r !== curTr) { if (row.length) rows.push(row); row = []; curTr = r; curCell = -1; }
+    const ci = owner(sl.start, cellAt);
+    // 한 칸에 `<P>` 가 여럿이면 **한 칸으로 합친다.** 따로 세면 열이 하나씩 밀린다.
+    if (ci !== -1 && ci === curCell && row.length) {
+      const last = row[row.length - 1];
+      const add = unescapeXml(sl.raw).trim();
+      if (add) last.text = last.text ? `${last.text}\n${add}` : add;
+      (last.extra ??= []).push(i);
+      return;
+    }
+    curCell = ci;
+    const tag = ci === -1 ? sl.tag : cellTag[ci];
+    const attrs = ci === -1 ? sl.attrs : cellAttr[ci];
     row.push({
-      slot: i, text: unescapeXml(sl.raw).trim(), tag: sl.tag,
-      col: 0, colspan: attrNum(sl.attrs, 'COLSPAN'), rowspan: attrNum(sl.attrs, 'ROWSPAN'),
+      slot: i, text: unescapeXml(sl.raw).trim(), tag,
+      col: 0, colspan: attrNum(attrs, 'COLSPAN'), rowspan: attrNum(attrs, 'ROWSPAN'),
     });
   });
   flushTable();

@@ -290,7 +290,11 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
 
     b.rows.forEach((line, i) => {
       const head = isHeadRow[i];
-      cells.push({ row: rowNo[i], col: 1, text: line.map((c) => addrOf(c.slot)).join(' ') });
+      // 한 칸에 `<P>` 가 여럿이면 자리표도 여럿이다 — 되돌릴 때 다 찾아가야 한다.
+      cells.push({
+        row: rowNo[i], col: 1,
+        text: line.map((c) => [c.slot, ...(c.extra ?? [])].map((x) => addrOf(x)).join('+')).join(' '),
+      });
 
       for (const c of line) {
         const at = 3 + c.col;

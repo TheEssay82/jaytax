@@ -195,3 +195,70 @@ test('주석이 없는 문서면 빈 배열', () => {
   assert.deepEqual(parseNoteBlocks('<DOCUMENT><P>가</P></DOCUMENT>'), []);
   assert.deepEqual(parseNoteBlocks(''), []);
 });
+
+// ── 칸의 글자가 `<P>` 에 싸여 오는 경우 ────────────────────────────
+// 명진 12. 특수관계자 공시의 2단 머리가 통째로 어긋났다. DART 편집기가 칸 안에
+// `<TH ROWSPAN="2"><P>특수관계 구분</P></TH>` 처럼 쓰는 일이 있는데, 잎사귀로 잡히는 것은
+// 안쪽 `<P>` 라서 TH 인 줄도 ROWSPAN 도 모른 채 지나갔다.
+const WRAPPED = `<DOCUMENT><SECTION-2><TITLE>주석</TITLE>
+<P>12. 특수관계자 공시</P>
+<TABLE><THEAD>
+<TR><TH ROWSPAN="2"><P>특수관계 구분</P></TH><TH ROWSPAN="2">특수관계자명</TH>
+<TH COLSPAN="2"><P>자금대여 거래</P></TH><TH COLSPAN="2"><P>자금차입 거래</P></TH></TR>
+<TR><TH><P>대여</P></TH><TH><P>회수</P></TH><TH><P>차입</P></TH><TH><P>상환</P></TH></TR>
+</THEAD><TBODY>
+<TR><TD ROWSPAN="2">기타</TD><TD>명진종합건설(주)</TD><TD>-</TD><TD>-</TD><TD>170,000,000</TD><TD>-</TD></TR>
+<TR><TD>임직원</TD><TD>-</TD><TD>-</TD><TD>331,889,130</TD><TD>188,937,348</TD></TR>
+</TBODY></TABLE>
+</SECTION-2></DOCUMENT>`;
+
+test('칸의 글자가 <P> 에 싸여 있어도 TH·COLSPAN·ROWSPAN 을 읽는다', () => {
+  const b = parseNoteBlocks(WRAPPED)[0].blocks.find((x) => x.kind === 'table');
+  assert.ok(b && b.kind === 'table');
+  const rows = b.rows;
+  // 머리 첫 줄 — 네 칸이 0 · 1 · 2(2칸) · 4(2칸)
+  assert.deepEqual(rows[0].map((c) => [c.tag, c.col, c.colspan, c.rowspan]), [
+    ['TH', 0, 1, 2], ['TH', 1, 1, 2], ['TH', 2, 2, 1], ['TH', 4, 2, 1],
+  ]);
+  // 머리 둘째 줄 — ROWSPAN 자리를 건너뛰어 2 부터 앉는다
+  assert.deepEqual(rows[1].map((c) => [c.text, c.col]), [
+    ['대여', 2], ['회수', 3], ['차입', 4], ['상환', 5],
+  ]);
+  // 두 줄 다 TH 라야 머리로 읽힌다 — 아니면 자료로 보고 이월 때 지운다
+  assert.ok(rows[0].every((c) => c.tag === 'TH') && rows[1].every((c) => c.tag === 'TH'));
+  assert.deepEqual(rows[3].map((c) => c.col), [1, 2, 3, 4, 5]);
+});
+
+test('한 칸에 <P> 가 여럿이면 한 칸으로 합치고 자리를 다 적어 둔다', () => {
+  const xml = `<DOCUMENT><SECTION-2><TITLE>주석</TITLE>
+<P>18. 특수관계자 거래</P>
+<TABLE><TBODY>
+<TR><TH><P>특수관계</P><P>구분</P></TH><TH>금액</TH></TR>
+<TR><TD>대여</TD><TD>1,000</TD></TR>
+</TBODY></TABLE>
+</SECTION-2></DOCUMENT>`;
+  const b = parseNoteBlocks(xml)[0].blocks.find((x) => x.kind === 'table');
+  assert.ok(b && b.kind === 'table');
+  assert.equal(b.rows[0].length, 2, '두 칸이어야 한다 — 셋이면 열이 하나 밀린다');
+  assert.equal(b.rows[0][0].text, '특수관계\n구분');
+  assert.equal(b.rows[0][0].extra?.length, 1);
+  assert.equal(b.rows[0][1].col, 1);
+});
+
+test('「<당기>」 표지판은 바로 다음 표 하나만 거느린다', () => {
+  // 명진 12. 특수관계자는 「<전기>」 뒤에 자금거래·채권채무·담보제공이 줄줄이 온다.
+  const xml = `<DOCUMENT><SECTION-2><TITLE>주석</TITLE>
+<P>12. 특수관계자 공시</P>
+<TABLE><TBODY><TR><TD>&lt;당기&gt;</TD><TD>(단위: 원)</TD></TR></TBODY></TABLE>
+<TABLE><TBODY><TR><TD>대여</TD><TD>1,000</TD></TR></TBODY></TABLE>
+<TABLE><TBODY><TR><TD>&lt;전기&gt;</TD><TD>(단위: 원)</TD></TR></TBODY></TABLE>
+<TABLE><TBODY><TR><TD>대여</TD><TD>2,000</TD></TR></TBODY></TABLE>
+<TABLE><TBODY><TR><TD></TD><TD>(단위: 원)</TD></TR></TBODY></TABLE>
+<TABLE><TBODY><TR><TD>미지급금</TD><TD>3,000</TD></TR></TBODY></TABLE>
+</SECTION-2></DOCUMENT>`;
+  const ts = parseNoteBlocks(xml)[0].blocks.filter((x) => x.kind === 'table');
+  const per = ts.map((b) => (b.kind === 'table' && !b.isUnitMark ? (b.period ?? '-') : null)).filter((x) => x);
+  assert.deepEqual(per, ['당기', '전기', '-'], '세 번째 표까지 전기로 새면 안 된다');
+  // 단위는 다르다 — 한 번 밝히면 그 아래로 쭉 간다
+  assert.deepEqual(ts.filter((b) => b.kind === 'table' && !b.isUnitMark).map((b) => (b.kind === 'table' ? b.unit : '')), ['원', '원', '원']);
+});

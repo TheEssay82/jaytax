@@ -97,7 +97,8 @@ export function addNoteStyles(stylesXml: string): { xml: string; ids: StyleIds }
     xf(fontBold, 0, 0, 0),                                                              // label
     xf(fontTitle, 0, 0, 0),                                                             // title
     xf(fontBase, 0, 0, 0, '<alignment vertical="top"/>'),                               // para
-    xf(fontBold, fillHead, borderThin, 0, '<alignment horizontal="center" vertical="center"/>'), // head
+    // 머리는 줄바꿈을 살린다 — 한 칸이 `<P>` 둘로 갈려 오는 일이 있다(「특수관계⏎구분」).
+    xf(fontBold, fillHead, borderThin, 0, '<alignment horizontal="center" vertical="center" wrapText="1"/>'), // head
     xf(fontBase, 0, borderThin, 0, '<alignment vertical="center"/>'),                   // text
     xf(fontBase, 0, borderThin, fmtId, '<alignment horizontal="right" vertical="center"/>'), // num
     xf(fontBase, fillInput, borderThin, fmtId, '<alignment horizontal="right" vertical="center"/>'), // input
