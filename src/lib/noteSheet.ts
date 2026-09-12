@@ -11,7 +11,7 @@
 //
 // A열에는 **자리표**를 숨겨 둔다 — 이 칸이 DSD 의 몇 번째 글자칸인지다. 그게 있어야
 // 엑셀에서 고친 값을 DSD 제자리에 도로 넣을 수 있다.
-import type { NoteBlocks } from './dsdBlocks';
+import { gridWidth, type NoteBlocks } from './dsdBlocks';
 
 /** 어떤 서식으로 그릴 칸인가 — xlsxStyles 의 이름과 같다. */
 export type CellKind = 'label' | 'title' | 'para' | 'head' | 'text' | 'num' | 'input';
@@ -80,6 +80,7 @@ export function isTotalLabel(text: string): boolean {
 export interface SheetPlan {
   name: string;
   cells: SheetCell[];
+  /** 엑셀에서 병합할 자리 — 「D4:E4」 꼴. 원본이 덮은 만큼 덮는다. */ merges?: string[];
   /** 마지막 행 */ lastRow: number;
 }
 
@@ -155,6 +156,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     { row: 2, col: 2, text: '주석명', kind: 'label' },
     { row: 2, col: 3, text: `${note.no}. ${note.title}`, kind: 'title' },
   ];
+  const merges: string[] = [];
   let r = 3;
   let prevWasTable = false;
 
@@ -170,168 +172,166 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
         r += 1;
       });
       prevWasTable = false;
-    } else {
-      r += 1;                                          // 표 앞에 빈 줄
-      const blankRow = r - 1;
-      // **어느 열이 숫자 열인가**를 먼저 본다. 그 열의 「-」는 0 으로 넣어야 합계가 잡힌다.
-      // 글자 열의 「-」까지 0 으로 바꾸면 구분 이름이 숫자가 되어 버린다.
-      // 숫자 열은 **이월 전 원본**으로 정한다 — 이월하면 당기 칸이 비어 판정이 흔들린다.
-      const numericCol: number[] = [];
-      for (const line of b.rows) {
-        if (line.every((c) => c.tag === 'TH')) continue;
-        line.forEach((c, j) => {
-          if (asNumber(c.text) != null && !numericCol.includes(j)) numericCol.push(j);
-        });
+      continue;
+    }
+
+    // ── 표 ────────────────────────────────────────────────────────
+    r += 1;                                          // 표 앞에 빈 줄
+    const blankRow = r - 1;
+    const width = Math.max(gridWidth(b.rows), 1);
+    const rowNo = b.rows.map((_, i) => r + i);
+    const isHeadRow = b.rows.map((line) => line.length > 0 && line.every((c) => c.tag === 'TH'));
+
+    // 값은 **격자 열 번호**로 다룬다. 칸 순서로 다루면 COLSPAN 이 있는 표에서 옆으로 샌다.
+    const orig = b.rows.map((line) => new Map(line.map((c) => [c.col, c.text])));
+
+    // 어느 열이 숫자 열인가 — 그 열의 「-」는 0 으로 넣어야 합계가 잡힌다.
+    const numericCol: number[] = [];
+    b.rows.forEach((line, i) => {
+      if (isHeadRow[i]) return;
+      for (const c of line) if (asNumber(c.text) != null && !numericCol.includes(c.col)) numericCol.push(c.col);
+    });
+    numericCol.sort((a, x) => a - x);
+
+    // ── 이월: 당기 열과 전기 열을 격자에서 찾아 짝짓는다 ──────────────
+    // 머리가 두 줄인 표(「당기」가 COLSPAN 으로 두 열을 덮고 그 아래 장부가액·공시지가)도
+    // COLSPAN 을 펼쳐 두었으므로 덮는 열이 그대로 나온다.
+    const curCols: number[] = [];
+    const priCols: number[] = [];
+    b.rows.forEach((line, i) => {
+      if (!isHeadRow[i]) return;
+      for (const c of line) {
+        const p = periodOfHead(c.text);
+        if (!p) continue;
+        for (let k = 0; k < c.colspan; k += 1) (p === '당기' ? curCols : priCols).push(c.col + k);
       }
-      numericCol.sort((a, x) => a - x);
+    });
+    curCols.sort((a, x) => a - x);
+    priCols.sort((a, x) => a - x);
+    const pairs: [number, number][] = curCols.length === priCols.length && curCols.length > 0
+      ? curCols.map((c, i) => [c, priCols[i]] as [number, number]) : [];
+    const wholeCurrent = opts.roll === true && b.period === '당기' && pairs.length === 0;
+    const grid = opts.roll === true ? rollGrid(orig, pairs, wholeCurrent, curCols) : orig;
+    const blankCols = new Set<number>(
+      opts.roll === true ? (pairs.length ? pairs.map(([c]) => c) : (wholeCurrent ? numericCol : curCols)) : [],
+    );
 
-      // ── 이월: 어느 열이 당기이고 어느 열이 전기인가 ───────────────
-      const headLine = b.rows.find((line) => line.length > 0 && line.every((c) => c.tag === 'TH'));
-      const curCols: number[] = [];
-      const priCols: number[] = [];
-      if (headLine) {
-        headLine.forEach((c, j) => {
-          const p = periodOfHead(c.text);
-          if (p === '당기') curCols.push(j);
-          if (p === '전기') priCols.push(j);
-        });
+    const factor = b.isUnitMark ? null : unitFactor(b.unit);
+    const dual = factor != null && numericCol.length > 0;
+    const srcBase = 3 + width + 1;                   // 표 오른쪽에 한 칸 띄운다
+    const diffCol = srcBase + numericCol.length + 1;
+
+    // 합계 행 — 하나뿐이고 위에 항목이 둘 이상일 때만 SUM 으로 묶는다.
+    const bodyIdx = b.rows.map((_, i) => i).filter((i) => !isHeadRow[i]);
+    const totalIdx = bodyIdx.filter((i) => isTotalLabel(b.rows[i][0]?.text ?? ''));
+    const sumAt = totalIdx.length === 1 ? totalIdx[0] : -1;
+    const items = sumAt >= 0 ? bodyIdx.filter((i) => i < sumAt) : [];
+    const canSum = items.length >= 2;
+
+    if (dual) cells.push({ row: blankRow, col: srcBase, text: '원 단위 (입력)', kind: 'label' });
+
+    b.rows.forEach((line, i) => {
+      const head = isHeadRow[i];
+      cells.push({ row: rowNo[i], col: 1, text: line.map((c) => addrOf(c.slot)).join(' ') });
+
+      for (const c of line) {
+        const at = 3 + c.col;
+        const val = head ? bumpTerm(c.text) : (grid[i].get(c.col) ?? '');
+        const blank = !head && blankCols.has(c.col);
+        // 「-」는 재무제표에서 0 이다. 숫자 0 으로 넣고 화면에는 숫자꼴이 「-」로 보여 준다.
+        const num = blank ? undefined
+          : (!head && numericCol.includes(c.col) && isDash(val) ? 0 : asNumber(val));
+        const cell: SheetCell = {
+          row: rowNo[i], col: at, text: blank ? '' : val, num,
+          kind: head ? 'head' : blank ? 'input' : num != null ? 'num' : 'text',
+        };
+        if (!head && (num != null || blank) && dual) {
+          const k = numericCol.indexOf(c.col);
+          const src = `${colName(srcBase + k)}${rowNo[i]}`;
+          const rng = `${colName(at)}${rowNo[items[0]]}:${colName(at)}${rowNo[items[items.length - 1]]}`;
+          // 합계 행은 **표시값끼리 더한다**(㉮) — 보는 사람이 더해서 맞아야 한다.
+          // 원 합계를 반올림한 값(㉯)과의 차이는 옆에 「단수차이」로 따로 보여 준다.
+          cell.formula = canSum && i === sumAt
+            ? `IF(COUNT(${rng})=0,"",SUM(${rng}))`
+            : `IF(${src}="","",ROUND(${src}/${factor},0))`;
+          cell.kind = 'num';
+          delete cell.num;
+        }
+        cells.push(cell);
+        // 병합 — 원본이 덮은 만큼 엑셀에서도 덮는다. 안 그러면 2단 머리가 어긋나 보인다.
+        if (c.colspan > 1 || c.rowspan > 1) {
+          merges.push(`${colName(at)}${rowNo[i]}:${colName(at + c.colspan - 1)}${rowNo[i] + c.rowspan - 1}`);
+        }
       }
-      // 당기 → 전기로 밀 짝. 개수가 같을 때만 — 다르면 어느 것이 어느 것인지 알 수 없다.
-      const pairs: [number, number][] = curCols.length === priCols.length
-        ? curCols.map((c, i) => [c, priCols[i]] as [number, number]) : [];
-      // 이 표 전체가 당기 자료인가(「<당기>」 표지판) — 그러면 통째로 비운다.
-      const wholeCurrent = opts.roll === true && b.period === '당기' && pairs.length === 0;
-      const rolled = opts.roll === true
-        ? rollRows(b.rows, pairs, wholeCurrent, curCols)
-        : b.rows.map((line) => line.map((c) => c.text));
 
-      // 비워 둘(= 채워 넣어야 할) 열
-      const blankCols = new Set<number>(
-        opts.roll === true ? (pairs.length ? pairs.map(([c]) => c) : (wholeCurrent ? numericCol : curCols)) : [],
-      );
-      const factor = b.isUnitMark ? null : unitFactor(b.unit);
-      const dual = factor != null && numericCol.length > 0;
-      const width = Math.max(...b.rows.map((x) => x.length), 1);
-      const srcBase = 3 + width + 1;                   // 표 오른쪽에 한 칸 띄운다
-      const diffCol = srcBase + numericCol.length + 1;
+      // ── 오른쪽 원 단위 블록 ────────────────────────────────
+      if (!dual) return;
+      numericCol.forEach((gc, k) => {
+        const col = srcBase + k;
+        if (head) {
+          const hit = line.find((c) => c.col <= gc && gc < c.col + c.colspan);
+          cells.push({ row: rowNo[i], col, text: bumpTerm(hit?.text ?? ''), kind: 'head' });
+          return;
+        }
+        // 합계 행은 비우지 않는다 — 항목만 채우면 합계가 저절로 따라와야 한다.
+        if (blankCols.has(gc) && !(canSum && i === sumAt)) {
+          cells.push({ row: rowNo[i], col, text: '', kind: 'input' });
+          return;
+        }
+        if (canSum && i === sumAt) {
+          cells.push({
+            row: rowNo[i], col, text: '', kind: 'num',
+            formula: `SUM(${colName(col)}${rowNo[items[0]]}:${colName(col)}${rowNo[items[items.length - 1]]})`,
+          });
+          return;
+        }
+        const raw = grid[i].get(gc) ?? '';
+        const num = asNumber(raw) ?? (isDash(raw) ? 0 : undefined);
+        if (num == null) return;
+        cells.push({ row: rowNo[i], col, text: '', num: num * factor, kind: 'num' });
+      });
+    });
 
-      // 몇 번째 엑셀 행에 놓이는지 미리 정해 둔다 — 합계 수식이 범위를 알아야 한다.
-      const rowNo = b.rows.map((_, i) => r + i);
-      const isHeadRow = b.rows.map((line) => line.length > 0 && line.every((c) => c.tag === 'TH'));
-      const bodyIdx = b.rows.map((_, i) => i).filter((i) => !isHeadRow[i]);
-      const totalIdx = bodyIdx.filter((i) => isTotalLabel(b.rows[i][0]?.text ?? ''));
-      // 합계가 하나뿐이고 위에 항목이 둘 이상일 때만 SUM 으로 묶는다.
-      // 여럿이면(소계+합계 등) 구간이 애매해 잘못 걸 수 있으니 손대지 않는다.
-      const sumAt = totalIdx.length === 1 ? totalIdx[0] : -1;
-      const items = sumAt >= 0 ? bodyIdx.filter((i) => i < sumAt) : [];
-      const canSum = items.length >= 2;
-
-      if (dual) {
-        cells.push({ row: blankRow, col: srcBase, text: '원 단위 (입력)', kind: 'label' });
-      }
-
-      b.rows.forEach((line, i) => {
-        const head = isHeadRow[i];
-        cells.push({ row: rowNo[i], col: 1, text: line.map((c) => addrOf(c.slot)).join(' ') });
-        line.forEach((c, j) => {
-          const val = head ? bumpTerm(c.text) : (rolled[i][j] ?? '');
-          const blank = !head && blankCols.has(j);
-          // 「-」는 재무제표에서 0 이다. 숫자 0 으로 넣고 화면에는 숫자꼴이 「-」로 보여 준다
-          // (#,##0;(#,##0);"-"). 글자로 두면 합계·검증식이 안 잡힌다(2026-09-13 지적).
-          const num = blank ? undefined
-            : (!head && numericCol.includes(j) && isDash(val) ? 0 : asNumber(val));
-          const cell: SheetCell = {
-            row: rowNo[i], col: 3 + j, text: blank ? '' : val, num,
-            kind: head ? 'head' : blank ? 'input' : num != null ? 'num' : 'text',
-          };
-          if (!head && (num != null || blank) && dual) {
-            const k = numericCol.indexOf(j);
-            const src = `${colName(srcBase + k)}${rowNo[i]}`;
-            // 합계 행은 **표시값끼리 더한다**(㉮) — 보는 사람이 더해서 맞아야 한다.
-            // 원 합계를 반올림한 값(㉯)과의 차이는 옆에 「단수차이」로 따로 보여 준다.
-            const rng = `${colName(3 + j)}${rowNo[items[0]]}:${colName(3 + j)}${rowNo[items[items.length - 1]]}`;
-            cell.formula = canSum && i === sumAt
-              ? `IF(COUNT(${rng})=0,"",SUM(${rng}))`
-              : `IF(${src}="","",ROUND(${src}/${factor},0))`;   // 빈 입력칸은 빈칸으로 둔다
-            cell.kind = 'num';
-            delete cell.num;
-          }
-          cells.push(cell);
-        });
-
-        // ── 오른쪽 원 단위 블록 ────────────────────────────────
-        if (!dual) return;
-        numericCol.forEach((j, k) => {
-          const col = srcBase + k;
-          if (head) {
-            cells.push({ row: rowNo[i], col, text: bumpTerm(line[j]?.text ?? ''), kind: 'head' });
-            return;
-          }
-          // 합계 행은 비우지 않는다 — 항목만 채우면 합계가 저절로 따라와야 한다.
-          if (blankCols.has(j) && !(canSum && i === sumAt)) {
-            // **채워 넣을 자리** — 노랗게 비워 둔다. 대개 재무제표에서 링크로 끌어온다.
-            cells.push({ row: rowNo[i], col, text: '', kind: 'input' });
-            return;
-          }
-          if (canSum && i === sumAt) {
-            cells.push({
-              row: rowNo[i], col, text: '', kind: 'num',
-              formula: `SUM(${colName(col)}${rowNo[items[0]]}:${colName(col)}${rowNo[items[items.length - 1]]})`,
-            });
-            return;
-          }
-          const num = asNumber(rolled[i][j] ?? '') ?? (isDash(rolled[i][j] ?? '') ? 0 : undefined);
-          if (num == null) return;
-          const cell: SheetCell = { row: rowNo[i], col, text: '', num: num * factor, kind: 'num' };
-          if (canSum && i === sumAt) {
-            cell.formula = `SUM(${colName(col)}${rowNo[items[0]]}:${colName(col)}${rowNo[items[items.length - 1]]})`;
-            delete cell.num;
-          }
-          cells.push(cell);
+    // ── 단수차이 — 원 합계를 반올림한 값(㉯)과 표시 합계(㉮)의 차이 ──
+    if (dual && canSum) {
+      const headRow = isHeadRow.indexOf(true);
+      if (headRow >= 0) cells.push({ row: rowNo[headRow], col: diffCol, text: '단수차이', kind: 'head' });
+      numericCol.forEach((gc, k) => {
+        cells.push({
+          row: rowNo[sumAt], col: diffCol + k, text: '', kind: 'num',
+          formula: `ROUND(${colName(srcBase + k)}${rowNo[sumAt]}/${factor},0)-${colName(3 + gc)}${rowNo[sumAt]}`,
         });
       });
-
-      // ── 단수차이 — 원 합계를 반올림한 값(㉯)과 표시 합계(㉮)의 차이 ──
-      if (dual && canSum) {
-        const headRow = isHeadRow.indexOf(true);
-        if (headRow >= 0) cells.push({ row: rowNo[headRow], col: diffCol, text: '단수차이', kind: 'head' });
-        numericCol.forEach((j, k) => {
-          const src = colName(srcBase + k);
-          const show = colName(3 + j);
-          cells.push({
-            row: rowNo[sumAt], col: diffCol + k, text: '', kind: 'num',
-            formula: `ROUND(${src}${rowNo[sumAt]}/${factor},0)-${show}${rowNo[sumAt]}`,
-          });
-        });
-      }
-
-      r += b.rows.length;
-      prevWasTable = true;
     }
+
+    r += b.rows.length;
+    prevWasTable = true;
   }
-  return { name, cells, lastRow: Math.max(2, r - 1) };
+  return { name, cells, merges, lastRow: Math.max(2, r - 1) };
 }
 
 /**
  * 값을 한 해 민다 — **전기 ← 당기, 당기는 빈칸.**
  *
- * 짝지어진 열이 있으면 그 열끼리 옮기고, 없으면(표 전체가 당기 자료면) 숫자 칸을 비운다.
+ * 격자 열 번호로 다룬다. 칸 순서로 다루면 COLSPAN 이 있는 표에서 값이 옆으로 샌다.
  * 머리행은 손대지 않는다 — 「당기말」·「전기말」은 해가 바뀌어도 그대로인 이름이다.
  */
-export function rollRows(
-  rows: { text: string; tag: string }[][],
+export function rollGrid(
+  rows: Map<number, string>[],
   pairs: [number, number][],
   wholeCurrent: boolean,
   curCols: number[],
-): string[][] {
+): Map<number, string>[] {
   return rows.map((line) => {
-    const head = line.length > 0 && line.every((c) => c.tag === 'TH');
-    const out = line.map((c) => c.text);
-    if (head) return out;
-    for (const [cur, pri] of pairs) out[pri] = line[cur]?.text ?? '';
-    for (const [cur] of pairs) out[cur] = '';
-    if (!pairs.length) for (const c of wholeCurrent ? out.map((_, i) => i) : curCols) {
-      if (asNumber(line[c]?.text ?? '') != null || isDash(line[c]?.text ?? '')) out[c] = '';
+    const out = new Map(line);
+    for (const [cur, pri] of pairs) out.set(pri, line.get(cur) ?? '');
+    for (const [cur] of pairs) out.set(cur, '');
+    if (!pairs.length) {
+      const targets = wholeCurrent ? [...line.keys()] : curCols;
+      for (const c of targets) {
+        const v = line.get(c) ?? '';
+        if (asNumber(v) != null || isDash(v)) out.set(c, '');
+      }
     }
     return out;
   });

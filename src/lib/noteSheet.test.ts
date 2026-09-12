@@ -1,10 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  asNumber, isDash, unitFactor, isTotalLabel, periodOfHead, bumpTerm, rollRows,
+  asNumber, isDash, unitFactor, isTotalLabel, periodOfHead, bumpTerm, rollGrid,
   sheetName, addrOf, parseAddr, layoutNote, layoutIndex,
 } from './noteSheet.ts';
 import type { NoteBlocks } from './dsdBlocks.ts';
+
+/** 표 한 줄을 만든다 — 격자 열 번호를 차례로 매긴다(COLSPAN 없는 단순 표). */
+function line(tag: 'TH' | 'TD', slot0: number, ...texts: string[]) {
+  return texts.map((text, i) => ({ slot: slot0 + i, text, tag, col: i, colspan: 1, rowspan: 1 }));
+}
+
 
 test('표 안의 값 — 숫자는 숫자로, 퍼센트·글자는 그대로', () => {
   assert.equal(asNumber('32,000'), 32000);
@@ -32,10 +38,10 @@ const DASH_TABLE: NoteBlocks = {
   blocks: [{
     kind: 'table',
     rows: [
-      [{ slot: 1, text: '구 분', tag: 'TH' }, { slot: 2, text: '당 기', tag: 'TH' }],
-      [{ slot: 3, text: '기 초', tag: 'TD' }, { slot: 4, text: '197,666,666', tag: 'TD' }],
-      [{ slot: 5, text: '지 급', tag: 'TD' }, { slot: 6, text: '-', tag: 'TD' }],
-      [{ slot: 7, text: '-', tag: 'TD' }, { slot: 8, text: '210,166,666', tag: 'TD' }],
+      line('TH', 1, '구 분', '당 기'),
+      line('TD', 3, '기 초', '197,666,666'),
+      line('TD', 5, '지 급', '-'),
+      line('TD', 7, '-', '210,166,666'),
     ],
   }],
 };
@@ -61,10 +67,7 @@ test('글자 열의 「-」는 0 으로 바꾸지 않는다 — 구분 이름이
 test('표 머리의 「-」도 0 으로 바꾸지 않는다', () => {
   const head: NoteBlocks = {
     no: 1, title: 'x',
-    blocks: [{ kind: 'table', rows: [
-      [{ slot: 1, text: '-', tag: 'TH' }, { slot: 2, text: '당 기', tag: 'TH' }],
-      [{ slot: 3, text: '가', tag: 'TD' }, { slot: 4, text: '10', tag: 'TD' }],
-    ] }],
+    blocks: [{ kind: 'table', rows: [line('TH', 1, '-', '당 기'), line('TD', 3, '가', '10')] }],
   };
   const p = layoutNote(head, 'x');
   assert.equal(p.cells.find((c) => c.row === 4 && c.col === 3)?.num, undefined);
@@ -94,10 +97,10 @@ const THOUSAND: NoteBlocks = {
     kind: 'table',
     unit: '천원',
     rows: [
-      [{ slot: 1, text: '구분', tag: 'TH' }, { slot: 2, text: '당기말', tag: 'TH' }],
-      [{ slot: 3, text: '보유현금', tag: 'TD' }, { slot: 4, text: '2,100', tag: 'TD' }],
-      [{ slot: 5, text: '보통예금', tag: 'TD' }, { slot: 6, text: '1,628,679', tag: 'TD' }],
-      [{ slot: 7, text: '합계', tag: 'TD' }, { slot: 8, text: '1,630,779', tag: 'TD' }],
+      line('TH', 1, '구분', '당기말'),
+      line('TD', 3, '보유현금', '2,100'),
+      line('TD', 5, '보통예금', '1,628,679'),
+      line('TD', 7, '합계', '1,630,779'),
     ],
   }],
 };
@@ -155,21 +158,26 @@ test('기수는 한 해 올린다', () => {
 });
 
 test('이월 — 전기 ← 당기, 당기는 빈칸', () => {
-  const rows = [
-    [{ text: '구분', tag: 'TH' }, { text: '당기말', tag: 'TH' }, { text: '전기말', tag: 'TH' }],
-    [{ text: '보유현금', tag: 'TD' }, { text: '2,100', tag: 'TD' }, { text: '914', tag: 'TD' }],
-  ];
-  const out = rollRows(rows, [[1, 2]], false, [1]);
-  assert.deepEqual(out[0], ['구분', '당기말', '전기말'], '머리글은 손대지 않는다');
-  assert.deepEqual(out[1], ['보유현금', '', '2,100'], '당기 값이 전기로 가고 당기는 빈칸');
+  const row = new Map([[0, '보유현금'], [1, '2,100'], [2, '914']]);
+  const out = rollGrid([row], [[1, 2]], false, [1])[0];
+  assert.equal(out.get(1), '', '당기는 빈칸');
+  assert.equal(out.get(2), '2,100', '당기 값이 전기로 간다');
+  assert.equal(out.get(0), '보유현금', '이름은 그대로');
 });
 
 test('이월 — 짝이 없으면 당기 열만 비운다', () => {
-  const rows = [
-    [{ text: '구분', tag: 'TH' }, { text: '당기', tag: 'TH' }],
-    [{ text: '기초', tag: 'TD' }, { text: '1,000', tag: 'TD' }],
-  ];
-  assert.deepEqual(rollRows(rows, [], false, [1])[1], ['기초', '']);
+  const row = new Map([[0, '기초'], [1, '1,000']]);
+  assert.equal(rollGrid([row], [], false, [1])[0].get(1), '');
+});
+
+test('이월 — COLSPAN 으로 덮인 열도 제대로 짝지어진다', () => {
+  // 명진 5. 재고자산: 구분 │ 총보유면적(2열) │ 당기(2열) │ 전기(2열)
+  const row = new Map([[0, '건설용지'], [1, '46,983'], [2, '46,983'],
+    [3, '12,782,961,300'], [4, '15,395,077,620'], [5, '12,403,085,900'], [6, '12,000']]);
+  const out = rollGrid([row], [[1, 2], [3, 5], [4, 6]], false, [])[0];
+  assert.equal(out.get(3), '', '당기 장부가액은 빈칸');
+  assert.equal(out.get(5), '12,782,961,300', '전기 장부가액으로 내려온다');
+  assert.equal(out.get(6), '15,395,077,620', '전기 공시지가로 내려온다');
 });
 
 test('이월한 시트 — 당기 입력칸은 노랗게 비고 전기는 값이 든다', () => {
@@ -178,8 +186,8 @@ test('이월한 시트 — 당기 입력칸은 노랗게 비고 전기는 값이
     blocks: [{
       kind: 'table', unit: '천원',
       rows: [
-        [{ slot: 1, text: '구분', tag: 'TH' }, { slot: 2, text: '당기말', tag: 'TH' }, { slot: 3, text: '전기말', tag: 'TH' }],
-        [{ slot: 4, text: '보유현금', tag: 'TD' }, { slot: 5, text: '2,100', tag: 'TD' }, { slot: 6, text: '914', tag: 'TD' }],
+        line('TH', 1, '구분', '당기말', '전기말'),
+        line('TD', 4, '보유현금', '2,100', '914'),
       ],
     }],
   }, 'x', { roll: true });
@@ -218,8 +226,8 @@ const NOTE: NoteBlocks = {
     {
       kind: 'table',
       rows: [
-        [{ slot: 177, text: '구    분', tag: 'TH' }, { slot: 178, text: '주식수(주)', tag: 'TH' }],
-        [{ slot: 179, text: '이 종 명', tag: 'TD' }, { slot: 180, text: '32,000', tag: 'TD' }],
+        line('TH', 177, '구    분', '주식수(주)'),
+        line('TD', 179, '이 종 명', '32,000'),
       ],
     },
     { kind: 'para', slot: 190, parts: ['표 뒤 문단.'] },

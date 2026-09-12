@@ -60,8 +60,13 @@ export function sheetXml(plan: SheetPlan, ids?: StyleIds): string {
     + '<col min="3" max="3" width="58" customWidth="1"/>'
     + '<col min="4" max="14" width="16" customWidth="1"/>'
     + '</cols>';
+  // 병합은 sheetData 다음에 온다(스키마가 정한 차례).
+  const uniq = [...new Set(plan.merges ?? [])];
+  const merge = uniq.length
+    ? `<mergeCells count="${uniq.length}">${uniq.map((m) => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>`
+    : '';
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
-    + `<worksheet xmlns="${NS}" xmlns:r="${R_NS}">${cols}<sheetData>${rows}</sheetData></worksheet>`;
+    + `<worksheet xmlns="${NS}" xmlns:r="${R_NS}">${cols}<sheetData>${rows}</sheetData>${merge}</worksheet>`;
 }
 
 /** 이미 있는 xlsx 에 시트들을 더한 새 파일을 만든다. 원본 항목은 그대로 옮겨 담는다. */

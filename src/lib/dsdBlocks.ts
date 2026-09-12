@@ -12,7 +12,7 @@ import {
 export { unescapeXml, escapeXml, splitParts, joinParts };
 
 /** 글자가 든 자리 하나. start/end 는 원본 XML 안의 위치다. */
-export interface Slot { start: number; end: number; tag: string; raw: string }
+export interface Slot { start: number; end: number; tag: string; raw: string; attrs: string }
 
 /** 안쪽에 태그가 더 없는 잎사귀 요소 — 여기에만 글자가 있다. */
 const LEAF = /<(P|TD|TH|TU)\b([^>]*)>([^<>]*)<\/\1>/g;
@@ -22,7 +22,7 @@ export function slots(xml: string): Slot[] {
   for (const m of (xml ?? '').matchAll(LEAF)) {
     // 글자는 여는 태그 끝과 닫는 태그 사이에 있다. 뒤에서부터 재면 속성 길이와 무관하다.
     const start = m.index! + m[0].length - `</${m[1]}>`.length - m[3].length;
-    out.push({ start, end: start + m[3].length, tag: m[1], raw: m[3] });
+    out.push({ start, end: start + m[3].length, tag: m[1], raw: m[3], attrs: m[2] });
   }
   return out;
 }
@@ -49,8 +49,53 @@ export type Block =
     period?: '당기' | '전기';
   };
 
-/** 표의 칸 하나. `tag` 가 TH 면 표 머리다 — 엑셀에서 음영을 줄 자리다. */
-export interface TableCell { slot: number; text: string; tag: string }
+/**
+ * 표의 칸 하나. `tag` 가 TH 면 표 머리다 — 엑셀에서 음영을 줄 자리다.
+ *
+ * `col` 은 **격자에서의 열 번호**다. 칸 순서가 아니다 — DSD 표는 COLSPAN·ROWSPAN 을 쓰므로
+ * 「세 번째 칸」이 「세 번째 열」이 아니다. 명진 5. 재고자산이 그랬다(2026-09-13):
+ *   구 분(ROWSPAN 2) │ 총보유면적(COLSPAN 2) │ 당기(COLSPAN 2) │ 전기(COLSPAN 2)
+ * 칸 순서로 보면 당기가 세 번째지만 실제 열은 4~5 다. 그걸 모르고 이월하면 값이 옆으로 샌다.
+ */
+export interface TableCell {
+  slot: number; text: string; tag: string;
+  col: number; colspan: number; rowspan: number;
+}
+
+function attrNum(attrs: string, name: string): number {
+  const m = new RegExp(`${name}="(\\d+)"`, 'i').exec(attrs ?? '');
+  const v = m ? Number(m[1]) : 1;
+  return Number.isFinite(v) && v >= 1 ? v : 1;
+}
+
+/**
+ * 칸마다 격자 열 번호를 매긴다. 앞 줄에서 내려온 ROWSPAN 자리는 건너뛴다.
+ */
+export function assignGrid(rows: TableCell[][]): void {
+  const held = new Map<number, number>();          // 열 → 남은 줄 수
+  for (const line of rows) {
+    let c = 0;
+    for (const cell of line) {
+      while ((held.get(c) ?? 0) > 0) c += 1;
+      cell.col = c;
+      for (let k = 0; k < cell.colspan; k += 1) {
+        if (cell.rowspan > 1) held.set(c + k, cell.rowspan);
+      }
+      c += cell.colspan;
+    }
+    for (const [k, v] of [...held]) {
+      if (v <= 1) held.delete(k);
+      else held.set(k, v - 1);
+    }
+  }
+}
+
+/** 표의 열 개수 — 가장 오른쪽 칸이 끝나는 자리. */
+export function gridWidth(rows: TableCell[][]): number {
+  let w = 0;
+  for (const line of rows) for (const c of line) w = Math.max(w, c.col + c.colspan);
+  return w;
+}
 
 /**
  * 제목 글자들을 앞에서 소비하고 **남은 글**을 돌려준다. 못 맞추면 null.
@@ -221,7 +266,10 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
 
   const flushTable = () => {
     if (row.length) { rows.push(row); row = []; }
-    if (rows.length && cur) cur.blocks.push({ kind: 'table', rows });
+    if (rows.length && cur) {
+      assignGrid(rows);                            // 칸 순서 → 격자 열 번호
+      cur.blocks.push({ kind: 'table', rows });
+    }
     rows = []; curTbl = -1; curTr = -1;
   };
 
@@ -250,7 +298,10 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
     if (t !== curTbl) { flushTable(); curTbl = t; curTr = owner(sl.start, trs); }
     const r = owner(sl.start, trs);
     if (r !== curTr) { if (row.length) rows.push(row); row = []; curTr = r; }
-    row.push({ slot: i, text: unescapeXml(sl.raw).trim(), tag: sl.tag });
+    row.push({
+      slot: i, text: unescapeXml(sl.raw).trim(), tag: sl.tag,
+      col: 0, colspan: attrNum(sl.attrs, 'COLSPAN'), rowspan: attrNum(sl.attrs, 'ROWSPAN'),
+    });
   });
   flushTable();
 
