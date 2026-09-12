@@ -16,7 +16,7 @@
 // 그리고 xl/calcChain.xml 은 **지운다** — 수식 계산 순서를 적어 둔 캐시라, 시트가 늘면
 // 어긋날 수 있다. 없으면 엑셀이 열 때 알아서 다시 만든다.
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
-import type { SheetPlan } from './noteSheet';
+import { colName, type SheetPlan } from './noteSheet';
 import { addNoteStyles, MINIMAL_STYLES, type StyleIds } from './xlsxStyles';
 
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -27,17 +27,8 @@ function esc(s: string): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** 1=A, 2=B, … 27=AA */
-export function colName(n: number): string {
-  let s = '';
-  let x = n;
-  while (x > 0) {
-    const r = (x - 1) % 26;
-    s = String.fromCharCode(65 + r) + s;
-    x = Math.floor((x - 1) / 26);
-  }
-  return s;
-}
+// 열 이름(A·B·AA)은 배치에서도 수식을 만들 때 쓰므로 noteSheet 에 있다.
+export { colName };
 
 /**
  * 시트 배치 하나를 워크시트 XML 로.
@@ -56,6 +47,7 @@ export function sheetXml(plan: SheetPlan, ids?: StyleIds): string {
       const ref = `${colName(c.col)}${r}`;
       const sid = ids && c.kind ? ids[c.kind] : undefined;
       const st = sid == null ? '' : ` s="${sid}"`;
+      if (c.formula) return `<c r="${ref}"${st}><f>${esc(c.formula)}</f></c>`;
       if (c.num != null) return `<c r="${ref}"${st}><v>${c.num}</v></c>`;
       return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${esc(c.text)}</t></is></c>`;
     }).join('');

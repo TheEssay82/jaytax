@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { asNumber, isDash, sheetName, addrOf, parseAddr, layoutNote, layoutIndex } from './noteSheet.ts';
+import {
+  asNumber, isDash, unitFactor, isTotalLabel,
+  sheetName, addrOf, parseAddr, layoutNote, layoutIndex,
+} from './noteSheet.ts';
 import type { NoteBlocks } from './dsdBlocks.ts';
 
 test('표 안의 값 — 숫자는 숫자로, 퍼센트·글자는 그대로', () => {
@@ -65,6 +68,74 @@ test('표 머리의 「-」도 0 으로 바꾸지 않는다', () => {
   };
   const p = layoutNote(head, 'x');
   assert.equal(p.cells.find((c) => c.row === 4 && c.col === 3)?.num, undefined);
+});
+
+test('단위에서 원으로 되돌리는 배수', () => {
+  assert.equal(unitFactor('천원'), 1000);
+  assert.equal(unitFactor('백만원'), 1000000);
+  assert.equal(unitFactor('원'), null);
+  assert.equal(unitFactor('천원,%'), null, '단위가 섞인 표는 손대지 않는다');
+  assert.equal(unitFactor(undefined), null);
+});
+
+test('합계 행 판정 — 「기말」은 합계가 아니다', () => {
+  assert.equal(isTotalLabel('합 계'), true);
+  assert.equal(isTotalLabel('합계'), true);
+  assert.equal(isTotalLabel('소  계'), true);
+  assert.equal(isTotalLabel('계'), true);
+  assert.equal(isTotalLabel('기 말'), false, '기초+증감=기말이라 SUM 으로 묶으면 두 배가 된다');
+  assert.equal(isTotalLabel('당기말'), false);
+  assert.equal(isTotalLabel('보통예금'), false);
+});
+
+const THOUSAND: NoteBlocks = {
+  no: 3, title: '현금및현금성자산',
+  blocks: [{
+    kind: 'table',
+    unit: '천원',
+    rows: [
+      [{ slot: 1, text: '구분', tag: 'TH' }, { slot: 2, text: '당기말', tag: 'TH' }],
+      [{ slot: 3, text: '보유현금', tag: 'TD' }, { slot: 4, text: '2,100', tag: 'TD' }],
+      [{ slot: 5, text: '보통예금', tag: 'TD' }, { slot: 6, text: '1,628,679', tag: 'TD' }],
+      [{ slot: 7, text: '합계', tag: 'TD' }, { slot: 8, text: '1,630,779', tag: 'TD' }],
+    ],
+  }],
+};
+
+test('천원 표 — 원을 원본으로 두고 표시는 ROUND 로 유도한다', () => {
+  const p = layoutNote(THOUSAND, 'x');
+  const at = (row: number, col: number) => p.cells.find((c) => c.row === row && c.col === col);
+  // 표는 4행부터: 4 머리 · 5 보유현금 · 6 보통예금 · 7 합계
+  assert.equal(at(5, 4)?.formula, 'ROUND(F5/1000,0)', '표시는 원 칸에서 유도');
+  assert.equal(at(5, 4)?.num, undefined, '수식 칸에는 값을 같이 넣지 않는다');
+  assert.equal(at(5, 6)?.num, 2100000, '원 단위 블록은 천원 × 1000');
+  assert.equal(at(4, 6)?.text, '당기말', '원 블록도 머리글을 단다');
+  assert.equal(at(3, 6)?.text, '원 단위 (입력)');
+});
+
+test('합계는 표시값끼리 더한다(㉮) · 단수차이를 옆에 보여 준다(㉯−㉮)', () => {
+  const p = layoutNote(THOUSAND, 'x');
+  const at = (row: number, col: number) => p.cells.find((c) => c.row === row && c.col === col);
+  assert.equal(at(7, 4)?.formula, 'SUM(D5:D6)', '보는 사람이 더해서 맞아야 한다');
+  assert.equal(at(7, 6)?.formula, 'SUM(F5:F6)', '원 합계도 따라온다');
+  assert.equal(at(7, 8)?.formula, 'ROUND(F7/1000,0)-D7', '단수차이');
+  assert.equal(at(4, 8)?.text, '단수차이');
+});
+
+test('첫 해 표시값은 작년 DSD 와 같아야 한다 — ROUND(x×1000/1000)=x', () => {
+  for (const x of [2100, 1628679, -161075, 0]) {
+    assert.equal(Math.round((x * 1000) / 1000), x);
+  }
+});
+
+test('원 단위 표는 그대로 둔다 — 수식을 걸지 않는다', () => {
+  const won: NoteBlocks = {
+    ...THOUSAND,
+    blocks: [{ ...(THOUSAND.blocks[0] as { kind: 'table' } & Record<string, unknown>), unit: '원' } as never],
+  };
+  const p = layoutNote(won, 'x');
+  assert.equal(p.cells.some((c) => c.formula), false);
+  assert.equal(p.cells.find((c) => c.row === 5 && c.col === 4)?.num, 2100);
 });
 
 test('시트 이름 — 금지 글자와 31자 제한, 겹치면 번호', () => {
