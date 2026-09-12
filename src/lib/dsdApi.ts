@@ -68,8 +68,26 @@ export interface NewEngagement {
   entityId: string; fy: number; scope: '별도' | '연결';
   termNo: number | null; periodFrom: string; periodTo: string;
   basis: Basis; moneyUnit: '천원' | '원'; note?: string;
-  /** 무엇으로 주석 목록을 채울까 — 표준 틀 / 앞 해 복제 / 비워 두기. */
-  seed: 'template' | 'previous' | 'empty';
+  /** 무엇으로 주석 목록을 채울까 — 앞 해 복제 / 작년 DSD 파일 / 표준 틀 / 비워 두기. */
+  seed: 'template' | 'previous' | 'file' | 'empty';
+  /** seed 가 'file' 일 때 — 화면에서 .dsd 를 읽어 만든 목록. 파일 자체는 올라오지 않는다. */
+  seedRows?: NoteRow[];
+}
+
+/**
+ * **감사계약이 있는 거래처**만 — 이 시스템이 다루는 대상이다.
+ *
+ * 회계감사(AUD.AUDIT)는 감사team 의 leaf 하나뿐이라 코드로 가른다. 용역·평가 계약만 있는
+ * 거래처는 감사보고서를 만들지 않으므로 목록에 내놓지 않는다.
+ */
+export async function listAuditEntityIds(): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('biz_sales_contract')
+    .select('entity_id')
+    .eq('team', '감사team')
+    .eq('category_code', 'AUD.AUDIT');
+  if (error) throw error;
+  return new Set(((data ?? []) as { entity_id: string }[]).map((r) => r.entity_id));
 }
 
 /**
@@ -97,6 +115,8 @@ export async function createEngagement(v: NewEngagement): Promise<string> {
   let seeded: NoteRow[] = [];
   if (v.seed === 'template') {
     seeded = template(v.basis);
+  } else if (v.seed === 'file') {
+    seeded = v.seedRows ?? [];
   } else if (v.seed === 'previous') {
     const prev = await findEngagement(v.entityId, v.fy - 1, v.scope);
     seeded = prev ? cloneForNextYear(await listNotes(prev.id)) : template(v.basis);

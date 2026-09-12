@@ -13,10 +13,11 @@ import { confirmDanger } from '../common/DangerConfirm';
 import { listBizEntities, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
   listEngagements, createEngagement, updateEngagement, deleteEngagement,
-  listNotes, replaceNotes, findEngagement,
+  listNotes, replaceNotes, findEngagement, listAuditEntityIds,
   type Engagement, type NoteRow, type Basis,
 } from '../../lib/dsdApi';
-import { template, templateSize, suggestCode, renumber, progress, termLabel } from '../../lib/dsdNotes';
+import { template, templateSize, suggestCode, renumber, progress } from '../../lib/dsdNotes';
+import { readDsd, type DsdInfo } from '../../lib/dsdFile';
 
 const STATUS_COLOR: Record<string, string> = {
   미할당: 'var(--ink-3)', 작업중: 'var(--info)', 작업완료: 'var(--good)', 작성제외: 'var(--ink-4)',
@@ -25,6 +26,7 @@ const STATUS_COLOR: Record<string, string> = {
 export default function DsdEngagementTab() {
   const [engs, setEngs] = useState<Engagement[]>([]);
   const [ents, setEnts] = useState<BizEntityFull[]>([]);
+  const [auditIds, setAuditIds] = useState<Set<string>>(new Set());
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [notes, setNotes] = useState<NoteRow[]>([]);
   const [dirty, setDirty] = useState(false);
@@ -36,9 +38,10 @@ export default function DsdEngagementTab() {
   async function load(keep?: string) {
     try {
       setErr(null);
-      const [list, es] = await Promise.all([listEngagements(), listBizEntities()]);
+      const [list, es, aud] = await Promise.all([listEngagements(), listBizEntities(), listAuditEntityIds()]);
       setEngs(list);
       setEnts(es);
+      setAuditIds(aud);
       const id = keep ?? pickedId ?? list[0]?.id ?? null;
       setPickedId(id);
       setNotes(id ? await listNotes(id) : []);
@@ -159,7 +162,7 @@ export default function DsdEngagementTab() {
                   {e.entityName}
                 </div>
                 <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginTop: 2 }}>
-                  FY{e.fy} · {e.scope}{e.termNo ? ` · ${termLabel(e.termNo)}` : ''}
+                  FY{e.fy} · {e.scope}
                 </div>
                 <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 2 }}>
                   {e.basis} · {e.moneyUnit} · 주석 {e.noteCount}
@@ -180,7 +183,7 @@ export default function DsdEngagementTab() {
             <div className="chdr">
               {picked.entityName}
               <span style={{ fontSize: 'var(--fs-2)', fontWeight: 400, color: 'var(--ink-2)' }}>
-                FY{picked.fy} · {picked.scope} {picked.termNo ? `· ${termLabel(picked.termNo)}` : ''}
+                FY{picked.fy} · {picked.scope}
                 {picked.periodFrom ? ` · ${picked.periodFrom} ~ ${picked.periodTo}` : ''}
               </span>
               <button className="btn-sm btn-sm-del" style={{ marginLeft: 'auto' }} onClick={() => void removeEng(picked)}>
@@ -308,6 +311,7 @@ export default function DsdEngagementTab() {
       {adding && (
         <NewEngagementModal
           entities={ents}
+          auditIds={auditIds}
           onClose={() => setAdding(false)}
           onDone={async (id) => { setAdding(false); await load(id); setMsg('작업 건을 만들었습니다.'); }}
           onError={(m) => setErr(m)}
@@ -326,32 +330,42 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-/** 새 작업 건 — 씨앗(무엇으로 주석 목록을 채울까)이 이 창의 핵심이다. */
-function NewEngagementModal({ entities, onClose, onDone, onError }: {
+/**
+ * 새 작업 건 — **씨앗(무엇으로 주석 목록을 채울까)이 이 창의 핵심**이다.
+ *
+ * 빈 목록으로 만들면 결국 손으로 40줄을 넣게 된다. 첫 해에는 **작년 감사보고서 DSD** 를 넣는 것이
+ * 가장 빠르고(파일에서 주석 목록이 그대로 읽힌다), 두 해째부터는 앞 해 건을 복제한다.
+ */
+function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
   entities: BizEntityFull[];
+  auditIds: Set<string>;
   onClose: () => void;
   onDone: (id: string) => void | Promise<void>;
   onError: (m: string) => void;
 }) {
   const thisYear = new Date().getFullYear();
   const [q, setQ] = useState('');
+  const [auditOnly, setAuditOnly] = useState(true);
   const [entityId, setEntityId] = useState('');
   const [fy, setFy] = useState(thisYear - 1);
   const [scope, setScope] = useState<'별도' | '연결'>('별도');
-  const [termNo, setTermNo] = useState('');
   const [basis, setBasis] = useState<Basis>('K-IFRS');
   const [moneyUnit, setMoneyUnit] = useState<'천원' | '원'>('천원');
-  const [seed, setSeed] = useState<'template' | 'previous' | 'empty'>('template');
+  const [seed, setSeed] = useState<'template' | 'previous' | 'file' | 'empty'>('file');
   const [prevFound, setPrevFound] = useState<number | null>(null);
+  const [dsd, setDsd] = useState<DsdInfo | null>(null);
+  const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // 감사계약(회계감사)이 있는 거래처만 — 이 시스템이 다루는 대상이다.
   const hits = useMemo(() => {
     const t = q.trim();
-    const base = t ? entities.filter((e) => e.name.includes(t) || (e.code ?? '').includes(t)) : entities;
-    return base.slice(0, 40);
-  }, [entities, q]);
+    let base = auditOnly ? entities.filter((e) => auditIds.has(e.id)) : entities;
+    if (t) base = base.filter((e) => e.name.includes(t) || (e.code ?? '').includes(t));
+    return base.slice(0, 60);
+  }, [entities, auditIds, auditOnly, q]);
 
-  // 앞 해 건이 있으면 복제를 기본으로 — 그게 이 시스템의 값어치가 쌓이는 길이다.
+  // 앞 해 건이 있으면 복제를 기본으로 — 그게 대응표가 쌓이는 길이다.
   useEffect(() => {
     let alive = true;
     if (!entityId) { setPrevFound(null); return; }
@@ -366,15 +380,47 @@ function NewEngagementModal({ entities, onClose, onDone, onError }: {
     return () => { alive = false; };
   }, [entityId, fy, scope]);
 
+  async function takeFile(f: File | undefined) {
+    if (!f) return;
+    setReading(true);
+    try {
+      const info = await readDsd(f);
+      setDsd(info);
+      setSeed('file');
+      if (!info.notes.length) onError('이 파일에서 주석을 찾지 못했습니다. 다른 씨앗을 고르거나 나중에 채우세요.');
+    } catch (e) {
+      setDsd(null);
+      onError(e instanceof Error ? e.message : '파일을 읽지 못했습니다.');
+    } finally {
+      setReading(false);
+    }
+  }
+
+  /** 파일에서 읽은 주석을 목록 줄로 — 코드는 표준 틀에서 짐작하고, 없으면 X_ 임시 코드다. */
+  function rowsFromFile(): NoteRow[] {
+    const used = new Set<string>();
+    return (dsd?.notes ?? []).map((n, i) => {
+      let code = suggestCode(n.title, basis);
+      while (used.has(code)) code += '_2';
+      used.add(code);
+      return {
+        code, no: n.no, title: n.title, sheet: `N${String(n.no).padStart(2, '0')}`,
+        enabled: true, source: '감사인' as const, assignee: null,
+        status: '미할당' as const, memo: null, sortOrder: (i + 1) * 10,
+      };
+    });
+  }
+
   async function submit() {
     if (!entityId) return onError('거래처를 고르세요.');
     setBusy(true);
     try {
       const id = await createEngagement({
-        entityId, fy, scope,
-        termNo: termNo.trim() ? Number(termNo) : null,
-        periodFrom: `${fy}-01-01`, periodTo: `${fy}-12-31`,
+        entityId, fy, scope, termNo: null,
+        periodFrom: dsd?.period?.from ?? `${fy}-01-01`,
+        periodTo: dsd?.period?.to ?? `${fy}-12-31`,
         basis, moneyUnit, seed,
+        seedRows: seed === 'file' ? rowsFromFile() : undefined,
       });
       await onDone(id);
     } catch (e) {
@@ -390,37 +436,47 @@ function NewEngagementModal({ entities, onClose, onDone, onError }: {
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 400,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
-      <div className="card" style={{ maxWidth: 560, width: '100%', maxHeight: '86vh', overflowY: 'auto', marginBottom: 0 }}>
+      <div className="card" style={{ maxWidth: 580, width: '100%', maxHeight: '88vh', overflowY: 'auto', marginBottom: 0 }}>
         <div className="chdr">새 작업 건</div>
 
         <div className="frow"><span className="fl">거래처<span className="req">*</span></span>
           <div>
-            <input className="btn-sm" style={{ width: '100%', textAlign: 'left' }} placeholder="이름이나 코드로 찾기"
-              value={q} onChange={(e) => setQ(e.target.value)} />
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input className="btn-sm" style={{ flex: 1, textAlign: 'left' }} placeholder="이름이나 코드로 찾기"
+                value={q} onChange={(e) => setQ(e.target.value)} />
+              <label style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', whiteSpace: 'nowrap' }}
+                title="회계감사 계약이 있는 거래처만 봅니다">
+                <input type="checkbox" checked={auditOnly} onChange={(e) => setAuditOnly(e.target.checked)} />{' '}
+                감사계약만 ({auditIds.size})
+              </label>
+            </div>
             <select className="btn-sm" style={{ width: '100%', marginTop: 4 }} size={6}
               value={entityId} onChange={(e) => setEntityId(e.target.value)}>
               {hits.map((e) => (
                 <option key={e.id} value={e.id}>{e.code ? `${e.code} · ` : ''}{e.name}</option>
               ))}
             </select>
+            {hits.length === 0 && (
+              <div style={{ fontSize: 'var(--fs-1)', color: 'var(--warn)', marginTop: 3 }}>
+                조건에 맞는 거래처가 없습니다. 「감사계약만」을 꺼 보세요.
+              </div>
+            )}
           </div>
         </div>
 
         <div className="frow"><span className="fl">사업연도<span className="req">*</span></span>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <input className="btn-sm" style={{ width: 78 }} type="number" value={fy}
               onChange={(e) => setFy(Number(e.target.value))} />
             <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>결산일이 속한 해</span>
             <select className="btn-sm" value={scope} onChange={(e) => setScope(e.target.value as '별도' | '연결')}>
               <option>별도</option><option>연결</option>
             </select>
-            <input className="btn-sm" style={{ width: 62 }} placeholder="기수" value={termNo}
-              onChange={(e) => setTermNo(e.target.value.replace(/[^0-9]/g, ''))} />
           </div>
         </div>
 
         <div className="frow"><span className="fl">회계기준 · 단위</span>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <select className="btn-sm" value={basis} onChange={(e) => setBasis(e.target.value as Basis)}>
               <option>K-IFRS</option><option>일반기업회계기준</option>
             </select>
@@ -433,23 +489,45 @@ function NewEngagementModal({ entities, onClose, onDone, onError }: {
           </div>
         </div>
 
-        <div className="frow"><span className="fl">주석 목록</span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div className="frow" style={{ alignItems: 'start' }}><span className="fl">주석 목록</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <label style={{ fontSize: 'var(--fs-2)' }}>
+              <input type="radio" checked={seed === 'file'} onChange={() => setSeed('file')} />{' '}
+              <b>작년 감사보고서(.dsd)에서 읽기</b>
+              <span style={{ color: 'var(--ink-3)' }}> — 첫 해에 가장 빠릅니다</span>
+              <div style={{ marginTop: 4, marginLeft: 18 }}>
+                <input type="file" accept=".dsd" style={{ fontSize: 'var(--fs-1)' }}
+                  onChange={(e) => void takeFile(e.target.files?.[0])} />
+                {reading && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}> 읽는 중…</span>}
+                {dsd && (
+                  <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)', marginTop: 3 }}>
+                    {dsd.docName || 'DSD'} · 주석 <b>{dsd.notes.length}개</b>
+                    {dsd.period ? ` · ${dsd.period.from} ~ ${dsd.period.to}` : ''}
+                    <span style={{ color: 'var(--ink-3)' }}> — 제목과 코드는 만든 뒤 화면에서 고칠 수 있습니다</span>
+                  </div>
+                )}
+                <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2 }}>
+                  파일은 브라우저 안에서만 열리고 서버로 올라가지 않습니다.
+                </div>
+              </div>
+            </label>
             <label style={{ fontSize: 'var(--fs-2)' }}>
               <input type="radio" checked={seed === 'previous'} disabled={prevFound === null}
                 onChange={() => setSeed('previous')} />{' '}
-              <b>앞 해(FY{fy - 1}) 것 복제</b>
+              앞 해(FY{fy - 1}) 것 복제
               <span style={{ color: 'var(--ink-3)' }}>
-                {prevFound === null ? ' — 앞 해 건이 없습니다' : ` — 주석 ${prevFound}개. 코드·시트·담당이 그대로 옵니다`}
+                {prevFound === null
+                  ? ` — 앱에 FY${fy - 1} 작업 건이 아직 없습니다(두 해째부터 쓸 수 있습니다)`
+                  : ` — 주석 ${prevFound}개. 코드·시트·담당이 그대로 옵니다`}
               </span>
             </label>
             <label style={{ fontSize: 'var(--fs-2)' }}>
               <input type="radio" checked={seed === 'template'} onChange={() => setSeed('template')} />{' '}
-              표준 틀 <span style={{ color: 'var(--ink-3)' }}>— {basis} {templateSize(basis)}개</span>
+              사무소 표준 틀 <span style={{ color: 'var(--ink-3)' }}>— {basis} {templateSize(basis)}개</span>
             </label>
             <label style={{ fontSize: 'var(--fs-2)' }}>
               <input type="radio" checked={seed === 'empty'} onChange={() => setSeed('empty')} />{' '}
-              비워 두기 <span style={{ color: 'var(--ink-3)' }}>— 나중에 DSD 에서 읽어 채웁니다</span>
+              비워 두기
             </label>
           </div>
         </div>
