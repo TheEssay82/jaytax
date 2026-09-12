@@ -101,6 +101,9 @@ export const MENU_GROUPS: MenuGroup[] = [
           { id: 'conf-status', label: '📊 조회현황' },
         ],
       },
+      // 감사 주석을 엑셀에서 검증하고 DSD 파일로 옮기는 자리(v3.0).
+      // 조회서 발송관리와 같은 성격이라 여기 둔다 — 감사 시즌에 쓰는 일이다.
+      { id: 'dsd', label: '📗 주석·DSD 관리' },
       { id: 'vacation', label: '🌴 휴가관리' },
       { id: 'estimate', label: '🧮 견적산출 시스템' },
     ],

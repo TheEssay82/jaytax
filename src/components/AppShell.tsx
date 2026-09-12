@@ -45,6 +45,7 @@ import ConfirmRegisterTab from './confirm/ConfirmRegisterTab';
 import ConfirmDispatchTab from './confirm/ConfirmDispatchTab';
 import ConfirmCollectTab from './confirm/ConfirmCollectTab';
 import ConfirmStatusTab from './confirm/ConfirmStatusTab';
+import DsdEngagementTab from './dsd/DsdEngagementTab';
 import InternalHome from './home/InternalHome';
 import PlaceholderTab from './common/PlaceholderTab';
 import DevNotesModal from './common/DevNotesModal';
@@ -483,6 +484,9 @@ function TabContent({
       return <ConfirmCollectTab />;
     case 'conf-status':
       return <ConfirmStatusTab />;
+    // 일반업무관리 › 주석·DSD 관리 (v3.0)
+    case 'dsd':
+      return <DsdEngagementTab />;
     case 'vacation':
       return <PlaceholderTab title="🌴 휴가관리" desc="설계 예정" />;
     case 'estimate':
