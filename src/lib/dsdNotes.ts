@@ -9,6 +9,15 @@ export type Basis = 'K-IFRS' | '일반기업회계기준';
 export type NoteSource = '감사인' | '회사';
 export type NoteStatus = '미할당' | '작업중' | '작업완료' | '작성제외';
 
+/**
+ * 새로 만드는 주석의 기본 상태.
+ *
+ * **「미할당」이 아니라 「작업중」이다.** 작년 감사보고서에서 가져오면 대부분의 주석이
+ * 올해도 그대로 쓰이므로, 목록에 올라온 순간 이미 할 일이 정해진 셈이다.
+ * 「미할당」은 담당을 아직 못 정한 예외를 표시할 때만 쓴다.
+ */
+export const DEFAULT_STATUS: NoteStatus = '작업중';
+
 export interface NoteRow {
   code: string;
   no: number | null;
@@ -108,7 +117,7 @@ export function template(basis: Basis): NoteRow[] {
     enabled: true,
     source: COMPANY_WRITTEN.has(code) ? '회사' : '감사인',
     assignee: null,
-    status: '미할당',
+    status: DEFAULT_STATUS,
     memo: null,
     sortOrder: (i + 1) * 10,
   }));
@@ -154,13 +163,16 @@ export function renumber(rows: NoteRow[]): NoteRow[] {
 }
 
 /**
- * 다음 해로 넘기기 — **코드·제목·시트·작성주체는 가져가고 진행상태는 비운다.**
+ * 다음 해로 넘기기 — **코드·제목·시트·작성주체·담당은 가져가고 진행상태만 되돌린다.**
+ *
+ * 되돌린 상태는 「미할당」이 아니라 **「작업중」**이다(DEFAULT_STATUS 참고) — 작년에 쓰던
+ * 주석은 올해도 대개 그대로 쓰이므로, 넘어온 순간 이미 할 일이 정해져 있다.
  * 담당자는 남긴다(대개 그대로이고, 바뀌면 화면에서 고치는 편이 빠르다).
  */
 export function cloneForNextYear(rows: NoteRow[]): NoteRow[] {
   return renumber(rows.map((r) => ({
     ...r,
-    status: '미할당' as NoteStatus,
+    status: DEFAULT_STATUS,
     memo: null,
   })));
 }

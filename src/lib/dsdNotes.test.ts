@@ -59,7 +59,7 @@ test('주석을 끄면 뒤가 당겨진다 — 번호를 열쇠로 못 쓰는 �
 
 test('다음 해로 넘기면 진행상태는 비우고 코드·시트는 가져간다', () => {
   const next = cloneForNextYear(rows());
-  assert.deepEqual(next.map((x) => x.status), ['미할당', '미할당', '미할당', '미할당']);
+  assert.deepEqual(next.map((x) => x.status), ['작업중', '작업중', '작업중', '작업중']);
   assert.deepEqual(next.map((x) => x.code), ['A', 'B', 'C', 'D']);
   assert.equal(next.find((x) => x.code === 'C')?.source, '회사');   // 작성주체는 유지
   assert.equal(next.find((x) => x.code === 'B')?.enabled, false);   // 꺼둔 것도 유지

@@ -16,7 +16,9 @@ import {
   listNotes, replaceNotes, findEngagement, listAuditEntityIds,
   type Engagement, type NoteRow, type Basis,
 } from '../../lib/dsdApi';
-import { template, templateSize, suggestCode, renumber, progress, defaultAuditFy } from '../../lib/dsdNotes';
+import {
+  template, templateSize, suggestCode, renumber, progress, defaultAuditFy, DEFAULT_STATUS,
+} from '../../lib/dsdNotes';
 import { readDsd, type DsdInfo } from '../../lib/dsdFile';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -103,7 +105,7 @@ export default function DsdEngagementTab() {
     while (notes.some((n) => n.code === code)) code += '_2';
     setNotes((prev) => renumber([...prev, {
       code, no: null, title: title.trim(), sheet: null, enabled: true,
-      source: '감사인', assignee: null, status: '미할당', memo: null,
+      source: '감사인', assignee: null, status: DEFAULT_STATUS, memo: null,
       sortOrder: (prev.at(-1)?.sortOrder ?? 0) + 10,
     }]));
     setDirty(true);
@@ -409,7 +411,7 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
       return {
         code, no: n.no, title: n.title, sheet: `N${String(n.no).padStart(2, '0')}`,
         enabled: true, source: '감사인' as const, assignee: null,
-        status: '미할당' as const, memo: null, sortOrder: (i + 1) * 10,
+        status: DEFAULT_STATUS, memo: null, sortOrder: (i + 1) * 10,
       };
     });
   }
