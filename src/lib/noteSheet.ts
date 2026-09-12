@@ -92,6 +92,28 @@ export interface SheetPlan {
   cells: SheetCell[];
   /** 엑셀에서 병합할 자리 — 「D4:E4」 꼴. 원본이 덮은 만큼 덮는다. */ merges?: string[];
   /** 마지막 행 */ lastRow: number;
+  /** 표마다의 구조 — ③ 검증과 ④ 되돌리기가 이걸 보고 일한다. */ tables?: TablePlan[];
+}
+
+/**
+ * 표 한 장이 엑셀 어디에 어떻게 앉았는가.
+ *
+ * 배치를 만든 쪽만 아는 것들이다 — 어느 행이 머리고, 어느 행이 합계며, 어느 열이 숫자인지.
+ * 검증할 때 이걸 다시 알아내려 들면 배치 규칙을 두 번 쓰게 되고 둘이 어긋난다.
+ */
+export interface TablePlan {
+  /** 표 머리 행(엑셀 행 번호) */ headRows: number[];
+  /** 자료 행 */ bodyRows: number[];
+  /** 합계 행 — 없으면 null */ totalRow: number | null;
+  /** 합계에 들어갈 항목 행 */ itemRows: number[];
+  /** 숫자 열(엑셀 열 번호) */ numCols: number[];
+  /** 「원 단위 (입력)」 블록의 첫 열 — 없으면 null */ srcBase: number | null;
+  /** 「단수차이」 첫 열 — 없으면 null */ diffCol: number | null;
+  /** 천원 표면 1000. 원 표면 null */ factor: number | null;
+  /** 이 표에 매긴 표시 단위 */ unit?: string;
+  /** 표지판 표인가 */ isUnitMark?: boolean;
+  /** 이월해 넣은 값 — 「E9」 → 「150,000,000」. 사람이 고쳤는지 볼 때 쓴다. */
+  carried: Map<string, string>;
 }
 
 /** 표 안의 「32,000」·「(57,670)」·「50%」를 어떻게 넣을지. 퍼센트·단위는 글자 그대로 둔다. */
@@ -167,6 +189,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     { row: 2, col: 3, text: `${note.no}. ${note.title}`, kind: 'title' },
   ];
   const merges: string[] = [];
+  const tables: TablePlan[] = [];
   // 「<전기>」 표는 같은 주석의 앞선 「<당기>」 표에서 값을 받아 온다 — 행 모양이 같을 때만.
   const prevOf = opts.roll === true ? pairCurrentTables(note) : new Map<Block, Map<number, string>[]>();
   let r = 3;
@@ -286,6 +309,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     const items = sumAt >= 0 ? bodyIdx.filter((i) => i < sumAt) : [];
     const canSum = items.length >= 2;
 
+    const carried = new Map<string, string>();
     if (dual) cells.push({ row: blankRow, col: srcBase, text: '원 단위 (입력)', kind: 'label' });
 
     b.rows.forEach((line, i) => {
@@ -324,6 +348,12 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
           delete cell.num;
         }
         cells.push(cell);
+        // 이월해 넣은 값을 적어 둔다 — ③ 에서 사람이 고쳤는지 본다. 전기는 확정된 숫자다.
+        // **수식이 걸린 칸은 빼 둔다.** 천원 표의 표시 열은 ROUND 수식이라 값이 없다 —
+        // 그 표의 숫자는 오른쪽 「원 단위 (입력)」 칸에 앉는다.
+        if (!head && !blank && val.trim() && cell.formula == null) {
+          carried.set(`${colName(at)}${rowNo[i]}`, val);
+        }
         // 병합 — 원본이 덮은 만큼 엑셀에서도 덮는다. 안 그러면 2단 머리가 어긋나 보인다.
         if (c.colspan > 1 || c.rowspan > 1) {
           merges.push(`${colName(at)}${rowNo[i]}:${colName(at + c.colspan - 1)}${rowNo[i] + c.rowspan - 1}`);
@@ -355,6 +385,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
         const num = asNumber(raw) ?? (isDash(raw) ? 0 : undefined);
         if (num == null) return;
         cells.push({ row: rowNo[i], col, text: '', num: num * factor, kind: 'num' });
+        carried.set(`${colName(col)}${rowNo[i]}`, String(num * factor));
       });
     });
 
@@ -370,10 +401,24 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
       });
     }
 
+    tables.push({
+      headRows: b.rows.map((_, i) => i).filter((i) => isHeadRow[i]).map((i) => rowNo[i]),
+      bodyRows: bodyIdx.map((i) => rowNo[i]),
+      totalRow: sumAt >= 0 ? rowNo[sumAt] : null,
+      itemRows: items.map((i) => rowNo[i]),
+      numCols: numericCol.map((c) => 3 + c),
+      srcBase: dual ? srcBase : null,
+      diffCol: dual && canSum ? diffCol : null,
+      factor,
+      unit: b.unit,
+      isUnitMark: b.isUnitMark,
+      carried,
+    });
+
     r += b.rows.length;
     prevWasTable = true;
   }
-  return { name, cells, merges, lastRow: Math.max(2, r - 1) };
+  return { name, cells, merges, lastRow: Math.max(2, r - 1), tables };
 }
 
 /**
@@ -445,7 +490,7 @@ export function layoutNewNote(no: number | null, title: string, name: string): S
     },
   ];
   for (let i = 0; i < NEW_NOTE_LINES; i += 1) cells.push({ row: 5 + i, col: 3, text: '', kind: 'input' });
-  return { name, cells, merges: [], lastRow: 4 + NEW_NOTE_LINES };
+  return { name, cells, merges: [], lastRow: 4 + NEW_NOTE_LINES, tables: [] };
 }
 
 /** 빈 주석 시트에 마련해 두는 서술 줄 수. */

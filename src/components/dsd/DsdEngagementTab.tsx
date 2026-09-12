@@ -22,6 +22,7 @@ import {
 } from '../../lib/dsdNotes';
 import { readDsd, type DsdInfo } from '../../lib/dsdFile';
 import NoteSheetExport from './NoteSheetExport';
+import NoteVerifyCard from './NoteVerifyCard';
 
 const STATUS_COLOR: Record<string, string> = {
   미할당: 'var(--ink-3)', 작업중: 'var(--info)', 작업완료: 'var(--good)', 작성제외: 'var(--ink-4)',
@@ -321,6 +322,7 @@ export default function DsdEngagementTab() {
       </div>
 
       {picked && notes.length > 0 && <NoteSheetExport eng={picked} notes={notes} />}
+      {picked && notes.length > 0 && <NoteVerifyCard notes={notes} />}
 
       {adding && (
         <NewEngagementModal

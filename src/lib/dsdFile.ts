@@ -42,3 +42,16 @@ export async function readDsd(file: File): Promise<DsdInfo> {
     editorVersion: /editver="([^"]*)"/.exec(meta)?.[1] ?? '',
   };
 }
+
+/**
+ * .dsd 안의 본문 XML.
+ *
+ * `readDsd` 는 주석 **목록**만 준다. 블록까지 읽으려면 본문이 필요하다 — ② 만들기와
+ * ③ 검증이 둘 다 쓴다.
+ */
+export async function readContents(file: File): Promise<string> {
+  const files = unzipSync(new Uint8Array(await file.arrayBuffer()));
+  const body = files['contents.xml'];
+  if (!body) throw new Error('DSD 안에 본문(contents.xml)이 없습니다.');
+  return strFromU8(body);
+}

@@ -7,9 +7,10 @@
 //    다시 쓰지 않는다 — 명진 정산표를 exceljs 로 왕복시키면 정의된 이름 4,880개가 337개로
 //    줄어든다(2026-09-12 실측). ZIP 안에서 시트 부품만 더한다(lib/xlsxInject.ts).
 import { useState } from 'react';
-import { readDsd } from '../../lib/dsdFile';
+import { readDsd, readContents } from '../../lib/dsdFile';
 import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
-import { layoutNote, layoutNewNote, layoutIndex, sheetName } from '../../lib/noteSheet';
+import { layoutIndex } from '../../lib/noteSheet';
+import { pickNotes, planNotes } from '../../lib/notePick';
 import { injectSheets } from '../../lib/xlsxInject';
 import type { Engagement, NoteRow } from '../../lib/dsdApi';
 
@@ -28,7 +29,7 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
     setSay(null); setDone(null);
     try {
       const info = await readDsd(f);
-      const xml = await unzipContents(f);
+      const xml = await readContents(f);
       const bs = parseNoteBlocks(xml);
       setBlocks(bs);
       setDsdName(`${f.name} · ${info.docName || 'DSD'} · 주석 ${bs.length}개`);
@@ -45,40 +46,15 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
     setWtb({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
   }
 
-  /**
-   * 켜 둔 주석만, ①에서 정한 제목·차례대로.
-   *
-   * **작년 보고서에 없는 주석은 빈 서식으로 만든다.** 끈 주석은 아예 나오지 않는다 —
-   * 주석을 넣고 빼는 일은 ①에서 정하고 ②가 그대로 따른다(사용자 확정 2026-09-13).
-   */
-  function pickBlocks(): { picked: { note: NoteBlocks | null; title: string }[]; fresh: string[] } {
-    const byNo = new Map(blocks!.map((b) => [b.no, b]));
-    const byTitle = new Map(blocks!.map((b) => [b.title.replace(/\s/g, ''), b]));
-    const picked: { note: NoteBlocks | null; title: string }[] = [];
-    const fresh: string[] = [];
-    for (const n of notes.filter((x) => x.enabled)) {
-      const hit = byTitle.get(n.title.replace(/\s/g, '')) ?? (n.no != null ? byNo.get(n.no) : undefined);
-      picked.push({ note: hit ?? null, title: n.title });
-      if (!hit) fresh.push(n.title);
-    }
-    return { picked, fresh };
-  }
-
   function make() {
     if (!blocks) return setSay('작년 감사보고서(.dsd)를 먼저 고르세요.');
     if (!wtb) return setSay('정산표 엑셀(.xlsx)을 고르세요.');
     setBusy(true); setSay(null);
     try {
-      const { picked, fresh } = pickBlocks();
+      const picked = pickNotes(blocks, notes);
       if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 에서 만들 주석을 골라 주세요.');
-
-      const used = new Set<string>();
-      const plans = picked.map(({ note, title }, i) => {
-        const name = sheetName(`N${String(i + 1).padStart(2, '0')} ${title}`, used);
-        return note
-          ? layoutNote({ ...note, title }, name, { roll })
-          : layoutNewNote(i + 1, title, name);
-      });
+      const fresh = picked.filter((p) => !p.note).map((p) => p.title);
+      const plans = planNotes(picked, roll);
       plans.push(layoutIndex(picked.map(({ title }, i) => ({
         no: i + 1, title, enabled: true, sheet: plans[i].name,
       }))));
@@ -174,15 +150,6 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
       </div>
     </div>
   );
-}
-
-/** .dsd 안의 본문 XML — readDsd 는 목록만 주므로 블록까지 읽으려면 본문이 필요하다. */
-async function unzipContents(f: File): Promise<string> {
-  const { unzipSync, strFromU8 } = await import('fflate');
-  const files = unzipSync(new Uint8Array(await f.arrayBuffer()));
-  const body = files['contents.xml'];
-  if (!body) throw new Error('DSD 안에 본문(contents.xml)이 없습니다.');
-  return strFromU8(body);
 }
 
 function download(bytes: Uint8Array, name: string) {
