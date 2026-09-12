@@ -329,3 +329,35 @@ test('주석 목록 시트 — 정산표의 「주석번호·주석제목·사�
   assert.equal(at(4, 2), undefined, '꺼진 주석은 번호가 없다');
   assert.equal(p.lastRow, 4);
 });
+
+// ── 단위 표지판은 자료가 아니다 ─────────────────────────────────
+// 「(단위: 원)」은 빈 칸 하나 + 단위 글자 하나짜리 표로 들어온다. 전기 열이 없으니
+// 「통째로 올해 자료」 규칙에 걸려 글자가 지워지고 노랗게 칠해졌다 — 명진 15. 부가가치계산.
+const UNIT_MARK: NoteBlocks = {
+  no: 15, title: '부가가치계산에 필요한 사항',
+  blocks: [
+    { kind: 'table', isUnitMark: true, unit: '원', rows: [line('TD', 700, '', '(단위: 원)')] },
+    {
+      kind: 'table', unit: '원',
+      rows: [
+        line('TH', 710, '구 분', '당 기', '전 기'),
+        line('TD', 720, '급여', '150,000,000', '150,000,000'),
+      ],
+    },
+  ],
+};
+
+test('단위 표지판은 이월해도 지우지 않는다 — 노랗게 칠하지도 않는다', () => {
+  const plan = layoutNote(UNIT_MARK, 'N15', { roll: true });
+  const at = (row: number, col: number) => plan.cells.find((c) => c.row === row && c.col === col);
+  // 표지판 줄 — 글자가 그대로 있고 입력칸이 아니다
+  const mark = plan.cells.find((c) => c.text === '(단위: 원)');
+  assert.ok(mark, '「(단위: 원)」이 사라졌다');
+  assert.notEqual(mark!.kind, 'input');
+  assert.equal(plan.cells.filter((c) => c.kind === 'input' && c.row === mark!.row).length, 0);
+  // 정작 자료 표는 그대로 이월된다
+  const body = plan.cells.filter((c) => c.kind === 'input');
+  assert.equal(body.length, 1, '자료 표의 당기 칸 하나만 비어야 한다');
+  assert.equal(body[0].row, mark!.row + 3);        // 표지판 · 빈 줄 · 머리 · 본문
+  assert.equal(at(body[0].row, 5)?.text, '150,000,000');   // 전기로 내려왔다
+});

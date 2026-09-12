@@ -188,6 +188,10 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     }
 
     // ── 표 ────────────────────────────────────────────────────────
+    // **표지판은 이월하지 않는다.** 「(단위: 원)」·「<당기>」는 자료가 아니라 안내판이다.
+    // 이것도 「전기 열이 없는 표」라서 통째로 비우는 규칙에 걸려 단위 글자가 지워지고
+    // 노랗게 칠해졌다 — 명진 15. 부가가치계산(2026-09-13 지적).
+    const roll = opts.roll === true && !b.isUnitMark;
     r += 1;                                          // 표 앞에 빈 줄
     const blankRow = r - 1;
     const width = Math.max(gridWidth(b.rows), 1);
@@ -254,19 +258,19 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
       }
     });
     const blankCols = new Set<number>(
-      opts.roll === true
+      roll
         ? [...new Set([...numericCol, ...looseCur])].filter((c) => !priSet.has(c))
         : [],
     );
     // **전기 열이 하나도 없는 표는 통째로 올해 자료다.** 담보제공·보증 내역이 그렇다 —
     // 제공받은자·내용·성격까지 해마다 새로 적는다. 첫 열(구분)만 남기고 비운다.
     // 정책 주석은 빼 둔다 — 내용연수처럼 해마다 안 바뀌는 것이 들어 있다(2026-09-13 지적).
-    if (opts.roll === true && priCols.length === 0 && !isPolicyNote(note.title)) {
+    if (roll && priCols.length === 0 && !isPolicyNote(note.title)) {
       for (let c = 1; c < width; c += 1) blankCols.add(c);
     }
     // 전기 표(「<전기>」 표지판)는 같은 주석의 당기 표에서 값을 받아 온다.
-    const fromCurrent = opts.roll === true ? prevOf.get(b) : undefined;
-    const grid = opts.roll !== true ? orig
+    const fromCurrent = roll ? prevOf.get(b) : undefined;
+    const grid = !roll ? orig
       : fromCurrent ?? rollGrid(orig, pairs, false, []);
     if (fromCurrent) blankCols.clear();
 
