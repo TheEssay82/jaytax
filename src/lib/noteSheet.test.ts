@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  asNumber, isDash, unitFactor, isTotalLabel,
+  asNumber, isDash, unitFactor, isTotalLabel, periodOfHead, bumpTerm, rollRows,
   sheetName, addrOf, parseAddr, layoutNote, layoutIndex,
 } from './noteSheet.ts';
 import type { NoteBlocks } from './dsdBlocks.ts';
@@ -106,7 +106,7 @@ test('천원 표 — 원을 원본으로 두고 표시는 ROUND 로 유도한다
   const p = layoutNote(THOUSAND, 'x');
   const at = (row: number, col: number) => p.cells.find((c) => c.row === row && c.col === col);
   // 표는 4행부터: 4 머리 · 5 보유현금 · 6 보통예금 · 7 합계
-  assert.equal(at(5, 4)?.formula, 'ROUND(F5/1000,0)', '표시는 원 칸에서 유도');
+  assert.equal(at(5, 4)?.formula, 'IF(F5="","",ROUND(F5/1000,0))', '표시는 원 칸에서 유도 · 빈칸은 빈칸으로');
   assert.equal(at(5, 4)?.num, undefined, '수식 칸에는 값을 같이 넣지 않는다');
   assert.equal(at(5, 6)?.num, 2100000, '원 단위 블록은 천원 × 1000');
   assert.equal(at(4, 6)?.text, '당기말', '원 블록도 머리글을 단다');
@@ -116,7 +116,7 @@ test('천원 표 — 원을 원본으로 두고 표시는 ROUND 로 유도한다
 test('합계는 표시값끼리 더한다(㉮) · 단수차이를 옆에 보여 준다(㉯−㉮)', () => {
   const p = layoutNote(THOUSAND, 'x');
   const at = (row: number, col: number) => p.cells.find((c) => c.row === row && c.col === col);
-  assert.equal(at(7, 4)?.formula, 'SUM(D5:D6)', '보는 사람이 더해서 맞아야 한다');
+  assert.equal(at(7, 4)?.formula, 'IF(COUNT(D5:D6)=0,"",SUM(D5:D6))', '보는 사람이 더해서 맞아야 한다 · 아직 안 채웠으면 빈칸');
   assert.equal(at(7, 6)?.formula, 'SUM(F5:F6)', '원 합계도 따라온다');
   assert.equal(at(7, 8)?.formula, 'ROUND(F7/1000,0)-D7', '단수차이');
   assert.equal(at(4, 8)?.text, '단수차이');
@@ -136,6 +136,59 @@ test('원 단위 표는 그대로 둔다 — 수식을 걸지 않는다', () => 
   const p = layoutNote(won, 'x');
   assert.equal(p.cells.some((c) => c.formula), false);
   assert.equal(p.cells.find((c) => c.row === 5 && c.col === 4)?.num, 2100);
+});
+
+test('머리글에서 당기·전기를 가른다 — 「당기순손익」은 아니다', () => {
+  assert.equal(periodOfHead('당기'), '당기');
+  assert.equal(periodOfHead('당 기 말'), '당기');
+  assert.equal(periodOfHead('제12(당)기'), '당기');
+  assert.equal(periodOfHead('전기말'), '전기');
+  assert.equal(periodOfHead('당기순손익'), null);
+  assert.equal(periodOfHead('당기말현재연이자율(%)'), null);
+  assert.equal(periodOfHead('구분'), null);
+});
+
+test('기수는 한 해 올린다', () => {
+  assert.equal(bumpTerm('제12(당)기'), '제13(당)기');
+  assert.equal(bumpTerm('제 11 (전)기'), '제12(전)기');
+  assert.equal(bumpTerm('당기말'), '당기말', '기수가 없으면 그대로');
+});
+
+test('이월 — 전기 ← 당기, 당기는 빈칸', () => {
+  const rows = [
+    [{ text: '구분', tag: 'TH' }, { text: '당기말', tag: 'TH' }, { text: '전기말', tag: 'TH' }],
+    [{ text: '보유현금', tag: 'TD' }, { text: '2,100', tag: 'TD' }, { text: '914', tag: 'TD' }],
+  ];
+  const out = rollRows(rows, [[1, 2]], false, [1]);
+  assert.deepEqual(out[0], ['구분', '당기말', '전기말'], '머리글은 손대지 않는다');
+  assert.deepEqual(out[1], ['보유현금', '', '2,100'], '당기 값이 전기로 가고 당기는 빈칸');
+});
+
+test('이월 — 짝이 없으면 당기 열만 비운다', () => {
+  const rows = [
+    [{ text: '구분', tag: 'TH' }, { text: '당기', tag: 'TH' }],
+    [{ text: '기초', tag: 'TD' }, { text: '1,000', tag: 'TD' }],
+  ];
+  assert.deepEqual(rollRows(rows, [], false, [1])[1], ['기초', '']);
+});
+
+test('이월한 시트 — 당기 입력칸은 노랗게 비고 전기는 값이 든다', () => {
+  const p = layoutNote({
+    no: 3, title: '현금',
+    blocks: [{
+      kind: 'table', unit: '천원',
+      rows: [
+        [{ slot: 1, text: '구분', tag: 'TH' }, { slot: 2, text: '당기말', tag: 'TH' }, { slot: 3, text: '전기말', tag: 'TH' }],
+        [{ slot: 4, text: '보유현금', tag: 'TD' }, { slot: 5, text: '2,100', tag: 'TD' }, { slot: 6, text: '914', tag: 'TD' }],
+      ],
+    }],
+  }, 'x', { roll: true });
+  const at = (row: number, col: number) => p.cells.find((c) => c.row === row && c.col === col);
+  // 표는 4행부터(머리) · 5행 자료 / 원 블록은 G(7)·H(8)
+  assert.equal(at(5, 7)?.kind, 'input', '당기 원 칸은 채워 넣을 자리');
+  assert.equal(at(5, 7)?.num, undefined);
+  assert.equal(at(5, 8)?.num, 2100000, '전기 원 칸에 작년 당기 값이 들어온다');
+  assert.equal(at(5, 4)?.formula, 'IF(G5="","",ROUND(G5/1000,0))', '빈 입력칸은 빈칸으로 보인다');
 });
 
 test('시트 이름 — 금지 글자와 31자 제한, 겹치면 번호', () => {

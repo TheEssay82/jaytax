@@ -17,6 +17,8 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
   const [blocks, setBlocks] = useState<NoteBlocks[] | null>(null);
   const [dsdName, setDsdName] = useState('');
   const [wtb, setWtb] = useState<{ name: string; bytes: Uint8Array } | null>(null);
+  // 기본은 **이월**이다 — ①에서 만든 건은 올해이고 씨앗은 작년 보고서이기 때문이다.
+  const [roll, setRoll] = useState(true);
   const [busy, setBusy] = useState(false);
   const [say, setSay] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -67,7 +69,7 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
 
       const used = new Set<string>();
       const plans = picked.map(({ note, title }, i) =>
-        layoutNote({ ...note, title }, sheetName(`N${String(i + 1).padStart(2, '0')} ${title}`, used)));
+        layoutNote({ ...note, title }, sheetName(`N${String(i + 1).padStart(2, '0')} ${title}`, used), { roll }));
       plans.push(layoutIndex(picked.map(({ title }, i) => ({
         no: i + 1, title, enabled: true, sheet: plans[i].name,
       }))));
@@ -75,7 +77,9 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
       const out = injectSheets(wtb.bytes, plans);
       const base = wtb.name.replace(/\.xlsx$/i, '');
       download(out, `${base}_주석시트.xlsx`);
+      const yellow = plans.flatMap((p) => p.cells).filter((c) => c.kind === 'input').length;
       setDone(`주석 시트 ${picked.length}장과 목록 한 장을 얹었습니다.`
+        + (roll ? ` 당기 값을 전기로 밀고 채워 넣을 칸 ${yellow}개를 노랗게 두었습니다.` : '')
         + (missing.length ? ` 다만 ${missing.length}개는 DSD 에서 못 찾아 건너뛰었습니다 — ${missing.join(' · ')}` : ''));
     } catch (e) {
       setSay(e instanceof Error ? e.message : '만들지 못했습니다.');
@@ -119,6 +123,17 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
             </div>
           )}
         </div>
+      </div>
+
+      <div className="frow"><span className="fl">다음 해로 이월</span>
+        <label style={{ fontSize: 'var(--fs-2)' }}>
+          <input type="checkbox" checked={roll} onChange={(e) => setRoll(e.target.checked)} />{' '}
+          <b>당기 값을 전기로 밀고, 당기 칸은 비워 노랗게</b>
+          <span style={{ color: 'var(--ink-3)' }}> — 노란 칸이 올해 채워 넣을 자리입니다(대개 재무제표에서 링크)</span>
+          <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2 }}>
+            끄면 작년 보고서를 그대로 옮깁니다 — 작년 것을 확인할 때 씁니다.
+          </div>
+        </label>
       </div>
 
       <div className="frow"><span className="fl">만들 주석</span>

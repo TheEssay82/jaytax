@@ -14,7 +14,7 @@
 import type { NoteBlocks } from './dsdBlocks';
 
 /** 어떤 서식으로 그릴 칸인가 — xlsxStyles 의 이름과 같다. */
-export type CellKind = 'label' | 'title' | 'para' | 'head' | 'text' | 'num';
+export type CellKind = 'label' | 'title' | 'para' | 'head' | 'text' | 'num' | 'input';
 
 export interface SheetCell {
   /** 1부터 */ row: number;
@@ -51,6 +51,21 @@ export function unitFactor(unit: string | undefined): number | null {
   if (unit === '천원') return 1000;
   if (unit === '백만원') return 1000000;
   return null;
+}
+
+/** 머리글이 「당기」쪽인가. 「당기순손익」처럼 다른 말은 아니다 — 딱 맞을 때만. */
+const CUR_HEAD = /^(당기|당기말|당분기|제\d+\(당\)기말?)$/;
+const PRI_HEAD = /^(전기|전기말|전분기|제\d+\(전\)기말?)$/;
+export function periodOfHead(text: string): '당기' | '전기' | null {
+  const t = (text ?? '').replace(/\s/g, '');
+  if (CUR_HEAD.test(t)) return '당기';
+  if (PRI_HEAD.test(t)) return '전기';
+  return null;
+}
+
+/** 「제12(당)기」의 기수를 한 해 올린다. 기수가 없으면 그대로. */
+export function bumpTerm(text: string): string {
+  return (text ?? '').replace(/제\s*(\d+)\s*\(/g, (_, n) => `제${Number(n) + 1}(`);
 }
 
 /**
@@ -124,7 +139,18 @@ export function parseAddr(s: unknown): { slot: number; part: number | null } | n
  *
  * 문단은 붙여서 한 줄씩 놓고, **표 앞에는 빈 줄을 한 줄** 둔다 — 정산표가 그렇게 돼 있다.
  */
-export function layoutNote(note: NoteBlocks, name: string): SheetPlan {
+/**
+ * 다음 해로 **이월**할 때 쓰는 설정.
+ *
+ * 감사조서의 관행 그대로다 — 당기 칸의 값을 전기로 밀고, 당기 칸은 **비워서 노랗게** 둔다.
+ * 「채워 넣어라」는 표시다. 대부분의 주석은 재무제표에서 링크로 끌어오므로, 어디를 채워야
+ * 하는지가 눈에 보여야 한다(사용자 설계 2026-09-13).
+ */
+export interface LayoutOptions {
+  /** 참이면 이월한다. 새 사업연도 시트를 만들 때 쓴다. */ roll?: boolean;
+}
+
+export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions = {}): SheetPlan {
   const cells: SheetCell[] = [
     { row: 2, col: 2, text: '주석명', kind: 'label' },
     { row: 2, col: 3, text: `${note.no}. ${note.title}`, kind: 'title' },
@@ -149,6 +175,7 @@ export function layoutNote(note: NoteBlocks, name: string): SheetPlan {
       const blankRow = r - 1;
       // **어느 열이 숫자 열인가**를 먼저 본다. 그 열의 「-」는 0 으로 넣어야 합계가 잡힌다.
       // 글자 열의 「-」까지 0 으로 바꾸면 구분 이름이 숫자가 되어 버린다.
+      // 숫자 열은 **이월 전 원본**으로 정한다 — 이월하면 당기 칸이 비어 판정이 흔들린다.
       const numericCol: number[] = [];
       for (const line of b.rows) {
         if (line.every((c) => c.tag === 'TH')) continue;
@@ -158,6 +185,30 @@ export function layoutNote(note: NoteBlocks, name: string): SheetPlan {
       }
       numericCol.sort((a, x) => a - x);
 
+      // ── 이월: 어느 열이 당기이고 어느 열이 전기인가 ───────────────
+      const headLine = b.rows.find((line) => line.length > 0 && line.every((c) => c.tag === 'TH'));
+      const curCols: number[] = [];
+      const priCols: number[] = [];
+      if (headLine) {
+        headLine.forEach((c, j) => {
+          const p = periodOfHead(c.text);
+          if (p === '당기') curCols.push(j);
+          if (p === '전기') priCols.push(j);
+        });
+      }
+      // 당기 → 전기로 밀 짝. 개수가 같을 때만 — 다르면 어느 것이 어느 것인지 알 수 없다.
+      const pairs: [number, number][] = curCols.length === priCols.length
+        ? curCols.map((c, i) => [c, priCols[i]] as [number, number]) : [];
+      // 이 표 전체가 당기 자료인가(「<당기>」 표지판) — 그러면 통째로 비운다.
+      const wholeCurrent = opts.roll === true && b.period === '당기' && pairs.length === 0;
+      const rolled = opts.roll === true
+        ? rollRows(b.rows, pairs, wholeCurrent, curCols)
+        : b.rows.map((line) => line.map((c) => c.text));
+
+      // 비워 둘(= 채워 넣어야 할) 열
+      const blankCols = new Set<number>(
+        opts.roll === true ? (pairs.length ? pairs.map(([c]) => c) : (wholeCurrent ? numericCol : curCols)) : [],
+      );
       const factor = b.isUnitMark ? null : unitFactor(b.unit);
       const dual = factor != null && numericCol.length > 0;
       const width = Math.max(...b.rows.map((x) => x.length), 1);
@@ -183,21 +234,26 @@ export function layoutNote(note: NoteBlocks, name: string): SheetPlan {
         const head = isHeadRow[i];
         cells.push({ row: rowNo[i], col: 1, text: line.map((c) => addrOf(c.slot)).join(' ') });
         line.forEach((c, j) => {
+          const val = head ? bumpTerm(c.text) : (rolled[i][j] ?? '');
+          const blank = !head && blankCols.has(j);
           // 「-」는 재무제표에서 0 이다. 숫자 0 으로 넣고 화면에는 숫자꼴이 「-」로 보여 준다
           // (#,##0;(#,##0);"-"). 글자로 두면 합계·검증식이 안 잡힌다(2026-09-13 지적).
-          const num = !head && numericCol.includes(j) && isDash(c.text) ? 0 : asNumber(c.text);
+          const num = blank ? undefined
+            : (!head && numericCol.includes(j) && isDash(val) ? 0 : asNumber(val));
           const cell: SheetCell = {
-            row: rowNo[i], col: 3 + j, text: c.text, num,
-            kind: head ? 'head' : num != null ? 'num' : 'text',
+            row: rowNo[i], col: 3 + j, text: blank ? '' : val, num,
+            kind: head ? 'head' : blank ? 'input' : num != null ? 'num' : 'text',
           };
-          if (!head && num != null && dual) {
+          if (!head && (num != null || blank) && dual) {
             const k = numericCol.indexOf(j);
             const src = `${colName(srcBase + k)}${rowNo[i]}`;
             // 합계 행은 **표시값끼리 더한다**(㉮) — 보는 사람이 더해서 맞아야 한다.
             // 원 합계를 반올림한 값(㉯)과의 차이는 옆에 「단수차이」로 따로 보여 준다.
+            const rng = `${colName(3 + j)}${rowNo[items[0]]}:${colName(3 + j)}${rowNo[items[items.length - 1]]}`;
             cell.formula = canSum && i === sumAt
-              ? `SUM(${colName(3 + j)}${rowNo[items[0]]}:${colName(3 + j)}${rowNo[items[items.length - 1]]})`
-              : `ROUND(${src}/${factor},0)`;
+              ? `IF(COUNT(${rng})=0,"",SUM(${rng}))`
+              : `IF(${src}="","",ROUND(${src}/${factor},0))`;   // 빈 입력칸은 빈칸으로 둔다
+            cell.kind = 'num';
             delete cell.num;
           }
           cells.push(cell);
@@ -208,10 +264,23 @@ export function layoutNote(note: NoteBlocks, name: string): SheetPlan {
         numericCol.forEach((j, k) => {
           const col = srcBase + k;
           if (head) {
-            cells.push({ row: rowNo[i], col, text: line[j]?.text ?? '', kind: 'head' });
+            cells.push({ row: rowNo[i], col, text: bumpTerm(line[j]?.text ?? ''), kind: 'head' });
             return;
           }
-          const num = asNumber(line[j]?.text ?? '') ?? (isDash(line[j]?.text ?? '') ? 0 : undefined);
+          // 합계 행은 비우지 않는다 — 항목만 채우면 합계가 저절로 따라와야 한다.
+          if (blankCols.has(j) && !(canSum && i === sumAt)) {
+            // **채워 넣을 자리** — 노랗게 비워 둔다. 대개 재무제표에서 링크로 끌어온다.
+            cells.push({ row: rowNo[i], col, text: '', kind: 'input' });
+            return;
+          }
+          if (canSum && i === sumAt) {
+            cells.push({
+              row: rowNo[i], col, text: '', kind: 'num',
+              formula: `SUM(${colName(col)}${rowNo[items[0]]}:${colName(col)}${rowNo[items[items.length - 1]]})`,
+            });
+            return;
+          }
+          const num = asNumber(rolled[i][j] ?? '') ?? (isDash(rolled[i][j] ?? '') ? 0 : undefined);
           if (num == null) return;
           const cell: SheetCell = { row: rowNo[i], col, text: '', num: num * factor, kind: 'num' };
           if (canSum && i === sumAt) {
@@ -241,6 +310,31 @@ export function layoutNote(note: NoteBlocks, name: string): SheetPlan {
     }
   }
   return { name, cells, lastRow: Math.max(2, r - 1) };
+}
+
+/**
+ * 값을 한 해 민다 — **전기 ← 당기, 당기는 빈칸.**
+ *
+ * 짝지어진 열이 있으면 그 열끼리 옮기고, 없으면(표 전체가 당기 자료면) 숫자 칸을 비운다.
+ * 머리행은 손대지 않는다 — 「당기말」·「전기말」은 해가 바뀌어도 그대로인 이름이다.
+ */
+export function rollRows(
+  rows: { text: string; tag: string }[][],
+  pairs: [number, number][],
+  wholeCurrent: boolean,
+  curCols: number[],
+): string[][] {
+  return rows.map((line) => {
+    const head = line.length > 0 && line.every((c) => c.tag === 'TH');
+    const out = line.map((c) => c.text);
+    if (head) return out;
+    for (const [cur, pri] of pairs) out[pri] = line[cur]?.text ?? '';
+    for (const [cur] of pairs) out[cur] = '';
+    if (!pairs.length) for (const c of wholeCurrent ? out.map((_, i) => i) : curCols) {
+      if (asNumber(line[c]?.text ?? '') != null || isDash(line[c]?.text ?? '')) out[c] = '';
+    }
+    return out;
+  });
 }
 
 /** 주석 목록 시트 — 정산표가 이미 쓰던 「주석번호 · 주석제목 · 사용여부」 그대로. */

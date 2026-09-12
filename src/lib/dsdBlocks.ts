@@ -45,6 +45,8 @@ export type Block =
     unit?: string;
     /** 이 표 자체가 「(단위: …)」 표지판인가. */
     isUnitMark?: boolean;
+    /** 이 표가 당기 자료인가 전기 자료인가 — 「<당기>」 표지판에서 온다. */
+    period?: '당기' | '전기';
   };
 
 /** 표의 칸 하나. `tag` 가 TH 면 표 머리다 — 엑셀에서 음영을 줄 자리다. */
@@ -99,6 +101,20 @@ export function headingBody(text: string, title: string): { lead: string; body: 
 
 export interface NoteBlocks { no: number; title: string; blocks: Block[] }
 
+/**
+ * 표지판에 적힌 **기간**. 「<당기>」·「(전기)」처럼 표 위에 놓인다.
+ *
+ * 알티스트 N10 퇴직급여가 그렇다 — 같은 표를 「<당기>」와 「<전기>」로 두 벌 둔다.
+ * 이월할 때 어느 표를 비우고 어느 표에 옮겨 담을지 가르는 열쇠다.
+ */
+export function periodMark(rows: TableCell[][]): '당기' | '전기' | null {
+  const flat = rows.flat().map((c) => c.text).join(' ');
+  if (flat.length > 40) return null;
+  if (/[<〈(（[]\s*당\s*기\s*[>〉)）\]]/.test(flat)) return '당기';
+  if (/[<〈(（[]\s*전\s*기\s*[>〉)）\]]/.test(flat)) return '전기';
+  return null;
+}
+
 /** 「(단위: 천원)」 표지판이면 그 단위를, 아니면 null. */
 const UNIT_MARK = /\(\s*단\s*위\s*[:：]?\s*([^)]{1,30})\)/;
 export function unitMark(rows: TableCell[][]): string | null {
@@ -124,11 +140,19 @@ export function unitMark(rows: TableCell[][]): string | null {
 function markUnits(notes: NoteBlocks[]): void {
   for (const n of notes) {
     let cur: string | undefined;
+    let per: '당기' | '전기' | undefined;
     for (const b of n.blocks) {
       if (b.kind !== 'table') continue;
       const u = unitMark(b.rows);
-      if (u) { cur = u; b.isUnitMark = true; b.unit = u; continue; }
+      const p = periodMark(b.rows);
+      if (u || p) {
+        if (u) { cur = u; b.unit = u; }
+        if (p) per = p;
+        b.isUnitMark = true;
+        continue;
+      }
       if (cur) b.unit = cur;
+      if (per) b.period = per;
     }
   }
 }
