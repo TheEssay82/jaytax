@@ -16,7 +16,7 @@ import {
   listNotes, replaceNotes, findEngagement, listAuditEntityIds,
   type Engagement, type NoteRow, type Basis,
 } from '../../lib/dsdApi';
-import { template, templateSize, suggestCode, renumber, progress } from '../../lib/dsdNotes';
+import { template, templateSize, suggestCode, renumber, progress, defaultAuditFy } from '../../lib/dsdNotes';
 import { readDsd, type DsdInfo } from '../../lib/dsdFile';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -343,11 +343,10 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
   onDone: (id: string) => void | Promise<void>;
   onError: (m: string) => void;
 }) {
-  const thisYear = new Date().getFullYear();
   const [q, setQ] = useState('');
   const [auditOnly, setAuditOnly] = useState(true);
   const [entityId, setEntityId] = useState('');
-  const [fy, setFy] = useState(thisYear - 1);
+  const [fy, setFy] = useState(defaultAuditFy());
   const [scope, setScope] = useState<'별도' | '연결'>('별도');
   const [basis, setBasis] = useState<Basis>('K-IFRS');
   const [moneyUnit, setMoneyUnit] = useState<'천원' | '원'>('천원');
@@ -356,6 +355,10 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
   const [dsd, setDsd] = useState<DsdInfo | null>(null);
   const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState(false);
+  // **이 창 안에서 말한다.** 부모 쪽 오류 카드는 이 창 뒤에 가려 보이지 않는다 —
+  // 그래서 「만들기를 눌러도 아무 반응이 없다」로 보였다(2026-09-12).
+  const [say, setSay] = useState<string | null>(null);
+  function tell(m: string) { setSay(m); onError(m); }
 
   // 감사계약(회계감사)이 있는 거래처만 — 이 시스템이 다루는 대상이다.
   const hits = useMemo(() => {
@@ -387,10 +390,10 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
       const info = await readDsd(f);
       setDsd(info);
       setSeed('file');
-      if (!info.notes.length) onError('이 파일에서 주석을 찾지 못했습니다. 다른 씨앗을 고르거나 나중에 채우세요.');
+      if (!info.notes.length) tell('이 파일에서 주석을 찾지 못했습니다. 다른 씨앗을 고르거나 나중에 채우세요.');
     } catch (e) {
       setDsd(null);
-      onError(e instanceof Error ? e.message : '파일을 읽지 못했습니다.');
+      tell(e instanceof Error ? e.message : '파일을 읽지 못했습니다.');
     } finally {
       setReading(false);
     }
@@ -412,7 +415,9 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
   }
 
   async function submit() {
-    if (!entityId) return onError('거래처를 고르세요.');
+    setSay(null);
+    if (!entityId) return tell('먼저 거래처를 고르세요 — 아래 목록에서 한 줄을 누르면 됩니다.');
+    if (seed === 'file' && !dsd) return tell('작년 감사보고서(.dsd) 파일을 고르거나, 다른 씨앗을 고르세요.');
     setBusy(true);
     try {
       const id = await createEngagement({
@@ -425,7 +430,7 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
       await onDone(id);
     } catch (e) {
       const m = e instanceof Error ? e.message : '만들지 못했습니다.';
-      onError(m.includes('duplicate') ? '같은 거래처·연도·구분의 건이 이미 있습니다.' : m);
+      tell(m.includes('duplicate') ? `같은 거래처의 FY${fy} ${scope} 건이 이미 있습니다.` : m);
     } finally {
       setBusy(false);
     }
@@ -461,6 +466,11 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
                 조건에 맞는 거래처가 없습니다. 「감사계약만」을 꺼 보세요.
               </div>
             )}
+            <div style={{ fontSize: 'var(--fs-1)', marginTop: 3, color: entityId ? 'var(--good)' : 'var(--warn)' }}>
+              {entityId
+                ? `고른 거래처 · ${entities.find((x) => x.id === entityId)?.name ?? ''}`
+                : '아직 고르지 않았습니다 — 위 목록에서 한 줄을 누르세요.'}
+            </div>
           </div>
         </div>
 
@@ -532,9 +542,16 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
           </div>
         </div>
 
+        {say && (
+          <div style={{
+            marginTop: 10, padding: '8px 11px', borderRadius: 'var(--r-sm)',
+            background: 'var(--bad-bg)', color: 'var(--bad)', fontSize: 'var(--fs-2)',
+          }}>{say}</div>
+        )}
+
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 12 }}>
           <button className="btn-s" onClick={onClose}>그만두기</button>
-          <button className="btn-p" disabled={busy || !entityId} onClick={() => void submit()}>
+          <button className="btn-p" disabled={busy} onClick={() => void submit()}>
             {busy ? '만드는 중…' : '만들기'}
           </button>
         </div>

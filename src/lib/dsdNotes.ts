@@ -165,6 +165,16 @@ export function cloneForNextYear(rows: NoteRow[]): NoteRow[] {
   })));
 }
 
+/**
+ * 지금 준비하는 감사의 **대상 연도**.
+ *
+ * 12월 결산 감사는 이듬해 1~3월에 수행한다. 그래서 상반기에는 **직전 결산**(작년)을 다루고 있고,
+ * 하반기에는 **올해 결산**을 준비한다. 2026년 9월이면 다음 대상은 2026년 12월 결산이다.
+ */
+export function defaultAuditFy(today: Date = new Date()): number {
+  return today.getMonth() + 1 <= 6 ? today.getFullYear() - 1 : today.getFullYear();
+}
+
 /** 결산연도에서 기본 회계기간 — 1월 1일부터 12월 31일까지. 12월 결산이 아니면 화면에서 고친다. */
 export function defaultPeriod(fy: number): { from: string; to: string } {
   return { from: `${fy}-01-01`, to: `${fy}-12-31` };

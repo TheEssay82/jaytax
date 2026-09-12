@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   template, templateSize, suggestCode, renumber, cloneForNextYear,
-  defaultPeriod, termLabel, progress, type NoteRow,
+  defaultPeriod, defaultAuditFy, termLabel, progress, type NoteRow,
 } from './dsdNotes.ts';
 
 test('표준 틀 — 실제 보고서에서 뽑은 개수', () => {
@@ -63,6 +63,14 @@ test('다음 해로 넘기면 진행상태는 비우고 코드·시트는 가져
   assert.deepEqual(next.map((x) => x.code), ['A', 'B', 'C', 'D']);
   assert.equal(next.find((x) => x.code === 'C')?.source, '회사');   // 작성주체는 유지
   assert.equal(next.find((x) => x.code === 'B')?.enabled, false);   // 꺼둔 것도 유지
+});
+
+test('지금 준비하는 감사의 대상 연도 — 하반기는 올해, 상반기는 작년', () => {
+  assert.equal(defaultAuditFy(new Date('2026-09-12')), 2026);   // 2026년 12월 결산을 준비
+  assert.equal(defaultAuditFy(new Date('2026-12-31')), 2026);
+  assert.equal(defaultAuditFy(new Date('2027-03-20')), 2026);   // 그 감사를 이듬해 3월에 수행
+  assert.equal(defaultAuditFy(new Date('2027-06-30')), 2026);
+  assert.equal(defaultAuditFy(new Date('2027-07-01')), 2027);
 });
 
 test('기본 회계기간과 기수 표기', () => {
