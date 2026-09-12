@@ -2,21 +2,22 @@
 //
 // 왜 이렇게까지 하는가: 엑셀 라이브러리로 정산표를 읽어 다시 쓰면 **파일이 망가진다.**
 // 명진 정산표(551KB)를 exceljs 로 왕복시켜 봤더니(2026-09-12) —
-//   · 시트 28장 → 16장 (숨은 시트 12장 전멸)
 //   · 정의된 이름 4,880개 → 337개
 //   · 파일 551KB → 95KB
 // 감사조서를 그렇게 망가뜨릴 수는 없다.
 //
 // xlsx 는 ZIP 이므로, 원본 항목은 그대로 옮겨 담고 **새 시트 부품만 더한다.**
-// 손대는 곳은 네 군데뿐이다:
+// 손대는 곳은 다섯 군데뿐이다:
 //   1) xl/worksheets/…xml   새로 만든다
 //   2) xl/workbook.xml      <sheets> 에 한 줄
 //   3) xl/_rels/workbook.xml.rels  관계 한 줄
 //   4) [Content_Types].xml  부품 종류 한 줄
+//   5) xl/styles.xml        **맨 뒤에** 우리 서식을 덧붙인다(xlsxStyles 참고)
 // 그리고 xl/calcChain.xml 은 **지운다** — 수식 계산 순서를 적어 둔 캐시라, 시트가 늘면
 // 어긋날 수 있다. 없으면 엑셀이 열 때 알아서 다시 만든다.
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import type { SheetPlan } from './noteSheet';
+import { addNoteStyles, MINIMAL_STYLES, type StyleIds } from './xlsxStyles';
 
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -38,8 +39,13 @@ export function colName(n: number): string {
   return s;
 }
 
-/** 시트 배치 하나를 워크시트 XML 로. 글자는 inlineStr 로 넣어 sharedStrings 를 건드리지 않는다. */
-export function sheetXml(plan: SheetPlan): string {
+/**
+ * 시트 배치 하나를 워크시트 XML 로.
+ *
+ * 글자는 inlineStr 로 넣어 sharedStrings 를 건드리지 않는다 — 그 표를 고치면 원본 셀들이
+ * 가리키는 번호가 어긋난다. 서식은 `ids` 로 받은 번호를 물린다(원본 서식 뒤에 덧붙인 것).
+ */
+export function sheetXml(plan: SheetPlan, ids?: StyleIds): string {
   const byRow = new Map<number, SheetPlan['cells']>();
   for (const c of plan.cells) {
     if (!byRow.has(c.row)) byRow.set(c.row, []);
@@ -48,8 +54,10 @@ export function sheetXml(plan: SheetPlan): string {
   const rows = [...byRow.keys()].sort((a, b) => a - b).map((r) => {
     const cells = byRow.get(r)!.sort((a, b) => a.col - b.col).map((c) => {
       const ref = `${colName(c.col)}${r}`;
-      if (c.num != null) return `<c r="${ref}"><v>${c.num}</v></c>`;
-      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(c.text)}</t></is></c>`;
+      const sid = ids && c.kind ? ids[c.kind] : undefined;
+      const st = sid == null ? '' : ` s="${sid}"`;
+      if (c.num != null) return `<c r="${ref}"${st}><v>${c.num}</v></c>`;
+      return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${esc(c.text)}</t></is></c>`;
     }).join('');
     return `<row r="${r}">${cells}</row>`;
   }).join('');
@@ -73,6 +81,23 @@ export function injectSheets(src: Uint8Array, plans: SheetPlan[]): Uint8Array {
   let rels = get('xl/_rels/workbook.xml.rels');
   let types = get('[Content_Types].xml');
   if (!workbook || !rels || !types) throw new Error('엑셀 파일 구조를 알아보지 못했습니다.');
+
+  // 서식은 **원본 것 뒤에 덧붙인다** — 앞을 건드리면 원본 셀들의 서식이 통째로 어긋난다.
+  let styleIds: StyleIds | undefined;
+  const hadStyles = !!files['xl/styles.xml'];
+  try {
+    const st = addNoteStyles(hadStyles ? get('xl/styles.xml') : MINIMAL_STYLES);
+    files['xl/styles.xml'] = strToU8(st.xml);
+    styleIds = st.ids;
+    if (!hadStyles) {
+      rels = rels.replace('</Relationships>',
+        `<Relationship Id="rIdNoteStyles" Type="${R_NS}/styles" Target="styles.xml"/></Relationships>`);
+      types = types.replace('</Types>',
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>');
+    }
+  } catch {
+    styleIds = undefined;   // 서식을 못 붙여도 시트는 만든다 — 글자가 들어가는 편이 낫다.
+  }
 
   // 겹치지 않는 번호 고르기
   const usedSheetIds = [...workbook.matchAll(/sheetId="(\d+)"/g)].map((m) => Number(m[1]));
@@ -98,7 +123,7 @@ export function injectSheets(src: Uint8Array, plans: SheetPlan[]): Uint8Array {
     usedFiles.add(path);
     nextFile += 1;
 
-    files[path] = strToU8(sheetXml(plan));
+    files[path] = strToU8(sheetXml(plan, styleIds));
     addedSheets.push(`<sheet name="${esc(name)}" sheetId="${nextSheetId}" r:id="rId${nextRId}"/>`);
     addedRels.push(`<Relationship Id="rId${nextRId}" Type="${R_NS}/worksheet" Target="${path.replace('xl/', '')}"/>`);
     addedTypes.push(`<Override PartName="/${path}" ContentType="${WS_TYPE}"/>`);

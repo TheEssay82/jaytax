@@ -45,7 +45,10 @@ export function escapeXml(s: string): string {
  */
 export type Block =
   | { kind: 'para'; slot: number; parts: string[] }
-  | { kind: 'table'; rows: { slot: number; text: string }[][] };
+  | { kind: 'table'; rows: TableCell[][] };
+
+/** 표의 칸 하나. `tag` 가 TH 면 표 머리다 — 엑셀에서 음영을 줄 자리다. */
+export interface TableCell { slot: number; text: string; tag: string }
 
 /** 한 문단 덩이를 눈에 보이는 문단으로 가른다. */
 export function splitParts(text: string): string[] {
@@ -118,8 +121,8 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
   let cur: NoteBlocks | null = null;
   let curTbl = -1;
   let curTr = -1;
-  let rows: { slot: number; text: string }[][] = [];
-  let row: { slot: number; text: string }[] = [];
+  let rows: TableCell[][] = [];
+  let row: TableCell[] = [];
 
   const flushTable = () => {
     if (row.length) { rows.push(row); row = []; }
@@ -149,7 +152,7 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
     if (t !== curTbl) { flushTable(); curTbl = t; curTr = owner(sl.start, trs); }
     const r = owner(sl.start, trs);
     if (r !== curTr) { if (row.length) rows.push(row); row = []; curTr = r; }
-    row.push({ slot: i, text: unescapeXml(sl.raw).trim() });
+    row.push({ slot: i, text: unescapeXml(sl.raw).trim(), tag: sl.tag });
   });
   flushTable();
 

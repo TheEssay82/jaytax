@@ -66,7 +66,7 @@ test('원본은 한 바이트도 상하지 않는다', () => {
   const b = unzipSync(out);
 
   // 손대기로 한 네 군데 + 지우기로 한 calcChain 말고는 그대로여야 한다
-  const touched = new Set(['xl/workbook.xml', 'xl/_rels/workbook.xml.rels', '[Content_Types].xml', 'xl/calcChain.xml']);
+  const touched = new Set(['xl/workbook.xml', 'xl/_rels/workbook.xml.rels', '[Content_Types].xml', 'xl/calcChain.xml', 'xl/styles.xml']);
   for (const name of Object.keys(a)) {
     if (touched.has(name)) continue;
     assert.deepEqual([...b[name]], [...a[name]], `${name} 이 바뀌었다`);

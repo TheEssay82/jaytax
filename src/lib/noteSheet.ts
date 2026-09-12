@@ -13,11 +13,15 @@
 // 엑셀에서 고친 값을 DSD 제자리에 도로 넣을 수 있다.
 import type { NoteBlocks } from './dsdBlocks';
 
+/** 어떤 서식으로 그릴 칸인가 — xlsxStyles 의 이름과 같다. */
+export type CellKind = 'label' | 'title' | 'para' | 'head' | 'text' | 'num';
+
 export interface SheetCell {
   /** 1부터 */ row: number;
   /** 1=A, 2=B, 3=C … */ col: number;
   text: string;
   /** 숫자로 넣을 값. 없으면 글자로 넣는다. */ num?: number;
+  kind?: CellKind;
 }
 
 export interface SheetPlan {
@@ -74,8 +78,8 @@ export function parseAddr(s: unknown): { slot: number; part: number | null } | n
  */
 export function layoutNote(note: NoteBlocks, name: string): SheetPlan {
   const cells: SheetCell[] = [
-    { row: 2, col: 2, text: '주석명' },
-    { row: 2, col: 3, text: `${note.no}. ${note.title}` },
+    { row: 2, col: 2, text: '주석명', kind: 'label' },
+    { row: 2, col: 3, text: `${note.no}. ${note.title}`, kind: 'title' },
   ];
   let r = 3;
   let prevWasTable = false;
@@ -85,17 +89,22 @@ export function layoutNote(note: NoteBlocks, name: string): SheetPlan {
       if (prevWasTable) r += 1;                       // 표 뒤에는 한 줄 띄운다
       b.parts.forEach((p, i) => {
         cells.push({ row: r, col: 1, text: addrOf(b.slot, b.parts.length > 1 ? i : undefined) });
-        cells.push({ row: r, col: 3, text: p });
+        cells.push({ row: r, col: 3, text: p, kind: 'para' });
         r += 1;
       });
       prevWasTable = false;
     } else {
       r += 1;                                          // 표 앞에 빈 줄
       for (const line of b.rows) {
+        // 표 머리는 원본이 TH 로 적어 둔 줄이다 — 첫 줄이라고 머리로 치지 않는다.
+        const isHead = line.length > 0 && line.every((c) => c.tag === 'TH');
         cells.push({ row: r, col: 1, text: line.map((c) => addrOf(c.slot)).join(' ') });
         line.forEach((c, j) => {
           const num = asNumber(c.text);
-          cells.push({ row: r, col: 3 + j, text: c.text, num });
+          cells.push({
+            row: r, col: 3 + j, text: c.text, num,
+            kind: isHead ? 'head' : num != null ? 'num' : 'text',
+          });
         });
         r += 1;
       }
@@ -108,17 +117,17 @@ export function layoutNote(note: NoteBlocks, name: string): SheetPlan {
 /** 주석 목록 시트 — 정산표가 이미 쓰던 「주석번호 · 주석제목 · 사용여부」 그대로. */
 export function layoutIndex(rows: { no: number | null; title: string; enabled: boolean; sheet: string }[]): SheetPlan {
   const cells: SheetCell[] = [
-    { row: 2, col: 2, text: '주석번호' },
-    { row: 2, col: 3, text: '주석제목' },
-    { row: 2, col: 4, text: '사용여부' },
-    { row: 2, col: 5, text: '시트' },
+    { row: 2, col: 2, text: '주석번호', kind: 'head' },
+    { row: 2, col: 3, text: '주석제목', kind: 'head' },
+    { row: 2, col: 4, text: '사용여부', kind: 'head' },
+    { row: 2, col: 5, text: '시트', kind: 'head' },
   ];
   rows.forEach((x, i) => {
     const r = 3 + i;
-    if (x.no != null) cells.push({ row: r, col: 2, text: String(x.no), num: x.no });
-    cells.push({ row: r, col: 3, text: x.title });
-    cells.push({ row: r, col: 4, text: x.enabled ? 'O' : 'X' });
-    cells.push({ row: r, col: 5, text: x.sheet });
+    if (x.no != null) cells.push({ row: r, col: 2, text: String(x.no), num: x.no, kind: 'num' });
+    cells.push({ row: r, col: 3, text: x.title, kind: 'text' });
+    cells.push({ row: r, col: 4, text: x.enabled ? 'O' : 'X', kind: 'text' });
+    cells.push({ row: r, col: 5, text: x.sheet, kind: 'text' });
   });
   return { name: '주석목록(생성)', cells, lastRow: 2 + rows.length };
 }
