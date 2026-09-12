@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   slots, unescapeXml, escapeXml, splitParts, joinParts,
-  afterTitle, headingBody, parseNoteBlocks,
+  afterTitle, headingBody, unitMark, parseNoteBlocks,
 } from './dsdBlocks.ts';
 
 const XML = `<DOCUMENT>
@@ -151,6 +151,43 @@ test('headingBody — 제목 부분(lead)과 본문을 가른다', () => {
   assert.deepEqual(
     headingBody('1. 회사의 개요', '회사의 개요'),
     { lead: '1. 회사의 개요', body: [] },
+  );
+});
+
+test('단위는 표마다 붙는다 — 표지판을 만나면 그 뒤 표에 매긴다', () => {
+  // 알티스트 FY25 한 부 안에 「천원」 41개와 「원」 7개가 섞여 있었다.
+  const xml = `<DOCUMENT><SECTION-2><TITLE>주석</TITLE>
+<P>1. 퇴직급여</P>
+<TABLE><TBODY><TR><TD>(단위: 천원)</TD></TR></TBODY></TABLE>
+<TABLE><TBODY><TR><TD>기초</TD><TD>569,457</TD></TR></TBODY></TABLE>
+<TABLE><TBODY><TR><TD>(단위: 원)</TD></TR></TBODY></TABLE>
+<TABLE><TBODY><TR><TD>주당이익</TD><TD>1,234</TD></TR></TBODY></TABLE>
+<P>2. 자본</P>
+<TABLE><TBODY><TR><TD>발행주식수</TD><TD>64,000</TD></TR></TBODY></TABLE>
+</SECTION-2></DOCUMENT>`;
+  const notes = parseNoteBlocks(xml);
+  const t = (n: number, i: number) => {
+    const b = notes.find((x) => x.no === n)!.blocks.filter((x) => x.kind === 'table')[i];
+    return b.kind === 'table' ? b : null;
+  };
+  assert.equal(t(1, 0)?.isUnitMark, true);
+  assert.equal(t(1, 1)?.unit, '천원');
+  assert.equal(t(1, 2)?.isUnitMark, true);
+  assert.equal(t(1, 3)?.unit, '원', '표지판을 다시 만나면 바뀐다');
+  assert.equal(t(2, 0)?.unit, undefined, '주석이 바뀌면 초기화 — 앞 단위가 뒤로 새면 천 배가 어긋난다');
+});
+
+test('unitMark — 자료가 든 표는 표지판이 아니다', () => {
+  const cell = (text: string) => [[{ slot: 0, text, tag: 'TD' }]];
+  assert.equal(unitMark(cell('(단위: 천원)')), '천원');
+  assert.equal(unitMark(cell('(단위 : USD, JPY, 천원)')), 'USD,JPY,천원');
+  assert.equal(unitMark(cell('구 분')), null);
+  assert.equal(
+    unitMark([[
+      { slot: 0, text: '퇴직급여충당부채 기초 잔액은 (단위: 천원) 기준으로 표시한 금액입니다', tag: 'TD' },
+    ]]),
+    null,
+    '긴 글 안에 든 것은 표지판이 아니다',
   );
 });
 

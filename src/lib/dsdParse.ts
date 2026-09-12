@@ -49,6 +49,43 @@ export function outerParagraphs(section: string): string[] {
   return out;
 }
 
+export function unescapeXml(s: string): string {
+  return (s ?? '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&amp;cr;/g, '\n')
+    .replace(/&amp;/g, '&');
+}
+
+export function escapeXml(s: string): string {
+  return (s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/\n/g, '&amp;cr;');
+}
+
+/**
+ * 한 문단 덩이를 **눈에 보이는 문단**으로 가른다. 빈 줄이 경계다.
+ * 홑 줄바꿈은 같은 문단 안의 줄바꿈이라 가르지 않는다.
+ */
+export function splitParts(text: string): string[] {
+  return (text ?? '').split(/\n[ \t]*\n+/).map((t) => t.trim()).filter(Boolean);
+}
+
+/** 가른 문단을 도로 잇는다 — DSD 한 칸에 담을 때. */
+export function joinParts(parts: string[]): string {
+  return parts.filter((p) => p != null).map((p) => String(p).trim()).filter(Boolean).join('\n\n');
+}
+
+/**
+ * 머리글인지 볼 때 쓰는 글 — **첫 문단만** 본다.
+ *
+ * DSD 는 제목과 본문을 한 칸에 담되 사이에 빈 줄을 둔다. 공백을 먼저 다 뭉개면 그 경계를
+ * 잃어서, 알티스트 1번이 「회사의 개요 주식회사 알티스트(이하 "당사")는 …」로 잘렸다.
+ * 경계가 있으면 그것을 쓰고, 없을 때만 말머리로 자른다(cutTitle).
+ */
+export function headingCandidate(rawInner: string): string {
+  return plain(splitParts(unescapeXml(rawInner))[0] ?? '');
+}
+
 export interface ParsedNote { no: number; title: string }
 
 /**
@@ -112,7 +149,23 @@ export function cutTitle(rest: string): string {
 
 /** DSD 본문에서 주석 목록을 읽는다. 못 읽으면 빈 배열 — 지어내지 않는다. */
 export function parseNoteList(xml: string): ParsedNote[] {
-  return noteHeadings(outerParagraphs(notesSection(xml)));
+  return noteHeadings(outerParagraphRaw(notesSection(xml)).map(headingCandidate));
+}
+
+/** 표 밖 <P> 의 **원문**(엔티티를 풀지 않은 그대로). 문단 경계를 살려야 할 때 쓴다. */
+export function outerParagraphRaw(section: string): string[] {
+  const s = section ?? '';
+  const tables: [number, number][] = [];
+  for (const m of s.matchAll(/<TABLE\b[\s\S]*?<\/TABLE>/g)) {
+    tables.push([m.index ?? 0, (m.index ?? 0) + m[0].length]);
+  }
+  const inTable = (i: number) => tables.some(([a, b]) => a <= i && i < b);
+  const out: string[] = [];
+  for (const m of s.matchAll(/<P\b[^>]*>([\s\S]*?)<\/P>/g)) {
+    if (inTable(m.index ?? 0)) continue;
+    if (m[1].trim()) out.push(m[1]);
+  }
+  return out;
 }
 
 /** 이 파일이 무슨 문서인지 — 감사보고서 / 감사전 재무제표 등. */

@@ -3,7 +3,13 @@
 // 왜 「자리(slot)」를 함께 들고 다니는가: 나중에 엑셀에서 고친 값을 **DSD 의 제자리에 도로
 // 넣어야** 하기 때문이다. 원본 XML 을 틀로 두고 글자만 갈아끼우면 표 너비·정렬 같은 속성이
 // 하나도 상하지 않는다(2026-09-12 실측 — 읽고 그대로 다시 쓰면 원본과 바이트 단위로 같았다).
-import { plain, notesSection, noteHeadings } from './dsdParse';
+import {
+  notesSection, noteHeadings, headingCandidate,
+  unescapeXml, escapeXml, splitParts, joinParts,
+} from './dsdParse';
+
+// 글 다루는 공용 함수는 dsdParse 에 모여 있다. 여기서도 쓸 수 있게 그대로 내보낸다.
+export { unescapeXml, escapeXml, splitParts, joinParts };
 
 /** 글자가 든 자리 하나. start/end 는 원본 XML 안의 위치다. */
 export interface Slot { start: number; end: number; tag: string; raw: string }
@@ -21,19 +27,6 @@ export function slots(xml: string): Slot[] {
   return out;
 }
 
-export function unescapeXml(s: string): string {
-  return (s ?? '')
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&amp;cr;/g, '\n')
-    .replace(/&amp;/g, '&');
-}
-
-export function escapeXml(s: string): string {
-  return (s ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/\n/g, '&amp;cr;');
-}
-
 /**
  * 문단 덩이 하나 = DSD 의 `<P>` 하나.
  *
@@ -45,20 +38,17 @@ export function escapeXml(s: string): string {
  */
 export type Block =
   | { kind: 'para'; slot: number; parts: string[]; lead?: string }
-  | { kind: 'table'; rows: TableCell[][] };
+  | {
+    kind: 'table';
+    rows: TableCell[][];
+    /** 이 표에 적용되는 표시 단위(천원·원·주 …). 앞선 「(단위: …)」 표에서 온다. */
+    unit?: string;
+    /** 이 표 자체가 「(단위: …)」 표지판인가. */
+    isUnitMark?: boolean;
+  };
 
 /** 표의 칸 하나. `tag` 가 TH 면 표 머리다 — 엑셀에서 음영을 줄 자리다. */
 export interface TableCell { slot: number; text: string; tag: string }
-
-/** 한 문단 덩이를 눈에 보이는 문단으로 가른다. */
-export function splitParts(text: string): string[] {
-  return (text ?? '').split(/\n[ \t]*\n+/).map((t) => t.trim()).filter(Boolean);
-}
-
-/** 엑셀에서 고친 문단들을 DSD 한 칸에 도로 담는다 — 가른 것을 그대로 되붙인다. */
-export function joinParts(parts: string[]): string {
-  return parts.filter((p) => p != null).map((p) => String(p).trim()).filter(Boolean).join('\n\n');
-}
 
 /**
  * 제목 글자들을 앞에서 소비하고 **남은 글**을 돌려준다. 못 맞추면 null.
@@ -109,6 +99,40 @@ export function headingBody(text: string, title: string): { lead: string; body: 
 
 export interface NoteBlocks { no: number; title: string; blocks: Block[] }
 
+/** 「(단위: 천원)」 표지판이면 그 단위를, 아니면 null. */
+const UNIT_MARK = /\(\s*단\s*위\s*[:：]?\s*([^)]{1,30})\)/;
+export function unitMark(rows: TableCell[][]): string | null {
+  const flat = rows.flat().map((c) => c.text).join(' ').trim();
+  const m = UNIT_MARK.exec(flat);
+  if (!m) return null;
+  // 표지판은 그 말 말고는 거의 비어 있다. 알티스트처럼 「<당기>」가 같은 줄에 오기도 하므로
+  // 짧은 나머지는 봐준다. 긴 문장 안에 든 「(단위: 천원)」은 표지판이 아니다.
+  const rest = flat.replace(m[0], '').replace(/\s+/g, '').trim();
+  if (rest.length > 12) return null;
+  return m[1].replace(/\s+/g, '');
+}
+
+/**
+ * 표마다 **표시 단위**를 매긴다.
+ *
+ * 단위는 회사가 아니라 **표마다** 붙는다(2026-09-12 실측) — 알티스트 FY25 한 부 안에
+ * 「천원」 41개와 「원」 7개가 섞여 있었다. DSD 는 「(단위: 천원)」을 한 칸짜리 작은 표로
+ * 데이터 표 바로 앞에 둔다. 그 표지판을 만나면 그 뒤 표들의 단위로 삼는다.
+ *
+ * 주석이 바뀌면 초기화한다 — 앞 주석의 단위가 뒤로 새면 ③ 대조에서 천 배가 어긋난다.
+ */
+function markUnits(notes: NoteBlocks[]): void {
+  for (const n of notes) {
+    let cur: string | undefined;
+    for (const b of n.blocks) {
+      if (b.kind !== 'table') continue;
+      const u = unitMark(b.rows);
+      if (u) { cur = u; b.isUnitMark = true; b.unit = u; continue; }
+      if (cur) b.unit = cur;
+    }
+  }
+}
+
 /** 어느 구간에 속하는지 — 표/행의 범위를 찾는다. */
 function owner(pos: number, spans: [number, number][]): number {
   for (let i = 0; i < spans.length; i += 1) {
@@ -149,7 +173,7 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
     if (sl.start < a0 || sl.start >= a1) return;
     if (sl.tag !== 'P') return;
     if (owner(sl.start, tables) !== -1) return;
-    paraSlots.push({ slot: i, text: plain(sl.raw), pos: sl.start });
+    paraSlots.push({ slot: i, text: headingCandidate(sl.raw), pos: sl.start });
   });
   const heads = noteHeadings(paraSlots.map((p) => p.text));
   const headPos = new Map<number, { no: number; title: string }>();
@@ -206,5 +230,6 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
   });
   flushTable();
 
+  markUnits(notes);
   return notes;
 }
