@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slots, unescapeXml, escapeXml, splitParts, joinParts, parseNoteBlocks } from './dsdBlocks.ts';
+import {
+  slots, unescapeXml, escapeXml, splitParts, joinParts,
+  afterTitle, headingBody, parseNoteBlocks,
+} from './dsdBlocks.ts';
 
 const XML = `<DOCUMENT>
 <SECTION-1><TITLE>(첨부)재 무 제 표</TITLE><P>버릴 것</P></SECTION-1>
@@ -103,6 +106,52 @@ test('가른 문단을 도로 잇는다', () => {
   assert.equal(joinParts(['가', '', '  ', '나']), '가\n\n나');
   const t = '첫째\n\n둘째\n셋째';
   assert.equal(joinParts(splitParts(t)), t);
+});
+
+test('제목과 본문이 한 칸에 붙어 있어도 본문을 잃지 않는다', () => {
+  // 명진 4·8·9·11번 주석이 이랬다 — 제목만 떼고 버리는 바람에 서술이 통째로 사라졌었다.
+  const xml = `<DOCUMENT><SECTION-2><TITLE>주석</TITLE>
+<P>4. 사용이 제한된 예금 등&amp;cr;&amp;cr;보고기간종료일 현재 사용이 제한된 예금은 없습니다.</P>
+<P>5. 유의적인 회계정책 당사가 적용한 회계정책은 다음과 같습니다.</P>
+</SECTION-2></DOCUMENT>`;
+  const notes = parseNoteBlocks(xml);
+
+  const n4 = notes.find((n) => n.no === 4)!;
+  assert.equal(n4.title, '사용이 제한된 예금 등');
+  const b4 = n4.blocks[0];
+  assert.ok(b4.kind === 'para');
+  assert.deepEqual(b4.parts, ['보고기간종료일 현재 사용이 제한된 예금은 없습니다.']);
+  assert.equal(b4.lead, '4. 사용이 제한된 예금 등', '제목은 되돌릴 때 앞에 도로 붙인다');
+
+  // 빈 줄 없이 한 덩이로 붙어 있는 경우
+  const n5 = notes.find((n) => n.no === 5)!;
+  assert.equal(n5.title, '유의적인 회계정책');
+  const b5 = n5.blocks[0];
+  assert.ok(b5.kind === 'para');
+  assert.deepEqual(b5.parts, ['당사가 적용한 회계정책은 다음과 같습니다.']);
+});
+
+test('제목만 있는 머리글은 본문을 만들지 않는다', () => {
+  const xml = '<DOCUMENT><SECTION-2><TITLE>주석</TITLE>'
+    + '<P>17. 포괄손익계산서&amp;cr;</P></SECTION-2></DOCUMENT>';
+  assert.deepEqual(parseNoteBlocks(xml)[0].blocks, []);
+});
+
+test('afterTitle — 띄어쓰기가 달라도 제목을 소비한다', () => {
+  assert.equal(afterTitle('자    본 나머지 글', '자 본'), ' 나머지 글');
+  assert.equal(afterTitle('재고자산', '재고자산'), '');
+  assert.equal(afterTitle('딴 글', '재고자산'), null);
+});
+
+test('headingBody — 제목 부분(lead)과 본문을 가른다', () => {
+  assert.deepEqual(
+    headingBody('9. 자 본 \n\n보고기간종료일 현재 …', '자 본'),
+    { lead: '9. 자 본', body: ['보고기간종료일 현재 …'] },
+  );
+  assert.deepEqual(
+    headingBody('1. 회사의 개요', '회사의 개요'),
+    { lead: '1. 회사의 개요', body: [] },
+  );
 });
 
 test('주석이 없는 문서면 빈 배열', () => {

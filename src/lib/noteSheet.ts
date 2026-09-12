@@ -87,8 +87,11 @@ export function layoutNote(note: NoteBlocks, name: string): SheetPlan {
   for (const b of note.blocks) {
     if (b.kind === 'para') {
       if (prevWasTable) r += 1;                       // 표 뒤에는 한 줄 띄운다
+      // 제목이 같은 칸에 함께 든 문단은 제목이 0번이라 본문이 1번부터다.
+      const off = b.lead != null ? 1 : 0;
+      const many = b.parts.length + off > 1;
       b.parts.forEach((p, i) => {
-        cells.push({ row: r, col: 1, text: addrOf(b.slot, b.parts.length > 1 ? i : undefined) });
+        cells.push({ row: r, col: 1, text: addrOf(b.slot, many ? i + off : undefined) });
         cells.push({ row: r, col: 3, text: p, kind: 'para' });
         r += 1;
       });

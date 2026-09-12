@@ -44,7 +44,7 @@ export function escapeXml(s: string): string {
  * 홑 「&cr;」는 같은 문단 안의 줄바꿈이라 가르지 않는다(예: 「2.2 측정기준」 다음 줄).
  */
 export type Block =
-  | { kind: 'para'; slot: number; parts: string[] }
+  | { kind: 'para'; slot: number; parts: string[]; lead?: string }
   | { kind: 'table'; rows: TableCell[][] };
 
 /** 표의 칸 하나. `tag` 가 TH 면 표 머리다 — 엑셀에서 음영을 줄 자리다. */
@@ -58,6 +58,53 @@ export function splitParts(text: string): string[] {
 /** 엑셀에서 고친 문단들을 DSD 한 칸에 도로 담는다 — 가른 것을 그대로 되붙인다. */
 export function joinParts(parts: string[]): string {
   return parts.filter((p) => p != null).map((p) => String(p).trim()).filter(Boolean).join('\n\n');
+}
+
+/**
+ * 제목 글자들을 앞에서 소비하고 **남은 글**을 돌려준다. 못 맞추면 null.
+ *
+ * 제목은 공백을 다듬은 것이라 원문과 띄어쓰기가 다르다(「자    본」 → 「자 본」).
+ * 그래서 공백은 건너뛰며 글자만 맞춰 본다.
+ */
+export function afterTitle(text: string, title: string): string | null {
+  let i = 0;
+  let j = 0;
+  const t = text ?? '';
+  const h = title ?? '';
+  while (j < h.length) {
+    if (/\s/.test(h[j])) { j += 1; continue; }
+    while (i < t.length && /\s/.test(t[i])) i += 1;
+    if (t[i] !== h[j]) return null;
+    i += 1; j += 1;
+  }
+  return t.slice(i);
+}
+
+/**
+ * 머리글 문단에서 **제목과 본문을 가른다.**
+ *
+ * 왜 필요한가: DSD 는 제목과 본문을 한 칸에 같이 담는다(2026-09-13 지적).
+ *   `<P>4. 사용이 제한된 예금 등&cr;&cr;보고기간종료일 현재 … 없습니다.</P>`
+ * 제목만 떼고 나머지를 버리면 **서술이 통째로 사라진다.** 실제로 명진 4·8·9·11번 주석의
+ * 서술이 그렇게 빠졌다.
+ *
+ * 빈 줄로 나뉜 경우와, 「3. 유의적인 회계정책 당사가 …」처럼 한 덩이에 붙은 경우를 모두 본다.
+ * `lead` 는 원문에 적힌 제목 부분 그대로다 — DSD 로 되돌릴 때 앞에 도로 붙인다.
+ */
+export function headingBody(text: string, title: string): { lead: string; body: string[] } {
+  const parts = splitParts(text);
+  if (!parts.length) return { lead: (text ?? '').trim(), body: [] };
+  const first = parts[0];
+  const rest = parts.slice(1);
+
+  const m = /^\s*\d{1,2}\s*\.\s*/.exec(first);
+  if (m) {
+    const tail = afterTitle(first.slice(m[0].length), title);
+    if (tail != null && tail.trim()) {
+      return { lead: first.slice(0, first.length - tail.length).trimEnd(), body: [tail.trim(), ...rest] };
+    }
+  }
+  return { lead: first, body: rest };
 }
 
 export interface NoteBlocks { no: number; title: string; blocks: Block[] }
@@ -138,7 +185,10 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
       flushTable();
       cur = { no: head.no, title: head.title, blocks: [] };
       notes.push(cur);
-      return;                                   // 머리글 자체는 제목으로 쓰고 본문에 넣지 않는다
+      // 제목 뒤에 본문이 붙어 있으면 **살려서 첫 문단으로 넣는다.** 버리면 서술이 사라진다.
+      const { lead, body } = headingBody(unescapeXml(sl.raw), head.title);
+      if (body.length) cur.blocks.push({ kind: 'para', slot: i, parts: body, lead });
+      return;
     }
     if (!cur) return;                           // 첫 주석 앞의 것(기간·회사명 표)은 버린다
     if (t === -1) {
