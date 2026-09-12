@@ -41,6 +41,16 @@ export function asNumber(text: string): number | undefined {
 }
 
 /**
+ * 「-」 한 글자 — 재무제표에서 **0** 을 뜻한다.
+ *
+ * 붙임표는 여러 모양으로 쓰인다(-, –, —, 전각 －). 숫자 사이에 낀 「1-2」 같은 것은 아니다.
+ */
+export function isDash(text: string): boolean {
+  const s = (text ?? '').trim();
+  return s.length > 0 && /^[-‐‑–—―－\s]+$/.test(s) && /[-‐‑–—―－]/.test(s);
+}
+
+/**
  * 엑셀 시트 이름으로 쓸 수 있게 다듬는다.
  * 31자 넘으면 자르고, 엑셀이 금지하는 글자(: \ / ? * [ ])는 뺀다. 겹치면 뒤에 번호를 붙인다.
  */
@@ -98,12 +108,22 @@ export function layoutNote(note: NoteBlocks, name: string): SheetPlan {
       prevWasTable = false;
     } else {
       r += 1;                                          // 표 앞에 빈 줄
+      // **어느 열이 숫자 열인가**를 먼저 본다. 그 열의 「-」는 0 으로 넣어야 합계가 잡힌다.
+      // 글자 열의 「-」까지 0 으로 바꾸면 구분 이름이 숫자가 되어 버린다.
+      const numericCol = new Set<number>();
+      for (const line of b.rows) {
+        if (line.every((c) => c.tag === 'TH')) continue;
+        line.forEach((c, j) => { if (asNumber(c.text) != null) numericCol.add(j); });
+      }
+
       for (const line of b.rows) {
         // 표 머리는 원본이 TH 로 적어 둔 줄이다 — 첫 줄이라고 머리로 치지 않는다.
         const isHead = line.length > 0 && line.every((c) => c.tag === 'TH');
         cells.push({ row: r, col: 1, text: line.map((c) => addrOf(c.slot)).join(' ') });
         line.forEach((c, j) => {
-          const num = asNumber(c.text);
+          // 「-」는 재무제표에서 0 이다. 숫자 0 으로 넣고 화면에는 숫자꼴이 「-」로 보여 준다
+          // (#,##0;(#,##0);"-"). 글자로 두면 합계·검증식이 안 잡힌다(2026-09-13 지적).
+          const num = !isHead && numericCol.has(j) && isDash(c.text) ? 0 : asNumber(c.text);
           cells.push({
             row: r, col: 3 + j, text: c.text, num,
             kind: isHead ? 'head' : num != null ? 'num' : 'text',

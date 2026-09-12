@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { asNumber, sheetName, addrOf, parseAddr, layoutNote, layoutIndex } from './noteSheet.ts';
+import { asNumber, isDash, sheetName, addrOf, parseAddr, layoutNote, layoutIndex } from './noteSheet.ts';
 import type { NoteBlocks } from './dsdBlocks.ts';
 
 test('표 안의 값 — 숫자는 숫자로, 퍼센트·글자는 그대로', () => {
@@ -12,6 +12,59 @@ test('표 안의 값 — 숫자는 숫자로, 퍼센트·글자는 그대로', (
   assert.equal(asNumber('-'), undefined);
   assert.equal(asNumber('이 종 명'), undefined);
   assert.equal(asNumber(''), undefined);
+});
+
+test('「-」는 0 을 뜻한다 — 붙임표 모양이 여럿이다', () => {
+  assert.equal(isDash('-'), true);
+  assert.equal(isDash(' - '), true);
+  assert.equal(isDash('－'), true);
+  assert.equal(isDash('—'), true);
+  assert.equal(isDash(''), false);
+  assert.equal(isDash('1-2'), false);
+  assert.equal(isDash('합 계'), false);
+});
+
+const DASH_TABLE: NoteBlocks = {
+  no: 8, title: '퇴직급여충당부채',
+  blocks: [{
+    kind: 'table',
+    rows: [
+      [{ slot: 1, text: '구 분', tag: 'TH' }, { slot: 2, text: '당 기', tag: 'TH' }],
+      [{ slot: 3, text: '기 초', tag: 'TD' }, { slot: 4, text: '197,666,666', tag: 'TD' }],
+      [{ slot: 5, text: '지 급', tag: 'TD' }, { slot: 6, text: '-', tag: 'TD' }],
+      [{ slot: 7, text: '-', tag: 'TD' }, { slot: 8, text: '210,166,666', tag: 'TD' }],
+    ],
+  }],
+};
+
+test('숫자 열의 「-」는 0 으로 넣는다 — 안 그러면 합계가 안 잡힌다', () => {
+  const p = layoutNote(DASH_TABLE, 'x');
+  const at = (row: number, col: number) => p.cells.find((c) => c.row === row && c.col === col);
+  // 표는 빈 줄 뒤 4행부터 — 4 머리 · 5 기초 · 6 지급(-) · 7 (-)/기말
+  assert.equal(at(5, 4)?.num, 197666666);
+  assert.equal(at(6, 4)?.num, 0, '숫자 열의 「-」는 0');
+  assert.equal(at(6, 4)?.kind, 'num');
+  assert.equal(at(6, 4)?.text, '-', '원문은 그대로 들고 있는다 — DSD 로 되돌릴 때 쓴다');
+});
+
+test('글자 열의 「-」는 0 으로 바꾸지 않는다 — 구분 이름이 숫자가 되면 안 된다', () => {
+  const p = layoutNote(DASH_TABLE, 'x');
+  const cell = p.cells.find((c) => c.row === 7 && c.col === 3);
+  assert.equal(cell?.text, '-');
+  assert.equal(cell?.num, undefined);
+  assert.equal(cell?.kind, 'text');
+});
+
+test('표 머리의 「-」도 0 으로 바꾸지 않는다', () => {
+  const head: NoteBlocks = {
+    no: 1, title: 'x',
+    blocks: [{ kind: 'table', rows: [
+      [{ slot: 1, text: '-', tag: 'TH' }, { slot: 2, text: '당 기', tag: 'TH' }],
+      [{ slot: 3, text: '가', tag: 'TD' }, { slot: 4, text: '10', tag: 'TD' }],
+    ] }],
+  };
+  const p = layoutNote(head, 'x');
+  assert.equal(p.cells.find((c) => c.row === 4 && c.col === 3)?.num, undefined);
 });
 
 test('시트 이름 — 금지 글자와 31자 제한, 겹치면 번호', () => {
@@ -41,8 +94,8 @@ const NOTE: NoteBlocks = {
     {
       kind: 'table',
       rows: [
-        [{ slot: 177, text: '구    분' }, { slot: 178, text: '주식수(주)' }],
-        [{ slot: 179, text: '이 종 명' }, { slot: 180, text: '32,000' }],
+        [{ slot: 177, text: '구    분', tag: 'TH' }, { slot: 178, text: '주식수(주)', tag: 'TH' }],
+        [{ slot: 179, text: '이 종 명', tag: 'TD' }, { slot: 180, text: '32,000', tag: 'TD' }],
       ],
     },
     { kind: 'para', slot: 190, parts: ['표 뒤 문단.'] },
