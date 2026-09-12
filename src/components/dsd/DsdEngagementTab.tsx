@@ -21,6 +21,7 @@ import {
   defaultAuditFy, defaultPeriod, DEFAULT_STATUS,
 } from '../../lib/dsdNotes';
 import { readDsd, type DsdInfo } from '../../lib/dsdFile';
+import NoteSheetExport from './NoteSheetExport';
 
 const STATUS_COLOR: Record<string, string> = {
   미할당: 'var(--ink-3)', 작업중: 'var(--info)', 작업완료: 'var(--good)', 작성제외: 'var(--ink-4)',
@@ -318,6 +319,8 @@ export default function DsdEngagementTab() {
           </div>
         )}
       </div>
+
+      {picked && notes.length > 0 && <NoteSheetExport eng={picked} notes={notes} />}
 
       {adding && (
         <NewEngagementModal
