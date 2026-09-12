@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  asNumber, isDash, unitFactor, isTotalLabel, periodOfHead, bumpTerm, rollGrid,
+  asNumber, isDash, unitFactor, isTotalLabel, periodOfHead, bumpTerm, rollGrid, isPolicyNote,
   sheetName, addrOf, parseAddr, layoutNote, layoutIndex,
 } from './noteSheet.ts';
 import type { NoteBlocks } from './dsdBlocks.ts';
@@ -197,6 +197,57 @@ test('이월한 시트 — 당기 입력칸은 노랗게 비고 전기는 값이
   assert.equal(at(5, 7)?.num, undefined);
   assert.equal(at(5, 8)?.num, 2100000, '전기 원 칸에 작년 당기 값이 들어온다');
   assert.equal(at(5, 4)?.formula, 'IF(G5="","",ROUND(G5/1000,0))', '빈 입력칸은 빈칸으로 보인다');
+});
+
+test('정책 주석은 이월에서 손대지 않는다 — 내용연수는 해마다 안 바뀐다', () => {
+  assert.equal(isPolicyNote('중요한 회계처리방침'), true);
+  assert.equal(isPolicyNote('유의적인 회계정책'), true);
+  assert.equal(isPolicyNote('중요한 판단과 추정불확실성의 주요 원천'), true);
+  assert.equal(isPolicyNote('담보제공자산 등'), false);
+  assert.equal(isPolicyNote('유형자산'), false);
+});
+
+test('전부 「-」인 열도 숫자 열 — 이월하면 비워야 한다', () => {
+  // 명진 6. 유형자산의 취득·처분·대체가 작년에 전부 「-」였다.
+  const p = layoutNote({
+    no: 6, title: '유형자산', period: undefined,
+    blocks: [{ kind: 'table', period: '당기', rows: [
+      line('TH', 1, '구 분', '기 초', '취 득'),
+      line('TD', 4, '차량운반구', '13,817,425', '-'),
+    ] }],
+  } as never, 'x', { roll: true });
+  const at = (row: number, col: number) => p.cells.find((c) => c.row === row && c.col === col);
+  assert.equal(at(5, 4)?.kind, 'input', '기초는 당연히 비운다');
+  assert.equal(at(5, 5)?.kind, 'input', '전부 「-」인 취득 열도 비운다');
+});
+
+test('머리에 「당기」가 들어 있으면 글자 칸도 비운다', () => {
+  // 알티스트 9. 차입금의 「당기말 현재 연이자율(%)」이 글자라서 안 비워졌었다.
+  const p = layoutNote({
+    no: 9, title: '차입금',
+    blocks: [{ kind: 'table', rows: [
+      line('TH', 1, '구 분', '당기말 현재 연이자율(%)', '전기말'),
+      line('TD', 4, '일반자금대출', '4.245-4.708', '5,200,000'),
+    ] }],
+  } as never, 'x', { roll: true });
+  const at = (row: number, col: number) => p.cells.find((c) => c.row === row && c.col === col);
+  assert.equal(at(5, 4)?.kind, 'input');
+  assert.equal(at(5, 4)?.text, '');
+});
+
+test('전기 열이 하나도 없는 표는 첫 열만 남기고 비운다 — 담보·보증 내역', () => {
+  const p = layoutNote({
+    no: 13, title: '담보제공자산 등',
+    blocks: [{ kind: 'table', rows: [
+      line('TH', 1, '구 분', '제공자', '내용', '금액'),
+      line('TD', 5, '지급보증 등', '대표이사 등', '부동산', '8,400,000,000'),
+    ] }],
+  } as never, 'x', { roll: true });
+  const at = (row: number, col: number) => p.cells.find((c) => c.row === row && c.col === col);
+  assert.equal(at(5, 3)?.text, '지급보증 등', '구분 이름은 남는다');
+  assert.equal(at(5, 4)?.kind, 'input', '제공자도 새로 적는다');
+  assert.equal(at(5, 5)?.kind, 'input', '내용도 새로 적는다');
+  assert.equal(at(5, 6)?.kind, 'input', '금액도 새로 적는다');
 });
 
 test('시트 이름 — 금지 글자와 31자 제한, 겹치면 번호', () => {

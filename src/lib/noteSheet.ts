@@ -11,7 +11,7 @@
 //
 // A열에는 **자리표**를 숨겨 둔다 — 이 칸이 DSD 의 몇 번째 글자칸인지다. 그게 있어야
 // 엑셀에서 고친 값을 DSD 제자리에 도로 넣을 수 있다.
-import { gridWidth, type NoteBlocks } from './dsdBlocks';
+import { gridWidth, type Block, type NoteBlocks } from './dsdBlocks';
 
 /** 어떤 서식으로 그릴 칸인가 — xlsxStyles 의 이름과 같다. */
 export type CellKind = 'label' | 'title' | 'para' | 'head' | 'text' | 'num' | 'input';
@@ -66,6 +66,16 @@ export function periodOfHead(text: string): '당기' | '전기' | null {
 /** 「제12(당)기」의 기수를 한 해 올린다. 기수가 없으면 그대로. */
 export function bumpTerm(text: string): string {
   return (text ?? '').replace(/제\s*(\d+)\s*\(/g, (_, n) => `제${Number(n) + 1}(`);
+}
+
+/**
+ * **정책 주석**인가 — 해가 바뀌어도 내용이 그대로인 주석이다.
+ *
+ * 「중요한 회계처리방침」·「유의적인 회계정책」 안에는 내용연수 표처럼 해마다 안 바뀌는 것이
+ * 들어 있다. 이월할 때 이런 것까지 비우면 해마다 다시 적어야 한다.
+ */
+export function isPolicyNote(title: string): boolean {
+  return /회계처리방침|회계정책|중요한\s*판단|추정\s*불확실성/.test(title ?? '');
 }
 
 /**
@@ -157,6 +167,8 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     { row: 2, col: 3, text: `${note.no}. ${note.title}`, kind: 'title' },
   ];
   const merges: string[] = [];
+  // 「<전기>」 표는 같은 주석의 앞선 「<당기>」 표에서 값을 받아 온다 — 행 모양이 같을 때만.
+  const prevOf = opts.roll === true ? pairCurrentTables(note) : new Map<Block, Map<number, string>[]>();
   let r = 3;
   let prevWasTable = false;
 
@@ -186,11 +198,26 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     const orig = b.rows.map((line) => new Map(line.map((c) => [c.col, c.text])));
 
     // 어느 열이 숫자 열인가 — 그 열의 「-」는 0 으로 넣어야 합계가 잡힌다.
+    //
+    // **전부 「-」인 열도 숫자 열이다.** 명진 6. 유형자산의 취득·처분·대체가 그랬다 —
+    // 작년에 움직임이 없어 전부 붙임표였는데, 숫자 열이 아니라고 보아 이월할 때
+    // 비우지도 노랗게 칠하지도 않았다(2026-09-13 지적).
     const numericCol: number[] = [];
+    const dashOnly = new Map<number, boolean>();
     b.rows.forEach((line, i) => {
       if (isHeadRow[i]) return;
-      for (const c of line) if (asNumber(c.text) != null && !numericCol.includes(c.col)) numericCol.push(c.col);
+      for (const c of line) {
+        if (asNumber(c.text) != null) {
+          if (!numericCol.includes(c.col)) numericCol.push(c.col);
+          dashOnly.set(c.col, false);
+        } else if (isDash(c.text)) {
+          if (!dashOnly.has(c.col)) dashOnly.set(c.col, true);
+        } else if (c.text.trim()) {
+          dashOnly.set(c.col, false);
+        }
+      }
     });
+    for (const [col, only] of dashOnly) if (only && !numericCol.includes(col)) numericCol.push(col);
     numericCol.sort((a, x) => a - x);
 
     // ── 이월: 당기 열과 전기 열을 격자에서 찾아 짝짓는다 ──────────────
@@ -210,11 +237,38 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     priCols.sort((a, x) => a - x);
     const pairs: [number, number][] = curCols.length === priCols.length && curCols.length > 0
       ? curCols.map((c, i) => [c, priCols[i]] as [number, number]) : [];
-    const wholeCurrent = opts.roll === true && b.period === '당기' && pairs.length === 0;
-    const grid = opts.roll === true ? rollGrid(orig, pairs, wholeCurrent, curCols) : orig;
+    // **당기 자료는 모두 비운다.** 전기로 이름 붙은 열만 남긴다(거기에 작년 당기 값이 내려온다).
+    // 이자율·지분율·금액처럼 이름에 「당기」가 안 붙은 열도 결국 올해 값이라 채워 넣어야 한다 —
+    // 명진 9. 차입금의 이자율이 작년 값 그대로 남아 있었다(2026-09-13 지적).
+    const priSet = new Set(priCols);
+    // 머리에 「당기」가 **들어 있기만 해도** 올해 값이다 — 「당기말 현재 연이자율(%)」이 그렇다.
+    // 짝을 지을 때는 딱 맞는 이름만 썼지만(안전), **비울 때는 느슨하게 본다.**
+    // 알티스트 9. 차입금의 이자율이 글자라서 안 비워졌었다(2026-09-13 지적).
+    const looseCur = new Set<number>();
+    b.rows.forEach((line, i) => {
+      if (!isHeadRow[i]) return;
+      for (const c of line) {
+        const t = c.text.replace(/\s/g, '');
+        if (!/당기|당분기/.test(t) || /전기|전분기/.test(t)) continue;
+        for (let k = 0; k < c.colspan; k += 1) looseCur.add(c.col + k);
+      }
+    });
     const blankCols = new Set<number>(
-      opts.roll === true ? (pairs.length ? pairs.map(([c]) => c) : (wholeCurrent ? numericCol : curCols)) : [],
+      opts.roll === true
+        ? [...new Set([...numericCol, ...looseCur])].filter((c) => !priSet.has(c))
+        : [],
     );
+    // **전기 열이 하나도 없는 표는 통째로 올해 자료다.** 담보제공·보증 내역이 그렇다 —
+    // 제공받은자·내용·성격까지 해마다 새로 적는다. 첫 열(구분)만 남기고 비운다.
+    // 정책 주석은 빼 둔다 — 내용연수처럼 해마다 안 바뀌는 것이 들어 있다(2026-09-13 지적).
+    if (opts.roll === true && priCols.length === 0 && !isPolicyNote(note.title)) {
+      for (let c = 1; c < width; c += 1) blankCols.add(c);
+    }
+    // 전기 표(「<전기>」 표지판)는 같은 주석의 당기 표에서 값을 받아 온다.
+    const fromCurrent = opts.roll === true ? prevOf.get(b) : undefined;
+    const grid = opts.roll !== true ? orig
+      : fromCurrent ?? rollGrid(orig, pairs, false, []);
+    if (fromCurrent) blankCols.clear();
 
     const factor = b.isUnitMark ? null : unitFactor(b.unit);
     const dual = factor != null && numericCol.length > 0;
@@ -236,16 +290,20 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
 
       for (const c of line) {
         const at = 3 + c.col;
-        const val = head ? bumpTerm(c.text) : (grid[i].get(c.col) ?? '');
-        const blank = !head && blankCols.has(c.col);
+        // 머리행이라도 **날짜가 든 칸은 이월한다** — 「처분예정일: 2026년 3월 31일」은 내년에
+        // 전기 칸으로 내려가야 하고 당기 칸은 새로 적어야 한다(2026-09-13 지적).
+        const dated = head && /\d{4}\s*년|\d{4}-\d{2}-\d{2}/.test(c.text);
+        const rolls = !head || dated;
+        const val = rolls ? (grid[i].get(c.col) ?? '') : bumpTerm(c.text);
+        const blank = rolls && (blankCols.has(c.col) || (dated && curCols.includes(c.col)));
         // 「-」는 재무제표에서 0 이다. 숫자 0 으로 넣고 화면에는 숫자꼴이 「-」로 보여 준다.
         const num = blank ? undefined
           : (!head && numericCol.includes(c.col) && isDash(val) ? 0 : asNumber(val));
         const cell: SheetCell = {
           row: rowNo[i], col: at, text: blank ? '' : val, num,
-          kind: head ? 'head' : blank ? 'input' : num != null ? 'num' : 'text',
+          kind: blank ? 'input' : head ? 'head' : num != null ? 'num' : 'text',
         };
-        if (!head && (num != null || blank) && dual) {
+        if (!head && dual && numericCol.includes(c.col) && (num != null || blank)) {
           const k = numericCol.indexOf(c.col);
           const src = `${colName(srcBase + k)}${rowNo[i]}`;
           const rng = `${colName(at)}${rowNo[items[0]]}:${colName(at)}${rowNo[items[items.length - 1]]}`;
@@ -308,6 +366,27 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     prevWasTable = true;
   }
   return { name, cells, merges, lastRow: Math.max(2, r - 1) };
+}
+
+/**
+ * 「<전기>」 표에 짝이 되는 「<당기>」 표의 값을 물려준다.
+ *
+ * 명진 6. 유형자산처럼 같은 표를 「<당기>」와 「<전기>」로 두 벌 두는 주석이 있다. 이월하면
+ * **전기 표에는 작년 당기 표의 값**이 들어가야 한다. 행 수와 첫 열 이름이 같을 때만 짝으로 본다 —
+ * 모양이 다르면 어느 줄이 어느 줄인지 알 수 없다.
+ */
+export function pairCurrentTables(note: NoteBlocks): Map<Block, Map<number, string>[]> {
+  const out = new Map<Block, Map<number, string>[]>();
+  let cur: Block | null = null;
+  const key = (b: Block) => (b.kind !== 'table' ? '' : b.rows.map((r) => r[0]?.text.replace(/\s/g, '') ?? '').join('|'));
+  for (const b of note.blocks) {
+    if (b.kind !== 'table' || b.isUnitMark) continue;
+    if (b.period === '당기') { cur = b; continue; }
+    if (b.period === '전기' && cur && cur.kind === 'table' && key(cur) === key(b)) {
+      out.set(b, cur.rows.map((line) => new Map(line.map((c) => [c.col, c.text]))));
+    }
+  }
+  return out;
 }
 
 /**
