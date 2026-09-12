@@ -424,6 +424,33 @@ export function rollGrid(
   });
 }
 
+/**
+ * 작년 보고서에 없던 주석 — **빈 서식 한 장.**
+ *
+ * 주석을 새로 넣는 일은 드물지만, ①에서 목록에 더해 두면 ②가 자리를 만들어 주어야 한다.
+ * 그래야 「JAYTAX 에서 범위를 정하고 엑셀을 만든다」가 끝까지 성립한다(사용자 확정 2026-09-13).
+ *
+ * A열 자리표를 비워 둔다 — **원본에 대응할 자리가 없다는 뜻**이다. DSD 를 만들 때
+ * 이 시트는 제자리 치환이 아니라 새로 붙이는 쪽으로 간다.
+ */
+export function layoutNewNote(no: number | null, title: string, name: string): SheetPlan {
+  const head = no != null ? `${no}. ${title}` : title;
+  const cells: SheetCell[] = [
+    { row: 2, col: 2, text: '주석명', kind: 'label' },
+    { row: 2, col: 3, text: head, kind: 'title' },
+    { row: 3, col: 2, text: '새 주석', kind: 'label' },
+    {
+      row: 3, col: 3, kind: 'para',
+      text: '작년 보고서에 없던 주석입니다. 노란 칸에 서술을 적고, 표가 필요하면 아래에 만들어 주십시오.',
+    },
+  ];
+  for (let i = 0; i < NEW_NOTE_LINES; i += 1) cells.push({ row: 5 + i, col: 3, text: '', kind: 'input' });
+  return { name, cells, merges: [], lastRow: 4 + NEW_NOTE_LINES };
+}
+
+/** 빈 주석 시트에 마련해 두는 서술 줄 수. */
+export const NEW_NOTE_LINES = 8;
+
 /** 주석 목록 시트 — 정산표가 이미 쓰던 「주석번호 · 주석제목 · 사용여부」 그대로. */
 export function layoutIndex(rows: { no: number | null; title: string; enabled: boolean; sheet: string }[]): SheetPlan {
   const cells: SheetCell[] = [

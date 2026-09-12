@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { readDsd } from '../../lib/dsdFile';
 import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
-import { layoutNote, layoutIndex, sheetName } from '../../lib/noteSheet';
+import { layoutNote, layoutNewNote, layoutIndex, sheetName } from '../../lib/noteSheet';
 import { injectSheets } from '../../lib/xlsxInject';
 import type { Engagement, NoteRow } from '../../lib/dsdApi';
 
@@ -45,18 +45,23 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
     setWtb({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
   }
 
-  /** 켜 둔 주석만, ①에서 정한 제목·차례대로. DSD 에 없는 주석은 건너뛰고 알려 준다. */
-  function pickBlocks(): { picked: { note: NoteBlocks; title: string }[]; missing: string[] } {
+  /**
+   * 켜 둔 주석만, ①에서 정한 제목·차례대로.
+   *
+   * **작년 보고서에 없는 주석은 빈 서식으로 만든다.** 끈 주석은 아예 나오지 않는다 —
+   * 주석을 넣고 빼는 일은 ①에서 정하고 ②가 그대로 따른다(사용자 확정 2026-09-13).
+   */
+  function pickBlocks(): { picked: { note: NoteBlocks | null; title: string }[]; fresh: string[] } {
     const byNo = new Map(blocks!.map((b) => [b.no, b]));
     const byTitle = new Map(blocks!.map((b) => [b.title.replace(/\s/g, ''), b]));
-    const picked: { note: NoteBlocks; title: string }[] = [];
-    const missing: string[] = [];
+    const picked: { note: NoteBlocks | null; title: string }[] = [];
+    const fresh: string[] = [];
     for (const n of notes.filter((x) => x.enabled)) {
       const hit = byTitle.get(n.title.replace(/\s/g, '')) ?? (n.no != null ? byNo.get(n.no) : undefined);
-      if (hit) picked.push({ note: hit, title: n.title });
-      else missing.push(n.title);
+      picked.push({ note: hit ?? null, title: n.title });
+      if (!hit) fresh.push(n.title);
     }
-    return { picked, missing };
+    return { picked, fresh };
   }
 
   function make() {
@@ -64,12 +69,16 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
     if (!wtb) return setSay('정산표 엑셀(.xlsx)을 고르세요.');
     setBusy(true); setSay(null);
     try {
-      const { picked, missing } = pickBlocks();
-      if (!picked.length) throw new Error('켜 둔 주석 중 DSD 에서 찾은 것이 없습니다.');
+      const { picked, fresh } = pickBlocks();
+      if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 에서 만들 주석을 골라 주세요.');
 
       const used = new Set<string>();
-      const plans = picked.map(({ note, title }, i) =>
-        layoutNote({ ...note, title }, sheetName(`N${String(i + 1).padStart(2, '0')} ${title}`, used), { roll }));
+      const plans = picked.map(({ note, title }, i) => {
+        const name = sheetName(`N${String(i + 1).padStart(2, '0')} ${title}`, used);
+        return note
+          ? layoutNote({ ...note, title }, name, { roll })
+          : layoutNewNote(i + 1, title, name);
+      });
       plans.push(layoutIndex(picked.map(({ title }, i) => ({
         no: i + 1, title, enabled: true, sheet: plans[i].name,
       }))));
@@ -80,7 +89,9 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
       const yellow = plans.flatMap((p) => p.cells).filter((c) => c.kind === 'input').length;
       setDone(`주석 시트 ${picked.length}장과 목록 한 장을 얹었습니다.`
         + (roll ? ` 당기 값을 전기로 밀고 채워 넣을 칸 ${yellow}개를 노랗게 두었습니다.` : '')
-        + (missing.length ? ` 다만 ${missing.length}개는 DSD 에서 못 찾아 건너뛰었습니다 — ${missing.join(' · ')}` : ''));
+        + (fresh.length
+          ? ` 그 가운데 ${fresh.length}개는 작년 보고서에 없어 빈 서식으로 두었습니다 — ${fresh.join(' · ')}`
+          : ''));
     } catch (e) {
       setSay(e instanceof Error ? e.message : '만들지 못했습니다.');
     } finally {

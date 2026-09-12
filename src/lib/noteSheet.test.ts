@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   asNumber, isDash, unitFactor, isTotalLabel, periodOfHead, bumpTerm, rollGrid, isPolicyNote,
-  sheetName, addrOf, parseAddr, layoutNote, layoutIndex,
+  sheetName, addrOf, parseAddr, layoutNote, layoutNewNote, layoutIndex, NEW_NOTE_LINES,
 } from './noteSheet.ts';
 import type { NoteBlocks } from './dsdBlocks.ts';
 
@@ -360,4 +360,21 @@ test('단위 표지판은 이월해도 지우지 않는다 — 노랗게 칠하�
   assert.equal(body.length, 1, '자료 표의 당기 칸 하나만 비어야 한다');
   assert.equal(body[0].row, mark!.row + 3);        // 표지판 · 빈 줄 · 머리 · 본문
   assert.equal(at(body[0].row, 5)?.text, '150,000,000');   // 전기로 내려왔다
+});
+
+test('작년에 없던 주석 — 빈 서식 한 장을 만든다', () => {
+  const plan = layoutNewNote(19, '리스', 'N19 리스');
+  assert.equal(plan.cells.find((c) => c.kind === 'title')?.text, '19. 리스');
+  // 채워 넣을 줄은 노란 입력칸
+  const input = plan.cells.filter((c) => c.kind === 'input');
+  assert.equal(input.length, NEW_NOTE_LINES);
+  assert.ok(input.every((c) => c.col === 3 && c.text === ''));
+  // **자리표가 없다** — 원본에 대응할 자리가 없다는 뜻이다
+  assert.equal(plan.cells.filter((c) => c.col === 1).length, 0);
+  assert.equal(plan.lastRow, 4 + NEW_NOTE_LINES);
+});
+
+test('번호가 아직 없는 새 주석이면 제목만 쓴다', () => {
+  const plan = layoutNewNote(null, '리스', 'N19 리스');
+  assert.equal(plan.cells.find((c) => c.kind === 'title')?.text, '리스');
 });
