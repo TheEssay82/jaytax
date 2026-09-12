@@ -17,7 +17,8 @@ import {
   type Engagement, type NoteRow, type Basis,
 } from '../../lib/dsdApi';
 import {
-  template, templateSize, suggestCode, renumber, progress, defaultAuditFy, DEFAULT_STATUS,
+  template, templateSize, suggestCode, renumber, progress,
+  defaultAuditFy, defaultPeriod, DEFAULT_STATUS,
 } from '../../lib/dsdNotes';
 import { readDsd, type DsdInfo } from '../../lib/dsdFile';
 
@@ -206,6 +207,14 @@ export default function DsdEngagementTab() {
                   <option>천원</option><option>원</option>
                 </select>
               </Field>
+              <Field label="대상기간">
+                <input className="btn-sm" type="date" value={picked.periodFrom ?? ''}
+                  onChange={(ev) => void updateEngagement(picked.id, { periodFrom: ev.target.value }).then(() => load(picked.id))} />
+              </Field>
+              <Field label="~">
+                <input className="btn-sm" type="date" value={picked.periodTo ?? ''}
+                  onChange={(ev) => void updateEngagement(picked.id, { periodTo: ev.target.value }).then(() => load(picked.id))} />
+              </Field>
               <Field label="상태">
                 <select className="btn-sm" value={picked.status}
                   onChange={(ev) => void updateEngagement(picked.id, { status: ev.target.value as Engagement['status'] }).then(() => load(picked.id))}>
@@ -349,6 +358,9 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
   const [auditOnly, setAuditOnly] = useState(true);
   const [entityId, setEntityId] = useState('');
   const [fy, setFy] = useState(defaultAuditFy());
+  // 대상기간은 사업연도에서 따라오되 **손으로 고칠 수 있어야 한다** — 12월 결산이 아닌 회사도 있고,
+  // 첫 사업연도는 기간이 짧다. 사업연도를 바꾸면 다시 그 해의 1/1~12/31 로 맞춘다.
+  const [period, setPeriod] = useState(defaultPeriod(defaultAuditFy()));
   const [scope, setScope] = useState<'별도' | '연결'>('별도');
   const [basis, setBasis] = useState<Basis>('K-IFRS');
   const [moneyUnit, setMoneyUnit] = useState<'천원' | '원'>('천원');
@@ -369,6 +381,8 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
     if (t) base = base.filter((e) => e.name.includes(t) || (e.code ?? '').includes(t));
     return base.slice(0, 60);
   }, [entities, auditIds, auditOnly, q]);
+
+  useEffect(() => { setPeriod(defaultPeriod(fy)); }, [fy]);
 
   // 앞 해 건이 있으면 복제를 기본으로 — 그게 대응표가 쌓이는 길이다.
   useEffect(() => {
@@ -424,8 +438,7 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
     try {
       const id = await createEngagement({
         entityId, fy, scope, termNo: null,
-        periodFrom: dsd?.period?.from ?? `${fy}-01-01`,
-        periodTo: dsd?.period?.to ?? `${fy}-12-31`,
+        periodFrom: period.from, periodTo: period.to,
         basis, moneyUnit, seed,
         seedRows: seed === 'file' ? rowsFromFile() : undefined,
       });
@@ -487,6 +500,19 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
           </div>
         </div>
 
+        <div className="frow"><span className="fl">대상기간<span className="req">*</span></span>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input className="btn-sm" type="date" value={period.from}
+              onChange={(e) => setPeriod((v) => ({ ...v, from: e.target.value }))} />
+            <span style={{ color: 'var(--ink-3)' }}>~</span>
+            <input className="btn-sm" type="date" value={period.to}
+              onChange={(e) => setPeriod((v) => ({ ...v, to: e.target.value }))} />
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
+              12월 결산이 아니거나 첫 사업연도면 고치세요
+            </span>
+          </div>
+        </div>
+
         <div className="frow"><span className="fl">회계기준 · 단위</span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <select className="btn-sm" value={basis} onChange={(e) => setBasis(e.target.value as Basis)}>
@@ -514,8 +540,8 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
                 {dsd && (
                   <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)', marginTop: 3 }}>
                     {dsd.docName || 'DSD'} · 주석 <b>{dsd.notes.length}개</b>
-                    {dsd.period ? ` · ${dsd.period.from} ~ ${dsd.period.to}` : ''}
-                    <span style={{ color: 'var(--ink-3)' }}> — 제목과 코드는 만든 뒤 화면에서 고칠 수 있습니다</span>
+                    {dsd.period ? ` · 이 파일은 ${dsd.period.from.slice(0, 4)}년 보고서입니다` : ''}
+                    <span style={{ color: 'var(--ink-3)' }}> — 틀로만 씁니다. 대상기간은 위에서 정한 값이 들어갑니다</span>
                   </div>
                 )}
                 <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2 }}>
