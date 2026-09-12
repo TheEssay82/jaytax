@@ -85,6 +85,7 @@ const SYSTEM = `당신은 한국 회계·세무 실무 회신을 작성하는 �
   · [세법]: 법령 원문 — 법령명·조문번호·시행일을 명시하고, 핵심 문구를 "직접 인용"한 뒤 쉬운 말로 풀이한다.
   · [예규]: 국세청·기재부의 유권해석 — **[요지]와 [회답] 본문이 함께 온다.** 실무에서 과세관청이 실제로 어떻게 보는지를 말해 주는 근거이므로 결론에 **반드시 반영**한다. 안건번호·해석일자와 함께 회답 문구를 직접 인용한다. 회답이 다른 해석사례를 인용하는 형식이면(예: "기획재정부 법인세제과-○○○을 참조") 그 인용된 문구가 실질 내용이므로 그것을 인용한다.
   · [예규(제목만)]: 본문을 받지 못한 것 — 안건명만 있다. 이것으로 결론을 내거나 회답 내용을 추정하지 않는다. '실무 유의'에 안건번호와 링크만 안내한다.
+  · **조문 본문이 "…(제N항 … 생략 …)"으로 끝나면 그 조문은 뒷부분이 잘린 것이다.** 잘린 조문을 근거로 "그런 규정은 없다" · "특례·준용 규정은 확인되지 않는다"고 단정하지 말고, 필요하면 "생략된 항에 규정이 있을 수 있어 원문 확인이 필요하다"고 밝힌다.
   · **적용 시점을 반드시 확인한다.** 예규는 "○년 ○월 이후 …하는 분부터 적용한다"처럼 적용 개시를 못박는 경우가 많고, 조문도 개정되면 문언이 달라진다. 근거들이 서로 다른 시점의 법을 말하고 있으면 **결론을 시점별로 나눠** 제시한다(예: "2024년 이전 발생분은 …, 2025.1.1. 이후 발생분은 …"). 특히 판례는 **선고 당시의 조문(구법)**을 판단한 것일 수 있으므로, 그 뒤 조문이 개정되었다면 판례의 결론을 현행법에 그대로 옮기지 않는다.
   · [판례]/[심판례]: 사건(의결)번호·선고(의결)일·요지를 적고, 사실관계 차이 가능성을 유의로 덧붙인다.
   · **판례와 심판례가 어긋나면 법원 판례가 우선이다.** 특히 대법원 판결이 있으면 그것이 최종 법리이고, 그보다 앞선(또는 그 취지에 반하는) 심판례·과세관청 해석은 그대로 따를 수 없다. 이때는 결론을 판례에 맞추고, 심판례는 "종전 심판례는 …였으나 대법원 ○○○ 판결로 정리되었다"처럼 시간 순서와 함께 설명한다. 심판례만 근거로 과세관청 쪽 결론을 내면서 상급심 판단을 빠뜨리는 일이 없도록 한다.
@@ -479,6 +480,64 @@ async function ntsBody(link: string): Promise<{ gist: string; body: string } | n
   } catch { return null; }
 }
 
+// ── 조문 본문을 어디서 자를지 ───────────────────────────────────────────────
+// 정본은 src/lib/lawClip.ts (테스트 있음). Deno 함수라 가져다 쓸 수 없어 같은 내용을 둔다.
+// 고칠 때는 둘 다 고친다.
+//
+// 왜: 조문을 앞에서부터 1,400자로 잘라 실었더니, 항이 열 개 넘는 시행령 정의 조항은
+// 뒷부분이 통째로 날아갔다. 2026-09-11 통합고용세액공제 회신에서 조특령 제26조의8의
+// 창업 특례(제8항)가 잘려 나가 "그런 규정은 확인되지 않는다"는 틀린 근거가 나왔다.
+const CLAUSE_MARK = /[①-⑳]/;
+const CLAUSE_MARKS_G = /[①-⑳]/g;
+
+function clauseNo(chunk: string): number {
+  const c = (chunk ?? '').trimStart().charCodeAt(0);
+  return c >= 0x2460 && c <= 0x2473 ? c - 0x245f : 0;
+}
+
+function splitClauses(content: string): string[] {
+  const s = content ?? '';
+  if (!CLAUSE_MARK.test(s)) return s.trim() ? [s] : [];
+  const out: string[] = [];
+  let last = 0;
+  for (const m of s.matchAll(CLAUSE_MARKS_G)) {
+    const i = m.index ?? 0;
+    if (i > last) out.push(s.slice(last, i));
+    last = i;
+  }
+  out.push(s.slice(last));
+  return out.filter((x) => x.trim());
+}
+
+/** 조문을 max 자 안으로 줄이되 **항 경계에서만** 자르고, 빠진 항을 밝힌다. */
+function clipArticle(content: string, max: number): string {
+  const s = (content ?? '').trim();
+  if (s.length <= max) return s;
+  const parts = splitClauses(s);
+  const kept: string[] = [];
+  let len = 0;
+  for (const p of parts) {
+    if (kept.length && len + p.length > max) break;
+    kept.push(p);
+    len += p.length;
+  }
+  let body = kept.join('').trimEnd();
+  if (body.length > max) body = body.slice(0, max).trimEnd();
+  const nos = parts.slice(kept.length).map(clauseNo).filter((n) => n > 0);
+  const where = nos.length === 0
+    ? '뒷부분'
+    : nos.length === 1
+      ? `제${nos[0]}항`
+      : `제${nos[0]}항부터 제${nos[nos.length - 1]}항까지`;
+  return `${body}
+…(${where} 생략 — 길어서 싣지 못했다. 생략된 부분에 준용·특례·예외 규정이 있을 수 있으므로, 이 조문에 그런 규정이 "없다"고 단정하지 않는다.)`;
+}
+
+/** 조문 하나에 허용하는 길이. 옛 1,400자는 시행령 정의 조항을 통째로 잘라먹었다. */
+const ART_MAX = 3600;
+/** 한 회신에 싣는 조문 본문 총량 — 조문이 길다고 다른 근거를 밀어내지 않게. */
+const ART_BUDGET = 16000;
+
 // ── 세법 조문 자동근거 (법제처 target=law: search → detail, LAW_API_OC) ──
 // 질문 → 관련 세법 식별(haiku) → 법령 조문목록 → 관련 조문 선별(haiku) → 조문 원문+시행일 근거.
 // 법령은 수십~수백 조라 전문 투입 불가 → Claude가 조문제목 목록에서 선별한 조문만 원문 추출.
@@ -555,6 +614,7 @@ async function fetchTaxLaw(question: string, key: string, oc: string): Promise<{
     }
 
     const cites: { type: string; ref: string; text: string }[] = [];
+    let spent = 0;   // 지금까지 실은 조문 본문 길이
     for (const name of lawNames) {
       // 2) 법령 식별 → MST (정식명 일치 우선)
       const s = await drfLaw('lawSearch.do', { query: name, display: '5' }, oc);
@@ -603,10 +663,13 @@ async function fetchTaxLaw(question: string, key: string, oc: string): Promise<{
       }
       const chosen = arts.filter((a) => wanted.has(label(a))).slice(0, 4);
       for (const a of chosen) {
+        const room = Math.max(800, Math.min(ART_MAX, ART_BUDGET - spent));
+        const text = clipArticle(a.content, room);
+        spent += text.length;
         cites.push({
           type: '세법',
           ref: `${lawName} ${label(a)}${a.title ? `(${a.title})` : ''}${a.eff ? ` (시행 ${fmtDate(a.eff)})` : ''}`,
-          text: a.content.slice(0, 1400),
+          text,
         });
       }
     }
