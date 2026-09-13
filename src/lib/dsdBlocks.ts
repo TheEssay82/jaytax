@@ -67,6 +67,8 @@ export type Block =
     parts: string[];
     /** 원문에 적힌 제목 부분 그대로 — DSD 로 되돌릴 때 앞에 도로 붙인다. */
     lead?: string;
+    /** 제목과 본문 사이의 공백까지 담은 원문 — 되돌릴 때 이것을 쓴다. */
+    leadRaw?: string;
     /** 이 덩이가 원문 `<P>` 의 **몇 번째 문단부터**인가. 되돌릴 자리를 찾는 열쇠다. */
     from: number;
     /** `lead` 가 `parts[0]` 과 **같은 문단**에 있으면 0, 다음 문단이면 1. */
@@ -164,7 +166,7 @@ export function afterTitle(text: string, title: string): string | null {
  * 빈 줄로 나뉜 경우와, 「3. 유의적인 회계정책 당사가 …」처럼 한 덩이에 붙은 경우를 모두 본다.
  * `lead` 는 원문에 적힌 제목 부분 그대로다 — DSD 로 되돌릴 때 앞에 도로 붙인다.
  */
-export function headingBody(text: string, title: string): { lead: string; body: string[] } {
+export function headingBody(text: string, title: string): { lead: string; leadRaw?: string; body: string[] } {
   const parts = splitParts(text);
   if (!parts.length) return { lead: (text ?? '').trim(), body: [] };
   const first = parts[0];
@@ -174,7 +176,14 @@ export function headingBody(text: string, title: string): { lead: string; body: 
   if (m) {
     const tail = afterTitle(first.slice(m[0].length), title);
     if (tail != null && tail.trim()) {
-      return { lead: first.slice(0, first.length - tail.length).trimEnd(), body: [tail.trim(), ...rest] };
+      // `leadRaw` 는 **뒤 공백까지 원문 그대로**다. 되돌릴 때 이것을 앞에 도로 붙이면
+      // 띄어쓰기가 한 칸도 어긋나지 않는다.
+      const cut = first.length - tail.length + (tail.length - tail.trimStart().length);
+      return {
+        lead: first.slice(0, first.length - tail.length).trimEnd(),
+        leadRaw: first.slice(0, cut),
+        body: [tail.trim(), ...rest],
+      };
     }
   }
   return { lead: first, body: rest };
@@ -375,11 +384,11 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
         notes.push(cur);
         const end = k + 1 < hs.length ? hs[k + 1].part : parts.length;
         // 제목 뒤에 본문이 붙어 있으면 **살려서 첫 문단으로 넣는다.** 버리면 서술이 사라진다.
-        const { lead, body } = headingBody(joinParts(parts.slice(h.part, end)), h.title);
+        const { lead, leadRaw, body } = headingBody(joinParts(parts.slice(h.part, end)), h.title);
         const share = body.length > 0 && body[0] !== parts[h.part + 1];
         if (body.length) {
           cur!.blocks.push({
-            kind: 'para', slot: i, parts: body, lead,
+            kind: 'para', slot: i, parts: body, lead, leadRaw,
             from: share ? h.part : h.part + 1, leadShare: share,
           });
         }

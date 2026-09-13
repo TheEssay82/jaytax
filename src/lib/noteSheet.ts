@@ -93,6 +93,25 @@ export interface SheetPlan {
   /** 엑셀에서 병합할 자리 — 「D4:E4」 꼴. 원본이 덮은 만큼 덮는다. */ merges?: string[];
   /** 마지막 행 */ lastRow: number;
   /** 표마다의 구조 — ③ 검증과 ④ 되돌리기가 이걸 보고 일한다. */ tables?: TablePlan[];
+  /** 되돌릴 자리 — 엑셀 칸 하나가 DSD 의 어느 글자칸인가. */ back?: BackRef[];
+}
+
+/**
+ * 엑셀 칸 하나를 DSD 제자리로 되돌리는 데 필요한 것들.
+ *
+ * **자리표(A열)를 도로 읽지 않는다.** ④ 는 ② 와 똑같은 배치를 다시 지어 이 목록을 얻는다 —
+ * 사람이 A열을 건드렸어도 흔들리지 않고, 배치 규칙을 두 벌 쓰지 않게 된다.
+ */
+export interface BackRef {
+  /** 엑셀 주소 */ at: string;
+  /** 원본 글자칸 번호 */ slot: number;
+  /** 문단이면 원문 `<P>` 안의 몇 번째 문단인가 */ part?: number;
+  /** 한 칸에 `<P>` 가 여럿이면 나머지 자리 */ extra?: number[];
+  /** 원본에 적혀 있던 글자 — 안 바뀌었으면 그대로 쓴다(무손실) */ orig: string;
+  /** 제목이 이 문단에 함께 들어 있으면 그 제목. 되돌릴 때 앞에 도로 붙인다. */ lead?: string;
+  /** 천원 표면 1000 — 엑셀 표시값이 천원이다 */ factor?: number;
+  /** 「원 단위 (입력)」 칸 주소 — 표시 칸에 값이 없으면 여기서 계산한다 */ srcAt?: string;
+  /** 숫자 칸인가 — 모양(쉼표·괄호·붙임표)을 맞춰 써야 한다 */ isNum?: boolean;
 }
 
 /**
@@ -190,6 +209,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
   ];
   const merges: string[] = [];
   const tables: TablePlan[] = [];
+  const back: BackRef[] = [];
   // 「<전기>」 표는 같은 주석의 앞선 「<당기>」 표에서 값을 받아 온다 — 행 모양이 같을 때만.
   const prevOf = opts.roll === true ? pairCurrentTables(note) : new Map<Block, Map<number, string>[]>();
   let r = 3;
@@ -204,6 +224,10 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
       b.parts.forEach((p, i) => {
         cells.push({ row: r, col: 1, text: addrOf(b.slot, many ? b.from + i : undefined) });
         cells.push({ row: r, col: 3, text: p, kind: 'para' });
+        back.push({
+          at: `${colName(3)}${r}`, slot: b.slot, part: b.from + i, orig: p,
+          lead: i === 0 && b.leadShare ? (b.leadRaw ?? b.lead) : undefined,
+        });
         r += 1;
       });
       prevWasTable = false;
@@ -246,6 +270,18 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     });
     for (const [col, only] of dashOnly) if (only && !numericCol.includes(col)) numericCol.push(col);
     numericCol.sort((a, x) => a - x);
+
+    // **소수가 든 열은 천원 환산에서 뺀다.** 환율·배수·비율이 그렇다 — 원으로 부풀렸다가
+    // 천원으로 되돌리면 1,422.22 가 1,422 로 깎인다(넵튠·알티스트 — 2026-09-13).
+    const hasFrac = new Set<number>();
+    b.rows.forEach((line, i) => {
+      if (isHeadRow[i]) return;
+      for (const c of line) {
+        const n = asNumber(c.text);
+        if (n != null && !Number.isInteger(n)) hasFrac.add(c.col);
+      }
+    });
+    const srcCols = numericCol.filter((c) => !hasFrac.has(c));
 
     // ── 이월: 당기 열과 전기 열을 격자에서 찾아 짝짓는다 ──────────────
     // 머리가 두 줄인 표(「당기」가 COLSPAN 으로 두 열을 덮고 그 아래 장부가액·공시지가)도
@@ -298,9 +334,9 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     if (fromCurrent) blankCols.clear();
 
     const factor = b.isUnitMark ? null : unitFactor(b.unit);
-    const dual = factor != null && numericCol.length > 0;
+    const dual = factor != null && srcCols.length > 0;
     const srcBase = 3 + width + 1;                   // 표 오른쪽에 한 칸 띄운다
-    const diffCol = srcBase + numericCol.length + 1;
+    const diffCol = srcBase + srcCols.length + 1;
 
     // 합계 행 — 하나뿐이고 위에 항목이 둘 이상일 때만 SUM 으로 묶는다.
     const bodyIdx = b.rows.map((_, i) => i).filter((i) => !isHeadRow[i]);
@@ -326,7 +362,8 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
         // 전기 칸으로 내려가야 하고 당기 칸은 새로 적어야 한다(2026-09-13 지적).
         const dated = head && /\d{4}\s*년|\d{4}-\d{2}-\d{2}/.test(c.text);
         const rolls = !head || dated;
-        const val = rolls ? (grid[i].get(c.col) ?? '') : bumpTerm(c.text);
+        // 기수를 올리는 것도 **이월할 때만** 한다 — 그대로 옮길 때는 「제12(당) 기」 그대로다.
+        const val = rolls ? (grid[i].get(c.col) ?? '') : (roll ? bumpTerm(c.text) : c.text);
         const blank = rolls && (blankCols.has(c.col) || (dated && curCols.includes(c.col)));
         // 「-」는 재무제표에서 0 이다. 숫자 0 으로 넣고 화면에는 숫자꼴이 「-」로 보여 준다.
         const num = blank ? undefined
@@ -335,8 +372,8 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
           row: rowNo[i], col: at, text: blank ? '' : val, num,
           kind: blank ? 'input' : head ? 'head' : num != null ? 'num' : 'text',
         };
-        if (!head && dual && numericCol.includes(c.col) && (num != null || blank)) {
-          const k = numericCol.indexOf(c.col);
+        if (!head && dual && srcCols.includes(c.col) && (num != null || blank)) {
+          const k = srcCols.indexOf(c.col);
           const src = `${colName(srcBase + k)}${rowNo[i]}`;
           const rng = `${colName(at)}${rowNo[items[0]]}:${colName(at)}${rowNo[items[items.length - 1]]}`;
           // 합계 행은 **표시값끼리 더한다**(㉮) — 보는 사람이 더해서 맞아야 한다.
@@ -348,6 +385,14 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
           delete cell.num;
         }
         cells.push(cell);
+        // 되돌릴 자리 — 머리글도 적는다(해가 바뀌면 「제19(당)기」처럼 고쳐야 한다).
+        back.push({
+          at: `${colName(at)}${rowNo[i]}`, slot: c.slot, extra: c.extra, orig: c.text,
+          factor: cell.formula != null && factor != null ? factor : undefined,
+          srcAt: cell.formula != null && factor != null && srcCols.includes(c.col)
+            ? `${colName(srcBase + srcCols.indexOf(c.col))}${rowNo[i]}` : undefined,
+          isNum: !head && numericCol.includes(c.col),
+        });
         // 이월해 넣은 값을 적어 둔다 — ③ 에서 사람이 고쳤는지 본다. 전기는 확정된 숫자다.
         // **수식이 걸린 칸은 빼 둔다.** 천원 표의 표시 열은 ROUND 수식이라 값이 없다 —
         // 그 표의 숫자는 오른쪽 「원 단위 (입력)」 칸에 앉는다.
@@ -362,7 +407,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
 
       // ── 오른쪽 원 단위 블록 ────────────────────────────────
       if (!dual) return;
-      numericCol.forEach((gc, k) => {
+      srcCols.forEach((gc, k) => {
         const col = srcBase + k;
         if (head) {
           const hit = line.find((c) => c.col <= gc && gc < c.col + c.colspan);
@@ -393,7 +438,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     if (dual && canSum) {
       const headRow = isHeadRow.indexOf(true);
       if (headRow >= 0) cells.push({ row: rowNo[headRow], col: diffCol, text: '단수차이', kind: 'head' });
-      numericCol.forEach((gc, k) => {
+      srcCols.forEach((gc, k) => {
         cells.push({
           row: rowNo[sumAt], col: diffCol + k, text: '', kind: 'num',
           formula: `ROUND(${colName(srcBase + k)}${rowNo[sumAt]}/${factor},0)-${colName(3 + gc)}${rowNo[sumAt]}`,
@@ -406,7 +451,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
       bodyRows: bodyIdx.map((i) => rowNo[i]),
       totalRow: sumAt >= 0 ? rowNo[sumAt] : null,
       itemRows: items.map((i) => rowNo[i]),
-      numCols: numericCol.map((c) => 3 + c),
+      numCols: (dual ? srcCols : numericCol).map((c) => 3 + c),
       srcBase: dual ? srcBase : null,
       diffCol: dual && canSum ? diffCol : null,
       factor,
@@ -418,7 +463,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     r += b.rows.length;
     prevWasTable = true;
   }
-  return { name, cells, merges, lastRow: Math.max(2, r - 1), tables };
+  return { name, cells, merges, lastRow: Math.max(2, r - 1), tables, back };
 }
 
 /**
