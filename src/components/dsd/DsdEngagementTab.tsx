@@ -5,8 +5,9 @@
 //
 // ⚠️ 재무제표 파일은 여기로 올리지 않는다. 엑셀도 DSD 도 브라우저 안에서 열고 끝낸다.
 //
-// 주석 목록에서 가장 중요한 칸은 **코드**다. 주석 번호는 하나가 빠지면 통째로 밀리므로
-// (올해 17번 무형자산이 내년엔 16번) 「엑셀 칸 ↔ DSD 칸」 대응표를 번호에 매달 수 없다.
+// 주석을 찾는 열쇠는 **제목**이다 — ②③④ 가 제목으로 짝을 짓는다(notePick). 주석 번호는
+// 하나가 빠지면 통째로 밀려서(올해 17번 무형자산이 내년엔 16번) 열쇠가 될 수 없다.
+// 줄마다 붙는 코드는 화면에서 줄을 구별하는 데만 쓰므로 보여 주지 않는다.
 import { useEffect, useMemo, useState } from 'react';
 import Empty from '../common/Empty';
 import { confirmDanger } from '../common/DangerConfirm';
@@ -279,7 +280,6 @@ export default function DsdEngagementTab() {
                   <tr style={{ background: 'var(--surface-2)' }}>
                     <th style={{ width: 38 }}>번호</th>
                     <th style={{ minWidth: 180 }}>제목</th>
-                    <th style={{ width: 150 }}>코드 <span style={{ color: 'var(--ink-4)', fontWeight: 400 }}>(불변)</span></th>
                     <th style={{ width: 62 }}>시트</th>
                     <th style={{ width: 46 }}>쓰기</th>
                     <th style={{ width: 74 }}>작성</th>
@@ -295,13 +295,6 @@ export default function DsdEngagementTab() {
                       <td>
                         <input className="btn-sm" style={{ width: '100%', textAlign: 'left' }} value={n.title}
                           onChange={(ev) => edit(n.code, { title: ev.target.value })} />
-                      </td>
-                      <td>
-                        <input className="btn-sm"
-                          style={{ width: '100%', textAlign: 'left', fontFamily: 'var(--font-num, monospace)',
-                            color: n.code.startsWith('X_') ? 'var(--warn)' : 'var(--ink-2)' }}
-                          title={n.code.startsWith('X_') ? '표준 틀에 없는 주석이라 임시 코드입니다 — 알아보기 쉬운 코드로 고쳐 두세요.' : ''}
-                          value={n.code} onChange={(ev) => edit(n.code, { code: ev.target.value.trim() })} />
                       </td>
                       <td>
                         <input className="btn-sm" style={{ width: '100%', textAlign: 'left' }} value={n.sheet ?? ''}
@@ -344,7 +337,7 @@ export default function DsdEngagementTab() {
               <button className="btn-sm" onClick={addNote}>+ 주석 추가</button>
               {notes.length === 0 && (
                 <button className="btn-sm" onClick={() => { setNotes(template(picked.basis)); setDirty(true); }}>
-                  표준 틀 채우기 ({templateSize(picked.basis)}개)
+                  흔한 주석으로 채우기 ({templateSize(picked.basis)}개)
                 </button>
               )}
               <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: dirty ? 'var(--warn)' : 'var(--ink-4)' }}>
@@ -452,7 +445,7 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
     }
   }
 
-  /** 파일에서 읽은 주석을 목록 줄로 — 코드는 표준 틀에서 짐작하고, 없으면 X_ 임시 코드다. */
+  /** 파일에서 읽은 주석을 목록 줄로. */
   function rowsFromFile(): NoteRow[] {
     const used = new Set<string>();
     return (dsd?.notes ?? []).map((n, i) => {
@@ -598,7 +591,8 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
             </label>
             <label style={{ fontSize: 'var(--fs-2)' }}>
               <input type="radio" checked={seed === 'template'} onChange={() => setSeed('template')} />{' '}
-              사무소 표준 틀 <span style={{ color: 'var(--ink-3)' }}>— {basis} {templateSize(basis)}개</span>
+              흔히 쓰는 주석 목록
+              <span style={{ color: 'var(--ink-3)' }}> — {basis} {templateSize(basis)}개 · 회사마다 다르니 보고 고치세요</span>
             </label>
             <label style={{ fontSize: 'var(--fs-2)' }}>
               <input type="radio" checked={seed === 'empty'} onChange={() => setSeed('empty')} />{' '}

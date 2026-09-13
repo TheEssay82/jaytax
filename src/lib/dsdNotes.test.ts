@@ -32,17 +32,13 @@ test('회사가 쓰는 주석은 대조 대상에서 뺀다', () => {
   assert.equal(t.find((r) => r.code === 'INTANGIBLE')?.source, '감사인');
 });
 
-test('제목으로 코드 짐작', () => {
-  assert.equal(suggestCode('무형자산', 'K-IFRS'), 'INTANGIBLE');
-  assert.equal(suggestCode('유 형 자 산', 'K-IFRS'), 'PPE');
-  assert.equal(suggestCode('특수관계자 공시', '일반기업회계기준'), 'RELATED_PARTY');
-  // 다른 기준서의 이름이어도 찾아 준다
-  assert.equal(suggestCode('재고자산', 'K-IFRS'), 'INVENTORY');
-});
-
-test('표준에 없는 제목은 임시 코드 — 사람이 고치라고 X_ 를 붙인다', () => {
-  const c = suggestCode('가상자산 보유내역', 'K-IFRS');
-  assert.ok(c.startsWith('X_'), c);
+test('코드는 제목에서 만든다 — 「표준」을 대조하지 않는다', () => {
+  // 회사마다 주석 양식이 다르므로 사무소 공통의 표준 틀이 성립하지 않는다(2026-09-13).
+  assert.equal(suggestCode('무형자산'), '무형자산');
+  assert.equal(suggestCode('유 형 자 산'), '유_형_자_산');
+  assert.equal(suggestCode('특수관계자 공시'), '특수관계자_공시');
+  assert.equal(suggestCode('가상자산 보유내역'), '가상자산_보유내역', 'X_ 딱지를 붙이지 않는다');
+  assert.equal(suggestCode('(*) …'), 'NOTE', '글자가 없으면 기본 이름');
 });
 
 const rows = (): NoteRow[] => [

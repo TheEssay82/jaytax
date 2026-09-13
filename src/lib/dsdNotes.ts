@@ -129,21 +129,18 @@ export function templateSize(basis: Basis): number {
 }
 
 /**
- * 제목에서 코드를 짐작한다. 표준 틀에 같은 제목이 있으면 그 코드를,
- * 없으면 제목을 영문 코드로 만들 수 없으니 **번호 없는 임시 코드**를 준다.
- * 임시 코드는 사람이 고칠 수 있게 화면에 그대로 내놓는다.
+ * 주석 줄을 구별할 코드 — **제목에서 만든다.**
+ *
+ * 전에는 사무소 표준 틀과 대조해 `CASH` 같은 코드를 주고, 없으면 `X_` 를 붙였다. 그런데
+ * **회사마다 주석 양식이 다르므로 「표준」이 성립하지 않는다**(사용자 지적 2026-09-13).
+ * `X_` 는 「내가 가진 목록에 없다」는 뜻일 뿐이라 보는 사람에게 아무 뜻이 없었다.
+ *
+ * 코드가 하는 일은 **한 작업 건 안에서 줄을 구별하는 것**뿐이다 — ②③④ 는 주석을 **제목**으로
+ * 찾는다(notePick). 그래서 제목을 그대로 쓴다.
  */
-export function suggestCode(title: string, basis: Basis): string {
-  const norm = (s: string) => s.replace(/[\s·ㆍ()[\]{}.,'"-]/g, '').toLowerCase();
-  const t = norm(title);
-  for (const [code, name] of basis === 'K-IFRS' ? KIFRS : KGAAP) {
-    if (norm(name) === t) return code;
-  }
-  for (const [code, name] of [...KIFRS, ...KGAAP]) {
-    if (norm(name) === t) return code;
-  }
-  const slug = title.replace(/[^0-9A-Za-z가-힣]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24);
-  return slug ? `X_${slug}` : 'X_NOTE';
+export function suggestCode(title: string, _basis?: Basis): string {
+  const slug = (title ?? '').replace(/[^0-9A-Za-z가-힣]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+  return slug || 'NOTE';
 }
 
 /**
