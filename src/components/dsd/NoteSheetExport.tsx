@@ -146,9 +146,19 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
       )}
       {done && (
         <div style={{
-          marginTop: 10, padding: '8px 11px', borderRadius: 'var(--r-sm)',
-          background: 'var(--good-bg)', color: 'var(--good)', fontSize: 'var(--fs-2)', lineHeight: 1.6,
-        }}>{done}</div>
+          marginTop: 10, padding: '9px 11px', borderRadius: 'var(--r-sm)',
+          background: 'var(--good-bg)', color: 'var(--good)', fontSize: 'var(--fs-2)', lineHeight: 1.7,
+        }}>
+          {done}
+          <div style={{ marginTop: 7, paddingTop: 7, borderTop: '1px solid currentColor', opacity: 0.85 }}>
+            <b>다음에 할 일</b>
+            <ol style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+              <li>내려받은 엑셀을 열어 <b>노란 칸</b>을 채웁니다 — 대개 재무제표 시트에서 링크를 겁니다.</li>
+              <li><b>「대사표」 시트</b>를 옆에 띄워 두십시오. 맞아야 하는 숫자의 「차이」가 채우는 대로 0 이 됩니다.</li>
+              <li>다 채우면 아래 <b>③ 검증</b>에 그 파일을 넣습니다.</li>
+            </ol>
+          </div>
+        </div>
       )}
 
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 12 }}>

@@ -129,6 +129,7 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
       <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7, marginBottom: 12 }}>
         <b>합계가 맞는지</b>, <b>주석끼리 맞아야 하는 숫자가 맞는지</b>,
         <b> 전기 숫자가 바뀌지 않았는지</b>, <b>채워 넣을 칸이 남았는지</b>를 봅니다.
+        <b> ② 가 만든 파일</b>(이름이 「…_주석시트.xlsx」)을 채운 뒤 그대로 넣으시면 됩니다.
         <span style={{ color: 'var(--ink-3)' }}> 파일은 브라우저 안에서만 열립니다.</span>
       </div>
 
@@ -195,9 +196,14 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
 
           {shown.length === 0 ? (
             <div style={{
-              padding: '10px 12px', borderRadius: 'var(--r-sm)',
+              padding: '10px 12px', borderRadius: 'var(--r-sm)', lineHeight: 1.7,
               background: 'var(--good-bg)', color: 'var(--good)', fontSize: 'var(--fs-2)',
-            }}>어긋난 곳을 찾지 못했습니다.</div>
+            }}>
+              어긋난 곳을 찾지 못했습니다.
+              {count('안 채움') === 0
+                ? ' 채워 넣을 칸도 다 찼습니다 — 아래 ④ 에서 DSD 를 만드십시오.'
+                : ` 다만 채워 넣을 칸이 ${count('안 채움')}개 남았습니다.`}
+            </div>
           ) : (
             <div style={{ maxHeight: 460, overflow: 'auto', border: '1px solid var(--rule)', borderRadius: 'var(--r-sm)' }}>
               <table style={{ width: '100%', fontSize: 'var(--fs-1)', borderCollapse: 'collapse' }}>

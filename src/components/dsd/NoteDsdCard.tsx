@@ -97,6 +97,7 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
 
       <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7, marginBottom: 12 }}>
         작년 DSD 를 <b>틀로 두고 글자만 갈아끼웁니다</b> — 표 너비·정렬·글꼴이 하나도 상하지 않습니다.
+        <b> 주석만 바꿉니다</b> — 재무제표·표지는 원본 그대로 둡니다.
         <span style={{ color: 'var(--ink-3)' }}> 파일은 브라우저 안에서만 열립니다.</span>
       </div>
 
@@ -135,9 +136,15 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
       )}
       {done && (
         <div style={{
-          marginTop: 10, padding: '8px 11px', borderRadius: 'var(--r-sm)',
-          background: 'var(--good-bg)', color: 'var(--good)', fontSize: 'var(--fs-2)', lineHeight: 1.6,
-        }}>{done}</div>
+          marginTop: 10, padding: '9px 11px', borderRadius: 'var(--r-sm)',
+          background: 'var(--good-bg)', color: 'var(--good)', fontSize: 'var(--fs-2)', lineHeight: 1.7,
+        }}>
+          {done}
+          <div style={{ marginTop: 7, paddingTop: 7, borderTop: '1px solid currentColor', opacity: 0.85 }}>
+            <b>다음에 할 일</b> — 내려받은 .dsd 를 <b>DART 편집기에서 열어</b> 확인하십시오.
+            재무제표와 표지는 손대지 않았으므로 거기서 이어 작업하시면 됩니다.
+          </div>
+        </div>
       )}
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end', marginTop: 12 }}>
