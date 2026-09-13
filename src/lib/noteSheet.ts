@@ -198,11 +198,11 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
   for (const b of note.blocks) {
     if (b.kind === 'para') {
       if (prevWasTable) r += 1;                       // 표 뒤에는 한 줄 띄운다
-      // 제목이 같은 칸에 함께 든 문단은 제목이 0번이라 본문이 1번부터다.
-      const off = b.lead != null ? 1 : 0;
-      const many = b.parts.length + off > 1;
+      // 자리표는 **원문 `<P>` 안의 몇 번째 문단인가**를 가리킨다. 제목이 붙어 있던 문단이면
+      // 그 자리를 그대로 쓰고(되돌릴 때 제목을 앞에 도로 붙인다), 아니면 다음 문단부터다.
+      const many = b.from > 0 || b.parts.length > 1 || b.lead != null;
       b.parts.forEach((p, i) => {
-        cells.push({ row: r, col: 1, text: addrOf(b.slot, many ? i + off : undefined) });
+        cells.push({ row: r, col: 1, text: addrOf(b.slot, many ? b.from + i : undefined) });
         cells.push({ row: r, col: 3, text: p, kind: 'para' });
         r += 1;
       });

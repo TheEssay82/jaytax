@@ -11,9 +11,10 @@
 import type { SheetPlan, TablePlan, SheetCell } from './noteSheet';
 import { colName, asNumber } from './noteSheet';
 import type { SheetData, CellValue } from './xlsxRead';
+import type { FsLine } from './fsParse';
 
 export type Level = '틀림' | '살펴볼 것' | '안 채움';
-export type Kind = '풋팅' | '빈칸' | '전기값' | '단수차이' | '수식';
+export type Kind = '풋팅' | '빈칸' | '전기값' | '단수차이' | '수식' | '대사';
 
 export interface Finding {
   sheet: string;
@@ -214,7 +215,7 @@ export function verifyAll(plans: SheetPlan[], sheets: SheetData[]): VerifyResult
  * 「안 채움」은 자리마다 한 줄씩 적으면 수백 줄이 된다. 시트별로 묶어 한 줄로 적는다 —
  * 어차피 노란 칸을 보면 되는 일이라 자리를 다 늘어놓을 까닭이 없다.
  */
-export function layoutReport(r: VerifyResult, when = new Date()): SheetPlan {
+export function layoutReport(r: VerifyResult, when = new Date(), ties: TieRow[] = []): SheetPlan {
   const cells: SheetCell[] = [
     { row: 2, col: 2, text: '검증보고서', kind: 'title' },
     {
@@ -254,5 +255,169 @@ export function layoutReport(r: VerifyResult, when = new Date()): SheetPlan {
   if (!rows.length) {
     cells.push({ row: 6, col: 2, text: '어긋난 곳을 찾지 못했습니다.', kind: 'text' });
   }
-  return { name: '검증보고서', cells, merges: [], lastRow: 5 + Math.max(1, rows.length), tables: [] };
+  let last = 5 + Math.max(1, rows.length);
+
+  // ── 대사표 — 재무제표가 가리킨 주석에서 그 금액을 찾았는가 ──
+  if (ties.length) {
+    const found = ties.filter((t) => t.foundIn).length;
+    last += 2;
+    cells.push({
+      row: last, col: 2, kind: 'title',
+      text: `재무제표 ↔ 주석 대사  ${found}/${ties.length} 찾음`,
+    });
+    last += 1;
+    cells.push({
+      row: last, col: 2, kind: 'para',
+      text: '금액이 주석에 없는 것이 잘못은 아닙니다 — 주석 표시는 「관련된 주석」이라 '
+        + '특수관계자분만 싣는 경우처럼 액수가 다를 수 있습니다. 한 번 보고 넘기십시오.',
+    });
+    last += 2;
+    ['재무제표', '과목', '금액', '가리킨 주석', '찾은 곳'].forEach((h, i) => {
+      cells.push({ row: last, col: 2 + i, text: h, kind: 'head' });
+    });
+    for (const t of ties) {
+      last += 1;
+      cells.push({ row: last, col: 2, text: t.statement, kind: 'text' });
+      cells.push({ row: last, col: 3, text: t.label, kind: 'text' });
+      cells.push({ row: last, col: 4, text: '', num: t.amount, kind: 'num' });
+      cells.push({ row: last, col: 5, text: t.notes.map((n) => `주석 ${n}`).join(', '), kind: 'text' });
+      cells.push({
+        row: last, col: 6, kind: 'text',
+        text: t.foundIn ?? (t.missing.length ? `주석 ${t.missing.join(',')} 없음` : '짝 없음'),
+      });
+    }
+  }
+  return { name: '검증보고서', cells, merges: [], lastRow: last, tables: [] };
+}
+
+/**
+ * 시트에 든 숫자를 모두 모은다.
+ *
+ * **합계는 직접 더해서 넣는다.** 합계 칸은 SUM 수식이라 엑셀에서 한 번 열기 전에는 값이 없다.
+ * 대사가 「엑셀을 열어 봤는가」에 매달리면 안 된다 — 알티스트 대사율이 7/44 로 떨어졌었다
+ * (2026-09-13).
+ */
+export function numbersOf(sheet: SheetData, plan?: SheetPlan): number[] {
+  const out: number[] = [];
+  for (const v of sheet.cells.values()) {
+    const n = numOf(v);
+    if (n != null && n !== 0) out.push(n);
+  }
+  for (const t of plan?.tables ?? []) {
+    if (t.isUnitMark || t.totalRow == null || t.itemRows.length < 2) continue;
+    const cols = t.srcBase != null ? t.numCols.map((_, k) => t.srcBase! + k) : t.numCols;
+    for (const col of cols) {
+      const at = sheet.cells.get(`${colName(col)}${t.totalRow}`);
+      if (numOf(at) != null) continue;               // 엑셀이 이미 계산해 두었다
+      let sum = 0;
+      let seen = 0;
+      for (const r of t.itemRows) {
+        const n = numOf(sheet.cells.get(`${colName(col)}${r}`));
+        if (n == null) continue;
+        sum += n; seen += 1;
+      }
+      if (seen >= 2 && sum !== 0) out.push(sum);
+    }
+  }
+  return out;
+}
+
+/**
+ * 금액이 이 주석 안에 있는가.
+ *
+ * 넉넉히 본다 — **없다고 말하는 쪽**이라 섣불리 걸면 헛경보가 된다.
+ *   · 부호는 따지지 않는다. 재무제표는 대손충당금을 (630,300) 으로 적고 주석은 630,300 으로 적는다.
+ *   · **천원 주석은 원 자리를 잃는다.** 재무제표 1,630,779,245 가 주석에서는 1,630,779천원,
+ *     원 단위 칸으로는 1,630,779,000 이다. 천원 자리에서 같으면 맞은 것으로 본다.
+ *     다만 액수가 작으면 이 잣대가 헐거우므로 만원 이상일 때만 쓴다.
+ */
+export function hasAmount(nums: number[], want: number): boolean {
+  const a = Math.abs(want);
+  if (a < 1) return true;                            // 0 은 어디에나 있다 — 따지지 않는다
+  const k = Math.round(a / 1000);
+  for (const n of nums) {
+    const b = Math.abs(n);
+    if (Math.abs(b - a) < 0.5) return true;          // 딱 같다
+    if (a >= 10000 && Math.abs(b - a) <= 500) return true;   // 천원에서 반올림한 만큼
+    if (k > 0 && Math.abs(b - k) < 0.5) return true;         // 주석이 천원으로 적었다
+  }
+  return false;
+}
+
+export interface NoteSheetRef {
+  plan: SheetPlan;
+  /** 작년 DSD 에서의 주석 번호 — 재무제표가 부르는 번호가 이것이다. */
+  dsdNo: number | null;
+}
+
+/** 대사표 한 줄 — 재무제표 계정 하나. */
+export interface TieRow {
+  statement: string;
+  label: string;
+  /** 이 계정이 가리키는 주석 번호들 */ notes: number[];
+  amount: number;
+  /** 금액을 찾은 주석의 시트. 못 찾았으면 null */ foundIn: string | null;
+  /** 가리켰는데 만들 주석에 없는 번호들 */ missing: number[];
+}
+
+/**
+ * 재무제표와 주석을 댄다 — **대사표를 만든다.**
+ *
+ * 재무제표가 「매출채권<주석 12,18>」처럼 **어느 주석을 보라고 이미 적어 두었다.** 그 주석들
+ * 가운데 어디에 그 금액이 있는지 찾아 적는다.
+ *
+ * **판정하지 않는다.** 금액이 주석에 없는 것이 정상인 경우가 많기 때문이다 — 주석 표시는
+ * 「이 계정과 관련된 주석」이지 「이 금액이 실린 주석」이 아니다. 명진 임대료매출 917,513,441 은
+ * 주석 12 특수관계자를 가리키지만 거기엔 특수관계자분 66,000,000 만 있다.
+ * 실측 대사율은 명진 14/19 · 알티스트 24/44(2026-09-13). 이대로 「틀림」을 내면 헛경보가 절반이다.
+ *
+ * 다만 **재무제표가 없는 주석 번호를 가리키는 것**은 틀린 것이다. 주석을 빼고 번호를 다시
+ * 매기지 않으면 이렇게 된다.
+ */
+export function tieOut(
+  fs: FsLine[], notes: NoteSheetRef[], sheets: SheetData[], roll: boolean,
+): { rows: TieRow[]; findings: Finding[] } {
+  const bySheet = new Map(sheets.map((x) => [x.name, x]));
+  const byNo = new Map<number, NoteSheetRef>();
+  for (const n of notes) if (n.dsdNo != null && !byNo.has(n.dsdNo)) byNo.set(n.dsdNo, n);
+  const cache = new Map<string, number[]>();
+  const rows: TieRow[] = [];
+  const findings: Finding[] = [];
+  const told = new Set<number>();
+
+  for (const line of fs) {
+    if (!line.notes.length) continue;
+    // 이월한 서식이면 재무제표의 **당기** 금액을 찾는다 — 올해 주석의 전기 칸에 그것이 내려와 있다.
+    const amt = roll ? line.cur : (line.cur ?? line.pri);
+    if (amt == null || Math.abs(amt) < 1) continue;
+
+    let foundIn: string | null = null;
+    const missing: number[] = [];
+    for (const no of line.notes) {
+      const ref = byNo.get(no);
+      if (!ref) {
+        missing.push(no);
+        if (!told.has(no)) {
+          told.add(no);
+          findings.push({
+            sheet: '-', note: `${line.statement} · ${line.label}`, kind: '대사', level: '틀림',
+            where: `주석 ${no}`,
+            says: `재무제표가 주석 ${no} 을 가리키는데 그런 주석이 없습니다. 번호가 밀렸는지 보십시오.`,
+          });
+        }
+        continue;
+      }
+      if (foundIn) continue;
+      const sheet = bySheet.get(ref.plan.name);
+      if (!sheet) continue;
+      let nums = cache.get(ref.plan.name);
+      if (!nums) { nums = numbersOf(sheet, ref.plan); cache.set(ref.plan.name, nums); }
+      if (hasAmount(nums, amt)) foundIn = ref.plan.name;
+    }
+    rows.push({
+      statement: line.statement, label: line.label, notes: line.notes,
+      amount: amt, foundIn, missing,
+    });
+  }
+  return { rows, findings };
 }

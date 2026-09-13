@@ -8,9 +8,10 @@
 import { useState } from 'react';
 import { readContents } from '../../lib/dsdFile';
 import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
+import { parseStatements, type FsLine } from '../../lib/fsParse';
 import { pickNotes, planNotes } from '../../lib/notePick';
 import { layoutReport } from '../../lib/noteVerify';
-import { verifyAll, type VerifyResult, type Level } from '../../lib/noteVerify';
+import { verifyAll, tieOut, type VerifyResult, type Level, type TieRow } from '../../lib/noteVerify';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { injectSheets } from '../../lib/xlsxInject';
 import type { NoteRow } from '../../lib/dsdApi';
@@ -23,6 +24,8 @@ const TONE: Record<Level, { bg: string; ink: string }> = {
 
 export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
   const [blocks, setBlocks] = useState<NoteBlocks[] | null>(null);
+  const [fs, setFs] = useState<FsLine[]>([]);
+  const [ties, setTies] = useState<TieRow[]>([]);
   const [dsdName, setDsdName] = useState('');
   const [xl, setXl] = useState<{ name: string; bytes: Uint8Array } | null>(null);
   const [roll, setRoll] = useState(true);
@@ -35,9 +38,13 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
     if (!f) return;
     setSay(null); setRes(null);
     try {
-      const bs = parseNoteBlocks(await readContents(f));
+      const xml = await readContents(f);
+      const bs = parseNoteBlocks(xml);
+      const lines = parseStatements(xml);
       setBlocks(bs);
-      setDsdName(`${f.name} · 주석 ${bs.length}개`);
+      setFs(lines);
+      const tagged = lines.filter((l) => l.notes.length).length;
+      setDsdName(`${f.name} · 주석 ${bs.length}개 · 재무제표 ${lines.length}줄(주석 표시 ${tagged}곳)`);
       if (!bs.length) setSay('이 파일에서 주석을 찾지 못했습니다.');
     } catch (e) {
       setBlocks(null);
@@ -54,7 +61,8 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
   function plans() {
     const picked = pickNotes(blocks!, notes);
     if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 에서 골라 주세요.');
-    return planNotes(picked, roll);
+    const made = planNotes(picked, roll);
+    return made.map((plan, i) => ({ plan, dsdNo: picked[i].note?.no ?? null }));
   }
 
   function run() {
@@ -62,12 +70,18 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
     if (!xl) return setSay('채워 넣은 엑셀(.xlsx)을 고르세요.');
     setBusy(true); setSay(null);
     try {
-      const p = plans();
+      const refs = plans();
       const sheets = readWorkbook(xl.bytes, (n) => /^N\d\d /.test(n));
       if (!sheets.length) {
         throw new Error('이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 에서 만든 파일인지 보십시오.');
       }
-      setRes(verifyAll(p, sheets));
+      const out = verifyAll(refs.map((r) => r.plan), sheets);
+      const tie = tieOut(fs, refs, sheets, roll);
+      out.findings.push(...tie.findings);
+      const rank: Record<Level, number> = { 틀림: 0, '살펴볼 것': 1, '안 채움': 2 };
+      out.findings.sort((a, b) => rank[a.level] - rank[b.level]);
+      setTies(tie.rows);
+      setRes(out);
     } catch (e) {
       setSay(e instanceof Error ? e.message : '검증하지 못했습니다.');
     } finally {
@@ -78,7 +92,7 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
   function download() {
     if (!res || !xl) return;
     try {
-      const out = injectSheets(xl.bytes, [layoutReport(res)]);
+      const out = injectSheets(xl.bytes, [layoutReport(res, new Date(), ties)]);
       const blob = new Blob([out as unknown as BlobPart], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
@@ -209,6 +223,58 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
               </table>
             </div>
           )}
+          {ties.length > 0 && (
+            <details style={{ marginTop: 12 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 'var(--fs-2)' }}>
+                <b>재무제표 ↔ 주석 대사</b>{' '}
+                <span style={{ color: 'var(--ink-3)' }}>
+                  {ties.filter((t) => t.foundIn).length}/{ties.length} 찾음 — 재무제표가 가리킨 주석에서 그 금액을 찾았는지
+                </span>
+              </summary>
+              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', margin: '6px 0 8px', lineHeight: 1.6 }}>
+                못 찾은 것이 잘못은 아닙니다 — 주석 표시는 「관련된 주석」이라, 특수관계자분만 싣는 경우처럼
+                액수가 다를 수 있습니다. 한 번 보고 넘기시면 됩니다.
+              </div>
+              <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid var(--rule)', borderRadius: 'var(--r-sm)' }}>
+                <table style={{ width: '100%', fontSize: 'var(--fs-1)', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      {['재무제표', '과목', '금액', '가리킨 주석', '찾은 곳'].map((h) => (
+                        <th key={h} style={{
+                          position: 'sticky', top: 0, background: 'var(--surface-2)', textAlign: 'left',
+                          padding: '5px 8px', borderBottom: '1px solid var(--rule)', whiteSpace: 'nowrap',
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ties.map((t, i) => (
+                      <tr key={`${t.label}${i}`} style={{ borderTop: '1px solid var(--rule)' }}>
+                        <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', color: 'var(--ink-3)' }}>{t.statement}</td>
+                        <td style={{ padding: '4px 8px' }}>{t.label}</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {t.amount.toLocaleString('ko-KR')}
+                        </td>
+                        <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', color: 'var(--ink-3)' }}>
+                          {t.notes.map((n) => `주석 ${n}`).join(', ')}
+                        </td>
+                        <td style={{ padding: '4px 8px' }}>
+                          <span style={{
+                            padding: '1px 7px', borderRadius: 999, fontSize: 'var(--fs-0)', fontWeight: 600,
+                            background: t.missing.length ? 'var(--bad-bg)' : t.foundIn ? 'var(--good-bg)' : 'var(--surface-2)',
+                            color: t.missing.length ? 'var(--bad)' : t.foundIn ? 'var(--good)' : 'var(--ink-3)',
+                          }}>
+                            {t.missing.length ? `주석 ${t.missing.join(',')} 없음` : t.foundIn ?? '짝 없음'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
+
           {res.findings.length > shown.length && (
             <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 6 }}>
               {res.findings.length - shown.length}건은 화면에서 줄였습니다 — 내려받은 보고서에는 다 있습니다.

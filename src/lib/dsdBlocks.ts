@@ -4,7 +4,7 @@
 // 넣어야** 하기 때문이다. 원본 XML 을 틀로 두고 글자만 갈아끼우면 표 너비·정렬 같은 속성이
 // 하나도 상하지 않는다(2026-09-12 실측 — 읽고 그대로 다시 쓰면 원본과 바이트 단위로 같았다).
 import {
-  notesSection, noteHeadings, headingCandidate,
+  notesSection, noteHeadings, plain,
   unescapeXml, escapeXml, splitParts, joinParts,
 } from './dsdParse';
 
@@ -14,10 +14,32 @@ export { unescapeXml, escapeXml, splitParts, joinParts };
 /** 글자가 든 자리 하나. start/end 는 원본 XML 안의 위치다. */
 export interface Slot { start: number; end: number; tag: string; raw: string; attrs: string }
 
-/** 안쪽에 태그가 더 없는 잎사귀 요소 — 여기에만 글자가 있다. */
+/** 칸(TD·TH) 하나 — 글자가 안쪽 `<P>` 에 들어 있어도 속성을 여기서 읽는다. */
 const CELL_RE = /<(T[DH])\b([^>]*)>[\s\S]*?<\/\1>/g;
 
-const LEAF = /<(P|TD|TH|TU)\b([^>]*)>([^<>]*)<\/\1>/g;
+/**
+ * 안쪽에 태그가 더 없는 잎사귀 요소 — 여기에만 글자가 있다.
+ *
+ * 다만 **글자를 꾸미는 인라인 태그는 안에 들어 있어도 잎사귀로 본다.** 넵튠은 문단 일부를
+ * `<SPAN USERMARK="0X000000">` 으로 감싸는데, 그것을 막으면 그 `<P>` 가 통째로 빠진다 —
+ * 18. 리스 · 24. 법인세비용 · 30. 고객과의 계약에서 생기는 수익이 그렇게 사라졌다
+ * (2026-09-13). 글자를 읽을 때는 `stripInline` 으로 태그를 벗긴다.
+ */
+const INLINE = 'SPAN|B|I|U|EM|STRONG|FONT|SUB|SUP|BR';
+const LEAF = new RegExp(
+  `<(P|TD|TH|TU)\\b([^>]*)>((?:[^<>]|<(?:${INLINE})\\b[^>]*/?>|</(?:${INLINE})>)*)</\\1>`,
+  'g',
+);
+
+/** 글자를 꾸미는 태그를 벗긴다 — 글자만 남긴다. */
+export function stripInline(raw: string): string {
+  return (raw ?? '').replace(new RegExp(`</?(?:${INLINE})\\b[^>]*>`, 'g'), '');
+}
+
+/** 이 자리에 꾸미는 태그가 섞여 있는가 — 되돌릴 때 조심해야 한다. */
+export function hasInline(raw: string): boolean {
+  return new RegExp(`<(?:${INLINE})\\b`, 'i').test(raw ?? '');
+}
 
 export function slots(xml: string): Slot[] {
   const out: Slot[] = [];
@@ -39,7 +61,17 @@ export function slots(xml: string): Slot[] {
  * 홑 「&cr;」는 같은 문단 안의 줄바꿈이라 가르지 않는다(예: 「2.2 측정기준」 다음 줄).
  */
 export type Block =
-  | { kind: 'para'; slot: number; parts: string[]; lead?: string }
+  | {
+    kind: 'para';
+    slot: number;
+    parts: string[];
+    /** 원문에 적힌 제목 부분 그대로 — DSD 로 되돌릴 때 앞에 도로 붙인다. */
+    lead?: string;
+    /** 이 덩이가 원문 `<P>` 의 **몇 번째 문단부터**인가. 되돌릴 자리를 찾는 열쇠다. */
+    from: number;
+    /** `lead` 가 `parts[0]` 과 **같은 문단**에 있으면 0, 다음 문단이면 1. */
+    leadShare?: boolean;
+  }
   | {
     kind: 'table';
     rows: TableCell[][];
@@ -281,24 +313,31 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
   }
 
   // 주석 머리로 쓰이는 문단의 자리 — 목록 규칙과 같은 결과를 쓰려고 제목 문단을 먼저 찾는다.
-  const paraSlots: { slot: number; text: string; pos: number }[] = [];
+  // **한 `<P>` 안의 어느 문단이든 주석 제목일 수 있다.** 알티스트 20. 부가가치는 앞 주석의
+  // 서술 뒤에 빈 줄 둘을 두고 이어져 있었다 — 첫 문단만 보던 때는 통째로 빠졌다(2026-09-13).
+  const paraSlots: { slot: number; part: number; text: string }[] = [];
   const all = slots(s);
   all.forEach((sl, i) => {
     if (sl.start < a0 || sl.start >= a1) return;
     if (sl.tag !== 'P') return;
     if (owner(sl.start, tables) !== -1) return;
-    paraSlots.push({ slot: i, text: headingCandidate(sl.raw), pos: sl.start });
+    splitParts(unescapeXml(stripInline(sl.raw))).forEach((p, k) => {
+      paraSlots.push({ slot: i, part: k, text: plain(p) });
+    });
   });
   const heads = noteHeadings(paraSlots.map((p) => p.text));
-  const headPos = new Map<number, { no: number; title: string }>();
+  const headPos = new Map<number, { part: number; no: number; title: string }[]>();
   let hi = 0;
   for (const p of paraSlots) {
     if (hi >= heads.length) break;
-    const m = /^\s*(\d{1,2})\s*\./.exec(p.text);
-    if (m && Number(m[1]) === heads[hi].no) {
-      headPos.set(p.slot, heads[hi]);
-      hi += 1;
-    }
+    const m = /^\s*(\d{1,2})\s*\.\s*/.exec(p.text);
+    // 번호만 같아서는 안 된다 — 제목 글자까지 맞아야 진짜 머리다.
+    if (!m || Number(m[1]) !== heads[hi].no) continue;
+    if (afterTitle(p.text.slice(m[0].length), heads[hi].title) == null) continue;
+    const list = headPos.get(p.slot) ?? [];
+    list.push({ part: p.part, ...heads[hi] });
+    headPos.set(p.slot, list);
+    hi += 1;
   }
   if (!headPos.size) return [];
 
@@ -322,22 +361,37 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
   all.forEach((sl, i) => {
     if (sl.start < a0 || sl.start >= a1) return;
     const t = owner(sl.start, tables);
-    const head = headPos.get(i);
-    if (head) {
+    const hs = headPos.get(i);
+    if (hs?.length) {
       flushTable();
-      cur = { no: head.no, title: head.title, blocks: [] };
-      notes.push(cur);
-      // 제목 뒤에 본문이 붙어 있으면 **살려서 첫 문단으로 넣는다.** 버리면 서술이 사라진다.
-      const { lead, body } = headingBody(unescapeXml(sl.raw), head.title);
-      if (body.length) cur.blocks.push({ kind: 'para', slot: i, parts: body, lead });
+      const parts = splitParts(unescapeXml(stripInline(sl.raw)));
+      // 첫 제목 앞의 문단은 **앞 주석의 것**이다.
+      if (hs[0].part > 0 && cur) {
+        const before = parts.slice(0, hs[0].part).filter((x) => x.trim());
+        if (before.length) cur.blocks.push({ kind: 'para', slot: i, parts: before, from: 0 });
+      }
+      hs.forEach((h, k) => {
+        cur = { no: h.no, title: h.title, blocks: [] };
+        notes.push(cur);
+        const end = k + 1 < hs.length ? hs[k + 1].part : parts.length;
+        // 제목 뒤에 본문이 붙어 있으면 **살려서 첫 문단으로 넣는다.** 버리면 서술이 사라진다.
+        const { lead, body } = headingBody(joinParts(parts.slice(h.part, end)), h.title);
+        const share = body.length > 0 && body[0] !== parts[h.part + 1];
+        if (body.length) {
+          cur!.blocks.push({
+            kind: 'para', slot: i, parts: body, lead,
+            from: share ? h.part : h.part + 1, leadShare: share,
+          });
+        }
+      });
       return;
     }
     if (!cur) return;                           // 첫 주석 앞의 것(기간·회사명 표)은 버린다
     if (t === -1) {
       flushTable();
       if (sl.tag === 'P') {
-        const parts = splitParts(unescapeXml(sl.raw));
-        if (parts.length) cur.blocks.push({ kind: 'para', slot: i, parts });
+        const parts = splitParts(unescapeXml(stripInline(sl.raw)));
+        if (parts.length) cur.blocks.push({ kind: 'para', slot: i, parts, from: 0 });
       }
       return;
     }
@@ -348,7 +402,7 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
     // 한 칸에 `<P>` 가 여럿이면 **한 칸으로 합친다.** 따로 세면 열이 하나씩 밀린다.
     if (ci !== -1 && ci === curCell && row.length) {
       const last = row[row.length - 1];
-      const add = unescapeXml(sl.raw).trim();
+      const add = unescapeXml(stripInline(sl.raw)).trim();
       if (add) last.text = last.text ? `${last.text}\n${add}` : add;
       (last.extra ??= []).push(i);
       return;
@@ -357,7 +411,7 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
     const tag = ci === -1 ? sl.tag : cellTag[ci];
     const attrs = ci === -1 ? sl.attrs : cellAttr[ci];
     row.push({
-      slot: i, text: unescapeXml(sl.raw).trim(), tag,
+      slot: i, text: unescapeXml(stripInline(sl.raw)).trim(), tag,
       col: 0, colspan: attrNum(attrs, 'COLSPAN'), rowspan: attrNum(attrs, 'ROWSPAN'),
     });
   });

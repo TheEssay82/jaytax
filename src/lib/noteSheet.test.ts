@@ -273,7 +273,7 @@ const NOTE: NoteBlocks = {
   no: 1,
   title: '회사의 개요',
   blocks: [
-    { kind: 'para', slot: 176, parts: ['첫째 문단.', '둘째 문단.'] },
+    { kind: 'para', slot: 176, parts: ['첫째 문단.', '둘째 문단.'], from: 0 },
     {
       kind: 'table',
       rows: [
@@ -281,7 +281,7 @@ const NOTE: NoteBlocks = {
         line('TD', 179, '이 종 명', '32,000'),
       ],
     },
-    { kind: 'para', slot: 190, parts: ['표 뒤 문단.'] },
+    { kind: 'para', slot: 190, parts: ['표 뒤 문단.'], from: 0 },
   ],
 };
 
