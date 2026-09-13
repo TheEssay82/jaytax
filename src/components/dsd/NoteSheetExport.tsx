@@ -14,6 +14,7 @@ import { pickNotes, planNotes } from '../../lib/notePick';
 import { findLinks, layoutTieSheet } from '../../lib/noteLink';
 import { parseStatements, type FsLine } from '../../lib/fsParse';
 import { injectSheets } from '../../lib/xlsxInject';
+import { readWorkbook } from '../../lib/xlsxRead';
 import type { Engagement, NoteRow } from '../../lib/dsdApi';
 
 export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes: NoteRow[] }) {
@@ -47,7 +48,16 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
   async function takeWtb(f: File | undefined) {
     if (!f) return;
     setSay(null); setDone(null);
-    setWtb({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    setWtb({ name: f.name, bytes });
+    // **이미 주석 시트가 있는 파일에 또 얹으면 시트가 두 벌이 된다** — 이름이 「N01 …(2)」가 된다.
+    try {
+      const had = readWorkbook(bytes, (n) => /^N\d\d |^대사표|^주석목록\(생성\)/.test(n)).length;
+      if (had) {
+        setSay(`이 파일에는 이미 주석 시트가 ${had}장 있습니다. 그대로 만들면 시트가 두 벌이 됩니다`
+          + ' — **주석 시트를 얹기 전의 원본 정산표**를 넣으십시오.');
+      }
+    } catch { /* 못 읽어도 만들기는 해 본다 */ }
   }
 
   function make() {
@@ -98,6 +108,11 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
         작년 감사보고서에서 <b>서술·표·각주를 통째로</b> 가져와 <b>한 주석 한 시트</b>로 만듭니다.
         <b> 원본 정산표는 손대지 않고</b> 새 파일로 내려받습니다.
         <span style={{ color: 'var(--ink-3)' }}> 파일은 브라우저 안에서만 열립니다.</span>
+        <div style={{ marginTop: 7, fontSize: 'var(--fs-1)', color: 'var(--gold-ink)', lineHeight: 1.65 }}>
+          <b>감사 나가기 전에 미리 만들어 두려면</b> — 올해 정산표 틀(작년 것을 복사해 연도만 바꾼 것)을
+          여기에 넣으십시오. 노란 칸이 빈 주석 서식이 얹혀 나옵니다. 단, <b>한 파일에 한 번만</b>
+          얹으십시오.
+        </div>
       </div>
 
       <div className="frow"><span className="fl">작년 감사보고서</span>

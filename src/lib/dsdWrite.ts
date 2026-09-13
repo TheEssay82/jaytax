@@ -10,7 +10,7 @@
 // 읽지 않는다 — 사람이 그 열을 건드렸어도 흔들리지 않는다.
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
 import { slots, escapeXml, hasInline } from './dsdBlocks';
-import { asNumber, isDash, type SheetPlan, type BackRef } from './noteSheet';
+import { asNumber, isDash, colName, type SheetPlan, type BackRef } from './noteSheet';
 import type { SheetData, CellValue } from './xlsxRead';
 import { numOf } from './noteVerify';
 
@@ -207,4 +207,26 @@ export function contentsOf(src: Uint8Array): string {
   const body = unzipSync(src)['contents.xml'];
   if (!body) throw new Error('DSD 안에 본문(contents.xml)이 없습니다.');
   return strFromU8(body);
+}
+
+/**
+ * **엑셀 없이** 되돌릴 때 쓰는 값 — 배치 자체를 엑셀인 셈 친다.
+ *
+ * 감사 나가기 전에 **작년 DSD 하나만으로 다음 해 빈 서식**을 만들려는 자리다. 이월한 배치에는
+ * 전기 칸에 작년 당기 값이 들어 있고 당기 칸은 비어 있으니, 그대로 되돌리면 그것이 빈 서식이다.
+ *
+ * 수식 칸은 값이 없다 — 천원 표의 표시 칸이 그렇다. 그 표의 숫자는 오른쪽 「원 단위 (입력)」
+ * 칸에 원으로 앉아 있고, 되돌릴 때 거기서 천원으로 셈한다.
+ */
+export function sheetsFromPlans(plans: SheetPlan[]): SheetData[] {
+  return plans.map((p) => {
+    const cells = new Map<string, CellValue>();
+    for (const c of p.cells) {
+      if (c.formula != null) continue;
+      const ref = `${colName(c.col)}${c.row}`;
+      if (c.num != null) cells.set(ref, { num: c.num });
+      else if (c.text) cells.set(ref, { text: c.text });
+    }
+    return { name: p.name, cells };
+  });
 }

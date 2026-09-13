@@ -11,7 +11,7 @@ import { readContents } from '../../lib/dsdFile';
 import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
 import { pickNotes, planNotes } from '../../lib/notePick';
 import { readWorkbook } from '../../lib/xlsxRead';
-import { writeNotes, buildDsd, contentsOf } from '../../lib/dsdWrite';
+import { writeNotes, buildDsd, contentsOf, sheetsFromPlans } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
 import type { NoteRow } from '../../lib/dsdApi';
 
@@ -47,14 +47,14 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
 
   function make() {
     if (!dsd) return setSay('작년 감사보고서(.dsd)를 먼저 고르세요.');
-    if (!xl) return setSay('채워 넣은 엑셀(.xlsx)을 고르세요.');
     setBusy(true); setSay(null); setDone(null);
     try {
       const picked = pickNotes(dsd.blocks, notes);
       if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 에서 골라 주세요.');
       const plans = planNotes(picked, roll);
-      const sheets = readWorkbook(xl.bytes, (n) => /^N\d\d /.test(n));
-      if (!sheets.length) {
+      // **엑셀을 안 넣으면 배치 자체를 값으로 쓴다** — 작년 것을 한 해 민 빈 서식이 된다.
+      const sheets = xl ? readWorkbook(xl.bytes, (n) => /^N\d\d /.test(n)) : sheetsFromPlans(plans);
+      if (xl && !sheets.length) {
         throw new Error('이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 에서 만든 파일인지 보십시오.');
       }
       // 재무제표·표지를 먼저 민다 — **④ 가 갈아끼울 자리는 뺀다.** 거기는 ② 가 이미 밀었다.
@@ -72,7 +72,8 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
       }
       const r = writeNotes(xml, plans, sheets);
 
-      if (r.blank.length && !force) {
+      // 빈 서식을 만드는 길에서는 안 채운 칸이 당연하다 — 막지 않는다.
+      if (xl && r.blank.length && !force) {
         setSay(
           `아직 채우지 않은 칸이 ${r.blank.length}개 있습니다 — 그대로 만들면 작년 숫자가 올해 보고서로 나갑니다. `
           + `먼저 ③ 검증으로 어디인지 보십시오. 그래도 만들려면 아래를 켜 주세요.`
@@ -86,11 +87,14 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = dsd.name.replace(/\.dsd$/i, '').concat('_새로.dsd');
+      a.download = dsd.name.replace(/\.dsd$/i, '').concat(xl ? '_새로.dsd' : '_빈서식.dsd');
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       setDone(
-        `주석 ${r.changed}칸을 갈아끼워 새 DSD 를 만들었습니다.` + fsTold
+        (xl
+          ? `주석 ${r.changed}칸을 갈아끼워 새 DSD 를 만들었습니다.`
+          : `작년 것을 한 해 밀어 **빈 서식**을 만들었습니다 — 주석 ${r.changed}칸.`)
+        + fsTold
         + (r.blank.length ? ` 안 채운 칸 ${r.blank.length}개는 작년 글자가 그대로 남았습니다.` : '')
         + (r.skipped.length ? ` 손대지 못한 칸이 ${r.skipped.length}개 있습니다 — ${r.skipped[0].why}` : ''),
       );
@@ -130,9 +134,16 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
         <div>
           <input type="file" accept=".xlsx" style={{ fontSize: 'var(--fs-1)' }}
             onChange={(e) => void takeXl(e.target.files?.[0])} />
-          {xl && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)', marginTop: 3 }}>
-            {xl.name} · {Math.round(xl.bytes.length / 1024)}KB
-          </div>}
+          {xl ? (
+            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)', marginTop: 3 }}>
+              {xl.name} · {Math.round(xl.bytes.length / 1024)}KB
+            </div>
+          ) : (
+            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--gold-ink)', marginTop: 3, lineHeight: 1.6 }}>
+              <b>안 넣어도 됩니다</b> — 그러면 작년 것을 한 해 밀어 <b>빈 서식</b>을 만듭니다.
+              감사 나가기 전에 올해 껍데기를 미리 만들어 둘 때 씁니다.
+            </div>
+          )}
         </div>
       </div>
 
@@ -176,12 +187,14 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
       )}
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end', marginTop: 12 }}>
-        <label style={{ fontSize: 'var(--fs-1)', color: force ? 'var(--bad)' : 'var(--ink-3)' }}>
-          <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />{' '}
-          안 채운 칸이 있어도 만들기
-        </label>
+        {xl && (
+          <label style={{ fontSize: 'var(--fs-1)', color: force ? 'var(--bad)' : 'var(--ink-3)' }}>
+            <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />{' '}
+            안 채운 칸이 있어도 만들기
+          </label>
+        )}
         <button className="btn-p" disabled={busy} onClick={make}>
-          {busy ? '만드는 중…' : 'DSD 내려받기'}
+          {busy ? '만드는 중…' : xl ? 'DSD 내려받기' : '빈 서식 DSD 내려받기'}
         </button>
       </div>
     </div>

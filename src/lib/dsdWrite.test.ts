@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseNoteBlocks } from './dsdBlocks.ts';
 import { pickNotes, planNotes } from './notePick.ts';
-import { numText, splitRaw, writeNotes } from './dsdWrite.ts';
+import { numText, splitRaw, writeNotes, sheetsFromPlans } from './dsdWrite.ts';
 import { colName } from './noteSheet.ts';
 import type { SheetData, CellValue } from './xlsxRead.ts';
 
@@ -90,4 +90,15 @@ test('splitRaw — 자르지 않고 조각과 경계를 그대로 돌려준다',
   // 경계 정규식이 뒤따르는 공백까지 먹으므로 조각은 공백 없이 시작한다 — 이어 붙이면 원본이다.
   assert.deepEqual([parts[0], parts[2], parts[4]], ['첫째. ', '둘째.', '셋째.']);
   assert.deepEqual([parts[1], parts[3]], ['&amp;cr;&amp;cr;', '&amp;cr;&amp;cr; ']);
+});
+
+test('엑셀 없이 — 배치 자체를 값으로 쓰면 작년 것을 한 해 민 빈 서식이 된다', () => {
+  const blocks = parseNoteBlocks(XML);
+  const picked = pickNotes(blocks, blocks.map((b) => ({ title: b.title, no: b.no, enabled: true })));
+  const rolled = planNotes(picked, true);
+  const r = writeNotes(XML, rolled, sheetsFromPlans(rolled));
+  assert.equal(r.skipped.length, 0);
+  // 당기 열은 비고 전기 열에 작년 당기가 내려온다
+  assert.ok(r.xml.includes('<TD></TD><TD>32,000</TD>'), '당기 빈칸 · 전기에 작년 당기');
+  assert.ok(!r.xml.includes('<TD>64,000</TD><TD>'), '당기 합계도 비어야 한다');
 });
