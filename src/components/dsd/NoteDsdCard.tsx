@@ -1,48 +1,34 @@
-// 주석·DSD 관리 › ④ DSD 만들기
+// 주석·DSD 관리 › ④ DSD 만들기 — **완성본**
 //
 // 채워 넣은 엑셀의 글자를 **작년 DSD 제자리에 도로 넣어** 새 .dsd 를 만든다. 원본을 틀로 두고
 // 글자만 갈아끼우므로 표 너비·정렬·글꼴이 하나도 상하지 않는다 — 아무것도 안 고치면 원본과
 // 바이트 단위로 같다(명진·알티스트·넵튠 실측 2026-09-13).
 //
+// **기준선은 언제나 작년 DSD 다.** ② 가 만든 사전작성 DSD 를 여기에 넣지 않는다 — 그것은
+// 나갈 때 들고 가는 곁가지 산출물이지 중간물이 아니다(사용자와 정리 2026-09-13).
+//
 // ⚠️ **안 채운 칸이 남아 있으면 만들지 않는다.** 작년 숫자가 올해 보고서로 나가는 것이
 //    이 일에서 가장 큰 사고다.
 import { useState } from 'react';
-import { readContents } from '../../lib/dsdFile';
-import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
 import { pickNotes, planNotes } from '../../lib/notePick';
 import { readWorkbook } from '../../lib/xlsxRead';
-import { writeNotes, buildDsd, contentsOf, sheetsFromPlans } from '../../lib/dsdWrite';
+import { writeNotes, buildDsd, contentsOf } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
 import type { Engagement, NoteRow } from '../../lib/dsdApi';
+import type { LoadedDsd } from './DsdShell';
+import type { Filled } from './NoteVerifyCard';
+import { safeName, download } from './dsdUi';
 
-/** 파일 이름에 못 쓰는 글자를 걷어낸다. */
-function safeName(s: string): string {
-  return (s ?? '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
-}
-
-export default function NoteDsdCard({ eng, notes }: { eng: Engagement; notes: NoteRow[] }) {
-  const [dsd, setDsd] = useState<{ name: string; bytes: Uint8Array; blocks: NoteBlocks[] } | null>(null);
-  const [xl, setXl] = useState<{ name: string; bytes: Uint8Array } | null>(null);
+export default function NoteDsdCard(
+  { eng, notes, dsd, xl, setXl }:
+  { eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd; xl: Filled | null; setXl: (v: Filled | null) => void },
+) {
   const [roll, setRoll] = useState(true);
-  const [force, setForce] = useState(false);
   const [rollFs, setRollFs] = useState(true);
+  const [force, setForce] = useState(false);
   const [say, setSay] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  async function takeDsd(f: File | undefined) {
-    if (!f) return;
-    setSay(null); setDone(null);
-    try {
-      const bytes = new Uint8Array(await f.arrayBuffer());
-      const blocks = parseNoteBlocks(await readContents(f));
-      setDsd({ name: f.name, bytes, blocks });
-      if (!blocks.length) setSay('이 파일에서 주석을 찾지 못했습니다.');
-    } catch (e) {
-      setDsd(null);
-      setSay(e instanceof Error ? e.message : 'DSD 를 읽지 못했습니다.');
-    }
-  }
 
   async function takeXl(f: File | undefined) {
     if (!f) return;
@@ -51,58 +37,45 @@ export default function NoteDsdCard({ eng, notes }: { eng: Engagement; notes: No
   }
 
   function make() {
-    if (!dsd) return setSay('작년 감사보고서(.dsd)를 먼저 고르세요.');
+    if (!xl) return setSay('채워 넣은 엑셀(.xlsx)을 고르세요.');
     setBusy(true); setSay(null); setDone(null);
     try {
       const picked = pickNotes(dsd.blocks, notes);
-      if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 에서 골라 주세요.');
+      if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 대상에서 골라 주세요.');
       const plans = planNotes(picked, roll);
-      // **엑셀을 안 넣으면 배치 자체를 값으로 쓴다** — 작년 것을 한 해 민 빈 서식이 된다.
-      const sheets = xl ? readWorkbook(xl.bytes, (n) => /^N\d\d /.test(n)) : sheetsFromPlans(plans);
-      if (xl && !sheets.length) {
-        throw new Error('이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 에서 만든 파일인지 보십시오.');
+      const sheets = readWorkbook(xl.bytes, (n) => /^N\d\d /.test(n));
+      if (!sheets.length) {
+        throw new Error('이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 준비에서 만든 파일인지 보십시오.');
       }
+
       // 재무제표·표지를 먼저 민다 — **④ 가 갈아끼울 자리는 뺀다.** 거기는 ② 가 이미 밀었다.
       let xml = contentsOf(dsd.bytes);
       let fsTold = '';
       if (roll && rollFs) {
         const skip = new Set<number>();
         for (const p of plans) for (const b of p.back ?? []) skip.add(b.slot);
-        // 빈 서식을 미리 만들 때는 **민 자리를 붉게** 한다 — 무엇이 바뀌었는지 보이게.
-        const rolled = rollStatements(xml, 1, skip, !xl);
+        const rolled = rollStatements(xml, 1, skip);
         xml = rolled.xml;
         const why = new Map<string, number>();
         for (const l of rolled.leftovers) why.set(l.why, (why.get(l.why) ?? 0) + 1);
         fsTold = ` 재무제표·표지는 기수·연도 ${rolled.terms}칸을 올리고 금액 ${rolled.amounts}칸을 전기로 내렸습니다.`
-          + (xl ? '' : ' 기수·연도를 민 자리는 **붉은 글자**로 표시해 두었습니다.')
           + (why.size ? ` 다만 ${[...why].map(([k, v]) => `${v}곳은 ${k}`).join(', ')} — 편집기에서 보십시오.` : '');
       }
       const r = writeNotes(xml, plans, sheets);
 
-      // 빈 서식을 만드는 길에서는 안 채운 칸이 당연하다 — 막지 않는다.
-      if (xl && r.blank.length && !force) {
+      if (r.blank.length && !force) {
         setSay(
           `아직 채우지 않은 칸이 ${r.blank.length}개 있습니다 — 그대로 만들면 작년 숫자가 올해 보고서로 나갑니다. `
-          + `먼저 ③ 검증으로 어디인지 보십시오. 그래도 만들려면 아래를 켜 주세요.`
+          + '먼저 ③ 검증으로 어디인지 보십시오. 그래도 만들려면 아래를 켜 주세요.'
           + ` (${r.blank.slice(0, 3).map((b) => b.at).join(' · ')}${r.blank.length > 3 ? ' …' : ''})`,
         );
         return;
       }
 
-      const out = buildDsd(dsd.bytes, r.xml);
-      const blob = new Blob([out as unknown as BlobPart], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `감사보고서_${safeName(eng.entityName)}_FY${eng.fy}`
-        + (xl ? '.DSD' : '_사전작성.DSD');
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      download(buildDsd(dsd.bytes, r.xml),
+        `감사보고서_${safeName(eng.entityName)}_FY${eng.fy}.DSD`, 'application/octet-stream');
       setDone(
-        (xl
-          ? `주석 ${r.changed}칸을 갈아끼워 새 DSD 를 만들었습니다.`
-          : `작년 것을 한 해 밀어 **빈 서식**을 만들었습니다 — 주석 ${r.changed}칸.`)
-        + fsTold
+        `주석 ${r.changed}칸을 갈아끼워 새 DSD 를 만들었습니다.` + fsTold
         + (r.blank.length ? ` 안 채운 칸 ${r.blank.length}개는 작년 글자가 그대로 남았습니다.` : '')
         + (r.skipped.length ? ` 손대지 못한 칸이 ${r.skipped.length}개 있습니다 — ${r.skipped[0].why}` : ''),
       );
@@ -118,23 +91,15 @@ export default function NoteDsdCard({ eng, notes }: { eng: Engagement; notes: No
       <div className="chdr">
         ④ DSD 만들기
         <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
-          채워 넣은 엑셀을 DSD 로 되돌립니다
+          검증이 끝난 엑셀로 완성본을 냅니다
         </span>
       </div>
 
       <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7, marginBottom: 12 }}>
-        작년 DSD 를 <b>틀로 두고 글자만 갈아끼웁니다</b> — 표 너비·정렬·글꼴이 하나도 상하지 않습니다.
-
-        <span style={{ color: 'var(--ink-3)' }}> 파일은 브라우저 안에서만 열립니다.</span>
-      </div>
-
-      <div className="frow"><span className="fl">작년 감사보고서</span>
-        <div>
-          <input type="file" accept=".dsd" style={{ fontSize: 'var(--fs-1)' }}
-            onChange={(e) => void takeDsd(e.target.files?.[0])} />
-          {dsd && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)', marginTop: 3 }}>
-            {dsd.name} · 주석 {dsd.blocks.length}개
-          </div>}
+        <b>작년 DSD 를 틀로 두고 글자만 갈아끼웁니다</b> — 표 너비·정렬·글꼴이 하나도 상하지 않습니다.
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 5 }}>
+          ② 가 만든 <b>사전작성 DSD 는 여기에 넣지 않습니다</b> — 그것은 나갈 때 들고 가는 것이고,
+          완성본은 언제나 <b>위에서 고른 작년 감사보고서</b>를 틀로 씁니다.
         </div>
       </div>
 
@@ -147,9 +112,8 @@ export default function NoteDsdCard({ eng, notes }: { eng: Engagement; notes: No
               {xl.name} · {Math.round(xl.bytes.length / 1024)}KB
             </div>
           ) : (
-            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--gold-ink)', marginTop: 3, lineHeight: 1.6 }}>
-              <b>안 넣어도 됩니다</b> — 그러면 작년 것을 한 해 밀어 <b>빈 서식</b>을 만듭니다.
-              감사 나가기 전에 올해 껍데기를 미리 만들어 둘 때 씁니다.
+            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', marginTop: 3 }}>
+              ③ 검증에서 고른 파일이 있으면 여기에도 그대로 잡힙니다.
             </div>
           )}
         </div>
@@ -169,7 +133,7 @@ export default function NoteDsdCard({ eng, notes }: { eng: Engagement; notes: No
           <b>기수·연도를 올리고 금액을 전기로 내립니다</b>
           <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.6 }}>
             「제 18(당) 기 2025년 12월 31일」 → 「제 19(당) 기 2026년 12월 31일」.
-            <b> 본문 서술 속의 연도는 건드리지 않습니다</b> — 「2015년의 증자를 거쳐」를 바꾸면 안 되기 때문입니다.
+            <b> 본문 서술 속의 연도는 건드리지 않습니다.</b>
             감사보고서 본문과 자본변동표는 손대지 않고 몇 곳인지 알려 드립니다.
           </div>
         </label>
@@ -195,14 +159,12 @@ export default function NoteDsdCard({ eng, notes }: { eng: Engagement; notes: No
       )}
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'flex-end', marginTop: 12 }}>
-        {xl && (
-          <label style={{ fontSize: 'var(--fs-1)', color: force ? 'var(--bad)' : 'var(--ink-3)' }}>
-            <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />{' '}
-            안 채운 칸이 있어도 만들기
-          </label>
-        )}
+        <label style={{ fontSize: 'var(--fs-1)', color: force ? 'var(--bad)' : 'var(--ink-3)' }}>
+          <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />{' '}
+          안 채운 칸이 있어도 만들기
+        </label>
         <button className="btn-p" disabled={busy} onClick={make}>
-          {busy ? '만드는 중…' : xl ? 'DSD 내려받기' : '빈 서식 DSD 내려받기'}
+          {busy ? '만드는 중…' : 'DSD 내려받기'}
         </button>
       </div>
     </div>

@@ -6,9 +6,6 @@
 //
 // ⚠️ **파일은 서버로 올라가지 않는다.** 브라우저 안에서 읽고 결과만 화면에 낸다.
 import { useState } from 'react';
-import { readContents } from '../../lib/dsdFile';
-import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
-import { parseStatements, type FsLine } from '../../lib/fsParse';
 import { pickNotes, planNotes } from '../../lib/notePick';
 import { layoutReport } from '../../lib/noteVerify';
 import { verifyAll, tieOut, checkLinks, type VerifyResult, type Level, type TieRow } from '../../lib/noteVerify';
@@ -16,6 +13,8 @@ import { findLinks } from '../../lib/noteLink';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { injectSheets } from '../../lib/xlsxInject';
 import type { NoteRow } from '../../lib/dsdApi';
+import type { LoadedDsd } from './DsdShell';
+import { download } from './dsdUi';
 
 const TONE: Record<Level, { bg: string; ink: string }> = {
   틀림: { bg: 'var(--bad-bg)', ink: 'var(--bad)' },
@@ -23,36 +22,19 @@ const TONE: Record<Level, { bg: string; ink: string }> = {
   '안 채움': { bg: 'var(--surface-2)', ink: 'var(--ink-3)' },
 };
 
-export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
-  const [blocks, setBlocks] = useState<NoteBlocks[] | null>(null);
-  const [fs, setFs] = useState<FsLine[]>([]);
+export interface Filled { name: string; bytes: Uint8Array }
+
+export default function NoteVerifyCard(
+  { notes, dsd, xl, setXl }:
+  { notes: NoteRow[]; dsd: LoadedDsd; xl: Filled | null; setXl: (v: Filled | null) => void },
+) {
   const [ties, setTies] = useState<TieRow[]>([]);
   const [linkCount, setLinkCount] = useState(0);
-  const [dsdName, setDsdName] = useState('');
-  const [xl, setXl] = useState<{ name: string; bytes: Uint8Array } | null>(null);
   const [roll, setRoll] = useState(true);
   const [res, setRes] = useState<VerifyResult | null>(null);
   const [say, setSay] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [only, setOnly] = useState(true);
-
-  async function takeDsd(f: File | undefined) {
-    if (!f) return;
-    setSay(null); setRes(null);
-    try {
-      const xml = await readContents(f);
-      const bs = parseNoteBlocks(xml);
-      const lines = parseStatements(xml);
-      setBlocks(bs);
-      setFs(lines);
-      const tagged = lines.filter((l) => l.notes.length).length;
-      setDsdName(`${f.name} · 주석 ${bs.length}개 · 재무제표 ${lines.length}줄(주석 표시 ${tagged}곳)`);
-      if (!bs.length) setSay('이 파일에서 주석을 찾지 못했습니다.');
-    } catch (e) {
-      setBlocks(null);
-      setSay(e instanceof Error ? e.message : 'DSD 를 읽지 못했습니다.');
-    }
-  }
 
   async function takeXl(f: File | undefined) {
     if (!f) return;
@@ -61,16 +43,15 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
   }
 
   function plans() {
-    const picked = pickNotes(blocks!, notes);
+    const picked = pickNotes(dsd.blocks, notes);
     if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 에서 골라 주세요.');
     const made = planNotes(picked, roll);
     // 맞아야 하는 숫자 짝은 **작년 값이 든 배치**에서 배운다 — 자리는 이월한 것과 같다.
-    const links = findLinks(roll ? planNotes(picked, false) : made, fs);
+    const links = findLinks(roll ? planNotes(picked, false) : made, dsd.fs);
     return { refs: made.map((plan, i) => ({ plan, dsdNo: picked[i].note?.no ?? null })), links };
   }
 
   function run() {
-    if (!blocks) return setSay('작년 감사보고서(.dsd)를 먼저 고르세요.');
     if (!xl) return setSay('채워 넣은 엑셀(.xlsx)을 고르세요.');
     setBusy(true); setSay(null);
     try {
@@ -80,7 +61,7 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
         throw new Error('이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 에서 만든 파일인지 보십시오.');
       }
       const out = verifyAll(refs.map((r) => r.plan), sheets);
-      const tie = tieOut(fs, refs, sheets, roll);
+      const tie = tieOut(dsd.fs, refs, sheets, roll);
       out.findings.push(...tie.findings, ...checkLinks(links, sheets));
       setLinkCount(links.length);
       const rank: Record<Level, number> = { 틀림: 0, '살펴볼 것': 1, '안 채움': 2 };
@@ -94,19 +75,12 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
     }
   }
 
-  function download() {
+  function saveReport() {
     if (!res || !xl) return;
     try {
-      const out = injectSheets(xl.bytes, [layoutReport(res, new Date(), ties)]);
-      const blob = new Blob([out as unknown as BlobPart], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${xl.name.replace(/\.xlsx$/i, '')}_검증.xlsx`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      download(injectSheets(xl.bytes, [layoutReport(res, new Date(), ties)]),
+        `${xl.name.replace(/\.xlsx$/i, '')}_검증.xlsx`,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     } catch (e) {
       setSay(e instanceof Error ? e.message : '보고서를 만들지 못했습니다.');
     }
@@ -130,15 +104,8 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
         <b>합계가 맞는지</b>, <b>주석끼리 맞아야 하는 숫자가 맞는지</b>,
         <b> 전기 숫자가 바뀌지 않았는지</b>, <b>채워 넣을 칸이 남았는지</b>를 봅니다.
         <b> ② 가 만든 파일</b>(이름이 「…_주석시트.xlsx」)을 채운 뒤 그대로 넣으시면 됩니다.
+        <span style={{ color: 'var(--ink-3)' }}> 여기서 고른 엑셀은 ④ 도 함께 씁니다.</span>
         <span style={{ color: 'var(--ink-3)' }}> 파일은 브라우저 안에서만 열립니다.</span>
-      </div>
-
-      <div className="frow"><span className="fl">작년 감사보고서</span>
-        <div>
-          <input type="file" accept=".dsd" style={{ fontSize: 'var(--fs-1)' }}
-            onChange={(e) => void takeDsd(e.target.files?.[0])} />
-          {dsdName && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)', marginTop: 3 }}>{dsdName}</div>}
-        </div>
       </div>
 
       <div className="frow"><span className="fl">채워 넣은 엑셀</span>
@@ -171,7 +138,7 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
       )}
 
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 12 }}>
-        {res && <button className="btn-sm" onClick={download}>검증보고서 얹은 엑셀 내려받기</button>}
+        {res && <button className="btn-sm" onClick={saveReport}>검증보고서 얹은 엑셀 내려받기</button>}
         <button className="btn-p" disabled={busy} onClick={run}>{busy ? '훑는 중…' : '검증하기'}</button>
       </div>
 

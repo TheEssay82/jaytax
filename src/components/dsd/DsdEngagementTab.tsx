@@ -21,9 +21,17 @@ import {
   defaultAuditFy, defaultPeriod, DEFAULT_STATUS,
 } from '../../lib/dsdNotes';
 import { readDsd, type DsdInfo } from '../../lib/dsdFile';
-import NoteSheetExport from './NoteSheetExport';
-import NoteVerifyCard from './NoteVerifyCard';
+import NotePrepareTab from './NotePrepareTab';
+import NoteVerifyCard, { type Filled } from './NoteVerifyCard';
 import NoteDsdCard from './NoteDsdCard';
+import { useDsdFile, DsdBar, DsdTabs, NeedDsd, type TabDef } from './DsdShell';
+
+const TABS: TabDef[] = [
+  { key: '1', label: '① 대상', hint: '거래처·주석 목록' },
+  { key: '2', label: '② 준비', hint: '감사 전', needsDsd: true },
+  { key: '3', label: '③ 검증', hint: '감사 후', needsDsd: true },
+  { key: '4', label: '④ DSD', hint: '완성본', needsDsd: true },
+];
 
 const STATUS_COLOR: Record<string, string> = {
   미할당: 'var(--ink-3)', 작업중: 'var(--info)', 작업완료: 'var(--good)', 작성제외: 'var(--ink-4)',
@@ -40,6 +48,10 @@ export default function DsdEngagementTab() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [at, setAt] = useState('1');
+  // 작년 감사보고서와 「채워 넣은 엑셀」은 **탭들이 함께 쓴다** — 같은 파일을 세 번 고르지 않는다.
+  const dsdFile = useDsdFile();
+  const [filled, setFilled] = useState<Filled | null>(null);
 
   async function load(keep?: string) {
     try {
@@ -123,17 +135,17 @@ export default function DsdEngagementTab() {
         <div className="chdr">
           📗 주석·DSD 관리
           <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
-            ① 대상 거래처와 사업연도
+            {picked ? `${picked.entityName} · FY${picked.fy} ${picked.scope}` : '작업 건을 고르세요'}
           </span>
           <button className="btn-sm btn-sm-navy" style={{ marginLeft: 'auto' }} onClick={() => setAdding(true)}>
             + 새 건 만들기
           </button>
         </div>
         <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
-          여기서 정한 <b>주석 목록</b>을 ② 엑셀 검증과 ③ DSD 생성이 읽습니다.
-          주석마다 붙는 <b>코드</b>는 해가 바뀌어도 변하지 않는 열쇠라, 다음 해에 「앞 해 복제」로
-          대응표가 통째로 승계됩니다.
-          <span style={{ color: 'var(--ink-3)' }}> 재무제표 파일은 저장하지 않습니다 — 브라우저 안에서만 열립니다.</span>
+          <b>작년 감사보고서 하나가 모든 것의 틀</b>입니다 — ② 준비도 ③ 검증도 ④ 완성본도 그 파일을
+          씁니다. ② 가 내는 <b>사전작성 DSD 는 나갈 때 들고 가는 것</b>이고, 완성본을 만들 때는
+          쓰지 않습니다.
+          <span style={{ color: 'var(--ink-3)' }}> 파일은 저장하지 않습니다 — 브라우저 안에서만 열립니다.</span>
         </div>
       </div>
 
@@ -145,7 +157,29 @@ export default function DsdEngagementTab() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)', gap: 10, alignItems: 'start' }}>
+      <DsdBar {...dsdFile} expect={picked?.entityName} />
+      <DsdTabs tabs={TABS} at={at} go={setAt} hasDsd={!!dsdFile.dsd} />
+
+      {at !== '1' && !dsdFile.dsd && <NeedDsd />}
+      {at !== '1' && !picked && (
+        <div className="card" style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-2)' }}>
+          <b>① 대상</b>에서 작업 건을 먼저 고르세요.
+        </div>
+      )}
+      {at === '2' && picked && dsdFile.dsd && notes.length > 0 && (
+        <NotePrepareTab eng={picked} notes={notes} dsd={dsdFile.dsd} />
+      )}
+      {at === '3' && picked && dsdFile.dsd && notes.length > 0 && (
+        <NoteVerifyCard notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} />
+      )}
+      {at === '4' && picked && dsdFile.dsd && notes.length > 0 && (
+        <NoteDsdCard eng={picked} notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} />
+      )}
+
+      <div style={{
+        display: at === '1' ? 'grid' : 'none',
+        gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)', gap: 10, alignItems: 'start',
+      }}>
         {/* ── 작업 건 목록 ─────────────────────────── */}
         <div className="card" style={{ padding: '10px 10px 12px' }}>
           <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 7, letterSpacing: '.04em' }}>
@@ -321,10 +355,6 @@ export default function DsdEngagementTab() {
           </div>
         )}
       </div>
-
-      {picked && notes.length > 0 && <NoteSheetExport eng={picked} notes={notes} />}
-      {picked && notes.length > 0 && <NoteVerifyCard notes={notes} />}
-      {picked && notes.length > 0 && <NoteDsdCard eng={picked} notes={notes} />}
 
       {adding && (
         <NewEngagementModal

@@ -209,3 +209,20 @@ export function documentPeriod(xml: string): { from: string; to: string } | null
   const fmt = (s: string) => `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
   return f && t ? { from: fmt(f), to: fmt(t) } : null;
 }
+
+/**
+ * 문서에 적힌 회사 이름 — `<COMPANY-NAME>`.
+ *
+ * 고른 작업 건과 다른 회사의 DSD 를 넣는 사고를 막으려고 읽는다. 표기가 조금씩 달라
+ * (「명진산업개발(주)」 · 「(주)알티스트」) 딱 맞추지 말고 **느슨하게** 견주어야 한다.
+ */
+export function companyName(xml: string): string {
+  return unescapeXml(/<COMPANY-NAME[^>]*>([^<]*)<\/COMPANY-NAME>/.exec(xml ?? '')?.[1] ?? '').trim();
+}
+
+/** 회사 이름을 견줄 수 있게 다듬는다 — 괄호·법인격·공백을 뗀다. */
+export function bareName(s: string): string {
+  return (s ?? '')
+    .replace(/\(\s*주\s*\)|주식회사|㈜|\(유\)|유한회사/g, '')
+    .replace(/[\s()·.,\-]/g, '');
+}
