@@ -22,12 +22,15 @@ export interface Engagement {
   status: '준비' | '진행' | '완료';
   note: string | null;
   noteCount: number;
+  /** 외부인에게 보여 주는 시연용 건인가. 진짜 거래처는 외부인에게 한 줄도 안 보인다. */
+  isDemo: boolean;
 }
 
 type EngRow = {
   id: string; entity_id: string; fy: number; scope: '별도' | '연결';
   term_no: number | null; period_from: string | null; period_to: string | null;
   basis: Basis; money_unit: '천원' | '원'; status: '준비' | '진행' | '완료'; note: string | null;
+  is_demo: boolean;
   biz_entity: { name: string; code: string | null } | null;
   dsd_note: { count: number }[] | null;
 };
@@ -48,11 +51,12 @@ function toEng(r: EngRow): Engagement {
     status: r.status,
     note: r.note,
     noteCount: r.dsd_note?.[0]?.count ?? 0,
+    isDemo: r.is_demo === true,
   };
 }
 
 const SEL = 'id, entity_id, fy, scope, term_no, period_from, period_to, basis, money_unit, status, note,'
-  + ' biz_entity(name, code), dsd_note(count)';
+  + ' is_demo, biz_entity(name, code), dsd_note(count)';
 
 export async function listEngagements(): Promise<Engagement[]> {
   const { data, error } = await supabase
@@ -146,6 +150,18 @@ export async function updateEngagement(id: string, patch: Partial<{
   if (patch.status !== undefined) row.status = patch.status;
   if (patch.note !== undefined) row.note = patch.note;
   const { error } = await supabase.from('dsd_engagement').update(row).eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * 이 건을 외부인에게 보여 줄지 정한다 — **최고관리자만** 만지는 스위치다.
+ *
+ * 켜면 외부인이 ① 에서 이 건과 주석 목록을 **읽을 수 있다**(쓰기는 여전히 막힌다).
+ * 진짜 거래처에는 절대 켜지 않는다 — 켜는 순간 그 회사 이름과 주석 목록이 외부인에게
+ * 보인다. 시연용으로 만든 가짜 거래처에만 켠다.
+ */
+export async function setDemo(id: string, on: boolean): Promise<void> {
+  const { error } = await supabase.from('dsd_engagement').update({ is_demo: on }).eq('id', id);
   if (error) throw error;
 }
 

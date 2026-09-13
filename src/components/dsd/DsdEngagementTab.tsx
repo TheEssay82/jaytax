@@ -11,10 +11,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import Empty from '../common/Empty';
 import { confirmDanger } from '../common/DangerConfirm';
+import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
   listEngagements, createEngagement, updateEngagement, deleteEngagement,
-  listNotes, replaceNotes, findEngagement, listAuditEntityIds,
+  listNotes, replaceNotes, findEngagement, listAuditEntityIds, setDemo,
   type Engagement, type NoteRow, type Basis,
 } from '../../lib/dsdApi';
 import {
@@ -39,6 +40,11 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function DsdEngagementTab() {
+  // 외부인 시연 — 「시연용」 표가 붙은 건 하나만 서버가 내준다(0145). 화면에서는 **보기만**
+  // 하게 막는다. 쓰기는 RLS 가 이미 막지만, 눌러도 안 되는 단추를 내놓을 까닭이 없다.
+  const { role } = useAuth();
+  const isExternal = role === 'external';
+  const isSuper = role === 'superuser';
   const [engs, setEngs] = useState<Engagement[]>([]);
   const [ents, setEnts] = useState<BizEntityFull[]>([]);
   const [auditIds, setAuditIds] = useState<Set<string>>(new Set());
@@ -57,7 +63,12 @@ export default function DsdEngagementTab() {
   async function load(keep?: string) {
     try {
       setErr(null);
-      const [list, es, aud] = await Promise.all([listEngagements(), listBizEntities(), listAuditEntityIds()]);
+      // 외부인은 「새 건 만들기」를 못 하므로 거래처·감사계약을 물을 일이 없다.
+      const [list, es, aud] = await Promise.all([
+        listEngagements(),
+        isExternal ? Promise.resolve([]) : listBizEntities(),
+        isExternal ? Promise.resolve(new Set<string>()) : listAuditEntityIds(),
+      ]);
       setEngs(list);
       setEnts(es);
       setAuditIds(aud);
@@ -146,9 +157,11 @@ export default function DsdEngagementTab() {
           <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
             {picked ? `${picked.entityName} · FY${picked.fy} ${picked.scope}` : '작업 건을 고르세요'}
           </span>
-          <button className="btn-sm btn-sm-navy" style={{ marginLeft: 'auto' }} onClick={() => setAdding(true)}>
-            + 새 건 만들기
-          </button>
+          {!isExternal && (
+            <button className="btn-sm btn-sm-navy" style={{ marginLeft: 'auto' }} onClick={() => setAdding(true)}>
+              + 새 건 만들기
+            </button>
+          )}
         </div>
         <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
           <b>작년 감사보고서 하나가 모든 것의 틀</b>입니다 — ② 준비도 ③ 검증도 ④ 완성본도 그 파일을
@@ -258,10 +271,44 @@ export default function DsdEngagementTab() {
                 FY{picked.fy} · {picked.scope}
                 {picked.periodFrom ? ` · ${picked.periodFrom} ~ ${picked.periodTo}` : ''}
               </span>
-              <button className="btn-sm btn-sm-del" style={{ marginLeft: 'auto' }} onClick={() => void removeEng(picked)}>
-                건 지우기
-              </button>
+              {picked.isDemo && (
+                <span style={{
+                  padding: '2px 9px', borderRadius: 999, fontSize: 'var(--fs-0)', fontWeight: 700,
+                  background: 'var(--warn-bg)', color: 'var(--warn)',
+                }}>시연용</span>
+              )}
+              {/* 진짜 거래처에 켜면 그 회사 이름과 주석 목록이 외부인에게 보인다. 최고관리자만. */}
+              {isSuper && (
+                <label style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}
+                  title="켜면 외부인이 ① 에서 이 건과 주석 목록을 읽을 수 있습니다. 시연용 가짜 거래처에만 켜세요.">
+                  <input type="checkbox" checked={picked.isDemo}
+                    onChange={(ev) => void setDemo(picked.id, ev.target.checked).then(() => load(picked.id))} />{' '}
+                  외부인에게 보여 주기
+                </label>
+              )}
+              {!isExternal && (
+                <button className="btn-sm btn-sm-del" style={{ marginLeft: isSuper ? 10 : 'auto' }}
+                  onClick={() => void removeEng(picked)}>
+                  건 지우기
+                </button>
+              )}
             </div>
+
+            {isExternal && (
+              <div style={{
+                marginBottom: 12, padding: '9px 11px', borderRadius: 'var(--r-sm)', lineHeight: 1.7,
+                background: 'var(--warn-bg)', color: 'var(--warn)', fontSize: 'var(--fs-2)',
+              }}>
+                <b>시연용 화면입니다.</b> 이 목록은 보기만 됩니다 — 고칠 수는 없습니다.
+                <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-0)', marginTop: 3 }}>
+                  ② 준비 · ③ 검증 · ④ DSD 는 <b>전부 써 보실 수 있습니다.</b> 그 세 단계는 서버를
+                  쓰지 않습니다 — 올리신 파일은 이 브라우저 밖으로 나가지 않습니다.
+                </div>
+              </div>
+            )}
+
+            {/* 외부인에게는 통째로 잠근다 — 안의 입력·단추가 한꺼번에 꺼진다. */}
+            <fieldset disabled={isExternal} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center', marginBottom: 12 }}>
               <Field label="회계기준">
@@ -371,6 +418,7 @@ export default function DsdEngagementTab() {
               </span>
               <button className="btn-sm btn-sm-navy" disabled={!dirty} onClick={() => void save()}>저장</button>
             </div>
+            </fieldset>
           </div>
         )}
       </div>
