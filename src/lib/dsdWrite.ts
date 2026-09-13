@@ -195,11 +195,57 @@ export function writeNotes(
   return { xml: out, changed, blank, skipped };
 }
 
-/** 새 .dsd 한 개를 만든다 — 본문만 갈고 나머지 부품은 그대로 옮겨 담는다. */
+/**
+ * 원본 ZIP 의 **항목별 속성과 시각**을 읽는다 — 중앙 디렉터리를 직접 훑는다.
+ *
+ * 왜 필요한가: 새로 지은 ZIP 은 외부속성이 0 이 되는데, 열리는 것이 확인된 파일은 원본과 같은
+ * `0x81B40020` 이었다(2026-09-13). 편집기가 그것을 보는지는 알 수 없으나, **원본을 최대한
+ * 그대로 두는 것**이 이 시스템의 규칙이다.
+ */
+export function zipMeta(src: Uint8Array): Record<string, { attrs: number; mtime: Date }> {
+  const out: Record<string, { attrs: number; mtime: Date }> = {};
+  const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+  // 끝에서 EOCD(0x06054b50)를 찾는다 — 주석이 붙어 있을 수 있어 뒤에서 훑는다.
+  let eocd = -1;
+  for (let i = src.length - 22; i >= 0 && i > src.length - 65558; i -= 1) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return out;
+  let p = dv.getUint32(eocd + 16, true);             // 중앙 디렉터리 시작
+  const n = dv.getUint16(eocd + 10, true);
+  const dec = new TextDecoder();
+  for (let k = 0; k < n && p + 46 <= src.length; k += 1) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const nameLen = dv.getUint16(p + 28, true);
+    const extraLen = dv.getUint16(p + 30, true);
+    const cmtLen = dv.getUint16(p + 32, true);
+    const attrs = dv.getUint32(p + 38, true);
+    const time = dv.getUint16(p + 12, true);
+    const date = dv.getUint16(p + 14, true);
+    const name = dec.decode(src.subarray(p + 46, p + 46 + nameLen));
+    out[name] = {
+      attrs,
+      mtime: new Date(
+        1980 + (date >> 9), ((date >> 5) & 0xf) - 1, date & 0x1f,
+        time >> 11, (time >> 5) & 0x3f, (time & 0x1f) * 2,
+      ),
+    };
+    p += 46 + nameLen + extraLen + cmtLen;
+  }
+  return out;
+}
+
+/** 새 .dsd 한 개를 만든다 — 본문만 갈고 나머지 부품은 **속성까지** 그대로 옮겨 담는다. */
 export function buildDsd(src: Uint8Array, xml: string): Uint8Array {
   const files = unzipSync(src);
   files['contents.xml'] = strToU8(xml);
-  return zipSync(files, { level: 6 });
+  const meta = zipMeta(src);
+  const packed: Record<string, [Uint8Array, { attrs?: number; mtime?: Date; level: 6 }]> = {};
+  for (const [name, bytes] of Object.entries(files)) {
+    const m = meta[name];
+    packed[name] = [bytes, { level: 6, ...(m ? { attrs: m.attrs, mtime: m.mtime } : {}) }];
+  }
+  return zipSync(packed);
 }
 
 /** .dsd 안의 본문 XML(노드에서도 쓰려고 여기 둔다). */

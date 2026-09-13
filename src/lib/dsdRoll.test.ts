@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isTidyTerm, bumpTermText, restOf, rollStatements, paint, RED } from './dsdRoll.ts';
+import { isTidyTerm, bumpTermText, restOf, rollStatements, fixOpenTag, RED } from './dsdRoll.ts';
 
 test('정형인 칸만 민다 — 본문 서술은 건드리지 않는다', () => {
   assert.equal(isTidyTerm('제 18 기'), true);
@@ -80,19 +80,36 @@ test('④ 가 갈아끼울 자리는 밀지 않는다 — 두 해가 밀린다',
   assert.equal(held.terms, 0, '모두 막으면 기수를 하나도 밀지 않는다');
 });
 
-test('민 자리를 붉게 칠한다 — 실물에 있는 USERMARK 문법', () => {
-  assert.equal(paint('제 19 기'), '<SPAN USERMARK="0XFF0000">제 19 기</SPAN>');
+test('민 자리를 붉게 칠한다 — **새 요소를 만들지 않고** 여는 태그에 색을 더한다', () => {
   assert.equal(RED, '0XFF0000');
+  // USERMARK 이 이미 있으면 뒤에 이어 붙인다
+  const a = '<TD USERMARK="F-BT14 ">제 18 기</TD>';
+  assert.equal(fixOpenTag(a, a.indexOf('제'), { mark: true })!.raw, '<TD USERMARK="F-BT14 0XFF0000">');
+  // 없으면 새로 단다
+  const b = '<TD WIDTH="10">제 18 기</TD>';
+  assert.equal(fixOpenTag(b, b.indexOf('제'), { mark: true })!.raw, '<TD USERMARK="0XFF0000" WIDTH="10">');
+  // 이미 칠해져 있고 밀 것도 없으면 손대지 않는다
+  const c = '<TD USERMARK="0XFF0000">제 18 기</TD>';
+  assert.equal(fixOpenTag(c, c.indexOf('제'), { mark: true }), null);
 
   const r = rollStatements(XML, 1, undefined, true);
-  assert.ok(r.xml.includes('<SPAN USERMARK="0XFF0000">제 19 기</SPAN>'));
-  assert.ok(r.xml.includes('<SPAN USERMARK="0XFF0000">2026년 01월 01일</SPAN>'));
-  // 안 민 자리는 칠하지 않는다
-  assert.ok(r.xml.includes('당사는 2015년에 증자하였습니다.'));
-  assert.equal((r.xml.match(/USERMARK="0XFF0000"/g) ?? []).length, r.terms);
+  assert.equal(r.xml.includes('<SPAN'), false, '새 요소를 만들면 편집기가 문서를 열지 못한다');
+  assert.ok(r.xml.includes('USERMARK="0XFF0000"'));
+  assert.ok(r.xml.includes('당사는 2015년에 증자하였습니다.'), '안 민 자리는 칠하지 않는다');
 });
 
-test('칠하지 않으면 SPAN 이 들어가지 않는다', () => {
+test('칠하지 않으면 USERMARK 이 들어가지 않는다', () => {
   const r = rollStatements(XML);
-  assert.equal(r.xml.includes('USERMARK'), false);
+  assert.equal(r.xml.includes('0XFF0000'), false);
+});
+
+test('짝인 날짜 속성도 함께 민다 — 안 밀면 편집기가 문서를 열지 못한다', () => {
+  const a = '<TD AUNIT="PERIODTO" AUNITVALUE="20251231">2025년 12월 31일</TD>';
+  assert.equal(
+    fixOpenTag(a, a.indexOf('2025년'), { by: 1 })!.raw,
+    '<TD AUNIT="PERIODTO" AUNITVALUE="20261231">',
+  );
+  // 날짜가 아닌 값은 손대지 않는다
+  const b = '<TD AUNIT="WON" AUNITVALUE="1">(단위 : 원)</TD>';
+  assert.equal(fixOpenTag(b, b.indexOf('('), { by: 1 }), null);
 });

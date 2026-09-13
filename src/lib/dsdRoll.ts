@@ -59,12 +59,54 @@ function numAttr(attrs: string, name: string): number | null {
  * 글자에 색을 입히는 DSD 문법.
  *
  * `USERMARK` 이 서식 지시자다 — 실물에서 `0X0000FF`(파랑) · `0X9D3272`(자주) · `B`(굵게) ·
- * `BC0XDCDCDC`(배경) 가 쓰이고 있었다(넵튠 2026-09-13 실측). 공백으로 이어 붙일 수도 있다.
+ * `BC0XDCDCDC`(배경) 가 쓰이고, 공백으로 이어 붙인 것도 있다(`F-BT12 B 0X000000`).
  * 그래서 붉은 글자는 `0XFF0000` 이다.
+ *
+ * **새 요소를 만들지 않는다.** 처음에는 `<SPAN>` 으로 감쌌는데 편집기가 문서를 열지 못했다
+ * (2026-09-13). 원본의 `<SPAN>` 은 **예외 없이 `<P>` 안**에 있는데 우리는 `<TD>` 안에 바로
+ * 넣었다. 그래서 **여는 태그에 이미 붙어 있는 USERMARK 에 색을 더하는** 쪽으로 바꿨다 —
+ * `<P USERMARK="B">` · `<TD … USERMARK="F-BT14 ">` 가 실물에 있으니 구조가 그대로다.
  */
 export const RED = '0XFF0000';
-export function paint(raw: string, mark = RED): string {
-  return `<SPAN USERMARK="${mark}">${raw}</SPAN>`;
+
+/**
+ * 글자칸의 **여는 태그**를 손본다 — 색을 더하고, 짝인 날짜 속성을 함께 민다.
+ *
+ * DSD 는 기간을 **글자와 속성 두 곳에** 적는다.
+ *
+ *     <TD AUNIT="PERIODTO" AUNITVALUE="20251231">2025년 12월 31일</TD>
+ *
+ * 글자만 밀고 속성을 두면 편집기가 **문서를 열지 못한다**(2026-09-13 실물). 밀 때는 둘 다
+ * 밀어야 한다. 날짜가 아닌 값(`WON`=1 · `ASK_FIN`=O)은 손대지 않는다.
+ *
+ * 한 칸에 대해 **고침은 하나만** 만든다 — 여는 태그 범위가 겹치면 깨진다.
+ */
+export function fixOpenTag(
+  xml: string, contentStart: number, opts: { mark?: boolean; by?: number } = {},
+): { start: number; end: number; raw: string } | null {
+  if (contentStart <= 0 || xml[contentStart - 1] !== '>') return null;
+  const lt = xml.lastIndexOf('<', contentStart - 1);
+  if (lt < 0) return null;
+  const open = xml.slice(lt, contentStart);
+  if (!/^<[A-Z][A-Z0-9-]*[\s>/]/.test(open)) return null;
+
+  let next = open;
+  const by = opts.by ?? 1;
+  // 짝인 날짜 속성 — YYYYMMDD 일 때만
+  next = next.replace(/AUNITVALUE="(\d{8})"/g, (_m, v: string) =>
+    `AUNITVALUE="${Number(v.slice(0, 4)) + by}${v.slice(4)}"`);
+
+  if (opts.mark) {
+    const has = /USERMARK="([^"]*)"/.exec(next);
+    if (has) {
+      if (!has[1].split(/\s+/).includes(RED)) {
+        next = next.replace(/USERMARK="([^"]*)"/, (_m, v: string) => `USERMARK="${v.trim()} ${RED}"`);
+      }
+    } else {
+      next = next.replace(/^<([A-Z][A-Z0-9-]*)/, (_m, t: string) => `<${t} USERMARK="${RED}"`);
+    }
+  }
+  return next === open ? null : { start: lt, end: contentStart, raw: next };
 }
 
 export interface RollResult {
@@ -102,9 +144,10 @@ export function rollStatements(xml: string, by = 1, skip?: Set<number>, mark = f
     if (next === t) return;
     const head = /^\s*/.exec(sl.raw)![0];
     const tail = /\s*$/.exec(sl.raw)![0];
-    // 민 자리를 붉게 — 감사 나가기 전에 만든 서식에서 **무엇이 바뀌었는지** 바로 보인다.
-    const body = mark ? paint(escapeXml(next)) : escapeXml(next);
-    edits.push({ start: sl.start, end: sl.end, raw: head + body + tail });
+    edits.push({ start: sl.start, end: sl.end, raw: head + escapeXml(next) + tail });
+    // **짝인 날짜 속성도 함께 민다.** 그리고 민 자리를 붉게 — 무엇이 바뀌었는지 보이게.
+    const tag = fixOpenTag(s, sl.start, { mark, by });
+    if (tag) edits.push(tag);
     terms += 1;
   });
 
