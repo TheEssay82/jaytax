@@ -112,6 +112,13 @@ export interface BackRef {
   /** 천원 표면 1000 — 엑셀 표시값이 천원이다 */ factor?: number;
   /** 「원 단위 (입력)」 칸 주소 — 표시 칸에 값이 없으면 여기서 계산한다 */ srcAt?: string;
   /** 숫자 칸인가 — 모양(쉼표·괄호·붙임표)을 맞춰 써야 한다 */ isNum?: boolean;
+  /**
+   * **이월하면서 우리가 비운 칸인가.**
+   *
+   * 비운 칸이 엑셀에서 안 채워진 채로 오면 DSD 에서도 **비워야 한다.** 원본을 그대로 두면
+   * 당기 칸에 작년 숫자가 남아 「이월이 하나도 안 됐다」로 보인다(2026-09-13 지적).
+   */
+  blanked?: boolean;
 }
 
 /**
@@ -392,6 +399,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
           srcAt: cell.formula != null && factor != null && srcCols.includes(c.col)
             ? `${colName(srcBase + srcCols.indexOf(c.col))}${rowNo[i]}` : undefined,
           isNum: !head && numericCol.includes(c.col),
+          blanked: blank,
         });
         // 이월해 넣은 값을 적어 둔다 — ③ 에서 사람이 고쳤는지 본다. 전기는 확정된 숫자다.
         // **수식이 걸린 칸은 빼 둔다.** 천원 표의 표시 열은 ROUND 수식이라 값이 없다 —

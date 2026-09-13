@@ -29,7 +29,9 @@ export interface WriteResult {
  */
 export function numText(v: number, orig: string): string {
   const o = (orig ?? '').trim();
-  if (v === 0 && (isDash(o) || o === '')) return o || '-';
+  // **0 은 붙임표로 쓴다.** 회계 표는 0 을 「-」로 적는다 — 명진 원본에 맨 「0」 칸은 하나도
+  // 없고 붙임표가 142곳이다(2026-09-13 실측). 원본이 딱 「0」이라 적었을 때만 0 으로 쓴다.
+  if (v === 0) return o === '0' ? '0' : (isDash(o) ? o : '-');
   const neg = v < 0;
   // **소수 자릿수는 원본대로.** 지분율 「100.00」을 「100」으로 쓰면 원본과 어긋난다
   // (알티스트 20곳 — 2026-09-13).
@@ -41,8 +43,16 @@ export function numText(v: number, orig: string): string {
   return /^\s*\(.*\)\s*$/.test(o) ? `(${body})` : `-${body}`;
 }
 
+/** 엑셀에서 온 글자를 DSD 에 넣을 꼴로 — 줄바꿈은 `\n` 하나로 맞춘다. */
+function clean(s: string): string {
+  return (s ?? '').replace(/\r\n?/g, '\n');
+}
+
 /** 이 칸에 넣을 글자 — 못 정하면 null(원본을 그대로 둔다). */
 function textFor(ref: BackRef, cells: Map<string, CellValue>): string | null {
+  // **이월하면서 비운 칸**이 아직 안 채워졌으면 DSD 에서도 비운다. 원본을 두면 당기 칸에
+  // 작년 숫자가 남는다.
+  if (ref.blanked && isBlank(ref, cells)) return '';
   const cell = cells.get(ref.at);
   // 천원 표의 표시 칸은 ROUND 수식이다. 값이 있으면 그것을, 없으면 원 단위 칸에서 셈한다.
   if (ref.factor != null) {
@@ -61,7 +71,7 @@ function textFor(ref: BackRef, cells: Map<string, CellValue>): string | null {
     const n = asNumber(t);
     if (n != null) return numText(n, ref.orig);
   }
-  return t;
+  return clean(t);
 }
 
 /** 한 칸이 비어 있는가 — 채워 넣을 자리인데 아직 안 찼는가. */
@@ -163,7 +173,7 @@ export function writeNotes(
     for (const it of items) {
       const p = it.ref.part ?? 0;
       if (it.text == null || p >= at.length) continue;
-      const body = it.ref.lead ? `${it.ref.lead}${it.text}` : it.text;
+      const body = clean(it.ref.lead ? `${it.ref.lead}${it.text}` : it.text);
       const i = at[p];
       // 앞뒤의 공백과 **홑 줄바꿈(`&cr;`)까지** 원본 그대로 둔다. 홑 줄바꿈은 문단 경계가
       // 아니라 조각 안에 남는데, 엑셀 칸의 글자는 잘려 있어 되돌리면 사라진다.
