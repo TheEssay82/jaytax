@@ -3,7 +3,7 @@
 // ⚠️ **재무제표 파일은 여기로 오지 않는다.** 엑셀도 DSD 도 브라우저 안에서 열고 끝낸다.
 //    이 표에 남는 것은 「어느 회사의 어느 해를 다루는가」와 주석 목록뿐이다.
 import { supabase } from './supabase';
-import { template, renumber, cloneForNextYear, type Basis, type NoteRow } from './dsdNotes';
+import { renumber, cloneForNextYear, type Basis, type NoteRow } from './dsdNotes';
 
 export type { Basis, NoteRow, NoteSource, NoteStatus } from './dsdNotes';
 
@@ -69,7 +69,7 @@ export interface NewEngagement {
   termNo: number | null; periodFrom: string; periodTo: string;
   basis: Basis; moneyUnit: '천원' | '원'; note?: string;
   /** 무엇으로 주석 목록을 채울까 — 앞 해 복제 / 작년 DSD 파일 / 표준 틀 / 비워 두기. */
-  seed: 'template' | 'previous' | 'file' | 'empty';
+  seed: 'previous' | 'file' | 'empty';
   /** seed 가 'file' 일 때 — 화면에서 .dsd 를 읽어 만든 목록. 파일 자체는 올라오지 않는다. */
   seedRows?: NoteRow[];
 }
@@ -113,13 +113,11 @@ export async function createEngagement(v: NewEngagement): Promise<string> {
   const id = (data as { id: string }).id;
 
   let seeded: NoteRow[] = [];
-  if (v.seed === 'template') {
-    seeded = template(v.basis);
-  } else if (v.seed === 'file') {
+  if (v.seed === 'file') {
     seeded = v.seedRows ?? [];
   } else if (v.seed === 'previous') {
     const prev = await findEngagement(v.entityId, v.fy - 1, v.scope);
-    seeded = prev ? cloneForNextYear(await listNotes(prev.id)) : template(v.basis);
+    seeded = prev ? cloneForNextYear(await listNotes(prev.id)) : [];
   }
   if (seeded.length) await replaceNotes(id, seeded);
   return id;

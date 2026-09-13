@@ -18,7 +18,7 @@ import {
   type Engagement, type NoteRow, type Basis,
 } from '../../lib/dsdApi';
 import {
-  template, templateSize, suggestCode, renumber, progress,
+  suggestCode, renumber, progress,
   defaultAuditFy, defaultPeriod, DEFAULT_STATUS,
 } from '../../lib/dsdNotes';
 import { readDsd, type DsdInfo } from '../../lib/dsdFile';
@@ -74,6 +74,14 @@ export default function DsdEngagementTab() {
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const picked = useMemo(() => engs.find((e) => e.id === pickedId) ?? null, [engs, pickedId]);
+  // **사업연도로 거른다.** 해가 쌓이면 목록이 끝없이 길어진다(사용자 지적 2026-09-13).
+  const years = useMemo(
+    () => [...new Set(engs.map((e) => e.fy))].sort((a, b) => b - a),
+    [engs],
+  );
+  const [fyAt, setFyAt] = useState<number | null>(null);
+  const fy = fyAt ?? years[0] ?? defaultAuditFy();
+  const inYear = useMemo(() => engs.filter((e) => e.fy === fy), [engs, fy]);
   const prog = useMemo(() => progress(notes), [notes]);
 
   async function pick(id: string) {
@@ -177,37 +185,56 @@ export default function DsdEngagementTab() {
         <NoteDsdCard eng={picked} notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} />
       )}
 
-      <div style={{
-        display: at === '1' ? 'grid' : 'none',
-        gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)', gap: 10, alignItems: 'start',
-      }}>
-        {/* ── 작업 건 목록 ─────────────────────────── */}
-        <div className="card" style={{ padding: '10px 10px 12px' }}>
-          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 7, letterSpacing: '.04em' }}>
-            작업 건 {engs.length}
+      <div style={{ display: at === '1' ? 'block' : 'none' }}>
+        {/* ── 사업연도 · 작업 건 ─────────────────────── */}
+        <div className="card" style={{ padding: '10px 12px 12px' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 9 }}>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', letterSpacing: '.04em' }}>
+              사업연도
+            </span>
+            {years.map((y) => (
+              <button
+                key={y}
+                onClick={() => setFyAt(y)}
+                style={{
+                  cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--fs-1)',
+                  border: `1px solid ${y === fy ? 'var(--navy)' : 'var(--rule)'}`,
+                  background: y === fy ? 'var(--navy)' : '#fff',
+                  color: y === fy ? '#fff' : 'var(--ink-2)',
+                  fontWeight: y === fy ? 700 : 400,
+                  borderRadius: 999, padding: '3px 11px',
+                }}
+              >
+                FY{y}
+                <span style={{ opacity: 0.7, marginLeft: 6, fontWeight: 400 }}>
+                  · {engs.filter((e) => e.fy === y).length}건
+                </span>
+              </button>
+            ))}
+            <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
+              {inYear.length}건
+            </span>
           </div>
+
           {engs.length === 0 && <Empty text="아직 없습니다. 「새 건 만들기」로 시작하세요." />}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {engs.map((e) => (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {inYear.map((e) => (
               <button
                 key={e.id}
                 onClick={() => void pick(e.id)}
                 style={{
-                  textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+                  textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', minWidth: 156,
                   border: `1px solid ${e.id === pickedId ? 'var(--navy)' : 'var(--rule)'}`,
                   background: e.id === pickedId ? 'var(--navy-bg)' : '#fff',
-                  borderRadius: 'var(--r-sm)', padding: '8px 10px',
+                  borderRadius: 'var(--r-sm)', padding: '7px 11px',
                 }}
               >
-                <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>
+                <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--navy)' }}>
                   {e.entityName}
                 </div>
-                <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginTop: 2 }}>
-                  FY{e.fy} · {e.scope}
-                </div>
                 <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 2 }}>
-                  {e.basis} · {e.moneyUnit} · 주석 {e.noteCount}
-                  <span style={{ marginLeft: 6, color: e.status === '완료' ? 'var(--good)' : 'var(--ink-3)' }}>
+                  {e.scope} · {e.moneyUnit} · 주석 {e.noteCount}
+                  <span style={{ marginLeft: 5, color: e.status === '완료' ? 'var(--good)' : 'var(--ink-3)' }}>
                     {e.status}
                   </span>
                 </div>
@@ -218,7 +245,7 @@ export default function DsdEngagementTab() {
 
         {/* ── 고른 건의 주석 목록 ───────────────────── */}
         {!picked ? (
-          <div className="card"><Empty text="왼쪽에서 작업 건을 고르세요." /></div>
+          <div className="card"><Empty text="위에서 회사를 고르세요." /></div>
         ) : (
           <div className="card">
             <div className="chdr">
@@ -335,11 +362,6 @@ export default function DsdEngagementTab() {
 
             <div style={{ display: 'flex', gap: 6, marginTop: 10, alignItems: 'center' }}>
               <button className="btn-sm" onClick={addNote}>+ 주석 추가</button>
-              {notes.length === 0 && (
-                <button className="btn-sm" onClick={() => { setNotes(template(picked.basis)); setDirty(true); }}>
-                  흔한 주석으로 채우기 ({templateSize(picked.basis)}개)
-                </button>
-              )}
               <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: dirty ? 'var(--warn)' : 'var(--ink-4)' }}>
                 {dirty ? '저장하지 않은 변경이 있습니다' : '저장됨'}
               </span>
@@ -394,7 +416,7 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
   const [scope, setScope] = useState<'별도' | '연결'>('별도');
   const [basis, setBasis] = useState<Basis>('K-IFRS');
   const [moneyUnit, setMoneyUnit] = useState<'천원' | '원'>('천원');
-  const [seed, setSeed] = useState<'template' | 'previous' | 'file' | 'empty'>('file');
+  const [seed, setSeed] = useState<'previous' | 'file' | 'empty'>('file');
   const [prevFound, setPrevFound] = useState<number | null>(null);
   const [dsd, setDsd] = useState<DsdInfo | null>(null);
   const [reading, setReading] = useState(false);
@@ -588,11 +610,6 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
                   ? ` — 앱에 FY${fy - 1} 작업 건이 아직 없습니다(두 해째부터 쓸 수 있습니다)`
                   : ` — 주석 ${prevFound}개. 코드·시트·담당이 그대로 옵니다`}
               </span>
-            </label>
-            <label style={{ fontSize: 'var(--fs-2)' }}>
-              <input type="radio" checked={seed === 'template'} onChange={() => setSeed('template')} />{' '}
-              흔히 쓰는 주석 목록
-              <span style={{ color: 'var(--ink-3)' }}> — {basis} {templateSize(basis)}개 · 회사마다 다르니 보고 고치세요</span>
             </label>
             <label style={{ fontSize: 'var(--fs-2)' }}>
               <input type="radio" checked={seed === 'empty'} onChange={() => setSeed('empty')} />{' '}

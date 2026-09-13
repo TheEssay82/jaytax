@@ -1,36 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  template, templateSize, suggestCode, renumber, cloneForNextYear,
+  suggestCode, renumber, cloneForNextYear,
   defaultPeriod, defaultAuditFy, termLabel, progress, type NoteRow,
 } from './dsdNotes.ts';
-
-test('표준 틀 — 실제 보고서에서 뽑은 개수', () => {
-  assert.equal(templateSize('일반기업회계기준'), 18);   // 명진산업개발 FY25
-  assert.equal(templateSize('K-IFRS'), 41);             // ㈜넵튠 FY25
-});
-
-test('표준 틀 — 번호·시트가 차례로 붙는다', () => {
-  const t = template('일반기업회계기준');
-  assert.equal(t[0].code, 'COMPANY');
-  assert.equal(t[0].no, 1);
-  assert.equal(t[0].sheet, 'N01');
-  assert.equal(t.at(-1)?.title, '재무제표의 확정일');
-  assert.equal(t.at(-1)?.sheet, 'N18');
-});
-
-test('표준 틀 — 코드가 겹치지 않는다', () => {
-  for (const b of ['K-IFRS', '일반기업회계기준'] as const) {
-    const codes = template(b).map((r) => r.code);
-    assert.equal(new Set(codes).size, codes.length, b);
-  }
-});
-
-test('회사가 쓰는 주석은 대조 대상에서 뺀다', () => {
-  const t = template('K-IFRS');
-  assert.equal(t.find((r) => r.code === 'RELATED_PARTY')?.source, '회사');
-  assert.equal(t.find((r) => r.code === 'INTANGIBLE')?.source, '감사인');
-});
 
 test('코드는 제목에서 만든다 — 「표준」을 대조하지 않는다', () => {
   // 회사마다 주석 양식이 다르므로 사무소 공통의 표준 틀이 성립하지 않는다(2026-09-13).
