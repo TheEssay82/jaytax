@@ -22,7 +22,7 @@ import { findLinks } from '../../lib/noteLink';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { injectSheets } from '../../lib/xlsxInject';
 import type { NoteRow } from '../../lib/dsdApi';
-import type { LoadedDsd } from './DsdShell';
+import type { LoadedDsd, NoteFrom } from './DsdShell';
 import { download } from './dsdUi';
 
 const TONE: Record<Level, { bg: string; ink: string }> = {
@@ -34,8 +34,11 @@ const TONE: Record<Level, { bg: string; ink: string }> = {
 export interface Filled { name: string; bytes: Uint8Array }
 
 export default function NoteVerifyCard(
-  { notes, dsd, xl, setXl }:
-  { notes: NoteRow[]; dsd: LoadedDsd; xl: Filled | null; setXl: (v: Filled | null) => void },
+  { notes, dsd, xl, setXl, from }:
+  {
+    notes: NoteRow[]; dsd: LoadedDsd;
+    xl: Filled | null; setXl: (v: Filled | null) => void; from: NoteFrom;
+  },
 ) {
   const [src, setSrc] = useState<'xlsx' | 'dsd'>('xlsx');
   const [ties, setTies] = useState<TieRow[]>([]);
@@ -54,7 +57,10 @@ export default function NoteVerifyCard(
 
   function plans(mode: 'xlsx' | 'dsd') {
     // DSD 를 그대로 검증할 때는 **파일에 든 주석 전부**를 본다 — 검증 대상이 그 파일이다.
-    const picked = mode === 'dsd' ? pickAll(dsd.blocks) : pickNotes(dsd.blocks, notes);
+    // 엑셀을 볼 때는 ② 가 뜬 것과 **같은 규칙으로** 골라야 시트 이름이 맞는다.
+    const picked = mode === 'dsd' || from === 'file'
+      ? pickAll(dsd.blocks)
+      : pickNotes(dsd.blocks, notes);
     if (!picked.length) {
       throw new Error(mode === 'dsd'
         ? '이 파일에서 주석을 찾지 못했습니다.'

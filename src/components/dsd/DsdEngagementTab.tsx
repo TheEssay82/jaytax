@@ -26,7 +26,9 @@ import { readDsd, type DsdInfo } from '../../lib/dsdFile';
 import NotePrepareTab from './NotePrepareTab';
 import NoteVerifyCard, { type Filled } from './NoteVerifyCard';
 import NoteDsdCard from './NoteDsdCard';
-import { useDsdFile, DsdBar, DsdTabs, NeedDsd, type TabDef } from './DsdShell';
+import {
+  useDsdFile, DsdBar, DsdTabs, NeedDsd, NoteFromBar, type TabDef, type NoteFrom,
+} from './DsdShell';
 
 const TABS: TabDef[] = [
   { key: '1', label: '① 대상', hint: '거래처·주석 목록' },
@@ -59,6 +61,10 @@ export default function DsdEngagementTab() {
   // 작년 감사보고서와 「채워 넣은 엑셀」은 **탭들이 함께 쓴다** — 같은 파일을 세 번 고르지 않는다.
   const dsdFile = useDsdFile();
   const [filled, setFilled] = useState<Filled | null>(null);
+  // 주석을 ① 목록에서 고를까, 올린 파일에서 고를까 — ② ③ ④ 가 **같아야** 한다(DsdShell).
+  const [from, setFrom] = useState<NoteFrom>('list');
+  // ① 목록이 비면 고를 것이 없다. 첫 해거나, 남의 보고서를 그냥 떠 보는 자리다.
+  const useFrom: NoteFrom = notes.length === 0 ? 'file' : from;
 
   async function load(keep?: string) {
     try {
@@ -186,20 +192,23 @@ export default function DsdEngagementTab() {
       <DsdBar {...dsdFile} expect={picked?.entityName} />
       <DsdTabs tabs={TABS} at={at} go={setAt} hasDsd={!!dsdFile.dsd} />
 
+      {at !== '1' && dsdFile.dsd && (
+        <NoteFromBar from={useFrom} set={setFrom} listCount={notes.length} fileCount={dsdFile.dsd.blocks.length} />
+      )}
       {at !== '1' && !dsdFile.dsd && <NeedDsd />}
       {at !== '1' && !picked && (
         <div className="card" style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-2)' }}>
           <b>① 대상</b>에서 작업 건을 먼저 고르세요.
         </div>
       )}
-      {at === '2' && picked && dsdFile.dsd && notes.length > 0 && (
-        <NotePrepareTab eng={picked} notes={notes} dsd={dsdFile.dsd} />
+      {at === '2' && picked && dsdFile.dsd && (
+        <NotePrepareTab eng={picked} notes={notes} dsd={dsdFile.dsd} from={useFrom} />
       )}
-      {at === '3' && picked && dsdFile.dsd && notes.length > 0 && (
-        <NoteVerifyCard notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} />
+      {at === '3' && picked && dsdFile.dsd && (
+        <NoteVerifyCard notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} />
       )}
-      {at === '4' && picked && dsdFile.dsd && notes.length > 0 && (
-        <NoteDsdCard eng={picked} notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} />
+      {at === '4' && picked && dsdFile.dsd && (
+        <NoteDsdCard eng={picked} notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} />
       )}
 
       <div style={{ display: at === '1' ? 'block' : 'none' }}>

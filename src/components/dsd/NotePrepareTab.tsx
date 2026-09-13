@@ -9,18 +9,19 @@
 // ⚠️ **원본 정산표는 손대지 않는다.** 새 파일로 내려받는다.
 import { useState } from 'react';
 import { layoutIndex } from '../../lib/noteSheet';
-import { pickNotes, planNotes } from '../../lib/notePick';
+import { pickAll, pickNotes, planNotes } from '../../lib/notePick';
 import { findLinks, layoutTieSheet } from '../../lib/noteLink';
 import { injectSheets } from '../../lib/xlsxInject';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { writeNotes, buildDsd, sheetsFromPlans, contentsOf } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
 import type { Engagement, NoteRow } from '../../lib/dsdApi';
-import type { LoadedDsd } from './DsdShell';
+import type { LoadedDsd, NoteFrom } from './DsdShell';
 import { safeName, download } from './dsdUi';
 
 export default function NotePrepareTab(
-  { eng, notes, dsd }: { eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd },
+  { eng, notes, dsd, from }:
+  { eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd; from: NoteFrom },
 ) {
   const [wtb, setWtb] = useState<{ name: string; bytes: Uint8Array } | null>(null);
   const [roll, setRoll] = useState(true);
@@ -43,7 +44,20 @@ export default function NotePrepareTab(
     } catch { /* 못 읽어도 만들기는 해 본다 */ }
   }
 
+  /**
+   * 뜰 주석을 고른다.
+   *
+   * 보통은 ① 이 정한 목록이다 — 해마다 켜고 끈 것이 그대로 살아 있다. 다만 **① 목록과
+   * 파일이 서로 남일 때**가 있다: 첫 해라 목록을 아직 안 세웠거나, 남의 보고서를 그냥
+   * 떠 보는 자리다. 그때 제목으로 짝을 지으면 하나도 안 맞아 **빈 서식만 잔뜩** 나온다
+   * (pickNotes 는 제목이 열쇠다). 그래서 파일에 든 것을 그대로 쓰는 길을 둔다.
+   */
   function picked() {
+    if (from === 'file') {
+      const all = pickAll(dsd.blocks);
+      if (!all.length) throw new Error('이 파일에서 주석을 찾지 못했습니다.');
+      return all;
+    }
     const p = pickNotes(dsd.blocks, notes);
     if (!p.length) throw new Error('켜 둔 주석이 없습니다. ① 대상에서 골라 주세요.');
     return p;
@@ -120,7 +134,10 @@ export default function NotePrepareTab(
         <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
           <b>주석 서식 엑셀</b>과 <b>사전작성 DSD</b> 둘을 냅니다. 현장에서는 엑셀의 노란 칸만
           채우시면 되고, DSD 는 껍데기라 편집기에서 이어 작업하실 수 있습니다.
-          <span style={{ color: 'var(--ink-3)' }}> 켜 둔 주석 {on}개 · 금액은 {eng.moneyUnit} 단위로 적힌 그대로</span>
+          <span style={{ color: 'var(--ink-3)' }}>
+            {' '}주석 {from === 'file' ? `${dsd.blocks.length}개(파일에 든 것 전부)` : `${on}개(① 에서 켜 둔 것)`}
+            {' '}· 금액은 {eng.moneyUnit} 단위로 적힌 그대로
+          </span>
         </div>
 
         <div className="frow" style={{ marginTop: 10 }}><span className="fl">다음 해로 이월</span>

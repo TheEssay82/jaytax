@@ -94,6 +94,40 @@ export function DsdBar(
   );
 }
 
+/**
+ * 주석을 **어디서 고르는가** — ② ③ ④ 가 반드시 같아야 한다.
+ *
+ *   list — ① 이 정한 목록. 해마다 켜고 끈 것이 그대로 살아 있다.
+ *   file — 올린 파일에 든 것 전부. ① 목록과 파일이 남일 때 쓴다.
+ *
+ * 왜 한곳에 두는가: ② 가 뜬 시트 이름을 ③ 이 다시 지어내 대 보고, ④ 가 또 지어내 도로
+ * 넣는다. 셋이 다르게 고르면 **시트 이름이 어긋나 온통 못 찾았다고 나온다.**
+ */
+export type NoteFrom = 'list' | 'file';
+
+/** 주석을 어디서 고를지 — ② ③ ④ 위에 한 줄로 둔다. */
+export function NoteFromBar(
+  { from, set, listCount, fileCount }:
+  { from: NoteFrom; set: (v: NoteFrom) => void; listCount: number; fileCount: number },
+) {
+  return (
+    <div className="card" style={{ padding: '8px 12px', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>주석 목록</span>
+      <label style={{ fontSize: 'var(--fs-2)' }}>
+        <input type="radio" checked={from === 'list'} onChange={() => set('list')} disabled={listCount === 0} />{' '}
+        ① 에서 켜 둔 것 <span style={{ color: 'var(--ink-3)' }}>{listCount}개</span>
+      </label>
+      <label style={{ fontSize: 'var(--fs-2)' }}>
+        <input type="radio" checked={from === 'file'} onChange={() => set('file')} />{' '}
+        올린 파일에 든 것 전부 <span style={{ color: 'var(--ink-3)' }}>{fileCount}개</span>
+      </label>
+      <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginLeft: 'auto' }}>
+        ② ③ ④ 가 함께 씁니다 — 도중에 바꾸면 시트 이름이 어긋납니다.
+      </span>
+    </div>
+  );
+}
+
 export interface TabDef {
   key: string;
   label: string;

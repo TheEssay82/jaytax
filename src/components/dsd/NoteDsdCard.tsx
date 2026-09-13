@@ -10,18 +10,21 @@
 // ⚠️ **안 채운 칸이 남아 있으면 만들지 않는다.** 작년 숫자가 올해 보고서로 나가는 것이
 //    이 일에서 가장 큰 사고다.
 import { useState } from 'react';
-import { pickNotes, planNotes } from '../../lib/notePick';
+import { pickAll, pickNotes, planNotes } from '../../lib/notePick';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { writeNotes, buildDsd, contentsOf } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
 import type { Engagement, NoteRow } from '../../lib/dsdApi';
-import type { LoadedDsd } from './DsdShell';
+import type { LoadedDsd, NoteFrom } from './DsdShell';
 import type { Filled } from './NoteVerifyCard';
 import { safeName, download } from './dsdUi';
 
 export default function NoteDsdCard(
-  { eng, notes, dsd, xl, setXl }:
-  { eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd; xl: Filled | null; setXl: (v: Filled | null) => void },
+  { eng, notes, dsd, xl, setXl, from }:
+  {
+    eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd;
+    xl: Filled | null; setXl: (v: Filled | null) => void; from: NoteFrom;
+  },
 ) {
   const [roll, setRoll] = useState(true);
   const [rollFs, setRollFs] = useState(true);
@@ -40,7 +43,8 @@ export default function NoteDsdCard(
     if (!xl) return setSay('채워 넣은 엑셀(.xlsx)을 고르세요.');
     setBusy(true); setSay(null); setDone(null);
     try {
-      const picked = pickNotes(dsd.blocks, notes);
+      // ② 와 **같은 규칙으로** 골라야 시트 이름이 맞는다(DsdShell.NoteFrom).
+      const picked = from === 'file' ? pickAll(dsd.blocks) : pickNotes(dsd.blocks, notes);
       if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 대상에서 골라 주세요.');
       const plans = planNotes(picked, roll);
       const sheets = readWorkbook(xl.bytes, (n) => /^N\d\d /.test(n));
