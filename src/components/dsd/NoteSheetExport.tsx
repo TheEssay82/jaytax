@@ -11,11 +11,14 @@ import { readDsd, readContents } from '../../lib/dsdFile';
 import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
 import { layoutIndex } from '../../lib/noteSheet';
 import { pickNotes, planNotes } from '../../lib/notePick';
+import { findLinks, layoutTieSheet } from '../../lib/noteLink';
+import { parseStatements, type FsLine } from '../../lib/fsParse';
 import { injectSheets } from '../../lib/xlsxInject';
 import type { Engagement, NoteRow } from '../../lib/dsdApi';
 
 export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes: NoteRow[] }) {
   const [blocks, setBlocks] = useState<NoteBlocks[] | null>(null);
+  const [fs, setFs] = useState<FsLine[]>([]);
   const [dsdName, setDsdName] = useState('');
   const [wtb, setWtb] = useState<{ name: string; bytes: Uint8Array } | null>(null);
   // 기본은 **이월**이다 — ①에서 만든 건은 올해이고 씨앗은 작년 보고서이기 때문이다.
@@ -31,6 +34,7 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
       const info = await readDsd(f);
       const xml = await readContents(f);
       const bs = parseNoteBlocks(xml);
+      setFs(parseStatements(xml));
       setBlocks(bs);
       setDsdName(`${f.name} · ${info.docName || 'DSD'} · 주석 ${bs.length}개`);
       if (!bs.length) setSay('이 파일에서 주석을 찾지 못했습니다.');
@@ -55,9 +59,12 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
       if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 에서 만들 주석을 골라 주세요.');
       const fresh = picked.filter((p) => !p.note).map((p) => p.title);
       const plans = planNotes(picked, roll);
-      plans.push(layoutIndex(picked.map(({ title }, i) => ({
+      // 맞아야 하는 숫자 짝은 **작년 값이 든 배치**에서 배운다. 자리는 이월한 것과 같다.
+      const links = findLinks(roll ? planNotes(picked, false) : plans, fs);
+      const index = layoutIndex(picked.map(({ title }, i) => ({
         no: i + 1, title, enabled: true, sheet: plans[i].name,
-      }))));
+      })));
+      plans.push(layoutTieSheet(links), index);
 
       const out = injectSheets(wtb.bytes, plans);
       const base = wtb.name.replace(/\.xlsx$/i, '');
@@ -65,6 +72,7 @@ export default function NoteSheetExport({ eng, notes }: { eng: Engagement; notes
       const yellow = plans.flatMap((p) => p.cells).filter((c) => c.kind === 'input').length;
       setDone(`주석 시트 ${picked.length}장과 목록 한 장을 얹었습니다.`
         + (roll ? ` 당기 값을 전기로 밀고 채워 넣을 칸 ${yellow}개를 노랗게 두었습니다.` : '')
+        + (links.length ? ` 맞아야 하는 숫자 짝 ${links.length}개를 「대사표」 시트에 걸어 두었습니다.` : '')
         + (fresh.length
           ? ` 그 가운데 ${fresh.length}개는 작년 보고서에 없어 빈 서식으로 두었습니다 — ${fresh.join(' · ')}`
           : ''));

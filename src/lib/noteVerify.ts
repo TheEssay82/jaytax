@@ -12,9 +12,10 @@ import type { SheetPlan, TablePlan, SheetCell } from './noteSheet';
 import { colName, asNumber } from './noteSheet';
 import type { SheetData, CellValue } from './xlsxRead';
 import type { FsLine } from './fsParse';
+import type { LinkGroup } from './noteLink';
 
 export type Level = '틀림' | '살펴볼 것' | '안 채움';
-export type Kind = '풋팅' | '빈칸' | '전기값' | '단수차이' | '수식' | '대사';
+export type Kind = '풋팅' | '빈칸' | '전기값' | '단수차이' | '수식' | '대사' | '주석대사';
 
 export interface Finding {
   sheet: string;
@@ -420,4 +421,51 @@ export function tieOut(
     });
   }
   return { rows, findings };
+}
+
+/**
+ * 주석끼리 맞아야 하는 숫자를 본다.
+ *
+ * 짝은 작년 보고서에서 배운 것이다(noteLink). 여기서는 **올해 엑셀의 그 자리들이 서로 같은지**만
+ * 본다. 작년 값과 같아야 한다는 뜻이 아니다 — 올해 값끼리 맞아야 한다는 뜻이다.
+ *
+ * 사용자가 든 예: 현금흐름표의 유형자산 취득은 유형자산 주석의 취득과 맞아야 한다.
+ */
+export function checkLinks(links: LinkGroup[], sheets: SheetData[]): Finding[] {
+  const by = new Map(sheets.map((s2) => [s2.name, s2]));
+  const out: Finding[] = [];
+
+  for (const g of links) {
+    const got: { at: string; v: number }[] = [];
+    let blank = 0;
+    for (const sp of g.spots) {
+      if (!sp.at) continue;
+      const sheet = by.get(sp.group);
+      if (!sheet) continue;
+      const cell = sheet.cells.get(sp.at);
+      // 아직 엑셀에서 열지 않아 수식에 값이 없으면 넘긴다.
+      if (cell?.formula != null && cell.num == null) { blank += 1; continue; }
+      const v = numOf(cell);
+      if (v == null) { blank += 1; continue; }
+      got.push({ at: `${sp.group}!${sp.at}`, v });
+    }
+    if (got.length < 2) continue;                    // 아직 채우는 중이다
+    const lo = Math.min(...got.map((x) => x.v));
+    const hi = Math.max(...got.map((x) => x.v));
+    const d = offBy(hi, lo);
+    if (d === 0) continue;
+    // **한쪽이 0 이면 단정하지 않는다.** 붙임표를 0 으로 넣은 자리이거나 아직 안 채운 자리다.
+    const zero = got.some((x) => x.v === 0);
+    out.push({
+      sheet: g.spots.find((x) => x.at)?.group ?? '-',
+      note: got.map((x) => x.at).join(' ↔ '),
+      kind: '주석대사', level: zero ? '살펴볼 것' : '틀림',
+      where: got.map((x) => fmt(x.v)).join(' ↔ '), diff: d,
+      says: `맞아야 하는 숫자가 ${fmt(d)} 만큼 다릅니다`
+        + (blank ? ` (아직 안 채운 자리 ${blank}곳은 뺐습니다)` : '')
+        + (zero ? ' — 한쪽이 0 이라 아직 안 채운 것일 수 있습니다' : '')
+        + `. 작년에는 ${fmt(g.value)} 으로 같았습니다.`,
+    });
+  }
+  return out;
 }

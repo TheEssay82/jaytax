@@ -11,7 +11,8 @@ import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
 import { parseStatements, type FsLine } from '../../lib/fsParse';
 import { pickNotes, planNotes } from '../../lib/notePick';
 import { layoutReport } from '../../lib/noteVerify';
-import { verifyAll, tieOut, type VerifyResult, type Level, type TieRow } from '../../lib/noteVerify';
+import { verifyAll, tieOut, checkLinks, type VerifyResult, type Level, type TieRow } from '../../lib/noteVerify';
+import { findLinks } from '../../lib/noteLink';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { injectSheets } from '../../lib/xlsxInject';
 import type { NoteRow } from '../../lib/dsdApi';
@@ -26,6 +27,7 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
   const [blocks, setBlocks] = useState<NoteBlocks[] | null>(null);
   const [fs, setFs] = useState<FsLine[]>([]);
   const [ties, setTies] = useState<TieRow[]>([]);
+  const [linkCount, setLinkCount] = useState(0);
   const [dsdName, setDsdName] = useState('');
   const [xl, setXl] = useState<{ name: string; bytes: Uint8Array } | null>(null);
   const [roll, setRoll] = useState(true);
@@ -62,7 +64,9 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
     const picked = pickNotes(blocks!, notes);
     if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 에서 골라 주세요.');
     const made = planNotes(picked, roll);
-    return made.map((plan, i) => ({ plan, dsdNo: picked[i].note?.no ?? null }));
+    // 맞아야 하는 숫자 짝은 **작년 값이 든 배치**에서 배운다 — 자리는 이월한 것과 같다.
+    const links = findLinks(roll ? planNotes(picked, false) : made, fs);
+    return { refs: made.map((plan, i) => ({ plan, dsdNo: picked[i].note?.no ?? null })), links };
   }
 
   function run() {
@@ -70,14 +74,15 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
     if (!xl) return setSay('채워 넣은 엑셀(.xlsx)을 고르세요.');
     setBusy(true); setSay(null);
     try {
-      const refs = plans();
+      const { refs, links } = plans();
       const sheets = readWorkbook(xl.bytes, (n) => /^N\d\d /.test(n));
       if (!sheets.length) {
         throw new Error('이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 에서 만든 파일인지 보십시오.');
       }
       const out = verifyAll(refs.map((r) => r.plan), sheets);
       const tie = tieOut(fs, refs, sheets, roll);
-      out.findings.push(...tie.findings);
+      out.findings.push(...tie.findings, ...checkLinks(links, sheets));
+      setLinkCount(links.length);
       const rank: Record<Level, number> = { 틀림: 0, '살펴볼 것': 1, '안 채움': 2 };
       out.findings.sort((a, b) => rank[a.level] - rank[b.level]);
       setTies(tie.rows);
@@ -122,7 +127,8 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
       </div>
 
       <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7, marginBottom: 12 }}>
-        <b>합계가 맞는지</b>, <b>전기 숫자가 바뀌지 않았는지</b>, <b>채워 넣을 칸이 남았는지</b>를 봅니다.
+        <b>합계가 맞는지</b>, <b>주석끼리 맞아야 하는 숫자가 맞는지</b>,
+        <b> 전기 숫자가 바뀌지 않았는지</b>, <b>채워 넣을 칸이 남았는지</b>를 봅니다.
         <span style={{ color: 'var(--ink-3)' }}> 파일은 브라우저 안에서만 열립니다.</span>
       </div>
 
@@ -179,6 +185,7 @@ export default function NoteVerifyCard({ notes }: { notes: NoteRow[] }) {
             ))}
             <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
               주석 시트 {res.scanned.sheets}장 · 표 {res.scanned.tables}장 · 채운 칸 {res.filled.done}/{res.filled.total}
+              {linkCount > 0 && ` · 맞춰 본 숫자 짝 ${linkCount}개`}
             </span>
             <label style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginLeft: 'auto' }}>
               <input type="checkbox" checked={only} onChange={(e) => setOnly(e.target.checked)} />{' '}
