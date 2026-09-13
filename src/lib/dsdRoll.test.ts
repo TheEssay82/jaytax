@@ -81,26 +81,26 @@ test('④ 가 갈아끼울 자리는 밀지 않는다 — 두 해가 밀린다',
 });
 
 test('민 자리를 붉게 칠한다 — **새 요소를 만들지 않고** 여는 태그에 색을 더한다', () => {
-  assert.equal(RED, '0XFF0000');
+  assert.equal(RED, '0X0000FF', '색은 BGR — 0XFF0000 은 파랑이다');
   // USERMARK 이 이미 있으면 뒤에 이어 붙인다
   const a = '<TD USERMARK="F-BT14 ">제 18 기</TD>';
-  assert.equal(fixOpenTag(a, a.indexOf('제'), { mark: true })!.raw, '<TD USERMARK="F-BT14 0XFF0000">');
+  assert.equal(fixOpenTag(a, a.indexOf('제'), { mark: true })!.raw, '<TD USERMARK="F-BT14 0X0000FF">');
   // 없으면 새로 단다
   const b = '<TD WIDTH="10">제 18 기</TD>';
-  assert.equal(fixOpenTag(b, b.indexOf('제'), { mark: true })!.raw, '<TD USERMARK="0XFF0000" WIDTH="10">');
+  assert.equal(fixOpenTag(b, b.indexOf('제'), { mark: true })!.raw, '<TD USERMARK="0X0000FF" WIDTH="10">');
   // 이미 칠해져 있고 밀 것도 없으면 손대지 않는다
-  const c = '<TD USERMARK="0XFF0000">제 18 기</TD>';
+  const c = '<TD USERMARK="0X0000FF">제 18 기</TD>';
   assert.equal(fixOpenTag(c, c.indexOf('제'), { mark: true }), null);
 
   const r = rollStatements(XML, 1, undefined, true);
   assert.equal(r.xml.includes('<SPAN'), false, '새 요소를 만들면 편집기가 문서를 열지 못한다');
-  assert.ok(r.xml.includes('USERMARK="0XFF0000"'));
+  assert.ok(r.xml.includes('USERMARK="0X0000FF"'));
   assert.ok(r.xml.includes('당사는 2015년에 증자하였습니다.'), '안 민 자리는 칠하지 않는다');
 });
 
 test('칠하지 않으면 USERMARK 이 들어가지 않는다', () => {
   const r = rollStatements(XML);
-  assert.equal(r.xml.includes('0XFF0000'), false);
+  assert.equal(r.xml.includes('0X0000FF'), false);
 });
 
 test('짝인 날짜 속성도 함께 민다 — 안 밀면 편집기가 문서를 열지 못한다', () => {
