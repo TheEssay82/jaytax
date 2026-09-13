@@ -152,8 +152,11 @@ test('머리글에서 당기·전기를 가른다 — 「당기순손익」은 �
 });
 
 test('기수는 한 해 올린다', () => {
+  // **원본 띄어쓰기를 그대로 둔다** — 고쳐 쓰면 DSD 로 되돌릴 때 원본과 어긋난다.
   assert.equal(bumpTerm('제12(당)기'), '제13(당)기');
-  assert.equal(bumpTerm('제 11 (전)기'), '제12(전)기');
+  assert.equal(bumpTerm('제 11 (전)기'), '제 12 (전)기');
+  assert.equal(bumpTerm('제 18(당) 기 '), '제 19(당) 기 ');
+  assert.equal(bumpTerm('제11(당)기말'), '제12(당)기말');
   assert.equal(bumpTerm('당기말'), '당기말', '기수가 없으면 그대로');
 });
 

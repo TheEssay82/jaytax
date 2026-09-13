@@ -64,8 +64,18 @@ export function periodOfHead(text: string): '당기' | '전기' | null {
 }
 
 /** 「제12(당)기」의 기수를 한 해 올린다. 기수가 없으면 그대로. */
-export function bumpTerm(text: string): string {
-  return (text ?? '').replace(/제\s*(\d+)\s*\(/g, (_, n) => `제${Number(n) + 1}(`);
+/**
+ * 기수 표기 — 「제 18(당) 기」·「제11(당)기말」·「제 18 기」.
+ *
+ * 앞뒤 토막을 따로 잡아 **원본 띄어쓰기를 그대로 둔다.** 「제12(당)기말」을 「제 13(당) 기말」로
+ * 고쳐 쓰면 원본과 어긋난다.
+ */
+export const TERM_RE = /(제\s*)(\d{1,3})(\s*(?:\([당전]\))?\s*기(?:말)?)/g;
+
+/** 기수를 한 해 올린다 — 연도는 건드리지 않는다. */
+export function bumpTerm(text: string, by = 1): string {
+  return (text ?? '').replace(TERM_RE, (_m, head: string, n: string, tail: string) =>
+    `${head}${Number(n) + by}${tail}`);
 }
 
 /**

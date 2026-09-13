@@ -12,6 +12,7 @@ import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
 import { pickNotes, planNotes } from '../../lib/notePick';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { writeNotes, buildDsd, contentsOf } from '../../lib/dsdWrite';
+import { rollStatements } from '../../lib/dsdRoll';
 import type { NoteRow } from '../../lib/dsdApi';
 
 export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
@@ -19,6 +20,7 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
   const [xl, setXl] = useState<{ name: string; bytes: Uint8Array } | null>(null);
   const [roll, setRoll] = useState(true);
   const [force, setForce] = useState(false);
+  const [rollFs, setRollFs] = useState(true);
   const [say, setSay] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,7 +57,20 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
       if (!sheets.length) {
         throw new Error('이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 에서 만든 파일인지 보십시오.');
       }
-      const r = writeNotes(contentsOf(dsd.bytes), plans, sheets);
+      // 재무제표·표지를 먼저 민다 — **④ 가 갈아끼울 자리는 뺀다.** 거기는 ② 가 이미 밀었다.
+      let xml = contentsOf(dsd.bytes);
+      let fsTold = '';
+      if (roll && rollFs) {
+        const skip = new Set<number>();
+        for (const p of plans) for (const b of p.back ?? []) skip.add(b.slot);
+        const rolled = rollStatements(xml, 1, skip);
+        xml = rolled.xml;
+        const why = new Map<string, number>();
+        for (const l of rolled.leftovers) why.set(l.why, (why.get(l.why) ?? 0) + 1);
+        fsTold = ` 재무제표·표지는 기수·연도 ${rolled.terms}칸을 올리고 금액 ${rolled.amounts}칸을 전기로 내렸습니다.`
+          + (why.size ? ` 다만 ${[...why].map(([k, v]) => `${v}곳은 ${k}`).join(', ')} — 편집기에서 보십시오.` : '');
+      }
+      const r = writeNotes(xml, plans, sheets);
 
       if (r.blank.length && !force) {
         setSay(
@@ -75,7 +90,7 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       setDone(
-        `글자 ${r.changed}칸을 갈아끼워 새 DSD 를 만들었습니다.`
+        `주석 ${r.changed}칸을 갈아끼워 새 DSD 를 만들었습니다.` + fsTold
         + (r.blank.length ? ` 안 채운 칸 ${r.blank.length}개는 작년 글자가 그대로 남았습니다.` : '')
         + (r.skipped.length ? ` 손대지 못한 칸이 ${r.skipped.length}개 있습니다 — ${r.skipped[0].why}` : ''),
       );
@@ -97,7 +112,7 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
 
       <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7, marginBottom: 12 }}>
         작년 DSD 를 <b>틀로 두고 글자만 갈아끼웁니다</b> — 표 너비·정렬·글꼴이 하나도 상하지 않습니다.
-        <b> 주석만 바꿉니다</b> — 재무제표·표지는 원본 그대로 둡니다.
+
         <span style={{ color: 'var(--ink-3)' }}> 파일은 브라우저 안에서만 열립니다.</span>
       </div>
 
@@ -128,6 +143,19 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
         </label>
       </div>
 
+      <div className="frow"><span className="fl">재무제표·표지</span>
+        <label style={{ fontSize: 'var(--fs-2)', opacity: roll ? 1 : 0.5 }}>
+          <input type="checkbox" checked={rollFs} disabled={!roll}
+            onChange={(e) => setRollFs(e.target.checked)} />{' '}
+          <b>기수·연도를 올리고 금액을 전기로 내립니다</b>
+          <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.6 }}>
+            「제 18(당) 기 2025년 12월 31일」 → 「제 19(당) 기 2026년 12월 31일」.
+            <b> 본문 서술 속의 연도는 건드리지 않습니다</b> — 「2015년의 증자를 거쳐」를 바꾸면 안 되기 때문입니다.
+            감사보고서 본문과 자본변동표는 손대지 않고 몇 곳인지 알려 드립니다.
+          </div>
+        </label>
+      </div>
+
       {say && (
         <div style={{
           marginTop: 10, padding: '8px 11px', borderRadius: 'var(--r-sm)',
@@ -142,7 +170,7 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
           {done}
           <div style={{ marginTop: 7, paddingTop: 7, borderTop: '1px solid currentColor', opacity: 0.85 }}>
             <b>다음에 할 일</b> — 내려받은 .dsd 를 <b>DART 편집기에서 열어</b> 확인하십시오.
-            재무제표와 표지는 손대지 않았으므로 거기서 이어 작업하시면 됩니다.
+            감사보고서 본문(의견·기간)과 자본변동표는 손대지 않았으니 거기서 고치시면 됩니다.
           </div>
         </div>
       )}
