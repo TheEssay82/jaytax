@@ -154,7 +154,11 @@ export default function DsdEngagementTab() {
           <b>작년 감사보고서 하나가 모든 것의 틀</b>입니다 — ② 준비도 ③ 검증도 ④ 완성본도 그 파일을
           씁니다. ② 가 내는 <b>사전작성 DSD 는 나갈 때 들고 가는 것</b>이고, 완성본을 만들 때는
           쓰지 않습니다.
-          <span style={{ color: 'var(--ink-3)' }}> 파일은 저장하지 않습니다 — 브라우저 안에서만 열립니다.</span>
+          <div style={{ color: 'var(--ink-3)', marginTop: 4 }}>
+            작년 것이 <b>없어도</b> ③ 은 쓸 수 있습니다 — 다 적힌 <b>당기 DSD</b> 를 올리면 그 파일을
+            그대로 훑습니다. 주석을 회사 쪽에서 지어 주거나, 초도감사라 손으로 짠 경우입니다.
+          </div>
+          <span style={{ color: 'var(--ink-3)' }}>파일은 저장하지 않습니다 — 브라우저 안에서만 열립니다.</span>
         </div>
       </div>
 

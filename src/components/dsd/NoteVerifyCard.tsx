@@ -4,11 +4,20 @@
 // 배치를 그대로 다시 지어 「어디에 무엇이 있어야 하는가」를 알고 대 보기 때문이다.
 // 엑셀만 보고 표를 다시 알아내려 들면 배치 규칙을 두 벌 쓰게 되고 둘이 어긋난다.
 //
+// 길이 **둘**이다.
+//   엑셀  — ② 가 만든 서식을 채워 넣은 것. 우리가 주석을 짓는 보통의 경우다.
+//   DSD   — 이미 다 적힌 보고서 그대로. 주석을 **남이 지어 주거나**(오톰) 작년 보고서가 없어
+//           **손으로 짠**(태양빛) 경우다. 이월을 끄고 배치를 지으면 칸마다 그 파일의 숫자가
+//           앉으므로, 같은 검증기를 그대로 태운다(noteVerify.sheetsOfPlans).
+//
 // ⚠️ **파일은 서버로 올라가지 않는다.** 브라우저 안에서 읽고 결과만 화면에 낸다.
 import { useState } from 'react';
-import { pickNotes, planNotes } from '../../lib/notePick';
+import { pickAll, pickNotes, planNotes } from '../../lib/notePick';
 import { layoutReport } from '../../lib/noteVerify';
-import { verifyAll, tieOut, checkLinks, type VerifyResult, type Level, type TieRow } from '../../lib/noteVerify';
+import {
+  verifyAll, tieOut, checkLinks, sheetsOfPlans,
+  type VerifyResult, type Level, type TieRow,
+} from '../../lib/noteVerify';
 import { findLinks } from '../../lib/noteLink';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { injectSheets } from '../../lib/xlsxInject';
@@ -28,6 +37,7 @@ export default function NoteVerifyCard(
   { notes, dsd, xl, setXl }:
   { notes: NoteRow[]; dsd: LoadedDsd; xl: Filled | null; setXl: (v: Filled | null) => void },
 ) {
+  const [src, setSrc] = useState<'xlsx' | 'dsd'>('xlsx');
   const [ties, setTies] = useState<TieRow[]>([]);
   const [linkCount, setLinkCount] = useState(0);
   const [roll, setRoll] = useState(true);
@@ -42,26 +52,38 @@ export default function NoteVerifyCard(
     setXl({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
   }
 
-  function plans() {
-    const picked = pickNotes(dsd.blocks, notes);
-    if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 에서 골라 주세요.');
-    const made = planNotes(picked, roll);
+  function plans(mode: 'xlsx' | 'dsd') {
+    // DSD 를 그대로 검증할 때는 **파일에 든 주석 전부**를 본다 — 검증 대상이 그 파일이다.
+    const picked = mode === 'dsd' ? pickAll(dsd.blocks) : pickNotes(dsd.blocks, notes);
+    if (!picked.length) {
+      throw new Error(mode === 'dsd'
+        ? '이 파일에서 주석을 찾지 못했습니다.'
+        : '켜 둔 주석이 없습니다. ① 에서 골라 주세요.');
+    }
+    const made = planNotes(picked, mode === 'dsd' ? false : roll);
     // 맞아야 하는 숫자 짝은 **작년 값이 든 배치**에서 배운다 — 자리는 이월한 것과 같다.
-    const links = findLinks(roll ? planNotes(picked, false) : made, dsd.fs);
+    // DSD 를 그대로 볼 때는 짝을 배울 작년이 없다. 같은 파일에서 배워 같은 파일에 대 보면
+    // 언제나 맞으므로 아무것도 말해 주지 않는다 — 그래서 하지 않는다.
+    const links = mode === 'dsd' ? [] : findLinks(roll ? planNotes(picked, false) : made, dsd.fs);
     return { refs: made.map((plan, i) => ({ plan, dsdNo: picked[i].note?.no ?? null })), links };
   }
 
   function run() {
-    if (!xl) return setSay('채워 넣은 엑셀(.xlsx)을 고르세요.');
+    if (src === 'xlsx' && !xl) return setSay('채워 넣은 엑셀(.xlsx)을 고르세요.');
     setBusy(true); setSay(null);
     try {
-      const { refs, links } = plans();
-      const sheets = readWorkbook(xl.bytes, (n) => /^N\d\d /.test(n));
-      if (!sheets.length) {
-        throw new Error('이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 에서 만든 파일인지 보십시오.');
+      const { refs, links } = plans(src);
+      let sheets;
+      if (src === 'dsd') {
+        sheets = sheetsOfPlans(refs.map((r) => r.plan));
+      } else {
+        sheets = readWorkbook(xl!.bytes, (n) => /^N\d\d /.test(n));
+        if (!sheets.length) {
+          throw new Error('이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 에서 만든 파일인지 보십시오.');
+        }
       }
       const out = verifyAll(refs.map((r) => r.plan), sheets);
-      const tie = tieOut(dsd.fs, refs, sheets, roll);
+      const tie = tieOut(dsd.fs, refs, sheets, src === 'dsd' ? false : roll);
       out.findings.push(...tie.findings, ...checkLinks(links, sheets));
       setLinkCount(links.length);
       const rank: Record<Level, number> = { 틀림: 0, '살펴볼 것': 1, '안 채움': 2 };
@@ -76,7 +98,7 @@ export default function NoteVerifyCard(
   }
 
   function saveReport() {
-    if (!res || !xl) return;
+    if (!res || !xl) return;   // 얹을 엑셀이 있을 때만 — DSD 갈래는 화면으로 본다
     try {
       download(injectSheets(xl.bytes, [layoutReport(res, new Date(), ties)]),
         `${xl.name.replace(/\.xlsx$/i, '')}_검증.xlsx`,
@@ -102,33 +124,68 @@ export default function NoteVerifyCard(
 
       <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7, marginBottom: 12 }}>
         <b>합계가 맞는지</b>, <b>주석끼리 맞아야 하는 숫자가 맞는지</b>,
-        <b> 전기 숫자가 바뀌지 않았는지</b>, <b>채워 넣을 칸이 남았는지</b>를 봅니다.
-        <b> ② 가 만든 파일</b>(이름이 「…_주석시트.xlsx」)을 채운 뒤 그대로 넣으시면 됩니다.
-        <span style={{ color: 'var(--ink-3)' }}> 여기서 고른 엑셀은 ④ 도 함께 씁니다.</span>
+        <b> 전기 숫자가 바뀌지 않았는지</b>, <b>재무제표가 가리킨 금액이 주석에 있는지</b>를 봅니다.
         <span style={{ color: 'var(--ink-3)' }}> 파일은 브라우저 안에서만 열립니다.</span>
       </div>
 
-      <div className="frow"><span className="fl">채워 넣은 엑셀</span>
-        <div>
-          <input type="file" accept=".xlsx" style={{ fontSize: 'var(--fs-1)' }}
-            onChange={(e) => void takeXl(e.target.files?.[0])} />
-          {xl && (
-            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)', marginTop: 3 }}>
-              {xl.name} · {Math.round(xl.bytes.length / 1024)}KB
+      <div className="frow"><span className="fl">무엇을 검증하나</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 'var(--fs-2)' }}>
+            <input type="radio" checked={src === 'xlsx'} onChange={() => { setSrc('xlsx'); setRes(null); }} />{' '}
+            <b>채워 넣은 엑셀</b>
+            <span style={{ color: 'var(--ink-3)' }}> — ② 가 만든 「…_주석시트.xlsx」를 채운 것</span>
+          </label>
+          <label style={{ fontSize: 'var(--fs-2)' }}>
+            <input type="radio" checked={src === 'dsd'} onChange={() => { setSrc('dsd'); setRes(null); }} />{' '}
+            <b>위에 올린 DSD 그대로</b>
+            <span style={{ color: 'var(--ink-3)' }}> — 이미 다 적힌 보고서를 훑습니다</span>
+            <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.6 }}>
+              주석을 <b>회사 쪽에서 지어 주거나</b>, 작년 보고서가 없어 <b>손으로 짠</b> 경우입니다.
+              ① 의 목록과 상관없이 <b>그 파일에 든 주석을 전부</b> 봅니다.
             </div>
-          )}
+          </label>
         </div>
       </div>
 
-      <div className="frow"><span className="fl">이월해서 만든 것</span>
-        <label style={{ fontSize: 'var(--fs-2)' }}>
-          <input type="checkbox" checked={roll} onChange={(e) => setRoll(e.target.checked)} />{' '}
-          ② 에서 <b>「다음 해로 이월」을 켜고</b> 만든 파일입니다
-          <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2 }}>
-            ② 와 다르게 두면 자리가 어긋나 온통 틀렸다고 나옵니다.
+      {src === 'xlsx' ? (
+        <>
+          <div className="frow"><span className="fl">채워 넣은 엑셀</span>
+            <div>
+              <input type="file" accept=".xlsx" style={{ fontSize: 'var(--fs-1)' }}
+                onChange={(e) => void takeXl(e.target.files?.[0])} />
+              {xl && (
+                <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)', marginTop: 3 }}>
+                  {xl.name} · {Math.round(xl.bytes.length / 1024)}KB
+                </div>
+              )}
+              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 3 }}>
+                여기서 고른 엑셀은 ④ 도 함께 씁니다.
+              </div>
+            </div>
           </div>
-        </label>
-      </div>
+
+          <div className="frow"><span className="fl">이월해서 만든 것</span>
+            <label style={{ fontSize: 'var(--fs-2)' }}>
+              <input type="checkbox" checked={roll} onChange={(e) => setRoll(e.target.checked)} />{' '}
+              ② 에서 <b>「다음 해로 이월」을 켜고</b> 만든 파일입니다
+              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2 }}>
+                ② 와 다르게 두면 자리가 어긋나 온통 틀렸다고 나옵니다.
+              </div>
+            </label>
+          </div>
+        </>
+      ) : (
+        <div style={{
+          fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7,
+          padding: '9px 11px', borderRadius: 'var(--r-sm)', background: 'var(--surface-2)',
+        }}>
+          위에 올린 <b>{dsd.name}</b> 안의 숫자를 그대로 훑습니다 — 주석 {dsd.blocks.length}개.
+          <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 3 }}>
+            이 갈래에서는 <b>합계</b>와 <b>재무제표 ↔ 주석 대사</b>를 봅니다. 전기 값이 바뀌었는지는
+            대 볼 작년이 없어 보지 않습니다.
+          </div>
+        </div>
+      )}
 
       {say && (
         <div style={{
@@ -167,9 +224,11 @@ export default function NoteVerifyCard(
               background: 'var(--good-bg)', color: 'var(--good)', fontSize: 'var(--fs-2)',
             }}>
               어긋난 곳을 찾지 못했습니다.
-              {count('안 채움') === 0
-                ? ' 채워 넣을 칸도 다 찼습니다 — 아래 ④ 에서 DSD 를 만드십시오.'
-                : ` 다만 채워 넣을 칸이 ${count('안 채움')}개 남았습니다.`}
+              {src === 'dsd'
+                ? ' 이 보고서의 합계와 대사는 맞습니다.'
+                : count('안 채움') === 0
+                  ? ' 채워 넣을 칸도 다 찼습니다 — 아래 ④ 에서 DSD 를 만드십시오.'
+                  : ` 다만 채워 넣을 칸이 ${count('안 채움')}개 남았습니다.`}
             </div>
           ) : (
             <div style={{ maxHeight: 460, overflow: 'auto', border: '1px solid var(--rule)', borderRadius: 'var(--r-sm)' }}>

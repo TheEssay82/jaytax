@@ -10,7 +10,13 @@ import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
 import { companyName, bareName } from '../../lib/dsdParse';
 import { parseStatements, type FsLine } from '../../lib/fsParse';
 
-/** 한 번 읽어 두고 탭들이 나눠 쓰는 작년 감사보고서. */
+/**
+ * 한 번 읽어 두고 탭들이 나눠 쓰는 감사보고서.
+ *
+ * 보통은 **작년** 것이다 — ② 가 서식을 뜨고 ④ 가 틀로 쓴다. 다만 ③ 은 **당기 완성본**도
+ * 받는다: 주석을 회사 쪽에서 지어 주거나(오톰) 작년 보고서가 아예 없어 손으로 짠(태양빛)
+ * 경우, 검증할 것은 이미 다 적힌 그 파일 하나다.
+ */
 export interface LoadedDsd {
   name: string;
   bytes: Uint8Array;
@@ -45,7 +51,7 @@ export function useDsdFile() {
   return { dsd, err, take, clear: () => { setDsd(null); setErr(null); } };
 }
 
-/** 화면 맨 위의 공용 바 — 작년 감사보고서 하나. */
+/** 화면 맨 위의 공용 바 — 감사보고서 하나. */
 export function DsdBar(
   { dsd, err, take, clear, expect }: ReturnType<typeof useDsdFile> & { expect?: string },
 ) {
@@ -57,7 +63,7 @@ export function DsdBar(
     <div className="card" style={{ padding: '10px 12px' }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
-          작년 감사보고서
+          감사보고서(.dsd)
         </span>
         <input type="file" accept=".dsd" style={{ fontSize: 'var(--fs-1)' }}
           onChange={(e) => void take(e.target.files?.[0])} />
@@ -71,7 +77,7 @@ export function DsdBar(
           </>
         ) : (
           <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)' }}>
-            한 번만 고르면 ② ③ ④ 가 함께 씁니다 — 창을 닫으면 지워집니다.
+            보통 <b>작년</b> 것입니다 — ② ③ ④ 가 함께 씁니다. 창을 닫으면 지워집니다.
           </span>
         )}
       </div>
@@ -109,7 +115,7 @@ export function DsdTabs(
           <button
             key={t.key}
             onClick={() => go(t.key)}
-            title={locked ? '작년 감사보고서를 먼저 고르세요' : t.hint}
+            title={locked ? '감사보고서(.dsd)를 먼저 고르세요' : t.hint}
             style={{
               border: 0, borderBottom: `2px solid ${on ? 'var(--navy)' : 'transparent'}`,
               background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
@@ -133,7 +139,9 @@ export function DsdTabs(
 export function NeedDsd() {
   return (
     <div className="card" style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
-      위에서 <b>작년 감사보고서(.dsd)</b>를 먼저 골라 주세요. ② ③ ④ 가 모두 그 파일을 틀로 씁니다.
+      위에서 <b>감사보고서(.dsd)</b>를 먼저 골라 주세요. ② 와 ④ 는 <b>작년</b> 것을 틀로 씁니다.
+      ③ 은 <b>당기 완성본</b>을 넣어 그 파일을 그대로 훑을 수도 있습니다 — 주석을 회사 쪽에서
+      지어 주거나 손으로 짠 경우입니다.
     </div>
   );
 }

@@ -27,6 +27,16 @@ export function pickNotes(blocks: NoteBlocks[], want: NoteWant[]): Picked[] {
   }));
 }
 
+/**
+ * 파일에 든 주석을 **전부** - 다 적힌 DSD 를 그대로 검증할 때 쓴다.
+ *
+ * ① 의 목록으로 거르지 않는 까닭: 검증 대상이 **그 파일**이지 우리가 세운 계획이 아니다.
+ * 남이 지어 준 주석이나 초도감사 보고서는 ① 에 목록이 아직 없을 수도 있다.
+ */
+export function pickAll(blocks: NoteBlocks[]): Picked[] {
+  return blocks.map((b) => ({ note: b, title: b.title }));
+}
+
 /** 고른 것을 시트 배치로. 시트 이름은 「N01 회사의 개요」 꼴이고 차례가 곧 주석 번호다. */
 export function planNotes(picked: Picked[], roll: boolean): SheetPlan[] {
   const used = new Set<string>();

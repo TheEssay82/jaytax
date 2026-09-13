@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { layoutNote, colName } from './noteSheet.ts';
 import type { SheetPlan } from './noteSheet.ts';
 import type { SheetData, CellValue } from './xlsxRead.ts';
-import { verifyAll, offBy, numOf } from './noteVerify.ts';
+import { verifyAll, offBy, numOf, sheetsOfPlans } from './noteVerify.ts';
 import type { NoteBlocks } from './dsdBlocks.ts';
 
 function line(tag: 'TH' | 'TD', slot0: number, ...texts: string[]) {
@@ -152,4 +152,100 @@ test('글자로 적힌 숫자도 숫자로 읽는다', () => {
   assert.equal(numOf({ num: 5 }), 5);
   assert.equal(numOf({ text: '합 계' }), undefined);
   assert.equal(numOf(undefined), undefined);
+});
+
+// ── 다 적힌 DSD 를 그대로 검증 ────────────────────────────────
+// 주석을 남이 지어 주거나(오톰) 손으로 짠(태양빛) 경우다. 채울 엑셀이 없다.
+
+/** 합계를 일부러 틀리게 적은 표 — 「3,000」이어야 할 자리에 「3,100」. */
+const 재고_틀림: NoteBlocks = {
+  no: 5, title: '재고자산',
+  blocks: [{
+    kind: 'table', unit: '원',
+    rows: [
+      line('TH', 100, '구 분', '당기말', '전기말'),
+      line('TD', 110, '제품', '1,000', '900'),
+      line('TD', 120, '원재료', '2,000', '1,100'),
+      line('TD', 130, '합 계', '3,100', '2,000'),
+    ],
+  }],
+};
+
+test('다 적힌 DSD 를 그대로 훑는다 — 합계가 맞으면 조용하다', () => {
+  const plan = layoutNote(재고, 'N05 재고자산', { roll: false });
+  const r = verifyAll([plan], sheetsOfPlans([plan]));
+  assert.equal(r.scanned.sheets, 1);
+  assert.deepEqual(r.findings, [], `어긋남이 없어야 한다: ${JSON.stringify(r.findings)}`);
+  assert.equal(r.filled.total, 0, '이월하지 않았으니 채워 넣을 칸이 없다');
+});
+
+test('다 적힌 DSD 의 합계가 틀리면 잡는다', () => {
+  const plan = layoutNote(재고_틀림, 'N05 재고자산', { roll: false });
+  const r = verifyAll([plan], sheetsOfPlans([plan]));
+  const f = r.findings.filter((x) => x.kind === '풋팅');
+  assert.equal(f.length, 1, `풋팅 하나만 나와야 한다: ${JSON.stringify(r.findings)}`);
+  assert.equal(f[0].level, '틀림');
+  assert.equal(f[0].diff, 100);
+  assert.match(f[0].says, /3,100 인데 항목을 더하면 3,000/);
+});
+
+test('천원 표라도 표시값끼리 더해서 본다 — 원 단위 합계 수식에 속지 않는다', () => {
+  const 천원: NoteBlocks = {
+    no: 7, title: '매출채권',
+    blocks: [{
+      kind: 'table', unit: '천원',
+      rows: [
+        line('TH', 200, '구 분', '당기말', '전기말'),
+        line('TD', 210, '외상매출금', '1,000', '900'),
+        line('TD', 220, '받을어음', '2,000', '1,100'),
+        line('TD', 230, '합 계', '3,500', '2,000'),
+      ],
+    }],
+  };
+  const plan = layoutNote(천원, 'N07 매출채권', { roll: false });
+  const r = verifyAll([plan], sheetsOfPlans([plan]));
+  const f = r.findings.filter((x) => x.kind === '풋팅');
+  assert.equal(f.length, 1, `당기 열 하나만 어긋나야 한다: ${JSON.stringify(r.findings)}`);
+  assert.equal(f[0].diff, 500);
+});
+
+test('천원 표의 1 차이는 단수차이로 본다 — 공시된 보고서에 흔하다', () => {
+  // 항목마다 반올림하면 합계가 흔들린다. 항목 n 개면 최대 n/2 — 그 안쪽은 틀린 것이 아니다.
+  const 유형자산: NoteBlocks = {
+    no: 3, title: '유형자산',
+    blocks: [{
+      kind: 'table', unit: '천원',
+      rows: [
+        line('TH', 300, '구 분', '당기말'),
+        line('TD', 310, '토지', '1,000'),
+        line('TD', 320, '건물', '2,000'),
+        line('TD', 330, '기계장치', '3,000'),
+        line('TD', 340, '합 계', '6,001'),
+      ],
+    }],
+  };
+  const plan = layoutNote(유형자산, 'N03 유형자산', { roll: false });
+  const f = verifyAll([plan], sheetsOfPlans([plan])).findings.filter((x) => x.kind === '풋팅');
+  assert.equal(f.length, 1);
+  assert.equal(f[0].level, '살펴볼 것');
+  assert.match(f[0].says, /단수차이/);
+});
+
+test('원 단위 표는 한 푼도 봐 주지 않는다', () => {
+  const 원표: NoteBlocks = {
+    no: 4, title: '현금및현금성자산',
+    blocks: [{
+      kind: 'table', unit: '원',
+      rows: [
+        line('TH', 400, '구 분', '당기말'),
+        line('TD', 410, '보통예금', '1,000'),
+        line('TD', 420, '정기예금', '2,000'),
+        line('TD', 430, '합 계', '3,001'),
+      ],
+    }],
+  };
+  const plan = layoutNote(원표, 'N04 현금', { roll: false });
+  const f = verifyAll([plan], sheetsOfPlans([plan])).findings.filter((x) => x.kind === '풋팅');
+  assert.equal(f.length, 1);
+  assert.equal(f[0].level, '틀림');
 });

@@ -86,10 +86,16 @@ function verifyTable(
       const d = offBy(total, sum);
       if (d === 0) continue;
       const c = colName(col);
+      // **천원 표는 항목마다 반올림한다.** 항목이 n 개면 합계는 최대 n/2 만큼 흔들린다 —
+      // 그 안쪽은 단수차이지 틀린 것이 아니다. 공시된 보고서에서 흔히 1 이 뜬다
+      // (세진식품 유형자산 2026-09-13). 원 단위 표는 딱 떨어져야 하므로 봐 주지 않는다.
+      const slack = t.factor != null ? seen / 2 : 0;
+      const rounding = Math.abs(d) <= slack;
       out.push({
-        sheet: plan.name, note, kind: '풋팅', level: '틀림',
+        sheet: plan.name, note, kind: '풋팅', level: rounding ? '살펴볼 것' : '틀림',
         where: `${c}${t.itemRows[0]}:${c}${t.itemRows[t.itemRows.length - 1]} → ${c}${t.totalRow}`,
-        says: `합계 ${fmt(total)} 인데 항목을 더하면 ${fmt(sum)} 입니다 (${fmt(d)} 차이).`,
+        says: `합계 ${fmt(total)} 인데 항목을 더하면 ${fmt(sum)} 입니다 (${fmt(d)} 차이).`
+          + (rounding ? ` 항목 ${seen}개를 ${t.unit ?? '천원'} 으로 반올림한 단수차이로 보입니다.` : ''),
         diff: d,
       });
     }
@@ -208,6 +214,40 @@ export function verifyAll(plans: SheetPlan[], sheets: SheetData[]): VerifyResult
   const rank: Record<Level, number> = { 틀림: 0, '살펴볼 것': 1, '안 채움': 2 };
   findings.sort((a, b) => rank[a.level] - rank[b.level] || a.sheet.localeCompare(b.sheet, 'ko'));
   return { findings, scanned: { sheets: hit, tables, cells }, filled: { done, total } };
+}
+
+/**
+ * 배치 자체를 **엑셀처럼 읽는다** - 다 적힌 DSD 를 바로 검증할 때 쓴다.
+ *
+ * ③ 의 본래 길은 ② 가 만든 엑셀을 사람이 채워 넣는 것이다. 그런데 주석을 **남이 지어 주는**
+ * 자리가 있다(오톰 - 회사 쪽에서 주석을 제시하고 우리는 검증만 한다). 초도감사도 마찬가지다
+ * (태양빛 - 작년 보고서가 아예 없어 손으로 짠다). 그때는 채울 엑셀이 없고 **이미 다 적힌
+ * DSD 하나**가 있을 뿐이다.
+ *
+ * 이월을 끄고 배치를 만들면 칸마다 그 DSD 의 숫자가 그대로 앉는다. 그 배치를 시트로 보면
+ * **같은 검증기를 그대로 태울 수 있다** - 규칙을 두 벌 쓰지 않는다.
+ *
+ * 수식과 값을 **함께** 싣는다. 엑셀을 한 번 열어 계산해 둔 파일과 같은 꼴이라야 풋팅이 돈다 -
+ * 값 없이 수식만 있으면 「아직 계산되지 않은 파일」로 보고 건너뛴다.
+ */
+export function sheetsOfPlans(plans: SheetPlan[]): SheetData[] {
+  return plans.map((p) => {
+    const cells = new Map<string, CellValue>();
+    for (const c of p.cells) {
+      // **수식 칸의 값은 글자에서 읽는다.** 천원 표의 표시 열은 ROUND·SUM 수식이라 배치에
+      // 숫자가 없지만, DSD 에는 「3,500」이라고 **찍혀 있다**. 그 찍힌 값이 곧 계산된 값이다 —
+      // 안 읽으면 「아직 계산되지 않은 파일」로 보고 건너뛰어 풋팅이 통째로 비게 된다.
+      const num = c.num ?? asNumber(c.text);
+      const v: CellValue = {};
+      if (num != null) v.num = num;
+      if (c.formula != null) v.formula = c.formula;
+      if (num == null && c.text !== '') v.text = c.text;
+      if (v.num != null || v.formula != null || v.text != null) {
+        cells.set(`${colName(c.col)}${c.row}`, v);
+      }
+    }
+    return { name: p.name, cells };
+  });
 }
 
 /**
