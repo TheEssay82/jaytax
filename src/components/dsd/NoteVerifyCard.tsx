@@ -34,10 +34,10 @@ const TONE: Record<Level, { bg: string; ink: string }> = {
 export interface Filled { name: string; bytes: Uint8Array }
 
 export default function NoteVerifyCard(
-  { notes, dsd, xl, setXl, from }:
+  { notes, dsd, xl, setXl, from, spare }:
   {
     notes: NoteRow[]; dsd: LoadedDsd;
-    xl: Filled | null; setXl: (v: Filled | null) => void; from: NoteFrom;
+    xl: Filled | null; setXl: (v: Filled | null) => void; from: NoteFrom; spare: number;
   },
 ) {
   const [src, setSrc] = useState<'xlsx' | 'dsd'>('xlsx');
@@ -66,11 +66,12 @@ export default function NoteVerifyCard(
         ? '이 파일에서 주석을 찾지 못했습니다.'
         : '켜 둔 주석이 없습니다. ① 에서 골라 주세요.');
     }
-    const made = planNotes(picked, mode === 'dsd' ? false : roll);
+    // 다 적힌 DSD 를 그대로 볼 때는 여분 행이 뜻이 없다 — 채울 자리가 아니라 읽을 파일이다.
+    const made = planNotes(picked, mode === 'dsd' ? false : roll, mode === 'dsd' ? 0 : spare);
     // 맞아야 하는 숫자 짝은 **작년 값이 든 배치**에서 배운다 — 자리는 이월한 것과 같다.
     // DSD 를 그대로 볼 때는 짝을 배울 작년이 없다. 같은 파일에서 배워 같은 파일에 대 보면
     // 언제나 맞으므로 아무것도 말해 주지 않는다 — 그래서 하지 않는다.
-    const links = mode === 'dsd' ? [] : findLinks(roll ? planNotes(picked, false) : made, dsd.fs);
+    const links = mode === 'dsd' ? [] : findLinks(roll ? planNotes(picked, false, spare) : made, dsd.fs);
     return { refs: made.map((plan, i) => ({ plan, dsdNo: picked[i].note?.no ?? null })), links };
   }
 

@@ -37,11 +37,16 @@ export function pickAll(blocks: NoteBlocks[]): Picked[] {
   return blocks.map((b) => ({ note: b, title: b.title }));
 }
 
-/** 고른 것을 시트 배치로. 시트 이름은 「N01 회사의 개요」 꼴이고 차례가 곧 주석 번호다. */
-export function planNotes(picked: Picked[], roll: boolean): SheetPlan[] {
+/**
+ * 고른 것을 시트 배치로. 시트 이름은 「N01 회사의 개요」 꼴이고 차례가 곧 주석 번호다.
+ *
+ * `spare` 는 표마다 깔아 둘 **여분 행** 수다. ② ③ ④ 가 **반드시 같은 값**을 써야 한다 —
+ * 여분 행은 아래 행을 밀어내므로, 하나만 달라도 그 표 아래가 통째로 어긋난다.
+ */
+export function planNotes(picked: Picked[], roll: boolean, spare = 0): SheetPlan[] {
   const used = new Set<string>();
   return picked.map(({ note, title }, i) => {
     const name = sheetName(`N${String(i + 1).padStart(2, '0')} ${title}`, used);
-    return note ? layoutNote({ ...note, title }, name, { roll }) : layoutNewNote(i + 1, title, name);
+    return note ? layoutNote({ ...note, title }, name, { roll, spare }) : layoutNewNote(i + 1, title, name);
   });
 }

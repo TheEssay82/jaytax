@@ -104,6 +104,8 @@ export interface SheetPlan {
   /** 마지막 행 */ lastRow: number;
   /** 표마다의 구조 — ③ 검증과 ④ 되돌리기가 이걸 보고 일한다. */ tables?: TablePlan[];
   /** 되돌릴 자리 — 엑셀 칸 하나가 DSD 의 어느 글자칸인가. */ back?: BackRef[];
+  /** 미리 깔아 둔 빈 줄 — 첫 열에 적으면 ④ 가 행을 하나 짓는다. */ spares?: SpareRow[];
+  /** 첫 열을 지우면 없앨 행 — ④ 가 `<TR>` 을 지운다. */ drops?: DropRow[];
 }
 
 /**
@@ -129,6 +131,41 @@ export interface BackRef {
    * 당기 칸에 작년 숫자가 남아 「이월이 하나도 안 됐다」로 보인다(2026-09-13 지적).
    */
   blanked?: boolean;
+}
+
+/**
+ * **여분 행** — 엑셀에 미리 깔아 두는 빈 줄. 거래처가 늘면 여기에 적는다.
+ *
+ * 왜 이렇게 하는가: 엑셀에서 행을 **직접 끼워 넣으면** 아래 칸이 전부 한 줄씩 밀린다.
+ * 우리는 「엑셀 칸 ↔ DSD 자리」를 주소(C9 같은)로 붙들고 있어서, 한 줄만 밀려도 그 표
+ * 아래가 통째로 어긋난다. 그래서 **자리는 고정해 두고 빈 줄을 미리 깐다.**
+ *
+ * 첫 열에 글자를 적으면 ④ 가 본보기 행을 통째로 베껴 `<TR>` 을 하나 짓는다.
+ * 비워 두면 아무 일도 없다.
+ */
+export interface SpareRow {
+  /** 베낄 본보기 `<TR>` 의 원본 범위 */ from: [number, number];
+  /** 첫 열 엑셀 주소 — 여기에 글자가 있어야 행을 짓는다 */ labelAt: string;
+  /** 이 표의 몇 번째 여분인가 — 차례대로 붙여야 순서가 맞는다 */ order: number;
+  /** 본보기 칸마다 어디를 무엇으로 바꿀지 */
+  cells: {
+    /** 본보기 칸 글자의 원본 범위 */ start: number; end: number;
+    /** 엑셀 주소 */ at: string;
+    isNum?: boolean; factor?: number; srcAt?: string;
+  }[];
+}
+
+/**
+ * **없앨 수 있는 행** — 첫 열을 지우면 그 행이 사라진다.
+ *
+ * 첫 열(구분·거래처명)은 이월해도 비우지 않는다. 그래서 거기가 비어 있다는 것은
+ * **사람이 일부러 지웠다**는 뜻이고, 「올해는 이 줄이 없다」로 읽는다. 덜 채운 것과
+ * 헷갈리지 않는 유일한 신호다.
+ */
+export interface DropRow {
+  /** 없앨 `<TR>` 의 원본 범위 */ at: [number, number];
+  /** 첫 열 엑셀 주소 */ labelAt: string;
+  /** 원본의 첫 열 글자 — 보고할 때 쓴다 */ origLabel: string;
 }
 
 /**
@@ -217,6 +254,13 @@ export function parseAddr(s: unknown): { slot: number; part: number | null } | n
  */
 export interface LayoutOptions {
   /** 참이면 이월한다. 새 사업연도 시트를 만들 때 쓴다. */ roll?: boolean;
+  /**
+   * 표마다 깔아 둘 **여분 행** 수. 0 이면 깔지 않는다.
+   *
+   * 거래처가 해마다 늘고 준다. 늘어난 만큼 적을 자리가 없으면 사람이 엑셀에서 행을 끼워
+   * 넣게 되고, 그러면 아래 자리가 전부 밀려 되돌릴 수 없게 된다. 미리 깔아 두는 편이 낫다.
+   */
+  spare?: number;
 }
 
 export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions = {}): SheetPlan {
@@ -227,6 +271,8 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
   const merges: string[] = [];
   const tables: TablePlan[] = [];
   const back: BackRef[] = [];
+  const spares: SpareRow[] = [];
+  const drops: DropRow[] = [];
   // 「<전기>」 표는 같은 주석의 앞선 「<당기>」 표에서 값을 받아 온다 — 행 모양이 같을 때만.
   const prevOf = opts.roll === true ? pairCurrentTables(note) : new Map<Block, Map<number, string>[]>();
   let r = 3;
@@ -259,7 +305,6 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     r += 1;                                          // 표 앞에 빈 줄
     const blankRow = r - 1;
     const width = Math.max(gridWidth(b.rows), 1);
-    const rowNo = b.rows.map((_, i) => r + i);
     const isHeadRow = b.rows.map((line) => line.length > 0 && line.every((c) => c.tag === 'TH'));
 
     // 값은 **격자 열 번호**로 다룬다. 칸 순서로 다루면 COLSPAN 이 있는 표에서 옆으로 샌다.
@@ -362,6 +407,17 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     const items = sumAt >= 0 ? bodyIdx.filter((i) => i < sumAt) : [];
     const canSum = items.length >= 2;
 
+    // ── 여분 행 ────────────────────────────────────────────────
+    // **본보기는 마지막 항목 행**이다 — 합계 바로 위. 그 행을 통째로 베껴 붙이므로 칸 수도
+    // 병합도 그대로 따라온다. 표지판(「(단위: 천원)」)과 한 줄짜리 표에는 깔지 않는다.
+    const modelIdx = items.length ? items[items.length - 1]
+      : (bodyIdx.length >= 2 ? bodyIdx[bodyIdx.length - 1] : -1);
+    const modelAt = modelIdx >= 0 ? b.rowAt?.[modelIdx] ?? null : null;
+    const spareN = !b.isUnitMark && modelAt && (opts.spare ?? 0) > 0 ? Math.floor(opts.spare!) : 0;
+    // 본보기 **뒤**에 깔린다. 그 아래 행은 그만큼 밀린다.
+    const rowNo = b.rows.map((_, i) => r + i + (spareN && i > modelIdx ? spareN : 0));
+    const spareRow0 = modelIdx >= 0 ? r + modelIdx + 1 : 0;
+
     const carried = new Map<string, string>();
     if (dual) cells.push({ row: blankRow, col: srcBase, text: '원 단위 (입력)', kind: 'label' });
 
@@ -392,7 +448,8 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
         if (!head && dual && srcCols.includes(c.col) && (num != null || blank)) {
           const k = srcCols.indexOf(c.col);
           const src = `${colName(srcBase + k)}${rowNo[i]}`;
-          const rng = `${colName(at)}${rowNo[items[0]]}:${colName(at)}${rowNo[items[items.length - 1]]}`;
+          // 여분 행도 합계에 든다 — 새 거래처를 적으면 합계가 저절로 따라와야 한다.
+          const rng = `${colName(at)}${rowNo[items[0]]}:${colName(at)}${rowNo[items[items.length - 1]] + spareN}`;
           // 합계 행은 **표시값끼리 더한다**(㉮) — 보는 사람이 더해서 맞아야 한다.
           // 원 합계를 반올림한 값(㉯)과의 차이는 옆에 「단수차이」로 따로 보여 준다.
           cell.formula = canSum && i === sumAt
@@ -440,7 +497,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
         if (canSum && i === sumAt) {
           cells.push({
             row: rowNo[i], col, text: '', kind: 'num',
-            formula: `SUM(${colName(col)}${rowNo[items[0]]}:${colName(col)}${rowNo[items[items.length - 1]]})`,
+            formula: `SUM(${colName(col)}${rowNo[items[0]]}:${colName(col)}${rowNo[items[items.length - 1]] + spareN})`,
           });
           return;
         }
@@ -464,6 +521,61 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
       });
     }
 
+    // ── 여분 행을 깔고, 없앨 수 있는 행을 적어 둔다 ────────────
+    if (spareN && modelAt) {
+      const model = b.rows[modelIdx];
+      // 본보기 칸의 **원본 글자 범위**를 그대로 들고 간다 — ④ 가 `<TR>` 을 통째로 베낀 뒤
+      // 이 자리만 갈아 끼운다. 병합도 속성도 손대지 않으니 모양이 흐트러지지 않는다.
+      const modelCells = model.filter((c) => c.at != null);
+      for (let k = 0; k < spareN; k += 1) {
+        const row = spareRow0 + k;
+        const colAt = (gc: number) => `${colName(3 + gc)}${row}`;
+        for (const c of model) {
+          cells.push({ row, col: 3 + c.col, text: '', kind: 'input' });
+          if (c.colspan > 1) {
+            merges.push(`${colName(3 + c.col)}${row}:${colName(3 + c.col + c.colspan - 1)}${row}`);
+          }
+        }
+        // 오른쪽 원 단위 블록도 같이 깐다 — 천원 표는 거기에 숫자를 넣는다.
+        if (dual) srcCols.forEach((_, j) => cells.push({ row, col: srcBase + j, text: '', kind: 'input' }));
+        spares.push({
+          from: modelAt,
+          labelAt: colAt(model[0]?.col ?? 0),
+          order: k,
+          cells: modelCells.map((cell) => {
+            const isNum = numericCol.includes(cell.col);
+            const k2 = dual ? srcCols.indexOf(cell.col) : -1;
+            return {
+              start: cell.at![0],
+              end: cell.at![1],
+              at: colAt(cell.col),
+              isNum,
+              factor: k2 >= 0 && factor != null ? factor : undefined,
+              srcAt: k2 >= 0 ? `${colName(srcBase + k2)}${row}` : undefined,
+            };
+          }),
+        });
+      }
+    }
+    // 첫 열을 지우면 없앨 수 있는 행 — 항목 행만. 머리·합계는 지울 수 없다.
+    //
+    // **숫자가 한 칸도 없는 행은 빼 둔다.** 머리를 `<TH>` 가 아니라 `<TD>` 로 짠 표가 흔한데
+    // (린치핀 4. 매도가능증권), 그러면 「구 분 | 지분율 | 당기 | 전기」 줄이 몸통으로 보인다.
+    // 거래처 행에는 금액이 있고 머리 행에는 없다 — 그것으로 가른다.
+    if (!b.isUnitMark && items.length >= 2) {
+      const hasNum = numericCol.length > 0;
+      for (const i of items) {
+        const at = b.rowAt?.[i];
+        const first = b.rows[i][0];
+        if (!at || !first) continue;
+        const anyNum = b.rows[i].some((c) => asNumber(c.text) != null || isDash(c.text));
+        if (hasNum && !anyNum) continue;
+        drops.push({
+          at, labelAt: `${colName(3 + first.col)}${rowNo[i]}`, origLabel: first.text,
+        });
+      }
+    }
+
     tables.push({
       headRows: b.rows.map((_, i) => i).filter((i) => isHeadRow[i]).map((i) => rowNo[i]),
       bodyRows: bodyIdx.map((i) => rowNo[i]),
@@ -478,10 +590,10 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
       carried,
     });
 
-    r += b.rows.length;
+    r += b.rows.length + spareN;
     prevWasTable = true;
   }
-  return { name, cells, merges, lastRow: Math.max(2, r - 1), tables, back };
+  return { name, cells, merges, lastRow: Math.max(2, r - 1), tables, back, spares, drops };
 }
 
 /**

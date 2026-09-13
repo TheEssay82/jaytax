@@ -57,9 +57,13 @@ export function unescapeXml(s: string): string {
 }
 
 export function escapeXml(s: string): string {
+  // **큰따옴표는 건드리지 않는다.** 이 함수는 글자 내용에만 쓰고 속성값에는 쓰지 않는다 —
+  // 글 안의 `"` 는 그대로 두어도 맞는 XML 이다. `&quot;` 로 바꾸면 손대지 않은 문단까지
+  // 달라져 **무손실 왕복이 깨진다**: 린치핀 1. 일반사항의 「(이하 "회사")」가 그랬다
+  // (2026-09-13). 읽을 때는 `&quot;` 도 그대로 푼다(unescapeXml).
   return (s ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/\n/g, '&amp;cr;');
+    .replace(/\n/g, '&amp;cr;');
 }
 
 /**

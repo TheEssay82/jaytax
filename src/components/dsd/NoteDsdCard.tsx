@@ -20,10 +20,10 @@ import type { Filled } from './NoteVerifyCard';
 import { safeName, download } from './dsdUi';
 
 export default function NoteDsdCard(
-  { eng, notes, dsd, xl, setXl, from }:
+  { eng, notes, dsd, xl, setXl, from, spare }:
   {
     eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd;
-    xl: Filled | null; setXl: (v: Filled | null) => void; from: NoteFrom;
+    xl: Filled | null; setXl: (v: Filled | null) => void; from: NoteFrom; spare: number;
   },
 ) {
   const [roll, setRoll] = useState(true);
@@ -46,7 +46,7 @@ export default function NoteDsdCard(
       // ② 와 **같은 규칙으로** 골라야 시트 이름이 맞는다(DsdShell.NoteFrom).
       const picked = from === 'file' ? pickAll(dsd.blocks) : pickNotes(dsd.blocks, notes);
       if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 대상에서 골라 주세요.');
-      const plans = planNotes(picked, roll);
+      const plans = planNotes(picked, roll, spare);
       const sheets = readWorkbook(xl.bytes, (n) => /^N\d\d /.test(n));
       if (!sheets.length) {
         throw new Error('이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 준비에서 만든 파일인지 보십시오.');
@@ -78,8 +78,16 @@ export default function NoteDsdCard(
 
       download(buildDsd(dsd.bytes, r.xml),
         `감사보고서_${safeName(eng.entityName)}_FY${eng.fy}.DSD`, 'application/octet-stream');
+      // **행을 짓거나 없앴으면 반드시 말해 준다.** 사람이 첫 열을 잘못 지워 줄이 사라지는
+      // 일을 막을 유일한 방법이다 — 무엇이 없어졌는지 눈으로 보고 알아채야 한다.
+      const rowTold = (r.added.length || r.removed.length)
+        ? ` 행을 ${r.added.length ? `${r.added.length}줄 지었고(${r.added.slice(0, 5).join(' · ')}${r.added.length > 5 ? ' …' : ''})` : ''}`
+          + `${r.added.length && r.removed.length ? ',' : ''}`
+          + `${r.removed.length ? ` ${r.removed.length}줄 없앴습니다(${r.removed.slice(0, 5).join(' · ')}${r.removed.length > 5 ? ' …' : ''})` : ''}.`
+          + ' 없앤 줄이 뜻밖이면 엑셀에서 첫 열이 지워졌는지 보십시오.'
+        : '';
       setDone(
-        `주석 ${r.changed}칸을 갈아끼워 새 DSD 를 만들었습니다.` + fsTold
+        `주석 ${r.changed}칸을 갈아끼워 새 DSD 를 만들었습니다.` + fsTold + rowTold
         + (r.blank.length ? ` 안 채운 칸 ${r.blank.length}개는 작년 글자가 그대로 남았습니다.` : '')
         + (r.skipped.length ? ` 손대지 못한 칸이 ${r.skipped.length}개 있습니다 — ${r.skipped[0].why}` : ''),
       );

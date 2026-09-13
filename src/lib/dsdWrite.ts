@@ -9,8 +9,11 @@
 // 자리는 **② 와 똑같은 배치를 다시 지어** 얻는다(SheetPlan.back). 엑셀 A열의 자리표를 도로
 // 읽지 않는다 — 사람이 그 열을 건드렸어도 흔들리지 않는다.
 import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate';
-import { slots, escapeXml, hasInline } from './dsdBlocks';
-import { asNumber, isDash, colName, type SheetPlan, type BackRef } from './noteSheet';
+import { slots, escapeXml, unescapeXml, hasInline } from './dsdBlocks';
+import {
+  asNumber, isDash, colName,
+  type SheetPlan, type BackRef, type SpareRow,
+} from './noteSheet';
 import type { SheetData, CellValue } from './xlsxRead';
 import { numOf } from './noteVerify';
 
@@ -19,6 +22,8 @@ export interface WriteResult {
   /** 글자를 바꾼 칸 수 */ changed: number;
   /** 아직 안 채운 칸 */ blank: BackRef[];
   /** 손대지 못한 칸과 그 까닭 */ skipped: { at: string; why: string }[];
+  /** 새로 지은 행의 첫 열 글자 — 거래처가 늘었을 때 */ added: string[];
+  /** 없앤 행의 첫 열 글자 — 거래처가 줄었을 때 */ removed: string[];
 }
 
 /**
@@ -114,6 +119,83 @@ function bodyIndexes(pieces: string[]): number[] {
 }
 
 /**
+ * 엑셀 칸에서 글자를 꺼낸다 — 여분 행의 칸도 같은 규칙으로 읽는다.
+ *
+ * `textFor` 는 `BackRef` 를 받는데 여분 행에는 원본 자리가 없다. 필요한 것(숫자인가,
+ * 천원인가, 원 단위 칸은 어디인가)만 추려 빌려 쓴다.
+ */
+function spareText(
+  c: SpareRow['cells'][number], cells: Map<string, CellValue>,
+): string | null {
+  return textFor(
+    { at: c.at, slot: -1, orig: '', isNum: c.isNum, factor: c.factor, srcAt: c.srcAt },
+    cells,
+  );
+}
+
+/**
+ * **행을 짓고 지운다** — 거래처가 늘고 줄 때.
+ *
+ * 짓기: 여분 행의 첫 열에 글자가 있으면 본보기 `<TR>` 을 통째로 떠서 칸 글자만 갈아 끼우고
+ *       본보기 **뒤에** 붙인다. 속성(ACOPY·WIDTH·COLSPAN)과 병합이 그대로 따라온다.
+ * 지우기: 항목 행의 첫 열을 지웠으면 그 `<TR>` 을 통째로 없앤다. 첫 열은 이월해도 비우지
+ *       않으므로, 비어 있다는 것은 **사람이 일부러 지웠다**는 뜻이다.
+ *
+ * 되돌리는 자리(start/end)는 모두 **원본 XML 기준**이라, 글자 갈아끼우기와 한 목록에 담아
+ * 뒤에서부터 한꺼번에 적용한다.
+ */
+function rowEdits(
+  xml: string, plan: SheetPlan, cells: Map<string, CellValue>,
+): { edits: { start: number; end: number; raw: string }[]; added: string[]; removed: string[] } {
+  const edits: { start: number; end: number; raw: string }[] = [];
+  const added: string[] = [];
+  const removed: string[] = [];
+
+  // ── 지우기 ────────────────────────────────────────────────
+  const gone = new Set<string>();
+  for (const d of plan.drops ?? []) {
+    const t = (cells.get(d.labelAt)?.text ?? '').trim();
+    if (t || cells.get(d.labelAt)?.num != null) continue;
+    if (!d.origLabel.trim()) continue;                 // 원래 비어 있던 줄은 건드리지 않는다
+    const key = `${d.at[0]}`;
+    if (gone.has(key)) continue;
+    gone.add(key);
+    edits.push({ start: d.at[0], end: d.at[1], raw: '' });
+    removed.push(d.origLabel);
+  }
+
+  // ── 짓기 ──────────────────────────────────────────────────
+  // 한 본보기에 여럿이 붙을 수 있다. **차례대로 이어 붙여야** 순서가 맞는다.
+  const made = new Map<number, { order: number; raw: string }[]>();
+  for (const sp of plan.spares ?? []) {
+    const label = spareText(sp.cells.find((c) => c.at === sp.labelAt) ?? sp.cells[0], cells);
+    if (label == null || !label.trim()) continue;
+    if (gone.has(`${sp.from[0]}`)) continue;           // 본보기를 지웠으면 베낄 것이 없다
+    let raw = xml.slice(sp.from[0], sp.from[1]);
+    // 뒤에서부터 갈아 끼운다 — 앞을 먼저 바꾸면 뒤 자리가 밀린다.
+    const inner = sp.cells
+      .map((c) => ({ ...c, rel0: c.start - sp.from[0], rel1: c.end - sp.from[0] }))
+      .filter((c) => c.rel0 >= 0 && c.rel1 <= raw.length)
+      .sort((a, b2) => b2.rel0 - a.rel0);
+    for (const c of inner) {
+      const t = spareText(c, cells);
+      raw = raw.slice(0, c.rel0) + escapeXml(t ?? '') + raw.slice(c.rel1);
+    }
+    const list = made.get(sp.from[0]) ?? [];
+    list.push({ order: sp.order, raw });
+    made.set(sp.from[0], list);
+    added.push(label.trim());
+  }
+  for (const [from, list] of made) {
+    const sp = (plan.spares ?? []).find((x) => x.from[0] === from)!;
+    list.sort((a, b2) => a.order - b2.order);
+    // 본보기 **뒤**에 붙인다 — 합계 행 바로 위다.
+    edits.push({ start: sp.from[1], end: sp.from[1], raw: list.map((x) => x.raw).join('') });
+  }
+  return { edits, added, removed };
+}
+
+/**
  * 주석 절의 글자를 갈아끼운다.
  *
  * 한 `<P>` 에 문단이 여럿이면 **한꺼번에** 써야 한다 — 자리가 하나뿐이라 따로 쓰면 마지막
@@ -126,12 +208,22 @@ export function writeNotes(
   const bySheet = new Map(sheets.map((s) => [s.name, s]));
   const blank: BackRef[] = [];
   const skipped: { at: string; why: string }[] = [];
+  const rowOps: { start: number; end: number; raw: string }[] = [];
+  const added: string[] = [];
+  const removed: string[] = [];
+  // 없앤 행 안의 칸은 글자를 갈아끼울 까닭이 없다 — 행째로 사라진다.
+  const dead: [number, number][] = [];
 
   // 자리별로 모은다 — 문단은 여럿이 한 자리를 나눠 쓴다.
   const bag = new Map<number, { ref: BackRef; text: string | null }[]>();
   for (const plan of plans) {
     const sheet = bySheet.get(plan.name);
     if (!sheet) { skipped.push({ at: plan.name, why: '엑셀에서 이 시트를 찾지 못했습니다.' }); continue; }
+    const rows = rowEdits(xml, plan, sheet.cells);
+    rowOps.push(...rows.edits);
+    added.push(...rows.added);
+    removed.push(...rows.removed);
+    for (const e of rows.edits) if (e.raw === '') dead.push([e.start, e.end]);
     for (const ref of plan.back ?? []) {
       if (isBlank(ref, sheet.cells)) blank.push({ ...ref, at: `${plan.name}!${ref.at}` });
       const text = textFor(ref, sheet.cells);
@@ -181,6 +273,10 @@ export function writeNotes(
       const tail = /(?:\s|&amp;cr;|&cr;)*$/.exec(pieces[i])![0];
       const next = head + escapeXml(body) + tail;
       if (next === pieces[i]) continue;
+      // **글이 안 바뀌었으면 원본 바이트를 그대로 둔다.** 같은 글자를 다르게 적는 자리가
+      // 있다 — 「(이하 "당사")」를 세진식품은 `&quot;` 로, 린치핀은 `"` 로 적었다. 다시
+      // 적으면 손대지도 않은 문단이 달라져 무손실 왕복이 깨진다(2026-09-13).
+      if (unescapeXml(next) === unescapeXml(pieces[i])) continue;
       pieces[i] = next;
       hit = true;
       changed += 1;
@@ -189,10 +285,14 @@ export function writeNotes(
     edits.push({ start: sl.start, end: sl.end, raw: pieces.join('') });
   }
 
-  edits.sort((a2, b2) => b2.start - a2.start);
+  // 없앤 행 안의 칸 편집은 버린다 — 행째로 사라지니 겹쳐 쓰면 자리가 어긋난다.
+  const inDead = (p: number) => dead.some(([a2, b2]) => a2 <= p && p < b2);
+  const all2 = [...edits.filter((e) => !inDead(e.start)), ...rowOps];
+  // 뒤에서부터. 같은 자리면 **넣기를 먼저** 해야 지우기와 겹치지 않는다.
+  all2.sort((a2, b2) => b2.start - a2.start || (a2.end - a2.start) - (b2.end - b2.start));
   let out = xml;
-  for (const e of edits) out = out.slice(0, e.start) + e.raw + out.slice(e.end);
-  return { xml: out, changed, blank, skipped };
+  for (const e of all2) out = out.slice(0, e.start) + e.raw + out.slice(e.end);
+  return { xml: out, changed, blank, skipped, added, removed };
 }
 
 /**

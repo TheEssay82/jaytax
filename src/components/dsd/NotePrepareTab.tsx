@@ -20,8 +20,8 @@ import type { LoadedDsd, NoteFrom } from './DsdShell';
 import { safeName, download } from './dsdUi';
 
 export default function NotePrepareTab(
-  { eng, notes, dsd, from }:
-  { eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd; from: NoteFrom },
+  { eng, notes, dsd, from, spare }:
+  { eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd; from: NoteFrom; spare: number },
 ) {
   const [wtb, setWtb] = useState<{ name: string; bytes: Uint8Array } | null>(null);
   const [roll, setRoll] = useState(true);
@@ -70,9 +70,9 @@ export default function NotePrepareTab(
     try {
       const p = picked();
       const fresh = p.filter((x) => !x.note).map((x) => x.title);
-      const plans = planNotes(p, roll);
+      const plans = planNotes(p, roll, spare);
       // 맞아야 하는 숫자 짝은 **작년 값이 든 배치**에서 배운다. 자리는 이월한 것과 같다.
-      const links = findLinks(roll ? planNotes(p, false) : plans, dsd.fs);
+      const links = findLinks(roll ? planNotes(p, false, spare) : plans, dsd.fs);
       const index = layoutIndex(p.map(({ title }, i) => ({
         no: i + 1, title, enabled: true, sheet: plans[i].name,
       })));
@@ -96,7 +96,7 @@ export default function NotePrepareTab(
     setBusy('dsd'); setSay(null); setDone(null);
     try {
       const p = picked();
-      const plans = planNotes(p, true);
+      const plans = planNotes(p, true, spare);
       let xml = contentsOf(dsd.bytes);
       const skip = new Set<number>();
       for (const x of plans) for (const b of x.back ?? []) skip.add(b.slot);

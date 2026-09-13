@@ -197,9 +197,15 @@ export function verifyAll(plans: SheetPlan[], sheets: SheetData[]): VerifyResult
     tables += (plan.tables ?? []).filter((t) => !t.isUnitMark).length;
     cells += sheet.cells.size;
 
+    // **여분 행은 세지 않는다.** 비어 있는 것이 정상이다 — 거래처가 늘었을 때만 쓴다.
+    // 세면 표마다 서너 줄씩 「안 채움」이 쌓여 진짜 남은 일이 묻힌다.
+    const spareRows = new Set(
+      (plan.spares ?? []).map((sp) => Number(/\d+$/.exec(sp.labelAt)?.[0] ?? 0)),
+    );
+
     // 노란 칸을 채웠는가 — 잘못이 아니라 남은 일이다.
     for (const c of plan.cells) {
-      if (c.kind !== 'input') continue;
+      if (c.kind !== 'input' || spareRows.has(c.row)) continue;
       total += 1;
       const ref = `${colName(c.col)}${c.row}`;
       if (!isEmpty(sheet.cells.get(ref))) { done += 1; continue; }

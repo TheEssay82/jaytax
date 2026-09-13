@@ -105,10 +105,13 @@ export function DsdBar(
  */
 export type NoteFrom = 'list' | 'file';
 
-/** 주석을 어디서 고를지 — ② ③ ④ 위에 한 줄로 둔다. */
+/** 주석을 어디서 고를지, 여분 행을 몇 줄 깔지 — ② ③ ④ 위에 한 줄로 둔다. */
 export function NoteFromBar(
-  { from, set, listCount, fileCount }:
-  { from: NoteFrom; set: (v: NoteFrom) => void; listCount: number; fileCount: number },
+  { from, set, listCount, fileCount, spare, setSpare }:
+  {
+    from: NoteFrom; set: (v: NoteFrom) => void; listCount: number; fileCount: number;
+    spare: number; setSpare: (v: number) => void;
+  },
 ) {
   return (
     <div className="card" style={{ padding: '8px 12px', display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -121,9 +124,23 @@ export function NoteFromBar(
         <input type="radio" checked={from === 'file'} onChange={() => set('file')} />{' '}
         올린 파일에 든 것 전부 <span style={{ color: 'var(--ink-3)' }}>{fileCount}개</span>
       </label>
-      <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginLeft: 'auto' }}>
-        ② ③ ④ 가 함께 씁니다 — 도중에 바꾸면 시트 이름이 어긋납니다.
+      <span style={{
+        marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--fs-2)',
+      }}>
+        <span style={{ color: 'var(--ink-3)' }} title="표마다 빈 줄을 미리 깔아 둡니다. 거래처가 늘면 여기에 적으세요.">
+          여분 행
+        </span>
+        <input
+          type="number" min={0} max={10} value={spare}
+          onChange={(e) => setSpare(Math.max(0, Math.min(10, Math.floor(Number(e.target.value) || 0))))}
+          className="btn-sm" style={{ width: 56, textAlign: 'right' }}
+        />
       </span>
+      <div style={{ flexBasis: '100%', fontSize: 'var(--fs-0)', color: 'var(--ink-4)', lineHeight: 1.6 }}>
+        ② ③ ④ 가 함께 씁니다 — <b>도중에 바꾸면 자리가 어긋납니다.</b>
+        {' '}여분 행은 표마다 합계 바로 위에 깔립니다. 첫 열에 적으면 ④ 가 그 줄을 하나 짓고,
+        있던 줄의 첫 열을 지우면 그 줄을 없앱니다.
+      </div>
     </div>
   );
 }

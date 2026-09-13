@@ -63,6 +63,9 @@ export default function DsdEngagementTab() {
   const [filled, setFilled] = useState<Filled | null>(null);
   // 주석을 ① 목록에서 고를까, 올린 파일에서 고를까 — ② ③ ④ 가 **같아야** 한다(DsdShell).
   const [from, setFrom] = useState<NoteFrom>('list');
+  // 표마다 깔아 둘 빈 줄. 거래처가 해마다 늘고 준다 — 적을 자리가 없으면 사람이 엑셀에서
+  // 행을 끼워 넣게 되고, 그러면 아래 자리가 전부 밀려 되돌릴 수 없다.
+  const [spare, setSpare] = useState(3);
   // ① 목록이 비면 고를 것이 없다. 첫 해거나, 남의 보고서를 그냥 떠 보는 자리다.
   const useFrom: NoteFrom = notes.length === 0 ? 'file' : from;
 
@@ -193,7 +196,10 @@ export default function DsdEngagementTab() {
       <DsdTabs tabs={TABS} at={at} go={setAt} hasDsd={!!dsdFile.dsd} />
 
       {at !== '1' && dsdFile.dsd && (
-        <NoteFromBar from={useFrom} set={setFrom} listCount={notes.length} fileCount={dsdFile.dsd.blocks.length} />
+        <NoteFromBar
+          from={useFrom} set={setFrom} spare={spare} setSpare={setSpare}
+          listCount={notes.length} fileCount={dsdFile.dsd.blocks.length}
+        />
       )}
       {at !== '1' && !dsdFile.dsd && <NeedDsd />}
       {at !== '1' && !picked && (
@@ -202,13 +208,13 @@ export default function DsdEngagementTab() {
         </div>
       )}
       {at === '2' && picked && dsdFile.dsd && (
-        <NotePrepareTab eng={picked} notes={notes} dsd={dsdFile.dsd} from={useFrom} />
+        <NotePrepareTab eng={picked} notes={notes} dsd={dsdFile.dsd} from={useFrom} spare={spare} />
       )}
       {at === '3' && picked && dsdFile.dsd && (
-        <NoteVerifyCard notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} />
+        <NoteVerifyCard notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} spare={spare} />
       )}
       {at === '4' && picked && dsdFile.dsd && (
-        <NoteDsdCard eng={picked} notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} />
+        <NoteDsdCard eng={picked} notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} spare={spare} />
       )}
 
       <div style={{ display: at === '1' ? 'block' : 'none' }}>

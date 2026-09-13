@@ -65,6 +65,16 @@ export type Block =
   }
   | {
     kind: 'table';
+    /**
+     * 행마다 원본 XML 의 `<TR>` 범위 — `[시작, 끝)`.
+     *
+     * **행을 늘리고 줄이려면 이것이 있어야 한다.** 늘릴 때는 항목 행 하나를 통째로 베껴
+     * 뒤에 붙이고, 줄일 때는 그 범위를 지운다. 칸(slot) 단위로만 알면 `<TR>` 을 지을 수도
+     * 없앨 수도 없다.
+     *
+     * 행 수와 길이가 같다. 찾지 못한 행은 `null` 이다.
+     */
+    rowAt?: ([number, number] | null)[];
     rows: TableCell[][];
     /** 이 표에 적용되는 표시 단위(천원·원·주 …). 앞선 「(단위: …)」 표에서 온다. */
     unit?: string;
@@ -83,6 +93,13 @@ export type Block =
  * 칸 순서로 보면 당기가 세 번째지만 실제 열은 4~5 다. 그걸 모르고 이월하면 값이 옆으로 샌다.
  */
 export interface TableCell {
+  /**
+   * 이 칸 글자의 원본 XML 범위 `[시작, 끝)`.
+   *
+   * 행을 베낄 때 쓴다 — `<TR>` 을 통째로 떠서 이 자리만 갈아 끼우면 속성도 병합도
+   * 그대로 따라온다. 칸을 하나하나 다시 짓는 것보다 안전하다.
+   */
+  at?: [number, number];
   slot: number; text: string; tag: string;
   col: number; colspan: number; rowspan: number;
   /** 한 칸에 `<P>` 가 여럿일 때의 나머지 자리 — 되돌릴 때 다 찾아가야 한다. */
@@ -346,14 +363,23 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
   let rows: TableCell[][] = [];
   let row: TableCell[] = [];
   let curCell = -1;
+  // 밀어 넣는 행마다 그 행이 나온 `<TR>` 자리를 나란히 쌓는다 — ④ 가 베끼고 지울 때 쓴다.
+  let rowAt: ([number, number] | null)[] = [];
+  let rowTr = -1;
+
+  const pushRow = () => {
+    rows.push(row);
+    rowAt.push(rowTr >= 0 && rowTr < trs.length ? trs[rowTr] : null);
+    row = [];
+  };
 
   const flushTable = () => {
-    if (row.length) { rows.push(row); row = []; }
+    if (row.length) pushRow();
     if (rows.length && cur) {
       assignGrid(rows);                            // 칸 순서 → 격자 열 번호
-      cur.blocks.push({ kind: 'table', rows });
+      cur.blocks.push({ kind: 'table', rows, rowAt });
     }
-    rows = []; curTbl = -1; curTr = -1;
+    rows = []; rowAt = []; curTbl = -1; curTr = -1; rowTr = -1;
   };
 
   all.forEach((sl, i) => {
@@ -393,9 +419,11 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
       }
       return;
     }
-    if (t !== curTbl) { flushTable(); curTbl = t; curTr = owner(sl.start, trs); curCell = -1; }
+    if (t !== curTbl) {
+      flushTable(); curTbl = t; curTr = owner(sl.start, trs); rowTr = curTr; curCell = -1;
+    }
     const r = owner(sl.start, trs);
-    if (r !== curTr) { if (row.length) rows.push(row); row = []; curTr = r; curCell = -1; }
+    if (r !== curTr) { if (row.length) pushRow(); curTr = r; rowTr = r; curCell = -1; }
     const ci = owner(sl.start, cellAt);
     // 한 칸에 `<P>` 가 여럿이면 **한 칸으로 합친다.** 따로 세면 열이 하나씩 밀린다.
     if (ci !== -1 && ci === curCell && row.length) {
@@ -409,7 +437,7 @@ export function parseNoteBlocks(xml: string): NoteBlocks[] {
     const tag = ci === -1 ? sl.tag : cellTag[ci];
     const attrs = ci === -1 ? sl.attrs : cellAttr[ci];
     row.push({
-      slot: i, text: unescapeXml(stripInline(sl.raw)).trim(), tag,
+      slot: i, text: unescapeXml(stripInline(sl.raw)).trim(), tag, at: [sl.start, sl.end],
       col: 0, colspan: attrNum(attrs, 'COLSPAN'), rowspan: attrNum(attrs, 'ROWSPAN'),
     });
   });
