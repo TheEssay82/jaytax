@@ -13,9 +13,14 @@ import { pickNotes, planNotes } from '../../lib/notePick';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { writeNotes, buildDsd, contentsOf, sheetsFromPlans } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
-import type { NoteRow } from '../../lib/dsdApi';
+import type { Engagement, NoteRow } from '../../lib/dsdApi';
 
-export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
+/** 파일 이름에 못 쓰는 글자를 걷어낸다. */
+function safeName(s: string): string {
+  return (s ?? '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+export default function NoteDsdCard({ eng, notes }: { eng: Engagement; notes: NoteRow[] }) {
   const [dsd, setDsd] = useState<{ name: string; bytes: Uint8Array; blocks: NoteBlocks[] } | null>(null);
   const [xl, setXl] = useState<{ name: string; bytes: Uint8Array } | null>(null);
   const [roll, setRoll] = useState(true);
@@ -63,11 +68,13 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
       if (roll && rollFs) {
         const skip = new Set<number>();
         for (const p of plans) for (const b of p.back ?? []) skip.add(b.slot);
-        const rolled = rollStatements(xml, 1, skip);
+        // 빈 서식을 미리 만들 때는 **민 자리를 붉게** 한다 — 무엇이 바뀌었는지 보이게.
+        const rolled = rollStatements(xml, 1, skip, !xl);
         xml = rolled.xml;
         const why = new Map<string, number>();
         for (const l of rolled.leftovers) why.set(l.why, (why.get(l.why) ?? 0) + 1);
         fsTold = ` 재무제표·표지는 기수·연도 ${rolled.terms}칸을 올리고 금액 ${rolled.amounts}칸을 전기로 내렸습니다.`
+          + (xl ? '' : ' 기수·연도를 민 자리는 **붉은 글자**로 표시해 두었습니다.')
           + (why.size ? ` 다만 ${[...why].map(([k, v]) => `${v}곳은 ${k}`).join(', ')} — 편집기에서 보십시오.` : '');
       }
       const r = writeNotes(xml, plans, sheets);
@@ -87,7 +94,8 @@ export default function NoteDsdCard({ notes }: { notes: NoteRow[] }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = dsd.name.replace(/\.dsd$/i, '').concat(xl ? '_새로.dsd' : '_빈서식.dsd');
+      a.download = `감사보고서_${safeName(eng.entityName)}_FY${eng.fy}`
+        + (xl ? '.DSD' : '_사전작성.DSD');
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       setDone(

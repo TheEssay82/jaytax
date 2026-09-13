@@ -324,7 +324,7 @@ export default function DsdEngagementTab() {
 
       {picked && notes.length > 0 && <NoteSheetExport eng={picked} notes={notes} />}
       {picked && notes.length > 0 && <NoteVerifyCard notes={notes} />}
-      {picked && notes.length > 0 && <NoteDsdCard notes={notes} />}
+      {picked && notes.length > 0 && <NoteDsdCard eng={picked} notes={notes} />}
 
       {adding && (
         <NewEngagementModal

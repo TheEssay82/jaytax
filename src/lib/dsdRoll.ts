@@ -55,6 +55,18 @@ function numAttr(attrs: string, name: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/**
+ * 글자에 색을 입히는 DSD 문법.
+ *
+ * `USERMARK` 이 서식 지시자다 — 실물에서 `0X0000FF`(파랑) · `0X9D3272`(자주) · `B`(굵게) ·
+ * `BC0XDCDCDC`(배경) 가 쓰이고 있었다(넵튠 2026-09-13 실측). 공백으로 이어 붙일 수도 있다.
+ * 그래서 붉은 글자는 `0XFF0000` 이다.
+ */
+export const RED = '0XFF0000';
+export function paint(raw: string, mark = RED): string {
+  return `<SPAN USERMARK="${mark}">${raw}</SPAN>`;
+}
+
 export interface RollResult {
   xml: string;
   /** 기수·연도를 민 칸 수 */ terms: number;
@@ -69,7 +81,7 @@ export interface RollResult {
  * 두었으므로 여기서 또 밀면 두 해가 밀린다. 반대로 주석 절이라도 ④ 가 손대지 않는 곳
  * (주석 머리의 「제 18(당) 기 2025년 …」 기간 표)은 여기서 밀어야 한다.
  */
-export function rollStatements(xml: string, by = 1, skip?: Set<number>): RollResult {
+export function rollStatements(xml: string, by = 1, skip?: Set<number>, mark = false): RollResult {
   const s = xml ?? '';
 
   const edits: { start: number; end: number; raw: string }[] = [];
@@ -90,7 +102,9 @@ export function rollStatements(xml: string, by = 1, skip?: Set<number>): RollRes
     if (next === t) return;
     const head = /^\s*/.exec(sl.raw)![0];
     const tail = /\s*$/.exec(sl.raw)![0];
-    edits.push({ start: sl.start, end: sl.end, raw: head + escapeXml(next) + tail });
+    // 민 자리를 붉게 — 감사 나가기 전에 만든 서식에서 **무엇이 바뀌었는지** 바로 보인다.
+    const body = mark ? paint(escapeXml(next)) : escapeXml(next);
+    edits.push({ start: sl.start, end: sl.end, raw: head + body + tail });
     terms += 1;
   });
 

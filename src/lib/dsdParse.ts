@@ -148,8 +148,35 @@ export function cutTitle(rest: string): string {
 }
 
 /** DSD 본문에서 주석 목록을 읽는다. 못 읽으면 빈 배열 — 지어내지 않는다. */
+/**
+ * 글자를 꾸미는 인라인 태그 — 잎사귀 안에 들어 있어도 글자로 본다.
+ *
+ * 넵튠은 문단 일부를 `<SPAN USERMARK="0X000000">` 으로 감싼다. 우리가 만든 서식도 민 기수를
+ * 붉게 칠하느라 `<SPAN>` 을 넣는다. 태그를 벗기지 않으면 제목을 못 알아본다.
+ */
+export const INLINE = 'SPAN|B|I|U|EM|STRONG|FONT|SUB|SUP|BR';
+
+/** 글자를 꾸미는 태그를 벗긴다 — 글자만 남긴다. */
+export function stripInline(raw: string): string {
+  return (raw ?? '').replace(new RegExp(`</?(?:${INLINE})\\b[^>]*>`, 'g'), '');
+}
+
+/** 이 자리에 꾸미는 태그가 섞여 있는가 — 되돌릴 때 조심해야 한다. */
+export function hasInline(raw: string): boolean {
+  return new RegExp(`<(?:${INLINE})\\b`, 'i').test(raw ?? '');
+}
+
+/**
+ * 주석 목록 — **문단마다** 제목인지 본다.
+ *
+ * 첫 문단만 보면 앞 주석의 서술 뒤에 이어 붙은 제목을 놓친다. 알티스트 20. 부가가치가
+ * 그래서 ① 의 주석 목록에서 빠졌다(2026-09-13). 블록을 읽는 쪽(dsdBlocks)과 같은 규칙이어야
+ * ① 과 ② 가 같은 개수를 본다.
+ */
 export function parseNoteList(xml: string): ParsedNote[] {
-  return noteHeadings(outerParagraphRaw(notesSection(xml)).map(headingCandidate));
+  const paras = outerParagraphRaw(notesSection(xml))
+    .flatMap((raw) => splitParts(unescapeXml(stripInline(raw))).map(plain));
+  return noteHeadings(paras);
 }
 
 /** 표 밖 <P> 의 **원문**(엔티티를 풀지 않은 그대로). 문단 경계를 살려야 할 때 쓴다. */

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isTidyTerm, bumpTermText, restOf, rollStatements } from './dsdRoll.ts';
+import { isTidyTerm, bumpTermText, restOf, rollStatements, paint, RED } from './dsdRoll.ts';
 
 test('정형인 칸만 민다 — 본문 서술은 건드리지 않는다', () => {
   assert.equal(isTidyTerm('제 18 기'), true);
@@ -78,4 +78,21 @@ test('④ 가 갈아끼울 자리는 밀지 않는다 — 두 해가 밀린다',
   for (let i = 0; i < idx; i += 1) skip.add(i);
   const held = rollStatements(XML, 1, skip);
   assert.equal(held.terms, 0, '모두 막으면 기수를 하나도 밀지 않는다');
+});
+
+test('민 자리를 붉게 칠한다 — 실물에 있는 USERMARK 문법', () => {
+  assert.equal(paint('제 19 기'), '<SPAN USERMARK="0XFF0000">제 19 기</SPAN>');
+  assert.equal(RED, '0XFF0000');
+
+  const r = rollStatements(XML, 1, undefined, true);
+  assert.ok(r.xml.includes('<SPAN USERMARK="0XFF0000">제 19 기</SPAN>'));
+  assert.ok(r.xml.includes('<SPAN USERMARK="0XFF0000">2026년 01월 01일</SPAN>'));
+  // 안 민 자리는 칠하지 않는다
+  assert.ok(r.xml.includes('당사는 2015년에 증자하였습니다.'));
+  assert.equal((r.xml.match(/USERMARK="0XFF0000"/g) ?? []).length, r.terms);
+});
+
+test('칠하지 않으면 SPAN 이 들어가지 않는다', () => {
+  const r = rollStatements(XML);
+  assert.equal(r.xml.includes('USERMARK'), false);
 });

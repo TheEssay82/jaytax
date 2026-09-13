@@ -4,12 +4,12 @@
 // 넣어야** 하기 때문이다. 원본 XML 을 틀로 두고 글자만 갈아끼우면 표 너비·정렬 같은 속성이
 // 하나도 상하지 않는다(2026-09-12 실측 — 읽고 그대로 다시 쓰면 원본과 바이트 단위로 같았다).
 import {
-  notesSection, noteHeadings, plain,
+  notesSection, noteHeadings, plain, INLINE, stripInline, hasInline,
   unescapeXml, escapeXml, splitParts, joinParts,
 } from './dsdParse';
 
 // 글 다루는 공용 함수는 dsdParse 에 모여 있다. 여기서도 쓸 수 있게 그대로 내보낸다.
-export { unescapeXml, escapeXml, splitParts, joinParts };
+export { unescapeXml, escapeXml, splitParts, joinParts, stripInline, hasInline };
 
 /** 글자가 든 자리 하나. start/end 는 원본 XML 안의 위치다. */
 export interface Slot { start: number; end: number; tag: string; raw: string; attrs: string }
@@ -25,21 +25,10 @@ const CELL_RE = /<(T[DH])\b([^>]*)>[\s\S]*?<\/\1>/g;
  * 18. 리스 · 24. 법인세비용 · 30. 고객과의 계약에서 생기는 수익이 그렇게 사라졌다
  * (2026-09-13). 글자를 읽을 때는 `stripInline` 으로 태그를 벗긴다.
  */
-const INLINE = 'SPAN|B|I|U|EM|STRONG|FONT|SUB|SUP|BR';
 const LEAF = new RegExp(
   `<(P|TD|TH|TU)\\b([^>]*)>((?:[^<>]|<(?:${INLINE})\\b[^>]*/?>|</(?:${INLINE})>)*)</\\1>`,
   'g',
 );
-
-/** 글자를 꾸미는 태그를 벗긴다 — 글자만 남긴다. */
-export function stripInline(raw: string): string {
-  return (raw ?? '').replace(new RegExp(`</?(?:${INLINE})\\b[^>]*>`, 'g'), '');
-}
-
-/** 이 자리에 꾸미는 태그가 섞여 있는가 — 되돌릴 때 조심해야 한다. */
-export function hasInline(raw: string): boolean {
-  return new RegExp(`<(?:${INLINE})\\b`, 'i').test(raw ?? '');
-}
 
 export function slots(xml: string): Slot[] {
   const out: Slot[] = [];
