@@ -5,7 +5,9 @@
 // 내년엔 16번이 된다. 그래서 「엑셀 칸 ↔ DSD 칸」 대응표를 번호에 매달면 해가 바뀔 때마다
 // 처음부터 다시 붙여야 한다. 안 바뀌는 코드(INTANGIBLE)를 따로 두는 이유다.
 
-export type Basis = 'K-IFRS' | '일반기업회계기준';
+/** 회계기준 — 소규모감사기준은 일반기업회계기준 회사 가운데 소규모 감사기준을 적용하는 곳(2026-09-15). */
+export type Basis = 'K-IFRS' | '일반기업회계기준' | '소규모감사기준';
+export const BASES: Basis[] = ['K-IFRS', '일반기업회계기준', '소규모감사기준'];
 export type NoteSource = '감사인' | '회사';
 export type NoteStatus = '미할당' | '작업중' | '작업완료' | '작성제외';
 

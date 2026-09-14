@@ -64,7 +64,8 @@ export type Capability =
   | 'finalizeConsult' // 상담기록 확정(초안↔확정) — 작성자 외에도 확정권한자 허용
   | 'viewDispatch' // 문서발송 › 발송요청 처리 '조회' — 처리권한자 + 회계사(조회전용)
   | 'processDispatch' // 문서발송 › 발송요청 처리(상태변경·발송일·등기번호) — 최고관리자·기장팀장·기장팀원
-  | 'viewDevNotes'; // 📓 개발노트(버전별 개발내역) — 기장팀장·기장팀원은 볼 수 없다
+  | 'viewDevNotes' // 📓 개발노트(버전별 개발내역) — 기장팀장·기장팀원은 볼 수 없다
+  | 'viewAuditPapers'; // 📘 일반조서 관리 — 감사팀(최고관리자·회계사)만. 서버도 is_audit_staff() 로 같은 선을 긋는다
 
 // 항목별 허용 역할 (매트릭스)
 const MATRIX: Record<Capability, Role[]> = {
@@ -96,6 +97,7 @@ const MATRIX: Record<Capability, Role[]> = {
    * 외부인도 볼 이유가 없다.
    */
   viewDevNotes: ['superuser', 'accountant', 'per_head_accountant'],
+  viewAuditPapers: ['superuser', 'accountant'],
 };
 
 export function can(role: Role, cap: Capability): boolean {

@@ -104,6 +104,9 @@ export const MENU_GROUPS: MenuGroup[] = [
       // 감사 주석을 엑셀에서 검증하고 DSD 파일로 옮기는 자리(v3.0).
       // 조회서 발송관리와 같은 성격이라 여기 둔다 — 감사 시즌에 쓰는 일이다.
       { id: 'dsd', label: '📗 주석·DSD 관리' },
+      // 한공회 표준 일반조서(1000~9000)를 회사·사업연도마다 짓고 이어 가는 자리(2026-09-15).
+      // 위험평가·독립성 같은 내부 정보라 감사팀만 본다.
+      { id: 'gwp', label: '📘 일반조서 관리', cap: 'viewAuditPapers' },
       { id: 'vacation', label: '🌴 휴가관리' },
       { id: 'estimate', label: '🧮 견적산출 시스템' },
     ],

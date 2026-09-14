@@ -17,6 +17,7 @@ export interface CellValue {
 export interface SheetData {
   name: string;
   /** 「C8」 → 값 */ cells: Map<string, CellValue>;
+  /** 숨긴 시트인가(workbook.xml 의 state). 일반조서는 안 쓰는 조서를 숨겨 둔다. */ hidden?: boolean;
 }
 
 /**
@@ -130,7 +131,10 @@ export function readWorkbook(bytes: Uint8Array, want?: (name: string) => boolean
     const rid = /\br:id="([^"]*)"/.exec(m[1])?.[1] ?? '';
     const part = files[`xl/${target.get(rid) ?? ''}`];
     if (!part) continue;
-    out.push({ name, cells: readSheet(strFromU8(part), shared) });
+    const state = /\bstate="([^"]*)"/.exec(m[1])?.[1];
+    const data: SheetData = { name, cells: readSheet(strFromU8(part), shared) };
+    if (state && state !== 'visible') data.hidden = true;
+    out.push(data);
   }
   return out;
 }
