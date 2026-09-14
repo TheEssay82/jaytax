@@ -62,6 +62,9 @@ export async function listEngagements(): Promise<Engagement[]> {
   const { data, error } = await supabase
     .from('dsd_engagement')
     .select(SEL)
+    // 시연용은 **맨 뒤**로. 실무에서 먼저 뜰 까닭이 없다 — 만든 지 가장 최근이라
+    // 그냥 두면 목록 맨 앞에 앉는다(2026-09-14).
+    .order('is_demo', { ascending: true })
     .order('fy', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) throw error;

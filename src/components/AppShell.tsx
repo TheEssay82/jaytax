@@ -67,10 +67,31 @@ export default function AppShell() {
   );
 }
 
+/**
+ * 주소에 적힌 화면 — `?tab=dsd` 꼴.
+ *
+ * 밖에서 보낸 링크가 **그 화면으로 바로 떨어져야** 한다(시연 안내를 링크로 돌릴 때).
+ * 해시가 아니라 **쿼리**를 쓰는 까닭: 로그인 콜백이 토큰을 해시에 실어 오므로 부딪힌다.
+ *
+ * 못 보는 화면을 적어 보내도 괜찮다 — 아래 `cur` 이 첫 화면으로 되돌린다. 메뉴를 가리는
+ * 것은 권한이 아니라 「볼 일이 없다」는 뜻이고, 자료 자체는 서버에서 RLS 가 막는다.
+ */
+function tabFromUrl(): string {
+  return new URLSearchParams(window.location.search).get('tab') || 'home';
+}
+
+/** 지금 주소에 화면 이름만 갈아 끼운 것. 홈은 이름을 빼서 주소를 짧게 둔다. */
+function tabHref(id: string): string {
+  const u = new URL(window.location.href);
+  if (id === 'home') u.searchParams.delete('tab');
+  else u.searchParams.set('tab', id);
+  return u.pathname + u.search + u.hash;
+}
+
 function Shell() {
   const { user, signOut, role, readonly, profileName } = useAuth();
   const { resetNew } = useWizard();
-  const [curTab, setCurTab] = useState('home');
+  const [curTab, setCurTab] = useState(tabFromUrl);
   const [reloadKey, setReloadKey] = useState(0);
   const [showPw, setShowPw] = useState(false);
   const [showMfa, setShowMfa] = useState(false);
@@ -154,6 +175,8 @@ function Shell() {
   // 건너뛰어져** 그 다음 뒤로가기가 한 칸을 넘어 뛰고, 결국 홈까지 밀려났다.
   // 그래서 '실제로 탭이 바뀔 때만' 표시를 세운다.
   useEffect(() => {
+    // 첫 렌더에서는 **주소를 건드리지 않는다.** 아직 역할이 안 와서 `cur` 이 첫 화면으로
+    // 잡혀 있을 수 있는데, 그때 주소를 고치면 링크로 받은 `?tab=` 이 지워진다.
     history.replaceState({ jaytab: curTab }, '');
     const onPop = (e: PopStateEvent) => {
       const t = (e.state as { jaytab?: string } | null)?.jaytab;
@@ -168,12 +191,20 @@ function Shell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // **주소에 지금 화면을 적는다.** 그래야 그 주소를 복사해 남에게 보낼 수 있다.
+  // 기록하는 것은 `curTab` 이 아니라 **실제로 보이는 화면**(`cur`)이다 — 못 보는 화면을
+  // 적어 보냈을 때 주소와 화면이 어긋나지 않는다.
   useEffect(() => {
-    curTabRef.current = curTab;
+    curTabRef.current = cur;
+    const href = tabHref(cur);
     if (!navMounted.current) { navMounted.current = true; return; } // 초기 렌더는 replaceState가 처리
     if (fromPop.current) { fromPop.current = false; return; } // 뒤로가기로 인한 변경은 push 안 함
-    history.pushState({ jaytab: curTab }, '');
-  }, [curTab]);
+    // 주소가 이미 그 화면을 가리키면 **쌓지 않고 덮어쓴다.** 링크로 들어온 첫 걸음에서
+    // 역할이 늦게 와 `cur` 이 한 번 바뀌는데, 그때 한 칸을 쌓으면 뒤로가기가 헛돈다.
+    const same = href === window.location.pathname + window.location.search + window.location.hash;
+    if (same) history.replaceState({ jaytab: cur }, '', href);
+    else history.pushState({ jaytab: cur }, '', href);
+  }, [cur]);
 
   // 탭 이동: 화면 remount(key 변경)로 데이터 새로고침. 청구서 작성은 항상 새 청구서부터.
   //
