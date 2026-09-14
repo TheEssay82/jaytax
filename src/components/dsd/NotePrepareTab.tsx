@@ -6,28 +6,53 @@
 // 둘 다 **감사 전 산출물**이라 한자리에 둔다. 전에는 나가 ④ 에 있어서 「④ 가 두 가지 일을
 // 한다」는 혼란을 낳았다(사용자 지적 2026-09-13).
 //
+// 가 는 **작년에 등록한 표준주석엑셀**이 있으면 노란 칸에 그 수식을 이어받는다(noteInherit).
+// 재무제표·TB 링크를 해마다 다시 걸지 않게 하려는 것이다(2026-09-14).
+//
 // ⚠️ **원본 정산표는 손대지 않는다.** 새 파일로 내려받는다.
-import { useState } from 'react';
-import { layoutIndex } from '../../lib/noteSheet';
-import { pickAll, pickNotes, planNotes } from '../../lib/notePick';
+import { useEffect, useState } from 'react';
+import { layoutIndex, INDEX_SHEET } from '../../lib/noteSheet';
+import {
+  pickAll, pickNotes, planNotes, sheetsToInject, isAnyNoteSheet, LONG_SHEET, LAYOUT_LABEL,
+  type SheetLayout,
+} from '../../lib/notePick';
 import { findLinks, layoutTieSheet } from '../../lib/noteLink';
+import { inheritFormulas } from '../../lib/noteInherit';
 import { injectSheets } from '../../lib/xlsxInject';
-import { readWorkbook } from '../../lib/xlsxRead';
+import { readWorkbook, sheetNames } from '../../lib/xlsxRead';
 import { writeNotes, buildDsd, sheetsFromPlans, contentsOf } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
-import type { Engagement, NoteRow } from '../../lib/dsdApi';
+import { findEngagement, type Engagement, type NoteRow } from '../../lib/dsdApi';
+import { getNoteBook, noteBookBytes, type NoteBook } from '../../lib/dsdBookApi';
 import type { LoadedDsd, NoteFrom } from './DsdShell';
 import { safeName, download } from './dsdUi';
 
 export default function NotePrepareTab(
-  { eng, notes, dsd, from, spare }:
-  { eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd; from: NoteFrom; spare: number },
+  { eng, notes, dsd, from, spare, layout }:
+  {
+    eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd; from: NoteFrom; spare: number;
+    layout: SheetLayout;
+  },
 ) {
   const [wtb, setWtb] = useState<{ name: string; bytes: Uint8Array } | null>(null);
   const [roll, setRoll] = useState(true);
   const [busy, setBusy] = useState('');
   const [say, setSay] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  // 작년 건에 등록된 표준주석엑셀 — 있으면 수식을 이어받는다. 없으면 이 줄은 화면에 없다.
+  const [prevBook, setPrevBook] = useState<NoteBook | null>(null);
+  const [inherit, setInherit] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    setPrevBook(null);
+    // 외부인 시연은 작년 건도 파일도 서버가 내주지 않는다 — 조용히 없는 것으로 둔다.
+    void findEngagement(eng.entityId, eng.fy - 1, eng.scope)
+      .then((prev) => (prev ? getNoteBook(prev.id) : null))
+      .then((b) => { if (alive) setPrevBook(b); })
+      .catch(() => { if (alive) setPrevBook(null); });
+    return () => { alive = false; };
+  }, [eng.entityId, eng.fy, eng.scope]);
 
   async function takeWtb(f: File | undefined) {
     if (!f) return;
@@ -36,7 +61,7 @@ export default function NotePrepareTab(
     setWtb({ name: f.name, bytes });
     // **이미 주석 시트가 있는 파일에 또 얹으면 시트가 두 벌이 된다** — 이름이 「N01 …(2)」가 된다.
     try {
-      const had = readWorkbook(bytes, (n) => /^N\d\d |^대사표|^주석목록\(생성\)/.test(n)).length;
+      const had = sheetNames(bytes).filter((n) => isAnyNoteSheet(n) || /^대사표|^주석목록\(생성\)/.test(n)).length;
       if (had) {
         setSay(`이 파일에는 이미 주석 시트가 ${had}장 있습니다. 그대로 만들면 시트가 두 벌이 됩니다`
           + ' — 주석 시트를 얹기 전의 원본 정산표를 넣으십시오.');
@@ -64,25 +89,52 @@ export default function NotePrepareTab(
   }
 
   /** 가. 주석 서식 엑셀 */
-  function makeSheet() {
+  async function makeSheet() {
     if (!wtb) return setSay('올해 정산표 엑셀(.xlsx)을 고르세요.');
     setBusy('sheet'); setSay(null); setDone(null);
     try {
       const p = picked();
       const fresh = p.filter((x) => !x.note).map((x) => x.title);
-      const plans = planNotes(p, roll, spare);
+      let plans = planNotes(p, roll, spare, layout);
       // 맞아야 하는 숫자 짝은 **작년 값이 든 배치**에서 배운다. 자리는 이월한 것과 같다.
-      const links = findLinks(roll ? planNotes(p, false, spare) : plans, dsd.fs);
+      const links = findLinks(roll ? planNotes(p, false, spare, layout) : plans, dsd.fs);
+
+      // 작년 표준주석엑셀의 수식을 노란 칸에 미리 넣는다.
+      let told = '';
+      if (roll && inherit && prevBook) {
+        const old = readWorkbook(await noteBookBytes(prevBook), isAnyNoteSheet);
+        const known = new Set([
+          ...sheetNames(wtb.bytes), ...plans.map((x) => x.name), INDEX_SHEET, '대사표',
+        ]);
+        const r = inheritFormulas(plans, old, known);
+        plans = r.plans;
+        told = r.got
+          ? ` 작년 표준주석엑셀(${prevBook.fileName})에서 수식 ${r.got}개를 이어받아 노란 칸에 넣었습니다`
+            + `(주석 ${r.notes}개에서).`
+            + (r.unknownSheets.length
+              ? ` 다만 그 수식이 가리키는 시트 ${r.unknownSheets.slice(0, 4).join(' · ')}${r.unknownSheets.length > 4 ? ' …' : ''}`
+                + ' 가 올해 정산표에 없습니다 — 엑셀에서 #REF! 로 보이니 시트 이름을 맞춰 주십시오.'
+              : '')
+          : ` 작년 표준주석엑셀(${prevBook.fileName})에서 이어받을 수식을 찾지 못했습니다`
+            + (r.notes ? ' — 노란 칸에 수식이 아니라 값이 들어 있었던 것 같습니다.' : ' — 주석 제목이 하나도 맞지 않습니다.');
+      }
+
       const index = layoutIndex(p.map(({ title }, i) => ({
         no: i + 1, title, enabled: true, sheet: plans[i].name,
+        // 종단형은 시트가 하나라 **몇 행인지**까지 가리켜야 한다.
+        at: layout === 'long' ? `B${plans[i].cells.find((c) => c.kind === 'title')?.row ?? 2}` : undefined,
       })));
       // 목록이 **주석 1번 왼쪽**에 선다 — 맨 뒤에 있으면 스무 장을 지나 찾아가야 한다(2026-09-14).
-      const out = injectSheets(wtb.bytes, [index, ...plans, layoutTieSheet(links)]);
+      const out = injectSheets(wtb.bytes, [index, ...sheetsToInject(plans), layoutTieSheet(links)]);
       download(out, `${wtb.name.replace(/\.xlsx$/i, '')}_주석시트.xlsx`,
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       const yellow = plans.flatMap((x) => x.cells).filter((c) => c.kind === 'input').length;
-      setDone(`주석 시트 ${plans.length}장을 얹고 목록 한 장을 그 앞에 두었습니다 — 목록의 제목을 누르면 그 주석으로, 주석 시트 맨 위 「◀ 주석목록」을 누르면 목록으로 갑니다.`
+      setDone((layout === 'long'
+        ? `주석 ${plans.length}개를 「${LONG_SHEET}」 시트 한 장에 세로로 내리고 목록 한 장을 그 앞에 두었습니다`
+        : `주석 시트 ${plans.length}장을 얹고 목록 한 장을 그 앞에 두었습니다`)
+        + ' — 목록의 제목을 누르면 그 주석으로, 주석 맨 위 「◀ 주석목록」을 누르면 목록으로 갑니다.'
         + (roll ? ` 당기 값을 전기로 밀고 채워 넣을 칸 ${yellow}개를 노랗게 두었습니다.` : '')
+        + told
         + (links.length ? ` 맞아야 하는 숫자 짝 ${links.length}개를 「대사표」 시트에 걸어 두었습니다.` : '')
         + (fresh.length ? ` 그 가운데 ${fresh.length}개는 작년 보고서에 없어 빈 서식으로 두었습니다 — ${fresh.join(' · ')}` : ''));
     } catch (e) {
@@ -97,7 +149,7 @@ export default function NotePrepareTab(
     setBusy('dsd'); setSay(null); setDone(null);
     try {
       const p = picked();
-      const plans = planNotes(p, true, spare);
+      const plans = planNotes(p, true, spare, layout);
       let xml = contentsOf(dsd.bytes);
       const skip = new Set<number>();
       for (const x of plans) for (const b of x.back ?? []) skip.add(b.slot);
@@ -137,7 +189,7 @@ export default function NotePrepareTab(
           채우시면 되고, DSD 는 껍데기라 편집기에서 이어 작업하실 수 있습니다.
           <span style={{ color: 'var(--ink-3)' }}>
             {' '}주석 {from === 'file' ? `${dsd.blocks.length}개(파일에 든 것 전부)` : `${on}개(① 에서 켜 둔 것)`}
-            {' '}· 금액은 {eng.moneyUnit} 단위로 적힌 그대로
+            {' '}· 금액은 {eng.moneyUnit} 단위로 적힌 그대로 · 시트 구성은 <b>{LAYOUT_LABEL[layout]}</b>(① 에서 정함)
           </span>
         </div>
 
@@ -150,6 +202,20 @@ export default function NotePrepareTab(
             </div>
           </label>
         </div>
+
+        {prevBook && (
+          <div className="frow"><span className="fl">작년 수식</span>
+            <label style={{ fontSize: 'var(--fs-2)', opacity: roll ? 1 : 0.5 }}>
+              <input type="checkbox" checked={inherit} disabled={!roll} onChange={(e) => setInherit(e.target.checked)} />{' '}
+              <b>FY{eng.fy - 1} 표준주석엑셀의 수식을 노란 칸에 이어받기</b>
+              <span style={{ color: 'var(--ink-3)' }}> — {prevBook.fileName}</span>
+              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.6 }}>
+                주석 제목 → 행 라벨 → 열로 짝을 지어 <b>수식만</b> 가져옵니다. 값은 가져오지 않습니다.
+                올해 정산표의 시트 이름이 작년과 같아야 링크가 삽니다.
+              </div>
+            </label>
+          </div>
+        )}
       </div>
 
       {say && (
@@ -182,7 +248,7 @@ export default function NotePrepareTab(
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-            <button className="btn-p" disabled={!!busy} onClick={makeSheet}>
+            <button className="btn-p" disabled={!!busy} onClick={() => void makeSheet()}>
               {busy === 'sheet' ? '만드는 중…' : '주석 시트 얹은 엑셀 내려받기'}
             </button>
           </div>
@@ -213,7 +279,8 @@ export default function NotePrepareTab(
       <div className="card" style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
         <b>다음에 할 일</b> — 내려받은 엑셀을 열어 <b>노란 칸</b>을 채웁니다. 대개 재무제표 시트에서
         링크를 겁니다. <b>「대사표」 시트</b>를 옆에 띄워 두시면 맞아야 하는 숫자의 「차이」가 채우는
-        대로 0 이 됩니다. 다 채우면 <b>③ 검증</b>으로 오십시오.
+        대로 0 이 됩니다. 다 채우면 <b>③ 검증</b>으로 오십시오. 검증까지 마친 엑셀은 ① 에
+        <b> 표준주석엑셀</b>로 등록해 두면 내년에 수식을 이어받습니다.
       </div>
     </div>
   );

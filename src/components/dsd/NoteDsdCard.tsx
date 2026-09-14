@@ -9,21 +9,25 @@
 //
 // ⚠️ **안 채운 칸이 남아 있으면 만들지 않는다.** 작년 숫자가 올해 보고서로 나가는 것이
 //    이 일에서 가장 큰 사고다.
+//
+// 만들고 나면 그 엑셀을 **표준주석엑셀로 등록**할 수 있다 — 완성본을 낸 파일이 곧 최종본이다.
 import { useState } from 'react';
-import { pickAll, pickNotes, planNotes } from '../../lib/notePick';
+import { pickAll, pickNotes, planNotes, isNoteSheet, LAYOUT_LABEL, type SheetLayout } from '../../lib/notePick';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { writeNotes, buildDsd, contentsOf } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
 import type { Engagement, NoteRow } from '../../lib/dsdApi';
+import { registerNoteBook, type NoteBook } from '../../lib/dsdBookApi';
 import type { LoadedDsd, NoteFrom } from './DsdShell';
 import type { Filled } from './NoteVerifyCard';
 import { safeName, download } from './dsdUi';
 
 export default function NoteDsdCard(
-  { eng, notes, dsd, xl, setXl, from, spare }:
+  { eng, notes, dsd, xl, setXl, from, spare, layout, book, onBook, readOnly }:
   {
     eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd;
     xl: Filled | null; setXl: (v: Filled | null) => void; from: NoteFrom; spare: number;
+    layout: SheetLayout; book: NoteBook | null; onBook: (b: NoteBook) => void; readOnly: boolean;
   },
 ) {
   const [roll, setRoll] = useState(true);
@@ -32,24 +36,29 @@ export default function NoteDsdCard(
   const [say, setSay] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [madeWith, setMadeWith] = useState<Filled | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
 
   async function takeXl(f: File | undefined) {
     if (!f) return;
-    setSay(null); setDone(null);
+    setSay(null); setDone(null); setMadeWith(null); setSaved(null);
     setXl({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
   }
 
   function make() {
     if (!xl) return setSay('채워 넣은 엑셀(.xlsx)을 고르세요.');
-    setBusy(true); setSay(null); setDone(null);
+    setBusy(true); setSay(null); setDone(null); setMadeWith(null); setSaved(null);
     try {
-      // ② 와 **같은 규칙으로** 골라야 시트 이름이 맞는다(DsdShell.NoteFrom).
+      // ② 와 **같은 규칙으로** 골라야 시트 이름이 맞는다(DsdShell.NoteFrom · 작업 건의 시트 구성).
       const picked = from === 'file' ? pickAll(dsd.blocks) : pickNotes(dsd.blocks, notes);
       if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 대상에서 골라 주세요.');
-      const plans = planNotes(picked, roll, spare);
-      const sheets = readWorkbook(xl.bytes, (n) => /^N\d\d /.test(n));
+      const plans = planNotes(picked, roll, spare, layout);
+      const sheets = readWorkbook(xl.bytes, (n) => isNoteSheet(n, layout));
       if (!sheets.length) {
-        throw new Error('이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 준비에서 만든 파일인지 보십시오.');
+        throw new Error(layout === 'long'
+          ? '이 엑셀에 「주석(생성)」 시트가 없습니다. 이 건은 한 시트 종단형입니다 — ② 준비에서 만든 파일인지 보십시오.'
+          : '이 엑셀에 주석 시트(N01 … 꼴)가 없습니다. ② 준비에서 만든 파일인지 보십시오.');
       }
 
       // 재무제표·표지를 먼저 민다 — **④ 가 갈아끼울 자리는 뺀다.** 거기는 ② 가 이미 밀었다.
@@ -91,10 +100,26 @@ export default function NoteDsdCard(
         + (r.blank.length ? ` 안 채운 칸 ${r.blank.length}개는 작년 글자가 그대로 남았습니다.` : '')
         + (r.skipped.length ? ` 손대지 못한 칸이 ${r.skipped.length}개 있습니다 — ${r.skipped[0].why}` : ''),
       );
+      setMadeWith(xl);
     } catch (e) {
       setSay(e instanceof Error ? e.message : '만들지 못했습니다.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** 완성본을 낸 그 엑셀을 표준주석엑셀로 — 내년 ② 가 수식을 이어받는다. */
+  async function keep() {
+    if (!madeWith) return;
+    setSaving(true); setSaved(null);
+    try {
+      const b = await registerNoteBook(eng, madeWith);
+      onBook(b);
+      setSaved(`표준주석엑셀로 등록했습니다 — ${b.fileName}. FY${eng.fy + 1} 의 ② 가 이 파일의 수식을 이어받습니다.`);
+    } catch (e) {
+      setSay(e instanceof Error ? e.message : '등록하지 못했습니다.');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -112,6 +137,7 @@ export default function NoteDsdCard(
         <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 5 }}>
           ② 가 만든 <b>사전작성 DSD 는 여기에 넣지 않습니다</b> — 그것은 나갈 때 들고 가는 것이고,
           완성본은 언제나 <b>위에서 고른 작년 감사보고서</b>를 틀로 씁니다.
+          {' '}시트 구성은 <b>{LAYOUT_LABEL[layout]}</b>으로 읽습니다(① 에서 정함).
         </div>
       </div>
 
@@ -167,6 +193,19 @@ export default function NoteDsdCard(
             <b>다음에 할 일</b> — 내려받은 .dsd 를 <b>DART 편집기에서 열어</b> 확인하십시오.
             감사보고서 본문(의견·기간)과 자본변동표는 손대지 않았으니 거기서 고치시면 됩니다.
           </div>
+          {madeWith && !readOnly && (
+            <div style={{ marginTop: 7, paddingTop: 7, borderTop: '1px solid currentColor', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span>
+                이 엑셀(<b>{madeWith.name}</b>)을 <b>표준주석엑셀</b>로 등록해 두면 FY{eng.fy + 1} 의 ② 가 수식을 이어받습니다.
+                {book && <span style={{ opacity: 0.8 }}> 지금 등록된 것({book.fileName})을 바꿉니다.</span>}
+              </span>
+              <button className="btn-sm btn-sm-navy" style={{ marginLeft: 'auto' }} disabled={saving}
+                onClick={() => void keep()}>
+                {saving ? '올리는 중…' : book ? '표준주석엑셀 바꾸기' : '표준주석엑셀로 등록'}
+              </button>
+            </div>
+          )}
+          {saved && <div style={{ marginTop: 6 }}>{saved}</div>}
         </div>
       )}
 

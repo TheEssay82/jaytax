@@ -180,7 +180,9 @@ export function verifySheet(plan: SheetPlan, sheet: SheetData, note: string): Fi
 export function verifyAll(plans: SheetPlan[], sheets: SheetData[]): VerifyResult {
   const byName = new Map(sheets.map((s) => [s.name, s]));
   const findings: Finding[] = [];
-  let tables = 0; let cells = 0; let hit = 0;
+  let tables = 0; let cells = 0;
+  // 종단형은 배치 여럿이 시트 하나를 나눠 쓴다 — 시트와 칸은 한 번만 센다.
+  const seen = new Set<string>();
   let done = 0; let total = 0;
 
   for (const plan of plans) {
@@ -193,9 +195,8 @@ export function verifyAll(plans: SheetPlan[], sheets: SheetData[]): VerifyResult
       });
       continue;
     }
-    hit += 1;
+    if (!seen.has(plan.name)) { seen.add(plan.name); cells += sheet.cells.size; }
     tables += (plan.tables ?? []).filter((t) => !t.isUnitMark).length;
-    cells += sheet.cells.size;
 
     // **여분 행은 세지 않는다.** 비어 있는 것이 정상이다 — 거래처가 늘었을 때만 쓴다.
     // 세면 표마다 서너 줄씩 「안 채움」이 쌓여 진짜 남은 일이 묻힌다.
@@ -219,7 +220,7 @@ export function verifyAll(plans: SheetPlan[], sheets: SheetData[]): VerifyResult
 
   const rank: Record<Level, number> = { 틀림: 0, '살펴볼 것': 1, '안 채움': 2 };
   findings.sort((a, b) => rank[a.level] - rank[b.level] || a.sheet.localeCompare(b.sheet, 'ko'));
-  return { findings, scanned: { sheets: hit, tables, cells }, filled: { done, total } };
+  return { findings, scanned: { sheets: seen.size, tables, cells }, filled: { done, total } };
 }
 
 /**
@@ -237,8 +238,11 @@ export function verifyAll(plans: SheetPlan[], sheets: SheetData[]): VerifyResult
  * 값 없이 수식만 있으면 「아직 계산되지 않은 파일」로 보고 건너뛴다.
  */
 export function sheetsOfPlans(plans: SheetPlan[]): SheetData[] {
-  return plans.map((p) => {
-    const cells = new Map<string, CellValue>();
+  // 같은 시트를 나눠 쓰는 배치(종단형)는 한 장으로 합친다.
+  const by = new Map<string, SheetData>();
+  for (const p of plans) {
+    const cells = by.get(p.name)?.cells ?? new Map<string, CellValue>();
+    by.set(p.name, { name: p.name, cells });
     for (const c of p.cells) {
       // **수식 칸의 값은 글자에서 읽는다.** 천원 표의 표시 열은 ROUND·SUM 수식이라 배치에
       // 숫자가 없지만, DSD 에는 「3,500」이라고 **찍혀 있다**. 그 찍힌 값이 곧 계산된 값이다 —
@@ -252,8 +256,8 @@ export function sheetsOfPlans(plans: SheetPlan[]): SheetData[] {
         cells.set(`${colName(c.col)}${c.row}`, v);
       }
     }
-    return { name: p.name, cells };
-  });
+  }
+  return [...by.values()];
 }
 
 /**
@@ -346,7 +350,16 @@ export function layoutReport(r: VerifyResult, when = new Date(), ties: TieRow[] 
  */
 export function numbersOf(sheet: SheetData, plan?: SheetPlan): number[] {
   const out: number[] = [];
-  for (const v of sheet.cells.values()) {
+  // 배치가 있으면 **그 배치의 행만** 본다 — 종단형은 시트 하나에 주석이 다 있어, 시트 전체를
+  // 보면 남의 주석 숫자가 「이 주석에 있다」로 잡힌다.
+  let lo = 1; let hi = Number.MAX_SAFE_INTEGER;
+  if (plan && plan.cells.length) {
+    lo = Math.min(...plan.cells.map((c) => c.row));
+    hi = Math.max(plan.lastRow, ...plan.cells.map((c) => c.row));
+  }
+  for (const [ref, v] of sheet.cells) {
+    const row = Number(/\d+$/.exec(ref)?.[0] ?? 0);
+    if (row < lo || row > hi) continue;
     const n = numOf(v);
     if (n != null && n !== 0) out.push(n);
   }
@@ -427,7 +440,7 @@ export function tieOut(
   const bySheet = new Map(sheets.map((x) => [x.name, x]));
   const byNo = new Map<number, NoteSheetRef>();
   for (const n of notes) if (n.dsdNo != null && !byNo.has(n.dsdNo)) byNo.set(n.dsdNo, n);
-  const cache = new Map<string, number[]>();
+  const cache = new Map<SheetPlan, number[]>();
   const rows: TieRow[] = [];
   const findings: Finding[] = [];
   const told = new Set<number>();
@@ -457,9 +470,9 @@ export function tieOut(
       if (foundIn) continue;
       const sheet = bySheet.get(ref.plan.name);
       if (!sheet) continue;
-      let nums = cache.get(ref.plan.name);
-      if (!nums) { nums = numbersOf(sheet, ref.plan); cache.set(ref.plan.name, nums); }
-      if (hasAmount(nums, amt)) foundIn = ref.plan.name;
+      let nums = cache.get(ref.plan);
+      if (!nums) { nums = numbersOf(sheet, ref.plan); cache.set(ref.plan, nums); }
+      if (hasAmount(nums, amt)) foundIn = ref.plan.note ?? ref.plan.name;
     }
     rows.push({
       statement: line.statement, label: line.label, notes: line.notes,
@@ -486,7 +499,7 @@ export function checkLinks(links: LinkGroup[], sheets: SheetData[]): Finding[] {
     let blank = 0;
     for (const sp of g.spots) {
       if (!sp.at) continue;
-      const sheet = by.get(sp.group);
+      const sheet = by.get(sp.sheet ?? sp.group);
       if (!sheet) continue;
       const cell = sheet.cells.get(sp.at);
       // 아직 엑셀에서 열지 않아 수식에 값이 없으면 넘긴다.

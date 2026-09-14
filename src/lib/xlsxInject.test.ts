@@ -66,8 +66,10 @@ test('시트 사이 링크 — hyperlinks 가 mergeCells 뒤에, 시트 이름�
     cells: [
       { row: 1, col: 2, text: '◀ 주석목록', kind: 'link', link: 'N01 회사의 "개요"' },
       { row: 3, col: 3, text: '재고자산', kind: 'link', link: "N05 재고자산 'A'" },
+      { row: 4, col: 3, text: '차입금', kind: 'link', link: '주석(생성)', linkAt: 'B120' },
     ],
   });
+  assert.ok(xml.includes(`location="'주석(생성)'!B120"`), '종단형은 행까지 가리킨다');
   const at = (s: string) => xml.indexOf(s);
   assert.ok(at('<hyperlinks>') > at('</mergeCells>'), '차례가 틀리면 엑셀이 파일을 고치자고 한다');
   assert.ok(xml.includes(`<hyperlink ref="B1" location="'N01 회사의 &quot;개요&quot;'!B2" display="◀ 주석목록"/>`), '겹따옴표는 속성에서 막는다');

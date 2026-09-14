@@ -365,14 +365,17 @@ export function contentsOf(src: Uint8Array): string {
  * 칸에 원으로 앉아 있고, 되돌릴 때 거기서 천원으로 셈한다.
  */
 export function sheetsFromPlans(plans: SheetPlan[]): SheetData[] {
-  return plans.map((p) => {
-    const cells = new Map<string, CellValue>();
+  // 같은 시트를 나눠 쓰는 배치(종단형)는 한 장으로 합친다.
+  const by = new Map<string, SheetData>();
+  for (const p of plans) {
+    const cells = by.get(p.name)?.cells ?? new Map<string, CellValue>();
+    by.set(p.name, { name: p.name, cells });
     for (const c of p.cells) {
       if (c.formula != null) continue;
       const ref = `${colName(c.col)}${c.row}`;
       if (c.num != null) cells.set(ref, { num: c.num });
       else if (c.text) cells.set(ref, { text: c.text });
     }
-    return { name: p.name, cells };
-  });
+  }
+  return [...by.values()];
 }

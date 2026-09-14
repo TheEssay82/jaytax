@@ -38,8 +38,8 @@ function attr(s: string): string {
  * 시트 이름은 언제나 홑따옴표로 감싼다(공백·괄호가 흔하다). 안의 홑따옴표는 두 개로.
  * B2 로 가는 까닭: A열은 숨겨 두어 A1 을 고르면 아무것도 안 보인다.
  */
-function linkTarget(sheet: string): string {
-  return `'${sheet.replace(/'/g, "''")}'!B2`;
+function linkTarget(sheet: string, at = 'B2'): string {
+  return `'${sheet.replace(/'/g, "''")}'!${at}`;
 }
 
 // 열 이름(A·B·AA)은 배치에서도 수식을 만들 때 쓰므로 noteSheet 에 있다.
@@ -84,7 +84,7 @@ export function sheetXml(plan: SheetPlan, ids?: StyleIds): string {
   const links = plan.cells.filter((c) => c.link);
   const hyper = links.length
     ? `<hyperlinks>${links.map((c) =>
-      `<hyperlink ref="${colName(c.col)}${c.row}" location="${attr(linkTarget(c.link!))}" display="${attr(c.text)}"/>`).join('')}</hyperlinks>`
+      `<hyperlink ref="${colName(c.col)}${c.row}" location="${attr(linkTarget(c.link!, c.linkAt))}" display="${attr(c.text)}"/>`).join('')}</hyperlinks>`
     : '';
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
     + `<worksheet xmlns="${NS}" xmlns:r="${R_NS}">${cols}<sheetData>${rows}</sheetData>${merge}${hyper}</worksheet>`;

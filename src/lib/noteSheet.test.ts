@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   asNumber, isDash, unitFactor, isTotalLabel, periodOfHead, bumpTerm, rollGrid, isPolicyNote,
   sheetName, addrOf, parseAddr, layoutNote, layoutNewNote, layoutIndex, NEW_NOTE_LINES, INDEX_SHEET,
+  shiftRef, shiftFormula, shiftPlan,
 } from './noteSheet.ts';
 import type { NoteBlocks } from './dsdBlocks.ts';
 
@@ -334,6 +335,38 @@ test('주석 목록 시트 — 정산표의 「주석번호·주석제목·사�
   assert.equal(p.name, INDEX_SHEET);
   assert.equal(at(3, 3)?.kind, 'link', '제목은 링크다');
   assert.equal(at(3, 3)?.link, '회사의 개요', '누르면 그 주석 시트로 간다');
+});
+
+test('행 밀기 — 주소·수식·표 구조·되돌릴 자리·여분 행이 빠짐없이 민다(종단형)', () => {
+  assert.equal(shiftRef('D4', 10), 'D14');
+  assert.equal(shiftRef('D4:E4', 10), 'D14:E14');
+  assert.equal(shiftFormula('IF(COUNT(D9:D12)=0,"",SUM(D9:D12))', 100), 'IF(COUNT(D109:D112)=0,"",SUM(D109:D112))');
+  assert.equal(shiftFormula('IF(H9="","",ROUND(H9/1000,0))', 5), 'IF(H14="","",ROUND(H14/1000,0))');
+  assert.equal(shiftFormula('ROUND(H15/1000,0)-D15', 1), 'ROUND(H16/1000,0)-D16');
+  const plan = layoutNewNote(3, '리스', 'N03 리스');
+  const moved = shiftPlan({
+    ...plan,
+    merges: ['C5:D5'],
+    tables: [{ headRows: [8], bodyRows: [9, 10], totalRow: 10, itemRows: [9], numCols: [4], srcBase: null, diffCol: null, factor: null, carried: new Map([['D9', '1']]) }],
+    back: [{ at: 'C3', slot: 1, orig: 'x', srcAt: 'H3' }],
+    spares: [{ from: [0, 1], labelAt: 'C10', order: 0, cells: [{ start: 0, end: 1, at: 'D10', srcAt: 'H10' }] }],
+    drops: [{ at: [0, 1], labelAt: 'C9', origLabel: '기타' }],
+  }, 20, '주석(생성)');
+  assert.equal(moved.name, '주석(생성)');
+  assert.equal(moved.note, '리스', '주석 제목은 그대로다');
+  assert.equal(moved.cells.find((c) => c.kind === 'title')?.row, 22);
+  assert.deepEqual(moved.merges, ['C25:D25']);
+  assert.equal(moved.lastRow, plan.lastRow + 20);
+  assert.deepEqual(moved.tables![0].bodyRows, [29, 30]);
+  assert.equal(moved.tables![0].totalRow, 30);
+  assert.deepEqual([...moved.tables![0].carried], [['D29', '1']]);
+  assert.equal(moved.back![0].at, 'C23');
+  assert.equal(moved.back![0].srcAt, 'H23');
+  assert.equal(moved.spares![0].labelAt, 'C30');
+  assert.equal(moved.spares![0].cells[0].at, 'D30');
+  assert.equal(moved.spares![0].cells[0].srcAt, 'H30');
+  assert.equal(moved.drops![0].labelAt, 'C29');
+  assert.equal(shiftPlan(plan, 0), plan, '안 밀면 그대로다');
 });
 
 test('주석 시트 맨 위 「◀ 주석목록」 — 목록으로 돌아간다. 2행부터인 배치와 겹치지 않는다', () => {

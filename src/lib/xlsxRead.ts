@@ -85,6 +85,18 @@ export function readSheet(xml: string, shared: string[]): Map<string, CellValue>
   return cells;
 }
 
+/** 시트 이름만 — 통합문서 XML 한 장만 풀어 본다. 시트를 다 풀지 않으니 가볍다. */
+export function sheetNames(bytes: Uint8Array): string[] {
+  if (!(bytes[0] === 0x50 && bytes[1] === 0x4b)) {
+    throw new Error('엑셀 파일이 아닌 것 같습니다(ZIP 형식이 아닙니다).');
+  }
+  const files = unzipSync(bytes, { filter: (f) => f.name === 'xl/workbook.xml' });
+  const book = files['xl/workbook.xml'];
+  if (!book) throw new Error('엑셀 안에 통합문서(xl/workbook.xml)가 없습니다.');
+  return [...strFromU8(book).matchAll(/<sheet\b([^>]*?)\/>/g)]
+    .map((m) => unescapeCell(/\bname="([^"]*)"/.exec(m[1])?.[1] ?? ''));
+}
+
 /**
  * 통합문서를 읽는다. `want` 를 주면 그 이름의 시트만 푼다 — 정산표는 시트가 수십 장이라
  * 다 푸는 것은 헛일이다.

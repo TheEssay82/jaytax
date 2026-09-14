@@ -16,8 +16,11 @@ import { listBizEntities, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
   listEngagements, createEngagement, updateEngagement, deleteEngagement,
   listNotes, replaceNotes, findEngagement, listAuditEntityIds, setDemo,
-  type Engagement, type NoteRow, type Basis,
+  type Engagement, type NoteRow, type Basis, type SheetLayout,
 } from '../../lib/dsdApi';
+import { getNoteBook, type NoteBook } from '../../lib/dsdBookApi';
+import { LAYOUT_LABEL } from '../../lib/notePick';
+import NoteBookCard from './NoteBookCard';
 import {
   suggestCode, renumber, progress,
   defaultAuditFy, defaultPeriod, DEFAULT_STATUS,
@@ -66,6 +69,8 @@ export default function DsdEngagementTab() {
   // 표마다 깔아 둘 빈 줄. 거래처가 해마다 늘고 준다 — 적을 자리가 없으면 사람이 엑셀에서
   // 행을 끼워 넣게 되고, 그러면 아래 자리가 전부 밀려 되돌릴 수 없다.
   const [spare, setSpare] = useState(3);
+  // 고른 건에 등록된 표준주석엑셀 — ① 이 보여 주고 ④ 가 등록한다.
+  const [book, setBook] = useState<NoteBook | null>(null);
   // ① 목록이 비면 고를 것이 없다. 첫 해거나, 남의 보고서를 그냥 떠 보는 자리다.
   const useFrom: NoteFrom = notes.length === 0 ? 'file' : from;
 
@@ -84,6 +89,7 @@ export default function DsdEngagementTab() {
       const id = keep ?? pickedId ?? list[0]?.id ?? null;
       setPickedId(id);
       setNotes(id ? await listNotes(id) : []);
+      setBook(id ? await getNoteBook(id).catch(() => null) : null);
       setDirty(false);
     } catch (e) {
       setErr(e instanceof Error ? e.message : '불러오지 못했습니다.');
@@ -108,6 +114,7 @@ export default function DsdEngagementTab() {
     if (dirty && !window.confirm('저장하지 않은 주석 목록이 있습니다. 그냥 옮길까요?')) return;
     setPickedId(id);
     setNotes(await listNotes(id));
+    setBook(await getNoteBook(id).catch(() => null));
     setDirty(false);
   }
 
@@ -199,6 +206,7 @@ export default function DsdEngagementTab() {
         <NoteFromBar
           from={useFrom} set={setFrom} spare={spare} setSpare={setSpare}
           listCount={notes.length} fileCount={dsdFile.dsd.blocks.length}
+          layout={picked?.sheetLayout ?? 'sheets'}
         />
       )}
       {at !== '1' && !dsdFile.dsd && <NeedDsd />}
@@ -208,13 +216,14 @@ export default function DsdEngagementTab() {
         </div>
       )}
       {at === '2' && picked && dsdFile.dsd && (
-        <NotePrepareTab eng={picked} notes={notes} dsd={dsdFile.dsd} from={useFrom} spare={spare} />
+        <NotePrepareTab eng={picked} notes={notes} dsd={dsdFile.dsd} from={useFrom} spare={spare} layout={picked.sheetLayout} />
       )}
       {at === '3' && picked && dsdFile.dsd && (
-        <NoteVerifyCard notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} spare={spare} />
+        <NoteVerifyCard notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} spare={spare} layout={picked.sheetLayout} />
       )}
       {at === '4' && picked && dsdFile.dsd && (
-        <NoteDsdCard eng={picked} notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} spare={spare} />
+        <NoteDsdCard eng={picked} notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} spare={spare}
+          layout={picked.sheetLayout} book={book} onBook={setBook} readOnly={isExternal} />
       )}
 
       <div style={{ display: at === '1' ? 'block' : 'none' }}>
@@ -338,6 +347,14 @@ export default function DsdEngagementTab() {
                   <option>천원</option><option>원</option>
                 </select>
               </Field>
+              <Field label="시트 구성">
+                <select className="btn-sm" value={picked.sheetLayout}
+                  title="② 로 엑셀을 만든 뒤에는 바꾸지 마십시오 — ③④ 가 이 값으로 시트를 찾습니다."
+                  onChange={(ev) => void updateEngagement(picked.id, { sheetLayout: ev.target.value as SheetLayout }).then(() => load(picked.id))}>
+                  <option value="sheets">{LAYOUT_LABEL.sheets}</option>
+                  <option value="long">{LAYOUT_LABEL.long}</option>
+                </select>
+              </Field>
               <Field label="대상기간">
                 <input className="btn-sm" type="date" value={picked.periodFrom ?? ''}
                   onChange={(ev) => void updateEngagement(picked.id, { periodFrom: ev.target.value }).then(() => load(picked.id))} />
@@ -361,6 +378,8 @@ export default function DsdEngagementTab() {
                 </div>
               </div>
             </div>
+
+            <NoteBookCard eng={picked} book={book} onChange={setBook} readOnly={isExternal} />
 
             <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 6 }}>
               금액은 엑셀에 <b>원(장부값)</b>으로 쓰고 DSD 에는 <b>{picked.moneyUnit}</b>으로 내보냅니다.
@@ -483,6 +502,8 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
   const [scope, setScope] = useState<'별도' | '연결'>('별도');
   const [basis, setBasis] = useState<Basis>('K-IFRS');
   const [moneyUnit, setMoneyUnit] = useState<'천원' | '원'>('천원');
+  // 시트 구성 — 만들 때 정한다(사용자 결정 2026-09-14). 앞 해 건이 있으면 그것을 따른다.
+  const [sheetLayout, setSheetLayout] = useState<SheetLayout>('sheets');
   const [seed, setSeed] = useState<'previous' | 'file' | 'empty'>('file');
   const [prevFound, setPrevFound] = useState<number | null>(null);
   const [dsd, setDsd] = useState<DsdInfo | null>(null);
@@ -514,6 +535,7 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
       setSeed('previous');
       setBasis(prev.basis);
       setMoneyUnit(prev.moneyUnit);
+      setSheetLayout(prev.sheetLayout);
     });
     return () => { alive = false; };
   }, [entityId, fy, scope]);
@@ -558,7 +580,7 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
       const id = await createEngagement({
         entityId, fy, scope, termNo: null,
         periodFrom: period.from, periodTo: period.to,
-        basis, moneyUnit, seed,
+        basis, moneyUnit, seed, sheetLayout,
         seedRows: seed === 'file' ? rowsFromFile() : undefined,
       });
       await onDone(id);
@@ -643,6 +665,24 @@ function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
             <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', alignSelf: 'center' }}>
               원화 금액만 환산합니다
             </span>
+          </div>
+        </div>
+
+        <div className="frow" style={{ alignItems: 'start' }}><span className="fl">시트 구성</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <label style={{ fontSize: 'var(--fs-2)' }}>
+              <input type="radio" checked={sheetLayout === 'sheets'} onChange={() => setSheetLayout('sheets')} />{' '}
+              <b>주석별 시트</b>
+              <span style={{ color: 'var(--ink-3)' }}> — 주석마다 시트 한 장(N01, N02 …)</span>
+            </label>
+            <label style={{ fontSize: 'var(--fs-2)' }}>
+              <input type="radio" checked={sheetLayout === 'long'} onChange={() => setSheetLayout('long')} />{' '}
+              <b>한 시트 종단형</b>
+              <span style={{ color: 'var(--ink-3)' }}> — 주석을 시트 한 장에 세로로 내립니다</span>
+            </label>
+            <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)' }}>
+              ② ③ ④ 가 함께 읽습니다. ② 로 엑셀을 만든 뒤에는 바꾸지 마십시오.
+            </div>
           </div>
         </div>
 

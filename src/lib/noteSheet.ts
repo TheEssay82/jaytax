@@ -23,6 +23,7 @@ export interface SheetCell {
   /** 숫자로 넣을 값. 없으면 글자로 넣는다. */ num?: number;
   /** 엑셀 수식(= 없이). 있으면 num·text 대신 이것이 들어간다. */ formula?: string;
   /** 누르면 갈 시트 이름 — 목록 ↔ 주석 사이를 오간다. 파일 안 링크라 시트 이름이 열쇠다. */ link?: string;
+  /** 그 시트의 어느 칸으로 가나. 없으면 B2. 종단형은 시트가 하나라 행까지 가리켜야 한다. */ linkAt?: string;
   kind?: CellKind;
 }
 
@@ -100,6 +101,11 @@ export function isTotalLabel(text: string): boolean {
 
 export interface SheetPlan {
   name: string;
+  /**
+   * 주석 제목 — 시트 이름과 별개다. 종단형에서는 시트 이름이 모두 같아 이것으로 주석을 가른다
+   * (noteLink 의 짝 그룹·noteInherit 의 열쇠). 목록·대사표·보고서 시트에는 없다.
+   */
+  note?: string;
   cells: SheetCell[];
   /** 엑셀에서 병합할 자리 — 「D4:E4」 꼴. 원본이 덮은 만큼 덮는다. */ merges?: string[];
   /** 마지막 행 */ lastRow: number;
@@ -262,6 +268,56 @@ export interface LayoutOptions {
    * 넣게 되고, 그러면 아래 자리가 전부 밀려 되돌릴 수 없게 된다. 미리 깔아 두는 편이 낫다.
    */
   spare?: number;
+}
+
+/** 「D4」·「D4:E4」 — 행을 by 만큼 민다. */
+export function shiftRef(ref: string, by: number): string {
+  return ref.replace(/([A-Z]+)(\d+)/g, (_m, c: string, r: string) => `${c}${Number(r) + by}`);
+}
+
+/**
+ * 우리가 지은 수식 안의 주소를 민다 — 「SUM(D9:D12)」·「IF(H9="","",ROUND(H9/1000,0))」.
+ * 같은 시트 안의 A1 참조뿐이다(다른 시트 참조는 대사표에만 있고 대사표는 밀지 않는다).
+ */
+export function shiftFormula(f: string, by: number): string {
+  return f.replace(
+    /(^|[^A-Za-z0-9_$'])([A-Z]{1,3})(\d+)(?![0-9A-Za-z_(])/g,
+    (_m, pre: string, c: string, r: string) => `${pre}${c}${Number(r) + by}`,
+  );
+}
+
+/**
+ * 배치 하나를 **아래로 민다** — 종단형(한 시트에 주석을 세로로)에 쓴다.
+ *
+ * 행이 든 자리를 빠짐없이 민다: 칸·병합·수식·표 구조·되돌릴 자리·여분 행·없앨 행·이월값.
+ * 하나라도 빠지면 ③ 이 엉뚱한 줄을 보고 ④ 가 엉뚱한 줄을 되돌린다. 열은 건드리지 않는다.
+ */
+export function shiftPlan(plan: SheetPlan, by: number, name = plan.name): SheetPlan {
+  if (by === 0 && name === plan.name) return plan;
+  const sh = (s: string) => shiftRef(s, by);
+  return {
+    ...plan,
+    name,
+    cells: plan.cells.map((c) => ({
+      ...c, row: c.row + by, ...(c.formula != null ? { formula: shiftFormula(c.formula, by) } : {}),
+    })),
+    merges: plan.merges?.map(sh),
+    lastRow: plan.lastRow + by,
+    tables: plan.tables?.map((t) => ({
+      ...t,
+      headRows: t.headRows.map((r) => r + by),
+      bodyRows: t.bodyRows.map((r) => r + by),
+      totalRow: t.totalRow == null ? null : t.totalRow + by,
+      itemRows: t.itemRows.map((r) => r + by),
+      carried: new Map([...t.carried].map(([k, v]) => [sh(k), v])),
+    })),
+    back: plan.back?.map((b) => ({ ...b, at: sh(b.at), ...(b.srcAt ? { srcAt: sh(b.srcAt) } : {}) })),
+    spares: plan.spares?.map((s) => ({
+      ...s, labelAt: sh(s.labelAt),
+      cells: s.cells.map((c) => ({ ...c, at: sh(c.at), ...(c.srcAt ? { srcAt: sh(c.srcAt) } : {}) })),
+    })),
+    drops: plan.drops?.map((d) => ({ ...d, labelAt: sh(d.labelAt) })),
+  };
 }
 
 /** 주석 목록 시트의 이름. 주석 시트의 「◀ 주석목록」이 여기로 간다. */
@@ -608,7 +664,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     r += b.rows.length + spareN;
     prevWasTable = true;
   }
-  return { name, cells, merges, lastRow: Math.max(2, r - 1), tables, back, spares, drops };
+  return { name, note: note.title, cells, merges, lastRow: Math.max(2, r - 1), tables, back, spares, drops };
 }
 
 /**
@@ -681,7 +737,7 @@ export function layoutNewNote(no: number | null, title: string, name: string): S
     },
   ];
   for (let i = 0; i < NEW_NOTE_LINES; i += 1) cells.push({ row: 5 + i, col: 3, text: '', kind: 'input' });
-  return { name, cells, merges: [], lastRow: 4 + NEW_NOTE_LINES, tables: [] };
+  return { name, note: title, cells, merges: [], lastRow: 4 + NEW_NOTE_LINES, tables: [] };
 }
 
 /** 빈 주석 시트에 마련해 두는 서술 줄 수. */
@@ -693,7 +749,9 @@ export const NEW_NOTE_LINES = 8;
  * **제목을 누르면 그 주석 시트로 간다.** 주석이 스무 장이면 탭을 눈으로 찾는 일이 만만치
  * 않다(사용자 요청 2026-09-14). 이 시트는 ② 가 **주석 1번 왼쪽**에 놓는다.
  */
-export function layoutIndex(rows: { no: number | null; title: string; enabled: boolean; sheet: string }[]): SheetPlan {
+export function layoutIndex(
+  rows: { no: number | null; title: string; enabled: boolean; sheet: string; at?: string }[],
+): SheetPlan {
   const cells: SheetCell[] = [
     { row: 2, col: 2, text: '주석번호', kind: 'head' },
     { row: 2, col: 3, text: '주석제목', kind: 'head' },
@@ -703,7 +761,7 @@ export function layoutIndex(rows: { no: number | null; title: string; enabled: b
   rows.forEach((x, i) => {
     const r = 3 + i;
     if (x.no != null) cells.push({ row: r, col: 2, text: String(x.no), num: x.no, kind: 'num' });
-    cells.push({ row: r, col: 3, text: x.title, kind: 'link', link: x.sheet });
+    cells.push({ row: r, col: 3, text: x.title, kind: 'link', link: x.sheet, ...(x.at ? { linkAt: x.at } : {}) });
     cells.push({ row: r, col: 4, text: x.enabled ? 'O' : 'X', kind: 'text' });
     cells.push({ row: r, col: 5, text: x.sheet, kind: 'text' });
   });

@@ -14,7 +14,8 @@ import { colName, type SheetPlan, type SheetCell } from './noteSheet';
 import type { FsLine } from './fsParse';
 
 export interface LinkSpot {
-  /** 주석이면 시트 이름, 재무제표면 표 이름 */ group: string;
+  /** 주석이면 주석 제목, 재무제표면 표 이름 — 짝을 가르는 묶음 */ group: string;
+  /** 엑셀 시트 이름 — 수식을 걸 때 쓴다. 종단형은 주석이 달라도 시트가 같다. */ sheet?: string;
   /** 사람이 읽을 자리 */ label: string;
   /** 엑셀 주소 — 재무제표 쪽은 없다(엑셀에 없으므로) */ at?: string;
 }
@@ -54,7 +55,8 @@ export function findLinks(plans: SheetPlan[], fs: FsLine[] = []): LinkGroup[] {
     }
     for (const c of plan.cells) {
       if (c.num == null || c.col < 3 || !inTable.has(c.row)) continue;
-      put(c.num, { group: plan.name, label: `${plan.name} ${colName(c.col)}${c.row}`, at: `${colName(c.col)}${c.row}` });
+      const group = plan.note ?? plan.name;
+      put(c.num, { group, sheet: plan.name, label: `${group} ${colName(c.col)}${c.row}`, at: `${colName(c.col)}${c.row}` });
     }
   }
   for (const l of fs) {
@@ -121,7 +123,7 @@ export function layoutTieSheet(links: LinkGroup[]): SheetPlan {
     cells.push({ row, col: 2, text: names.join(' ↔ '), kind: 'text' });
     cells.push({ row, col: 3, text: '', num: g.value, kind: 'num' });
     inSheet.forEach((sp, k) => {
-      cells.push({ row, col: 4 + k, text: '', kind: 'num', formula: `${sheetRef(sp.group)}!${sp.at}` });
+      cells.push({ row, col: 4 + k, text: '', kind: 'num', formula: `${sheetRef(sp.sheet ?? sp.group)}!${sp.at}` });
     });
     const from = colName(4);
     const to = colName(3 + MAX_COLS);

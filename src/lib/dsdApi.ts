@@ -4,8 +4,11 @@
 //    이 표에 남는 것은 「어느 회사의 어느 해를 다루는가」와 주석 목록뿐이다.
 import { supabase } from './supabase';
 import { renumber, cloneForNextYear, type Basis, type NoteRow } from './dsdNotes';
+import type { SheetLayout } from './notePick';
+import { removeNoteBookOf } from './dsdBookApi';
 
 export type { Basis, NoteRow, NoteSource, NoteStatus } from './dsdNotes';
+export type { SheetLayout } from './notePick';
 
 export interface Engagement {
   id: string;
@@ -24,6 +27,8 @@ export interface Engagement {
   noteCount: number;
   /** 외부인에게 보여 주는 시연용 건인가. 진짜 거래처는 외부인에게 한 줄도 안 보인다. */
   isDemo: boolean;
+  /** 엑셀 시트 구성 — 주석별 시트('sheets') 또는 한 시트 종단형('long'). ②③④ 가 함께 읽는다. */
+  sheetLayout: SheetLayout;
 }
 
 type EngRow = {
@@ -31,6 +36,7 @@ type EngRow = {
   term_no: number | null; period_from: string | null; period_to: string | null;
   basis: Basis; money_unit: '천원' | '원'; status: '준비' | '진행' | '완료'; note: string | null;
   is_demo: boolean;
+  sheet_layout: string | null;
   biz_entity: { name: string; code: string | null } | null;
   dsd_note: { count: number }[] | null;
 };
@@ -52,11 +58,12 @@ function toEng(r: EngRow): Engagement {
     note: r.note,
     noteCount: r.dsd_note?.[0]?.count ?? 0,
     isDemo: r.is_demo === true,
+    sheetLayout: r.sheet_layout === 'long' ? 'long' : 'sheets',
   };
 }
 
 const SEL = 'id, entity_id, fy, scope, term_no, period_from, period_to, basis, money_unit, status, note,'
-  + ' is_demo, biz_entity(name, code), dsd_note(count)';
+  + ' is_demo, sheet_layout, biz_entity(name, code), dsd_note(count)';
 
 export async function listEngagements(): Promise<Engagement[]> {
   const { data, error } = await supabase
@@ -75,6 +82,8 @@ export interface NewEngagement {
   entityId: string; fy: number; scope: '별도' | '연결';
   termNo: number | null; periodFrom: string; periodTo: string;
   basis: Basis; moneyUnit: '천원' | '원'; note?: string;
+  /** 엑셀 시트 구성. 만들 때 정하고 ②③④ 가 함께 읽는다 — 도중에 바꾸면 자리가 어긋난다. */
+  sheetLayout: SheetLayout;
   /** 무엇으로 주석 목록을 채울까 — 앞 해 복제 / 작년 DSD 파일 / 표준 틀 / 비워 두기. */
   seed: 'previous' | 'file' | 'empty';
   /** seed 가 'file' 일 때 — 화면에서 .dsd 를 읽어 만든 목록. 파일 자체는 올라오지 않는다. */
@@ -112,6 +121,7 @@ export async function createEngagement(v: NewEngagement): Promise<string> {
       entity_id: v.entityId, fy: v.fy, scope: v.scope, term_no: v.termNo,
       period_from: v.periodFrom, period_to: v.periodTo,
       basis: v.basis, money_unit: v.moneyUnit, note: v.note ?? null,
+      sheet_layout: v.sheetLayout,
       created_by: user?.id ?? null, updated_by: user?.id ?? null,
     })
     .select('id')
@@ -142,6 +152,7 @@ export async function findEngagement(entityId: string, fy: number, scope: string
 export async function updateEngagement(id: string, patch: Partial<{
   termNo: number | null; periodFrom: string; periodTo: string;
   basis: Basis; moneyUnit: '천원' | '원'; status: '준비' | '진행' | '완료'; note: string | null;
+  sheetLayout: SheetLayout;
 }>): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   const row: Record<string, unknown> = { updated_by: user?.id ?? null };
@@ -152,6 +163,7 @@ export async function updateEngagement(id: string, patch: Partial<{
   if (patch.moneyUnit !== undefined) row.money_unit = patch.moneyUnit;
   if (patch.status !== undefined) row.status = patch.status;
   if (patch.note !== undefined) row.note = patch.note;
+  if (patch.sheetLayout !== undefined) row.sheet_layout = patch.sheetLayout;
   const { error } = await supabase.from('dsd_engagement').update(row).eq('id', id);
   if (error) throw error;
 }
@@ -170,6 +182,8 @@ export async function setDemo(id: string, on: boolean): Promise<void> {
 
 /** 되돌릴 수 없다 — 화면에서 확인창을 거친 뒤에만 부른다. */
 export async function deleteEngagement(id: string): Promise<void> {
+  // 표준주석엑셀 파일은 cascade 로 안 지워진다(Storage) — 먼저 치운다.
+  await removeNoteBookOf(id);
   const { error } = await supabase.from('dsd_engagement').delete().eq('id', id);
   if (error) throw error;
 }

@@ -9,6 +9,7 @@ import { readDsd, readContents } from '../../lib/dsdFile';
 import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
 import { companyName, bareName } from '../../lib/dsdParse';
 import { parseStatements, type FsLine } from '../../lib/fsParse';
+import { LAYOUT_LABEL, type SheetLayout } from '../../lib/notePick';
 
 /**
  * 한 번 읽어 두고 탭들이 나눠 쓰는 감사보고서.
@@ -107,10 +108,11 @@ export type NoteFrom = 'list' | 'file';
 
 /** 주석을 어디서 고를지, 여분 행을 몇 줄 깔지 — ② ③ ④ 위에 한 줄로 둔다. */
 export function NoteFromBar(
-  { from, set, listCount, fileCount, spare, setSpare }:
+  { from, set, listCount, fileCount, spare, setSpare, layout }:
   {
     from: NoteFrom; set: (v: NoteFrom) => void; listCount: number; fileCount: number;
     spare: number; setSpare: (v: number) => void;
+    /** 작업 건에 적힌 시트 구성 — 여기서는 보여만 준다. ① 에서 바꾼다. */ layout: SheetLayout;
   },
 ) {
   return (
@@ -124,6 +126,10 @@ export function NoteFromBar(
         <input type="radio" checked={from === 'file'} onChange={() => set('file')} />{' '}
         올린 파일에 든 것 전부 <span style={{ color: 'var(--ink-3)' }}>{fileCount}개</span>
       </label>
+      <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}
+        title="① 작업 건에서 정합니다. ② 로 엑셀을 만든 뒤에는 바꾸지 마십시오.">
+        시트 구성 <b style={{ color: 'var(--ink-2)' }}>{LAYOUT_LABEL[layout]}</b>
+      </span>
       <span style={{
         marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', fontSize: 'var(--fs-2)',
       }}>
