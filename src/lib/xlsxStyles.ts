@@ -16,6 +16,7 @@ export interface StyleIds {
   /** 표 글자칸 — 테두리 */ text: number;
   /** 표 숫자칸 — 테두리 + 천단위 쉼표 + 오른쪽 */ num: number;
   /** **채워 넣어야 하는 칸** — 노란 바탕. 감사조서에서 쓰는 표시다. */ input: number;
+  /** 시트 사이를 오가는 링크 — 파란 밑줄. 엑셀의 하이퍼링크 모양 그대로. */ link: number;
 }
 
 const THIN = '<left style="thin"><color rgb="FFB7BDC6"/></left>'
@@ -67,11 +68,13 @@ export function addNoteStyles(stylesXml: string): { xml: string; ids: StyleIds }
     '<font><sz val="10"/><name val="맑은 고딕"/><family val="2"/><charset val="129"/></font>',
     '<font><b/><sz val="10"/><name val="맑은 고딕"/><family val="2"/><charset val="129"/></font>',
     '<font><b/><sz val="12"/><color rgb="FF1A2B52"/><name val="맑은 고딕"/><family val="2"/><charset val="129"/></font>',
+    '<font><u/><sz val="10"/><color rgb="FF0563C1"/><name val="맑은 고딕"/><family val="2"/><charset val="129"/></font>',
   ]);
   xml = f.xml;
   const fontBase = f.first;
   const fontBold = f.first + 1;
   const fontTitle = f.first + 2;
+  const fontLink = f.first + 3;
 
   // ③ 채우기 — 머리행 음영과 **입력 칸 노랑**
   const fl = appendTo(xml, 'fills', [
@@ -102,6 +105,7 @@ export function addNoteStyles(stylesXml: string): { xml: string; ids: StyleIds }
     xf(fontBase, 0, borderThin, 0, '<alignment vertical="center"/>'),                   // text
     xf(fontBase, 0, borderThin, fmtId, '<alignment horizontal="right" vertical="center"/>'), // num
     xf(fontBase, fillInput, borderThin, fmtId, '<alignment horizontal="right" vertical="center"/>'), // input
+    xf(fontLink, 0, 0, 0),                                                              // link
   ]);
   xml = c.xml;
 
@@ -110,6 +114,7 @@ export function addNoteStyles(stylesXml: string): { xml: string; ids: StyleIds }
     ids: {
       label: c.first, title: c.first + 1, para: c.first + 2,
       head: c.first + 3, text: c.first + 4, num: c.first + 5, input: c.first + 6,
+      link: c.first + 7,
     },
   };
 }

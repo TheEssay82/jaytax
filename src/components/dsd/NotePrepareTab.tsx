@@ -76,11 +76,12 @@ export default function NotePrepareTab(
       const index = layoutIndex(p.map(({ title }, i) => ({
         no: i + 1, title, enabled: true, sheet: plans[i].name,
       })));
-      const out = injectSheets(wtb.bytes, [...plans, layoutTieSheet(links), index]);
+      // 목록이 **주석 1번 왼쪽**에 선다 — 맨 뒤에 있으면 스무 장을 지나 찾아가야 한다(2026-09-14).
+      const out = injectSheets(wtb.bytes, [index, ...plans, layoutTieSheet(links)]);
       download(out, `${wtb.name.replace(/\.xlsx$/i, '')}_주석시트.xlsx`,
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       const yellow = plans.flatMap((x) => x.cells).filter((c) => c.kind === 'input').length;
-      setDone(`주석 시트 ${plans.length}장과 목록 한 장을 얹었습니다.`
+      setDone(`주석 시트 ${plans.length}장을 얹고 목록 한 장을 그 앞에 두었습니다 — 목록의 제목을 누르면 그 주석으로, 주석 시트 맨 위 「◀ 주석목록」을 누르면 목록으로 갑니다.`
         + (roll ? ` 당기 값을 전기로 밀고 채워 넣을 칸 ${yellow}개를 노랗게 두었습니다.` : '')
         + (links.length ? ` 맞아야 하는 숫자 짝 ${links.length}개를 「대사표」 시트에 걸어 두었습니다.` : '')
         + (fresh.length ? ` 그 가운데 ${fresh.length}개는 작년 보고서에 없어 빈 서식으로 두었습니다 — ${fresh.join(' · ')}` : ''));

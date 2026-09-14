@@ -59,6 +59,22 @@ test('워크시트 XML — 글자는 inlineStr, 숫자는 값, 특수문자는 e
   assert.ok(xml.includes('hidden="1"'), 'A열(자리표)은 숨긴다');
 });
 
+test('시트 사이 링크 — hyperlinks 가 mergeCells 뒤에, 시트 이름은 홑따옴표로', () => {
+  const xml = sheetXml({
+    name: '주석목록(생성)', lastRow: 3,
+    merges: ['C2:D2'],
+    cells: [
+      { row: 1, col: 2, text: '◀ 주석목록', kind: 'link', link: 'N01 회사의 "개요"' },
+      { row: 3, col: 3, text: '재고자산', kind: 'link', link: "N05 재고자산 'A'" },
+    ],
+  });
+  const at = (s: string) => xml.indexOf(s);
+  assert.ok(at('<hyperlinks>') > at('</mergeCells>'), '차례가 틀리면 엑셀이 파일을 고치자고 한다');
+  assert.ok(xml.includes(`<hyperlink ref="B1" location="'N01 회사의 &quot;개요&quot;'!B2" display="◀ 주석목록"/>`), '겹따옴표는 속성에서 막는다');
+  assert.ok(xml.includes(`location="'N05 재고자산 ''A'''!B2"`), '홑따옴표는 두 개로');
+  assert.ok(!sheetXml(PLAN).includes('<hyperlinks>'), '링크가 없으면 태그도 없다');
+});
+
 test('원본은 한 바이트도 상하지 않는다', () => {
   const src = makeBook();
   const out = injectSheets(src, [PLAN]);

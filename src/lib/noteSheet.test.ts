@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   asNumber, isDash, unitFactor, isTotalLabel, periodOfHead, bumpTerm, rollGrid, isPolicyNote,
-  sheetName, addrOf, parseAddr, layoutNote, layoutNewNote, layoutIndex, NEW_NOTE_LINES,
+  sheetName, addrOf, parseAddr, layoutNote, layoutNewNote, layoutIndex, NEW_NOTE_LINES, INDEX_SHEET,
 } from './noteSheet.ts';
 import type { NoteBlocks } from './dsdBlocks.ts';
 
@@ -331,6 +331,23 @@ test('주석 목록 시트 — 정산표의 「주석번호·주석제목·사�
   assert.equal(at(4, 4)?.text, 'X');
   assert.equal(at(4, 2), undefined, '꺼진 주석은 번호가 없다');
   assert.equal(p.lastRow, 4);
+  assert.equal(p.name, INDEX_SHEET);
+  assert.equal(at(3, 3)?.kind, 'link', '제목은 링크다');
+  assert.equal(at(3, 3)?.link, '회사의 개요', '누르면 그 주석 시트로 간다');
+});
+
+test('주석 시트 맨 위 「◀ 주석목록」 — 목록으로 돌아간다. 2행부터인 배치와 겹치지 않는다', () => {
+  const fresh = layoutNewNote(19, '리스', 'N19 리스');
+  const back = fresh.cells.find((c) => c.row === 1);
+  assert.equal(back?.col, 2);
+  assert.equal(back?.kind, 'link');
+  assert.equal(back?.link, INDEX_SHEET);
+
+  const note: NoteBlocks = { no: 1, title: '회사의 개요', blocks: [] };
+  const plan = layoutNote(note, 'N01 회사의 개요');
+  assert.equal(plan.cells.find((c) => c.row === 1)?.link, INDEX_SHEET);
+  assert.ok(plan.cells.every((c) => c.row !== 1 || c.kind === 'link'), '1행에는 링크만 있다');
+  assert.equal(plan.cells.find((c) => c.kind === 'title')?.row, 2, '제목은 여전히 2행이다');
 });
 
 // ── 단위 표지판은 자료가 아니다 ─────────────────────────────────

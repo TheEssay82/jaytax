@@ -27,6 +27,21 @@ function esc(s: string): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/** 속성값 — 따옴표까지 막는다. 시트 이름에 따옴표가 올 수 있다. */
+function attr(s: string): string {
+  return esc(s).replace(/"/g, '&quot;');
+}
+
+/**
+ * 파일 안 링크의 목적지 — 「'N01 회사의 개요'!B2」.
+ *
+ * 시트 이름은 언제나 홑따옴표로 감싼다(공백·괄호가 흔하다). 안의 홑따옴표는 두 개로.
+ * B2 로 가는 까닭: A열은 숨겨 두어 A1 을 고르면 아무것도 안 보인다.
+ */
+function linkTarget(sheet: string): string {
+  return `'${sheet.replace(/'/g, "''")}'!B2`;
+}
+
 // 열 이름(A·B·AA)은 배치에서도 수식을 만들 때 쓰므로 noteSheet 에 있다.
 export { colName };
 
@@ -65,8 +80,14 @@ export function sheetXml(plan: SheetPlan, ids?: StyleIds): string {
   const merge = uniq.length
     ? `<mergeCells count="${uniq.length}">${uniq.map((m) => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>`
     : '';
+  // 파일 안 링크는 mergeCells 다음이다. 같은 파일의 시트로만 가므로 관계(rels)가 필요 없다.
+  const links = plan.cells.filter((c) => c.link);
+  const hyper = links.length
+    ? `<hyperlinks>${links.map((c) =>
+      `<hyperlink ref="${colName(c.col)}${c.row}" location="${attr(linkTarget(c.link!))}" display="${attr(c.text)}"/>`).join('')}</hyperlinks>`
+    : '';
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
-    + `<worksheet xmlns="${NS}" xmlns:r="${R_NS}">${cols}<sheetData>${rows}</sheetData>${merge}</worksheet>`;
+    + `<worksheet xmlns="${NS}" xmlns:r="${R_NS}">${cols}<sheetData>${rows}</sheetData>${merge}${hyper}</worksheet>`;
 }
 
 /** 이미 있는 xlsx 에 시트들을 더한 새 파일을 만든다. 원본 항목은 그대로 옮겨 담는다. */

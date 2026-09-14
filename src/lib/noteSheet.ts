@@ -14,7 +14,7 @@
 import { gridWidth, type Block, type NoteBlocks } from './dsdBlocks';
 
 /** 어떤 서식으로 그릴 칸인가 — xlsxStyles 의 이름과 같다. */
-export type CellKind = 'label' | 'title' | 'para' | 'head' | 'text' | 'num' | 'input';
+export type CellKind = 'label' | 'title' | 'para' | 'head' | 'text' | 'num' | 'input' | 'link';
 
 export interface SheetCell {
   /** 1부터 */ row: number;
@@ -22,6 +22,7 @@ export interface SheetCell {
   text: string;
   /** 숫자로 넣을 값. 없으면 글자로 넣는다. */ num?: number;
   /** 엑셀 수식(= 없이). 있으면 num·text 대신 이것이 들어간다. */ formula?: string;
+  /** 누르면 갈 시트 이름 — 목록 ↔ 주석 사이를 오간다. 파일 안 링크라 시트 이름이 열쇠다. */ link?: string;
   kind?: CellKind;
 }
 
@@ -263,8 +264,22 @@ export interface LayoutOptions {
   spare?: number;
 }
 
+/** 주석 목록 시트의 이름. 주석 시트의 「◀ 주석목록」이 여기로 간다. */
+export const INDEX_SHEET = '주석목록(생성)';
+
+/**
+ * 주석 시트 맨 위의 **「◀ 주석목록」** — 누르면 목록 시트로 돌아간다.
+ *
+ * 1행 B열에 둔다. 배치는 2행부터 시작하고 ③ 검증·④ 되돌리기가 보는 자리도 2행부터라
+ * 어디와도 겹치지 않는다(사용자 요청 2026-09-14).
+ */
+export function backLinkCell(): SheetCell {
+  return { row: 1, col: 2, text: '◀ 주석목록', kind: 'link', link: INDEX_SHEET };
+}
+
 export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions = {}): SheetPlan {
   const cells: SheetCell[] = [
+    backLinkCell(),
     { row: 2, col: 2, text: '주석명', kind: 'label' },
     { row: 2, col: 3, text: `${note.no}. ${note.title}`, kind: 'title' },
   ];
@@ -656,6 +671,7 @@ export function rollGrid(
 export function layoutNewNote(no: number | null, title: string, name: string): SheetPlan {
   const head = no != null ? `${no}. ${title}` : title;
   const cells: SheetCell[] = [
+    backLinkCell(),
     { row: 2, col: 2, text: '주석명', kind: 'label' },
     { row: 2, col: 3, text: head, kind: 'title' },
     { row: 3, col: 2, text: '새 주석', kind: 'label' },
@@ -671,7 +687,12 @@ export function layoutNewNote(no: number | null, title: string, name: string): S
 /** 빈 주석 시트에 마련해 두는 서술 줄 수. */
 export const NEW_NOTE_LINES = 8;
 
-/** 주석 목록 시트 — 정산표가 이미 쓰던 「주석번호 · 주석제목 · 사용여부」 그대로. */
+/**
+ * 주석 목록 시트 — 정산표가 이미 쓰던 「주석번호 · 주석제목 · 사용여부」 그대로.
+ *
+ * **제목을 누르면 그 주석 시트로 간다.** 주석이 스무 장이면 탭을 눈으로 찾는 일이 만만치
+ * 않다(사용자 요청 2026-09-14). 이 시트는 ② 가 **주석 1번 왼쪽**에 놓는다.
+ */
 export function layoutIndex(rows: { no: number | null; title: string; enabled: boolean; sheet: string }[]): SheetPlan {
   const cells: SheetCell[] = [
     { row: 2, col: 2, text: '주석번호', kind: 'head' },
@@ -682,9 +703,9 @@ export function layoutIndex(rows: { no: number | null; title: string; enabled: b
   rows.forEach((x, i) => {
     const r = 3 + i;
     if (x.no != null) cells.push({ row: r, col: 2, text: String(x.no), num: x.no, kind: 'num' });
-    cells.push({ row: r, col: 3, text: x.title, kind: 'text' });
+    cells.push({ row: r, col: 3, text: x.title, kind: 'link', link: x.sheet });
     cells.push({ row: r, col: 4, text: x.enabled ? 'O' : 'X', kind: 'text' });
     cells.push({ row: r, col: 5, text: x.sheet, kind: 'text' });
   });
-  return { name: '주석목록(생성)', cells, lastRow: 2 + rows.length };
+  return { name: INDEX_SHEET, cells, lastRow: 2 + rows.length };
 }

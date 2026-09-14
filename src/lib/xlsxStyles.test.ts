@@ -23,8 +23,8 @@ test('원본 서식은 앞에 그대로 남고 우리 것은 뒤에 붙는다', 
   assert.ok(xml.includes('<xf numFmtId="176" fontId="1" fillId="0" borderId="1" xfId="0"/>'));
   assert.ok(ids.label >= 4, `우리 것은 4번부터: ${ids.label}`);
   assert.deepEqual(
-    [ids.label, ids.title, ids.para, ids.head, ids.text, ids.num, ids.input],
-    [4, 5, 6, 7, 8, 9, 10],
+    [ids.label, ids.title, ids.para, ids.head, ids.text, ids.num, ids.input, ids.link],
+    [4, 5, 6, 7, 8, 9, 10, 11],
   );
 });
 
@@ -32,10 +32,10 @@ test('개수(count)를 함께 올린다 — 안 올리면 엑셀이 못 연다',
   const { xml } = addNoteStyles(EXISTING);
   const count = (tag: string) => Number(new RegExp(`<${tag}[^>]*count="(\\d+)"`).exec(xml)![1]);
   assert.equal(count('numFmts'), 3);        // 2 + 1
-  assert.equal(count('fonts'), 6);          // 3 + 3
+  assert.equal(count('fonts'), 7);          // 3 + 4(보통·굵게·제목·링크)
   assert.equal(count('fills'), 4);          // 2 + 2(머리 음영·입력 노랑)
   assert.equal(count('borders'), 3);        // 2 + 1
-  assert.equal(count('cellXfs'), 11);       // 4 + 7
+  assert.equal(count('cellXfs'), 12);       // 4 + 8
 });
 
 test('숫자꼴 번호가 이미 쓰는 것과 겹치지 않는다', () => {
