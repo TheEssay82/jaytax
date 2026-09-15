@@ -64,7 +64,7 @@ scripts\erp\month.cmd 2026-08
 전사 거래처 마스터   /apps/code/cvcode/cvlist.jsp
 ```
 
-### 다시 밟지 말아야 할 함정 넷
+### 다시 밟지 말아야 할 함정 여섯
 
 1. **[검색]이 질의이고 [조회]는 상세 진입이다.** 목록 화면의 질의는 `search('search')`,
    `doSubmit()` 은 고른 행의 상세로 넘어간다. doSubmit 을 질의로 부르면 rowcount 0 →
@@ -74,6 +74,11 @@ scripts\erp\month.cmd 2026-08
 3. **화면 로딩이 30초를 넘는다.** `waitUntil:'commit'` + 180초로 두고,
    `myform`·`xls_click` 이 준비됐는지로 완료를 판단한다.
 4. **엑셀 열 순서는 고정이 아니다.** 위치가 아니라 **열 이름**으로 찾을 것.
+5. **로그인 직후 바로 리포트로 가면 첫 리포트가 깨진다.** ERP 가 `erploggedin_dispatch.jsp` 를 거쳐
+   몇 번 더 화면을 옮기므로("interrupted by another navigation"), 비밀번호 칸이 사라진 뒤 가라앉을 때까지 기다린다.
+6. **크롬 다운로드에 기대지 않는다.** 감사팀 프로필에서 엑셀 다운로드 순간마다 크롬이 크래시했다(2026-09-15).
+   그래서 `/xls/xls_*.jsp` 응답을 `context.route` 로 가로채 파일로 쓴다 — 폼은 브라우저가 제출하므로 EUC-KR 도 보존된다.
+   크롬 다운로드 이벤트는 폴백으로만 남겨 두었다.
 
 ## 자동화로 가는 길 — 무엇이 걸리는가
 

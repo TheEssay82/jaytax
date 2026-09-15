@@ -125,9 +125,20 @@ async function waitLogin(page) {
   console.log('');
   for (let i = 0; i < 200; i++) {
     await page.waitForTimeout(1500);
-    if (await done()) { console.log('  ✓ 로그인 확인'); return; }
+    if (await done()) { console.log('  ✓ 로그인 확인'); await settle(page); return; }
   }
   throw new Error('로그인 대기 시간 초과');
+}
+
+/**
+ * 로그인 직후 ERP 는 erploggedin_dispatch.jsp 를 거쳐 몇 번 더 화면을 옮긴다.
+ * 비밀번호 칸이 사라진 순간 바로 리포트로 가면 "interrupted by another navigation" 으로
+ * 첫 리포트가 깨지고 그 뒤가 줄줄이 실패한다(2026-09-15 감사팀 수집). 그래서 가라앉을 때까지 기다린다.
+ */
+async function settle(page) {
+  await page.waitForLoadState('load', { timeout: 30000 }).catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(2000);
 }
 
 /**
@@ -181,7 +192,15 @@ const NAV_MS = 180000;   // 화면 열기·조회
 const DL_MS = 180000;    // 엑셀 생성·다운로드
 
 /** 응답 헤더만 받고 넘어간다(본문 생성이 느려도 멈추지 않게). */
-const open = (page, url) => page.goto(url, { waitUntil: 'commit', timeout: NAV_MS });
+const open = async (page, url) => {
+  try { return await page.goto(url, { waitUntil: 'commit', timeout: NAV_MS }); }
+  catch (e) {
+    // 앞 화면의 이동이 아직 진행 중이면 한 번 가라앉힌 뒤 다시 간다.
+    if (!/interrupted by another navigation|ERR_ABORTED/.test(e.message)) throw e;
+    await settle(page);
+    return page.goto(url, { waitUntil: 'commit', timeout: NAV_MS });
+  }
+};
 
 /** myform 과 xls_click 이 만들어질 때까지 기다린다. */
 const ready = (page, ms = NAV_MS) => page.waitForFunction(
@@ -229,14 +248,47 @@ function waitDownloadAnywhere(ctx, ms) {
 async function grab(page, clicks, filename) {
   const ctx = page.context();
   const list = Array.isArray(clicks) ? clicks : [clicks];
+  const dest = path.join(OUT_DIR, filename);
+
+  // 1) 엑셀 응답을 **네트워크에서 가로채** 파일로 쓴다.
+  //    크롬의 다운로드 경로를 타지 않는다 — 감사팀 프로필에서 다운로드 순간마다 크롬이 크래시했다
+  //    (2026-09-15, Crashpad 덤프 8개). 폼은 브라우저가 그대로 제출하므로 EUC-KR 인코딩도 보존된다.
+  const XLS_RE = new RegExp('[/]xls[/]xls_');
+  let captured = null;
+  const onXls = async (route) => {
+    try {
+      const resp = await route.fetch();
+      const body = await resp.body();
+      const h = resp.headers();
+      const ole = body.length > 512 && body[0] === 0xd0 && body[1] === 0xcf;
+      const isXls = ole || /attachment/i.test(h['content-disposition'] || '') || /excel|vnd[.]ms|octet-stream/i.test(h['content-type'] || '');
+      if (isXls) { captured = body; await route.fulfill({ status: 200, contentType: 'text/plain', body: 'ok' }); }
+      else { await route.fulfill({ response: resp }); }
+    } catch { await route.continue().catch(() => {}); }
+  };
+  await ctx.route(XLS_RE, onXls);
+  try {
+    for (let i = 0; i < list.length && !captured; i++) {
+      await page.evaluate(list[i]).catch(() => {});   // 제출로 컨텍스트가 날아가는 건 정상
+      const until = Date.now() + (i === list.length - 1 ? DL_MS : 45000);
+      while (!captured && Date.now() < until) await new Promise((r) => setTimeout(r, 500));
+      if (!captured && i < list.length - 1) console.log('    · 엑셀 호출 재시도…');
+    }
+  } finally { await ctx.unroute(XLS_RE, onXls).catch(() => {}); }
+  if (captured) {
+    fs.writeFileSync(dest, captured);
+    console.log(`  ✓ ${filename}  (${(captured.length / 1024).toFixed(0)} KB)`);
+    return dest;
+  }
+
+  // 2) 가로채지 못했으면 예전 방식 — 크롬 다운로드 이벤트를 기다린다.
   let lastErr = null;
   for (let i = 0; i < list.length; i++) {
     const last = i === list.length - 1;
     try {
       const wait = waitDownloadAnywhere(ctx, last ? DL_MS : 45000);
-      await page.evaluate(list[i]).catch(() => {});   // 제출로 컨텍스트가 날아가는 건 정상
+      await page.evaluate(list[i]).catch(() => {});
       const dl = await wait;
-      const dest = path.join(OUT_DIR, filename);
       await dl.saveAs(dest);
       console.log(`  ✓ ${filename}  (${(fs.statSync(dest).size / 1024).toFixed(0)} KB)`);
       return dest;
