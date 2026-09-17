@@ -73,15 +73,6 @@ export default function Login() {
           {busy ? '로그인 중…' : '로그인'}
         </button>
 
-        {/* 습작 열람(비로그인) 링크 — 한시적. 기고가 끝나면 이 블록을 지운다. 마이그레이션 0065 참고. */}
-        <div style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid #ece7dc', textAlign: 'center' }}>
-          <a
-            href="/e"
-            style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', textDecoration: 'none', letterSpacing: '0.02em' }}
-          >
-            습작 읽기 <span style={{ color: 'var(--gold)' }}>→</span>
-          </a>
-        </div>
       </form>
     </div>
   );
