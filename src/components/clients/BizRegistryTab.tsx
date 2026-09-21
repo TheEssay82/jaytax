@@ -32,7 +32,7 @@ import {
   revealAllResidents,
   revealRepResident,
   revealPlaceHometaxPw,
-  updateBizRepresentative,
+  updateBizRepresentative, setEntityRepType, setPrimaryRepresentative,
   revealAllHometaxPws,
   createBizRelation,
   deleteBizRelation,
@@ -58,6 +58,7 @@ import {
 } from '../../lib/bizRegistryApi';
 import { listPlaceContractStaff } from '../../lib/salesContractApi';
 import { ColFilter, useTableView, ColumnSettings, ResizeHandle, clip } from './tableKit';
+import DateParts from '../common/DateParts';
 import { VIEW_KEYS } from '../../lib/tableViewApi';
 
 const TAX_TYPES: TaxType[] = ['과세', '겸영', '면세'];
@@ -134,6 +135,12 @@ export default function BizRegistryTab() {
   const [showHelp, setShowHelp] = useState(false);
   const [addPlaceFor, setAddPlaceFor] = useState<BizEntityFull | null>(null);
   const [editEntity, setEditEntity] = useState<BizEntityFull | null>(null);
+  // 대표자를 저장한 뒤 목록(entities)이 새로 읽혀도 모달은 옛 객체를 보고 있었다 → 같은 거래처로 갈아끼운다.
+  useEffect(() => {
+    if (!editEntity) return;
+    const fresh = entities.find((x) => x.id === editEntity.id);
+    if (fresh && fresh !== editEntity) setEditEntity(fresh);
+  }, [entities]); // eslint-disable-line react-hooks/exhaustive-deps
   const [editPlace, setEditPlace] = useState<{ place: BizPlace; entity: BizEntityFull } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
@@ -200,11 +207,13 @@ export default function BizRegistryTab() {
   // 표(list)형 — 사업장 1행 플랫. 각 컬럼 val 로 필터·정렬. opts 있으면 필터가 드롭다운. (view 뒤에 선언 — 순서 중요)
   const COLUMNS: { key: string; label: string; val: (e: BizEntityFull, p: BizPlace | null) => string; w?: number; opts?: readonly string[] }[] = [
     { key: 'code', label: '코드', val: (e, p) => (p ? `${e.code}-${String(p.placeNo).padStart(2, '0')}` : e.code), w: 68 },
-    { key: 'status', label: '상태', val: (_e, p) => (p ? (p.status === '정상' ? '정상' : `${p.status}${p.statusMonth ? ` ${p.statusMonth}` : ''}`) : ''), w: 76, opts: PLACE_STATUSES },
+    { key: 'status', label: '상태', val: (_e, p) => p?.status ?? '', w: 56, opts: PLACE_STATUSES },
+    // 폐업·이관 귀속월은 상태 옆에 붙이지 않고 따로 둔다(2026-09-21 요청 — 상태 열이 날짜로 어지러웠다).
+    { key: 'statusMonth', label: '상태월', val: (_e, p) => p?.statusMonth ?? '', w: 62 },
     { key: 'kind', label: '구분', val: (e) => e.kind, w: 46, opts: ['법인', '개인'] },
     { key: 'place', label: '사업장명', val: (_e, p) => p?.placeName ?? '', w: 84 },
     { key: 'name', label: '상호/성명', val: (e) => corpDisplayName(e.name, e.corpForm, e.corpFormPosition), w: 150 },
-    { key: 'rep', label: '대표', val: (e) => e.representatives.map((r) => r.repName).join(','), w: 54 },
+    { key: 'rep', label: '대표', val: (e) => repNames(e.representatives), w: 54 },
     { key: 'resident', label: '주민번호', w: 112,
       val: (e) => (residents ? fmtRrn(residents.get(e.id) ?? '')
         : (e.kind === '개인' ? (e.hasResidentNo ? '등록됨' : '') : (e.representatives.some((r) => r.hasResidentNo) ? '등록됨' : ''))) },
@@ -399,7 +408,7 @@ export default function BizRegistryTab() {
     const reason = prompt(
       '주민등록번호·홈택스 비밀번호를 한 번에 펼칩니다.\n\n'
       + '무엇 때문에 필요한지 적어 주세요 — 접속기록에 그대로 남습니다.\n'
-      + '(예: 2026년 종합소득세 신고자료 작성)', '');
+      + '(예: 2026년 종합소득세 신고자료 작성)', '업무');   // 기본값 '업무' — 그냥 Enter 를 쳐도 된다(2026-09-21)
     if (reason === null) return;
     if (!reason.trim()) return alert('사유 없이는 펼칠 수 없습니다.');
     const failed: string[] = [];
@@ -524,7 +533,7 @@ export default function BizRegistryTab() {
                       </span>
                       {p.status !== '정상' && (
                         <span style={statusBadge(p.status)}>
-                          {p.status}{p.statusMonth ? ` ${p.statusMonth}` : ''}
+                          {p.status}
                           {p.status === '이관' && p.transferTo ? ` → ${p.transferTo}` : ''}
                         </span>
                       )}
@@ -781,7 +790,7 @@ function RegisterForm({
             <div className="frow"><span className="fl">법인등록번호</span>
               <input value={corpRegNo} onChange={(e) => setCorpRegNo(e.target.value)} placeholder="000000-0000000" /></div>
             <div className="frow"><span className="fl">설립일</span>
-              <input type="date" value={establishedDate} onChange={(e) => setEstablishedDate(e.target.value)} /></div>
+              <DateParts value={establishedDate} onChange={setEstablishedDate} /></div>
           </>
         ) : (
           <div className="frow"><span className="fl">주민등록번호 🔒</span>
@@ -872,14 +881,14 @@ function PlaceFieldsInline({ d, setD, staff, siblings = [] }: { d: PlaceDraft; s
         </>
       )}
       <div className="frow"><span className="fl">개업일</span>
-        <input type="date" value={d.openedDate} onChange={(e) => setD((p) => ({ ...p, openedDate: e.target.value }))} /></div>
+        <DateParts value={d.openedDate} onChange={(v) => setD((p) => ({ ...p, openedDate: v }))} /></div>
       <div className="frow"><span className="fl">상태<span className="req">*</span></span>
         <select value={d.status} onChange={(e) => setD((p) => ({ ...p, status: e.target.value as PlaceStatus }))} style={selStyle}>
           {PLACE_STATUSES.map((s) => <option key={s} value={s}>{s === '정상' ? '정상(현재 거래처)' : s}</option>)}
         </select></div>
       {(d.status === '폐업' || d.status === '이관') && (
         <div className="frow"><span className="fl">{d.status}귀속월<span className="req">*</span></span>
-          <input type="month" value={d.statusMonth} onChange={(e) => setD((p) => ({ ...p, statusMonth: e.target.value }))} /></div>
+          <DateParts mode="month" value={d.statusMonth} onChange={(v) => setD((p) => ({ ...p, statusMonth: v }))} /></div>
       )}
       {d.status === '이관' && (
         <>
@@ -970,7 +979,7 @@ function EntityEditForm({ entity, allEntities, canWrite, onChanged, onReveal, on
             <div className="frow"><span className="fl">법인등록번호</span>
               <input value={corpRegNo} onChange={(e) => setCorpRegNo(e.target.value)} placeholder="000000-0000000" /></div>
             <div className="frow"><span className="fl">설립일</span>
-              <input type="date" value={establishedDate} onChange={(e) => setEstablishedDate(e.target.value)} /></div>
+              <DateParts value={establishedDate} onChange={setEstablishedDate} /></div>
           </>
         ) : (
           <div className="frow"><span className="fl">주민등록번호 🔒</span>
@@ -1003,11 +1012,13 @@ function RepEditor({ entity, allEntities, canWrite, onChanged, onReveal }: {
   onReveal: (kind: 'entity' | 'rep' | 'hometax', id: string, label: string) => void;
 }) {
   const [reps, setReps] = useState(entity.representatives);
+  useEffect(() => setReps(entity.representatives), [entity.representatives]);   // 목록이 새로 읽히면 따라간다
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const persons = allEntities.filter((e) => e.kind === '개인');
 
-  const [nf, setNf] = useState({ repName: '', repType: '단독' as RepType, residentNo: '', linkedEntityId: '' });
+  // 새 대표의 형태는 이미 있는 대표를 따른다(형태는 거래처 단위).
+  const [nf, setNf] = useState({ repName: '', repType: (entity.representatives[0]?.repType ?? '단독') as RepType, residentNo: '', linkedEntityId: '' });
   const [ef, setEf] = useState<Record<string, { repName: string; repType: RepType; residentNo: string; linkedEntityId: string }>>({});
   // 고치는 중인 대표자가 있으면 화면을 옮길 때 먼저 묻는다.
   useUnsaved('biz-rep-edit', Object.keys(ef).length > 0, '대표자 수정');
@@ -1029,10 +1040,12 @@ function RepEditor({ entity, allEntities, canWrite, onChanged, onReveal }: {
       const id = await createBizRepresentative({
         entityId: entity.id, repName: nf.repName.trim(), repType: nf.repType,
         residentNo: nf.residentNo.trim(), linkedEntityId: nf.linkedEntityId || null,
+        isPrimary: reps.length === 0,   // 첫 대표는 곧 주 대표
       });
       setReps((p) => [...p, {
         id, entityId: entity.id, repName: nf.repName.trim(), repType: nf.repType,
         hasResidentNo: !!nf.residentNo.trim(), linkedEntityId: nf.linkedEntityId || null,
+        isPrimary: reps.length === 0,
       }]);
       setNf({ repName: '', repType: '단독', residentNo: '', linkedEntityId: '' });
       setAdding(false);
@@ -1046,12 +1059,22 @@ function RepEditor({ entity, allEntities, canWrite, onChanged, onReveal }: {
         repName: d.repName.trim(), repType: d.repType,
         linkedEntityId: d.linkedEntityId || null, residentNo: d.residentNo.trim(),
       });
+      // 형태(단독·공동·각자)는 거래처의 속성 — 한 줄에서 바꾸면 전원에 건다. 그래야 「공동대표 + 단독」이 안 생긴다.
+      if (reps.length > 1 && reps.some((x) => x.id !== r.id && x.repType !== d.repType)) await setEntityRepType(entity.id, d.repType);
       setReps((p) => p.map((x) => x.id === r.id ? {
         ...x, repName: d.repName.trim(), repType: d.repType,
         linkedEntityId: d.linkedEntityId || null,
         hasResidentNo: x.hasResidentNo || !!d.residentNo.trim(),
-      } : x));
+      } : { ...x, repType: d.repType }));
       setEf((p) => { const n = { ...p }; delete n[r.id]; return n; });
+    });
+  }
+  // 주 대표 — 공동·각자대표 중 우리 업무 상대방. 누르는 즉시 저장된다.
+  async function makePrimary(r: BizRepresentative) {
+    if (r.isPrimary) return;
+    await run(async () => {
+      await setPrimaryRepresentative(entity.id, r.id);
+      setReps((p) => p.map((x) => ({ ...x, isPrimary: x.id === r.id })));
     });
   }
   async function del(r: BizRepresentative) {
@@ -1067,7 +1090,8 @@ function RepEditor({ entity, allEntities, canWrite, onChanged, onReveal }: {
   return (
     <div style={{ borderTop: '1px dashed #ddd', paddingTop: 8, marginTop: 8 }}>
       <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 5 }}>
-        대표이사 <span style={{ color: 'var(--ink-4)' }}>· 주민번호는 암호화 저장됩니다. 이미 등록된 번호는 빈칸으로 두면 그대로 유지됩니다.</span>
+        대표이사 <span style={{ color: 'var(--ink-4)' }}>· 주민번호는 암호화 저장됩니다. 이미 등록된 번호는 빈칸으로 두면 그대로 유지됩니다.
+          {reps.length > 1 && ' · 형태(공동·각자)는 거래처 단위라 한 줄에서 바꿔 저장하면 전원에 적용됩니다. ★주 = 우리 업무 상대방.'}</span>
       </div>
 
       {reps.length === 0 && !adding && (
@@ -1079,6 +1103,13 @@ function RepEditor({ entity, allEntities, canWrite, onChanged, onReveal }: {
         const dirty = !!ef[r.id];
         return (
           <div key={r.id} style={box}>
+            {reps.length > 1 && (
+              <label title="주 대표 — 우리 업무 상대방(main role). 표·문서에 먼저 나온다."
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 'var(--fs-1)', color: r.isPrimary ? '#c80' : 'var(--ink-4)', cursor: canWrite ? 'pointer' : 'default' }}>
+                <input type="radio" name={`primary-${entity.id}`} checked={r.isPrimary} disabled={!canWrite || busy}
+                  onChange={() => void makePrimary(r)} style={{ margin: 0 }} />★주
+              </label>
+            )}
             <input value={d.repName} onChange={(e) => patch(r.id, 'repName', e.target.value)}
               placeholder="대표이사명" style={{ width: 110 }} disabled={!canWrite} />
             <select value={d.repType} onChange={(e) => patch(r.id, 'repType', e.target.value)}
@@ -1309,6 +1340,11 @@ const teamBadge: React.CSSProperties = { fontSize: 9.5, padding: '1px 5px', bord
 const natureBadge = (n: BizNature): React.CSSProperties => ({
   fontSize: 9.5, padding: '1px 5px', borderRadius: 3, color: '#fff', background: n === '매출' ? '#2a8' : '#999',
 });
+/** 표의 '대표' 열 — 주 대표를 앞에 두고, 여럿이면 ★ 을 붙인다. */
+function repNames(reps: BizRepresentative[]): string {
+  const sorted = [...reps].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+  return sorted.map((r) => (reps.length > 1 && r.isPrimary ? `★${r.repName}` : r.repName)).join(',');
+}
 // 상태 배지 — 폐업(회색)·이관(주황). '정상'은 배지를 표시하지 않는다.
 const statusBadge = (s: PlaceStatus): React.CSSProperties => ({
   fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, color: '#fff',

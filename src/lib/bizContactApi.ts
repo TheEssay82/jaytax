@@ -51,7 +51,7 @@ function toRow(c: Partial<ContactInput>): Record<string, unknown> {
   const s = (k: string, v: unknown) => { if (v !== undefined) r[k] = v; };
   // 이름 끝의 「님」은 저장할 때 뗀다 — 화면이 호칭을 따로 붙이므로 그냥 두면 두 번 붙는다.
   // 2026-09-05 에 실제로 47건이 「공나영 대표님 님」으로 보이고 있었다.
-  s('entity_id', c.entityId); s('place_id', c.placeId ?? undefined);
+  s('entity_id', c.entityId); s('place_id', c.placeId);   // null 도 값이다 — '전체(거래처 단위)'로 되돌릴 때 null 을 보내야 한다
   s('contact_name', c.contactName === undefined ? undefined : stripHonorific(c.contactName));
   s('honorific', c.honorific); s('position', c.position); s('phone', c.phone); s('fax', c.fax); s('email', c.email);
   s('address', c.address); s('is_primary', c.isPrimary); s('note', c.note);

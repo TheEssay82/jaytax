@@ -58,7 +58,7 @@ export default function ClientCard(
                     {p.isHeadquarters && <b>본사 </b>}{p.name || '(이름 없음)'}
                     {p.bizRegNo && <span className="cc-dim"> · {p.bizRegNo}</span>}
                     {p.status && p.status !== '정상' && (
-                      <span className="cc-warn"> · {p.status}{p.statusMonth && ` ${p.statusMonth}`}</span>
+                      <span className="cc-warn"> · {p.status}</span>
                     )}
                   </div>
                 ))}

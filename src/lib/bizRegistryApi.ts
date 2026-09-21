@@ -80,6 +80,8 @@ export interface BizRepresentative {
   hasResidentNo: boolean;
   /** 대표가 개인거래처면 연결된 개인 entity id. */
   linkedEntityId: string | null;
+  /** 주 대표 — 공동·각자대표 중 우리 업무 상대방(main role). 거래처당 한 명. */
+  isPrimary: boolean;
 }
 
 export interface BizPartner {
@@ -218,6 +220,7 @@ const toRep = (r: any): BizRepresentative => ({
   repType: r.rep_type,
   hasResidentNo: r.resident_no_enc != null,
   linkedEntityId: r.linked_entity_id,
+  isPrimary: !!r.is_primary,
 });
 const toPartner = (r: any): BizPartner => ({
   id: r.id,
@@ -450,6 +453,7 @@ export interface RepInput {
   repType?: RepType;
   linkedEntityId?: string | null;
   residentNo?: string;
+  isPrimary?: boolean;
 }
 export async function createBizRepresentative(input: RepInput): Promise<string> {
   const { data, error } = await supabase
@@ -459,6 +463,7 @@ export async function createBizRepresentative(input: RepInput): Promise<string> 
       rep_name: input.repName,
       rep_type: input.repType ?? '단독',
       linked_entity_id: input.linkedEntityId ?? null,
+      is_primary: !!input.isPrimary,
     })
     .select('id')
     .single();
@@ -483,6 +488,24 @@ export async function updateBizRepresentative(
   if (error) throw new Error(error.message);
   assertWrote(data, '수정');
   if (patch.residentNo && patch.residentNo.trim()) await setRepResident(id, patch.residentNo.trim());
+}
+
+/**
+ * 대표 형태(단독·공동대표·각자대표)는 사람이 아니라 **거래처의 속성**이다 — 한 줄만 바꾸면
+ * 「김대승 공동대표 · 안준헌 단독」처럼 어긋난다(리크리에이티브, 2026-09-21). 그래서 그 거래처의 대표 전원에 같이 건다.
+ */
+export async function setEntityRepType(entityId: string, repType: RepType): Promise<void> {
+  const { error } = await supabase.from('biz_representative').update({ rep_type: repType }).eq('entity_id', entityId);
+  if (error) throw new Error(error.message);
+}
+
+/** 주 대표를 한 사람으로 정한다. 같은 거래처의 다른 대표는 내린다(부분 유일 인덱스가 둘을 막는다). */
+export async function setPrimaryRepresentative(entityId: string, repId: string): Promise<void> {
+  const off = await supabase.from('biz_representative').update({ is_primary: false }).eq('entity_id', entityId).neq('id', repId);
+  if (off.error) throw new Error(off.error.message);
+  const { data, error } = await supabase.from('biz_representative').update({ is_primary: true }).eq('id', repId).select('id');
+  if (error) throw new Error(error.message);
+  assertWrote(data, '주 대표 지정');
 }
 
 export async function deleteBizRepresentative(id: string): Promise<void> {
