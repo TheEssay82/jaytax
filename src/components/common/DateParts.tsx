@@ -7,8 +7,8 @@
 //   · 값은 여전히 'YYYY-MM-DD'(월 모드 'YYYY-MM') 문자열 하나로 주고받는다 — 저장 로직은 그대로다
 // 붙여넣기(2026-09-21 · 20260921)는 연 칸에 넣으면 알아서 나눈다.
 import { useEffect, useRef, useState } from 'react';
+import { composeDateParts, type DatePartsMode as Mode } from '../../lib/dateParts';
 
-type Mode = 'date' | 'month';
 const digits = (s: string) => s.replace(/\D/g, '');
 const pad2 = (s: string) => (s.length === 1 ? '0' + s : s);
 
@@ -17,15 +17,6 @@ function split(value: string, mode: Mode): [string, string, string] {
   if (!m) return ['', '', ''];
   return [m[1], m[2], mode === 'date' ? (m[3] ?? '') : ''];
 }
-export function composeDateParts(y: string, m: string, d: string, mode: Mode): string {
-  if (y.length !== 4) return '';
-  const mm = Number(m), dd = Number(d);
-  if (!m || mm < 1 || mm > 12) return '';
-  if (mode === 'month') return `${y}-${pad2(m)}`;
-  if (!d || dd < 1 || dd > 31) return '';
-  return `${y}-${pad2(m)}-${pad2(d)}`;
-}
-
 /** Tab 처럼 — 문서에서 다음으로 초점을 받을 수 있는 요소로 옮긴다. */
 function focusNext(from: HTMLElement) {
   const all = Array.from(document.querySelectorAll<HTMLElement>(
@@ -36,8 +27,8 @@ function focusNext(from: HTMLElement) {
   if (next) { next.focus(); if (next instanceof HTMLInputElement) next.select(); }
 }
 
-export default function DateParts({ value, onChange, mode = 'date', disabled, style }: {
-  value: string; onChange: (v: string) => void; mode?: Mode; disabled?: boolean; style?: React.CSSProperties;
+export default function DateParts({ value, onChange, mode = 'date', disabled, style, title }: {
+  value: string; onChange: (v: string) => void; mode?: Mode; disabled?: boolean; style?: React.CSSProperties; title?: string;
 }) {
   const [y, setY] = useState(''); const [m, setM] = useState(''); const [d, setD] = useState('');
   const yRef = useRef<HTMLInputElement>(null); const mRef = useRef<HTMLInputElement>(null); const dRef = useRef<HTMLInputElement>(null);
@@ -88,7 +79,7 @@ export default function DateParts({ value, onChange, mode = 'date', disabled, st
 
   const cell: React.CSSProperties = { textAlign: 'center', padding: '2px 3px' };
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, ...style }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, ...style }} title={title}>
       <input ref={yRef} value={y} onChange={(e) => onYear(e.target.value)} onKeyDown={onKey(0)}
         placeholder="연" inputMode="numeric" maxLength={10} disabled={disabled} style={{ ...cell, width: 54 }} aria-label="연" />
       <span style={{ color: 'var(--ink-4)' }}>-</span>

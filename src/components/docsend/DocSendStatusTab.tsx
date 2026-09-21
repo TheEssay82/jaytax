@@ -16,6 +16,7 @@ import {
 import AttachmentsModal from './AttachmentsModal';
 import TrackingLink from './TrackingLink';
 import { exportSendStatus } from '../../lib/docSendExcel';
+import DateParts from '../common/DateParts';
 
 const statusStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
@@ -349,23 +350,9 @@ export default function DocSendStatusTab() {
           ))}
         </div>
 
-        <input
-          type="date"
-          value={from}
-          max={to || undefined}
-          onChange={(e) => { setFrom(e.target.value); setPreset('custom'); }}
-          style={{ fontSize: 'var(--fs-2)' }}
-          title="시작일"
-        />
+        <DateParts value={from} onChange={(v) => { setFrom(v); setPreset('custom'); }} style={{ fontSize: 'var(--fs-2)' }} title="시작일" />
         <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>~</span>
-        <input
-          type="date"
-          value={to}
-          min={from || undefined}
-          onChange={(e) => { setTo(e.target.value); setPreset('custom'); }}
-          style={{ fontSize: 'var(--fs-2)' }}
-          title="종료일"
-        />
+        <DateParts value={to} onChange={(v) => { setTo(v); setPreset('custom'); }} style={{ fontSize: 'var(--fs-2)' }} title="종료일" />
         {(from || to) && (
           <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }} onClick={() => applyPreset('all')}>
             ✕ 기간해제

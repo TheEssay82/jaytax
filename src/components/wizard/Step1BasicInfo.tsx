@@ -10,6 +10,7 @@ import {
 } from '../../lib/wizardHelpers';
 import { getRevForYear } from '../../lib/format';
 import type { WizardStepProps } from './stepProps';
+import DateParts from '../common/DateParts';
 
 export default function Step1BasicInfo({ clients, profiles }: WizardStepProps) {
   const { S, setS, replaceS } = useWizard();
@@ -118,7 +119,7 @@ export default function Step1BasicInfo({ clients, profiles }: WizardStepProps) {
         </div>
         <div className="frow">
           <span className="fl">발송일</span>
-          <input type="date" value={S.issuedDate} onChange={(e) => setS({ issuedDate: e.target.value })} />
+          <DateParts value={S.issuedDate} onChange={(v) => setS({ issuedDate: v })} />
         </div>
       </div>
 

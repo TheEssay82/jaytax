@@ -32,6 +32,7 @@ import NoteDsdCard from './NoteDsdCard';
 import {
   useDsdFile, DsdBar, DsdTabs, NeedDsd, NoteFromBar, type TabDef, type NoteFrom,
 } from './DsdShell';
+import DateParts from '../common/DateParts';
 
 const TABS: TabDef[] = [
   { key: '1', label: '① 대상', hint: '거래처·주석 목록' },
@@ -356,12 +357,10 @@ export default function DsdEngagementTab() {
                 </select>
               </Field>
               <Field label="대상기간">
-                <input className="btn-sm" type="date" value={picked.periodFrom ?? ''}
-                  onChange={(ev) => void updateEngagement(picked.id, { periodFrom: ev.target.value }).then(() => load(picked.id))} />
+                <DateParts value={picked.periodFrom ?? ''} onChange={(val) => { if (val) void updateEngagement(picked.id, { periodFrom: val }).then(() => load(picked.id)); }} />
               </Field>
               <Field label="~">
-                <input className="btn-sm" type="date" value={picked.periodTo ?? ''}
-                  onChange={(ev) => void updateEngagement(picked.id, { periodTo: ev.target.value }).then(() => load(picked.id))} />
+                <DateParts value={picked.periodTo ?? ''} onChange={(val) => { if (val) void updateEngagement(picked.id, { periodTo: val }).then(() => load(picked.id)); }} />
               </Field>
               <Field label="상태">
                 <select className="btn-sm" value={picked.status}

@@ -19,6 +19,7 @@ import {
 } from '../../lib/docSendApi';
 import AttachmentsModal from './AttachmentsModal';
 import TrackingLink from './TrackingLink';
+import DateParts from '../common/DateParts';
 
 const statusStyle = (s: string): React.CSSProperties => {
   if (s === '발송완료') return { background: '#D1FAE5', color: '#065F46' };
@@ -410,7 +411,7 @@ export default function DocSendProcessTab() {
 
           <label style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 4 }}>
             발송일
-            <input type="date" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
+            <DateParts value={bulkDate} onChange={(v) => setBulkDate(v)} style={{ fontSize: 'var(--fs-2)' }} />
           </label>
           <button
             className="btn-p"
@@ -506,7 +507,7 @@ function ProcessBox({ r, onSaveProgress, onComplete, onRevert, onChangeStatus }:
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div className="frow" style={{ minWidth: 170 }}>
             <span className="fl">발송일<span className="req">*</span></span>
-            <input type="date" value={sentDate} onChange={(e) => setSentDate(e.target.value)} />
+            <DateParts value={sentDate} onChange={(v) => setSentDate(v)} />
           </div>
           <div className="frow" style={{ minWidth: 220 }}>
             <span className="fl">등기번호 <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>(등기인 경우)</span></span>

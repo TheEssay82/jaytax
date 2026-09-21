@@ -18,6 +18,7 @@ import {
   type Confirmation,
 } from '../../lib/confirmApi';
 import ConfirmItemsModal from './ConfirmItemsModal';
+import DateParts from '../common/DateParts';
 
 /** 담당회계사 후보 — 최고관리자·회계사·인당회계사 */
 const ACCOUNTANT_ROLES = ['superuser', 'accountant', 'per_head_accountant'];
@@ -213,7 +214,7 @@ export default function ConfirmRegisterTab() {
 
           <div className="frow" style={{ minWidth: 160 }}>
             <span className="fl">조회발송기준일<span className="req">*</span></span>
-            <input type="date" value={baseDate} onChange={(e) => setBaseDate(e.target.value)} />
+            <DateParts value={baseDate} onChange={(v) => setBaseDate(v)} />
           </div>
 
           <div className="frow" style={{ minWidth: 150 }}>
@@ -434,7 +435,7 @@ function EditRow({
     <tr style={{ background: '#EEF6FF' }}>
       <td style={{ textAlign: 'center', fontSize: 'var(--fs-2)' }}>{row.fiscalYear}</td>
       <td style={{ fontSize: 'var(--fs-2)' }}>{row.companyName}</td>
-      <td><input type="date" value={baseDate} onChange={(e) => setBaseDate(e.target.value)} style={{ width: '100%', fontSize: 'var(--fs-1)' }} /></td>
+      <td><DateParts value={baseDate} onChange={(v) => setBaseDate(v)} style={{ width: '100%', fontSize: 'var(--fs-1)' }} /></td>
       <td>
         <select value={acctId} onChange={(e) => setAcctId(e.target.value)} style={{ width: '100%', fontSize: 'var(--fs-2)' }}>
           <option value="">선택</option>

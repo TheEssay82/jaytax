@@ -35,6 +35,7 @@ import {
 import { balanceOf, bucketOf, hasAnything } from '../../lib/receivableCalc';
 import { AgingPanel, AgingDetail } from './AgingPanel';
 import { AgingLedgerBox } from './AgingLedgerBox';
+import DateParts from '../common/DateParts';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 const dash = <span style={{ color: 'var(--ink-4)' }}>—</span>;
@@ -306,8 +307,7 @@ export default function ReceivableTab() {
     <div className="card">
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         💰 수금·미수금
-        <input type="month" value={ym} onChange={(e) => { if (e.target.value) setYm(e.target.value); }}
-          style={{ fontWeight: 700 }} title="이 달까지의 누계로 미수금을 계산합니다 — 아무 달이나 지정할 수 있습니다" />
+        <DateParts mode="month" value={ym} onChange={(v) => { if (v) setYm(v); }} style={{ fontWeight: 700 }} title="이 달까지의 누계로 미수금을 계산합니다 — 아무 달이나 지정할 수 있습니다" />
         <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
           까지 누계 · <b>VAT 포함</b>
         </span>

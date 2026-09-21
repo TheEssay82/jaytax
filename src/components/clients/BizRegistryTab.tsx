@@ -1345,10 +1345,10 @@ function repNames(reps: BizRepresentative[]): string {
   const sorted = [...reps].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
   return sorted.map((r) => (reps.length > 1 && r.isPrimary ? `★${r.repName}` : r.repName)).join(',');
 }
-// 상태 배지 — 폐업(회색)·이관(주황). '정상'은 배지를 표시하지 않는다.
+// 상태 배지 — 폐업(회색)·이관(주황)·종료(청회색). '정상'은 배지를 표시하지 않는다.
 const statusBadge = (s: PlaceStatus): React.CSSProperties => ({
   fontSize: 9.5, fontWeight: 700, padding: '1px 5px', borderRadius: 3, color: '#fff',
-  background: s === '폐업' ? '#888' : s === '이관' ? '#d1791f' : '#2a8',
+  background: s === '폐업' ? '#888' : s === '이관' ? '#d1791f' : s === '종료' ? '#5a6b8c' : '#2a8',
 });
 const staffChip = (on: boolean): React.CSSProperties => ({
   fontSize: 'var(--fs-0)', padding: '2px 7px', borderRadius: 10, cursor: 'pointer', border: '1px solid',

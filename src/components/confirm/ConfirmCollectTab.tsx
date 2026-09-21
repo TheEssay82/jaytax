@@ -22,6 +22,7 @@ import {
 } from '../../lib/confirmApi';
 import TrackingLink from '../docsend/TrackingLink';
 import { Bar } from './ConfirmDispatchTab';
+import DateParts from '../common/DateParts';
 
 
 /** 거래처 회수 단계 — 조회처 집계에서 파생 */
@@ -287,7 +288,7 @@ function ClientRows({
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
               <label style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 처리일
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
+                <DateParts value={date} onChange={(v) => setDate(v)} style={{ fontSize: 'var(--fs-2)' }} />
               </label>
               <button
                 className="btn-sm"

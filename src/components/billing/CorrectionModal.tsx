@@ -14,6 +14,7 @@ import Guide from '../common/Guide';
 import { createCorrection, ERP_ACCOUNTS, type InvoiceRequest } from '../../lib/invoiceRequestApi';
 import { corpDisplayName, type BizEntityFull } from '../../lib/bizRegistryApi';
 import { todayYmd } from '../../lib/format';
+import DateParts from '../common/DateParts';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 
@@ -151,8 +152,8 @@ export function CorrectionModal({ team, origin, entities, onClose, onSaved }: {
           )}
         </Row>
         <Row label="귀속월 · 발행일">
-          <input type="month" value={ym} onChange={(e) => e.target.value && setYm(e.target.value)} />
-          <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} />
+          <DateParts mode="month" value={ym} onChange={(v) => v && setYm(v)} />
+          <DateParts value={issuedDate} onChange={(v) => setIssuedDate(v)} />
         </Row>
         {!origin && (
           <>

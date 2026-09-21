@@ -9,6 +9,7 @@ import Guide from '../common/Guide';
 import { ERP_ACCOUNTS } from '../../lib/invoiceRequestApi';
 import { listEmailCandidates, isEmail, joinEmails, splitEmails } from '../../lib/taxEmailApi';
 import type { AuditProposal } from '../../lib/auditInvoiceApi';
+import DateParts from '../common/DateParts';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 const PHASES = ['계약금', '중도금', '잔금', '총액'] as const;
@@ -137,7 +138,7 @@ ${approver}에게 바로 알림이 갑니다. 진행할까요?`)) return;
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
           <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>작성일(발행기준일)</b>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
+          <DateParts value={date} onChange={(v) => setDate(v)} style={{ fontSize: 'var(--fs-2)' }} />
           <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>고른 건 모두에 같은 날짜로 들어갑니다.</span>
         </div>
 

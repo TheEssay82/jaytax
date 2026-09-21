@@ -10,6 +10,7 @@ import {
   listAccessLog, verifyAccessLog, ACTIONS, actionLabel,
   type AccessLogRow, type VerifyResult,
 } from '../../lib/accessLogApi';
+import DateParts from '../common/DateParts';
 
 // **현지 날짜**로 찍는다. toISOString() 은 UTC 라 새벽에 쓰면 어제로 잡혀
 // 오늘 기록이 조회에서 빠진다(한국은 UTC+9).
@@ -68,10 +69,10 @@ export default function AccessLogTab() {
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-end', margin: '10px 0' }}>
         <label style={{ fontSize: 'var(--fs-1)' }}>기간<br />
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <DateParts value={from} onChange={(v) => setFrom(v)} />
         </label>
         <label style={{ fontSize: 'var(--fs-1)' }}>~<br />
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          <DateParts value={to} onChange={(v) => setTo(v)} />
         </label>
         <label style={{ fontSize: 'var(--fs-1)' }}>사용자<br />
           <input value={actor} onChange={(e) => setActor(e.target.value)} placeholder="이름 일부" style={{ width: 110 }} />

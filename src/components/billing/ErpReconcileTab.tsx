@@ -17,6 +17,7 @@ import {
   matchSlips, markMatchedIssued, alignToErp, importErpOnly, importCorrection,
   type ErpSlip, type MatchRow, type MatchResult, type ReconcileState,
 } from '../../lib/erpReconcileApi';
+import DateParts from '../common/DateParts';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
 const prevMonth = () => {
@@ -246,7 +247,7 @@ export default function ErpReconcileTab() {
             right={canWrite && pending > 0 && (
               <>
                 <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>발행일</span>
-                <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
+                <DateParts value={issuedDate} onChange={(v) => setIssuedDate(v)} style={{ fontSize: 'var(--fs-2)' }} />
                 <button className="btn-p" disabled={busy}
                   onClick={() => void run(async () => { await markMatchedIssued(m.matched, issuedDate); }, '✓ 발행완료로 바꿨습니다')}>
                   모두 발행완료 ({pending}건)

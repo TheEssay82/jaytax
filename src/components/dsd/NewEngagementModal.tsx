@@ -10,6 +10,7 @@ import {
 } from '../../lib/dsdApi';
 import { suggestCode, defaultAuditFy, defaultPeriod, DEFAULT_STATUS } from '../../lib/dsdNotes';
 import { readDsd, type DsdInfo } from '../../lib/dsdFile';
+import DateParts from '../common/DateParts';
 
 /**
  * 새 작업 건 — **씨앗(무엇으로 주석 목록을 채울까)이 이 창의 핵심**이다.
@@ -175,11 +176,9 @@ export default function NewEngagementModal({ entities, auditIds, onClose, onDone
 
         <div className="frow"><span className="fl">대상기간<span className="req">*</span></span>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input className="btn-sm" type="date" value={period.from}
-              onChange={(e) => setPeriod((v) => ({ ...v, from: e.target.value }))} />
+            <DateParts value={period.from} onChange={(val) => setPeriod((p) => ({ ...p, from: val }))} />
             <span style={{ color: 'var(--ink-3)' }}>~</span>
-            <input className="btn-sm" type="date" value={period.to}
-              onChange={(e) => setPeriod((v) => ({ ...v, to: e.target.value }))} />
+            <DateParts value={period.to} onChange={(val) => setPeriod((p) => ({ ...p, to: val }))} />
             <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
               12월 결산이 아니거나 첫 사업연도면 고치세요
             </span>

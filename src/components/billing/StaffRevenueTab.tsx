@@ -26,6 +26,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { canSeeStaffCost } from '../../lib/staffCostApi';
 import BudgetTab from './BudgetTab';
+import DateParts from '../common/DateParts';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 const dimOf = (key: string): Dim => DIMS.find((d) => d.key === key) ?? DIMS[0];
@@ -214,11 +215,9 @@ function StatsPanel() {
           {fyOpts.map((y) => <option key={y} value={y}>{fyLabel(y)}</option>)}
           <option value="">기간 직접 지정</option>
         </select>
-        <input type="month" value={from} onChange={(e) => { if (e.target.value) { setFrom(e.target.value); setFy(''); } }}
-          style={{ fontWeight: 700 }} />
+        <DateParts mode="month" value={from} onChange={(v) => { if (v) { setFrom(v); setFy(''); } }} style={{ fontWeight: 700 }} />
         <span style={{ color: 'var(--ink-3)' }}>~</span>
-        <input type="month" value={to} onChange={(e) => { if (e.target.value) { setTo(e.target.value); setFy(''); } }}
-          style={{ fontWeight: 700 }} />
+        <DateParts mode="month" value={to} onChange={(v) => { if (v) { setTo(v); setFy(''); } }} style={{ fontWeight: 700 }} />
         <select value={team} onChange={(e) => setTeam(e.target.value)}>
           <option value="">전체 팀</option>
           <option value="taxteam">taxteam</option>

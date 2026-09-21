@@ -39,6 +39,7 @@ import {
   getMonthState, openMonth, resetMonth, notifyCheckers, markMyCheck, clearMyCheck, setFinalConfirm,
   issueDateOf, pastIssueDay, CHECKERS, FINAL_APPROVER, type MonthState,
 } from '../../lib/invoiceMonthApi';
+import DateParts from '../common/DateParts';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
 const dash = <span style={{ color: 'var(--ink-4)' }}>—</span>;
@@ -891,7 +892,7 @@ ${noContract ? `
               <button className="btn-sm" onClick={() => setPickReq(new Set())}>선택해제</button>
               <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>선택 <b>{pickedReqs.length}</b>건</span>
               <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>발행일</span>
-              <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
+              <DateParts value={issuedDate} onChange={(v) => setIssuedDate(v)} style={{ fontSize: 'var(--fs-2)' }} />
               <button className="btn-p" disabled={busy || !pickedReqs.length || !isApprover} onClick={() => void doIssue()}
                 title={isApprover ? '' : `발행완료는 ${FINAL_APPROVER}(부재 시 기장팀장·최고관리자)만 처리합니다`}>
                 발행완료 처리

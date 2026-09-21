@@ -30,6 +30,7 @@ import {
   type SalesContract, type ContractInput, type Installment, type Discount,
   type OccurrenceUnit, type BillingUnit, type BillingCycle, type AdvisoryType, type StaffProfileLite,
 } from '../../lib/salesContractApi';
+import DateParts from '../common/DateParts';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
 // 연환산 계수(청구주기→연 횟수). 월환산 = 연환산/12.
@@ -600,13 +601,13 @@ export default function SalesContractTab() {
             )}
             {groupBy && periodMode === 'range' && (
               <>
-                <input type="month" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} style={selStyle} title="시작월" />
+                <DateParts mode="month" value={periodFrom} onChange={(v) => setPeriodFrom(v)} style={selStyle} title="시작월" />
                 <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>~</span>
-                <input type="month" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} style={selStyle} title="종료월" />
+                <DateParts mode="month" value={periodTo} onChange={(v) => setPeriodTo(v)} style={selStyle} title="종료월" />
               </>
             )}
             {groupBy && periodMode === 'month' && (
-              <input type="month" value={periodMonth} onChange={(e) => setPeriodMonth(e.target.value)} style={selStyle} title="대상월" />
+              <DateParts mode="month" value={periodMonth} onChange={(v) => setPeriodMonth(v)} style={selStyle} title="대상월" />
             )}
             {groupBy && periodMode !== 'month' && (
               <label style={{ fontSize: 'var(--fs-1)', color: '#667', display: 'flex', alignItems: 'center', gap: 3 }} title="집계 상한을 이번 달까지로 제한(경과분만)">
@@ -1194,7 +1195,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
           <div className="frow" style={{ gridColumn: '1 / -1' }}>
             <span className="fl">담당 변경 적용월</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <input type="month" value={f.staffApplyMonth} onChange={(e) => set('staffApplyMonth', e.target.value)} style={{ width: 150 }} />
+              <DateParts mode="month" value={f.staffApplyMonth} onChange={(v) => set('staffApplyMonth', v)} style={{ width: 150 }} />
               <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
                 매월 청구하는 계약이라 <b>담당이 바뀐 달</b>을 적어야 그 전 달 청구가 누구 담당이었는지 남습니다.
                 비우면 이력 없이 지금 담당을 통째로 바꿉니다.
@@ -1221,11 +1222,11 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
       {/* 날짜: 계약일(일) + 개시·종료(월) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0 14px', marginTop: 8 }}>
         <div className="frow"><span className="fl">매출계약일</span>
-          <input type="date" value={f.contractDate} onChange={(e) => pickContractDate(e.target.value)} /></div>
+          <DateParts value={f.contractDate} onChange={(v) => pickContractDate(v)} /></div>
         <div className="frow"><span className="fl">매출개시월</span>
-          <input type="month" value={f.startDate} onChange={(e) => set('startDate', e.target.value)} /></div>
+          <DateParts mode="month" value={f.startDate} onChange={(v) => set('startDate', v)} /></div>
         <div className="frow"><span className="fl">종료월(비움=계속)</span>
-          <input type="month" value={f.endDate} onChange={(e) => pickEndMonth(e.target.value)} /></div>
+          <DateParts mode="month" value={f.endDate} onChange={(v) => pickEndMonth(v)} /></div>
         <label
           style={{ gridColumn: '1 / -1', fontSize: 'var(--fs-1)', color: f.confirmed ? '#666' : '#92400E', display: 'flex', alignItems: 'center', gap: 5, marginTop: 4, fontWeight: f.confirmed ? 400 : 700 }}
           title="아직 체결되지 않은(예산·검토용) 계약이면 체크를 해제하세요. 목록에서 '미계약'으로 걸러볼 수 있습니다."
@@ -1307,7 +1308,7 @@ function InstallmentsEditor({ rows, onChange, sum, target }: { rows: Installment
         <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 3, flexWrap: 'wrap', alignItems: 'center' }}>
           <input value={r.label} onChange={(e) => upd(i, { label: e.target.value })} placeholder="명칭(계약금/중도금1차/잔금)" style={{ width: 160 }} />
           <input value={r.amount ? String(r.amount) : ''} onChange={(e) => upd(i, { amount: Number(e.target.value.replace(/\D/g, '')) })} placeholder="금액" style={{ width: 110 }} />
-          <input type="date" value={r.dueDate ?? ''} onChange={(e) => upd(i, { dueDate: e.target.value || null })} />
+          <DateParts value={r.dueDate ?? ''} onChange={(v) => upd(i, { dueDate: v || null })} />
           <input value={r.conditionNote} onChange={(e) => upd(i, { conditionNote: e.target.value })} placeholder="조건메모(착수 시 등)" style={{ width: 150 }} />
           <label style={{ fontSize: 'var(--fs-0)', display: 'flex', gap: 3, alignItems: 'center', color: r.billedAt ? '#2a7' : '#999' }}>
             <input type="checkbox" checked={!!r.billedAt} onChange={(e) => upd(i, { billedAt: e.target.checked ? new Date().toISOString() : null })} /> 청구완료
@@ -1329,9 +1330,9 @@ function DiscountsEditor({ rows, onChange }: { rows: Discount[]; onChange: (r: D
       {rows.map((r, i) => (
         <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 3, flexWrap: 'wrap', alignItems: 'center' }}>
           <select value={r.discType} onChange={(e) => upd(i, { discType: e.target.value as '무료' | '할인' })} style={selStyle}><option>무료</option><option>할인</option></select>
-          <input type="date" value={r.startDate ?? ''} onChange={(e) => upd(i, { startDate: e.target.value || null })} />
+          <DateParts value={r.startDate ?? ''} onChange={(v) => upd(i, { startDate: v || null })} />
           <span style={{ fontSize: 'var(--fs-1)' }}>~</span>
-          <input type="date" value={r.endDate ?? ''} onChange={(e) => upd(i, { endDate: e.target.value || null })} />
+          <DateParts value={r.endDate ?? ''} onChange={(v) => upd(i, { endDate: v || null })} />
           {r.discType === '할인' && <input value={r.rate != null ? String(r.rate) : ''} onChange={(e) => upd(i, { rate: e.target.value ? Number(e.target.value) : null })} placeholder="할인율%" style={{ width: 70 }} />}
           {r.discType === '할인' && <input value={r.amount != null ? String(r.amount) : ''} onChange={(e) => upd(i, { amount: e.target.value ? Number(e.target.value.replace(/\D/g, '')) : null })} placeholder="또는 할인액" style={{ width: 100 }} />}
           <input value={r.note} onChange={(e) => upd(i, { note: e.target.value })} placeholder="메모" style={{ width: 120 }} />

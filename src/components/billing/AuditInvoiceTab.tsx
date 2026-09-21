@@ -41,6 +41,7 @@ import { DetailLinesEditor } from './DetailLinesEditor';
 import { savePlaceTaxEmails, recordEmailUse, joinEmails, splitEmails } from '../../lib/taxEmailApi';
 import { listSalesContracts, type SalesContract } from '../../lib/salesContractApi';
 import { VIEW_KEYS } from '../../lib/tableViewApi';
+import DateParts from '../common/DateParts';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
 const dash = <span style={{ color: 'var(--ink-4)' }}>—</span>;
@@ -698,7 +699,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
                   style={{ width: '100%', textAlign: 'right' }} />
               </Field>
               <Field label="작성일(발행기준일)" width={130}>
-                <input type="date" value={f.issueDate} onChange={(e) => set('issueDate', e.target.value)} style={{ width: '100%' }} />
+                <DateParts value={f.issueDate} onChange={(v) => set('issueDate', v)} style={{ width: '100%' }} />
               </Field>
             </div>
             {cum && (
@@ -782,7 +783,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
               <button className="btn-sm" onClick={() => setPickR(new Set())}>선택해제</button>
               <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)' }}>선택 <b>{pickedR.length}</b>건</span>
               <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>발행일</span>
-              <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} style={{ fontSize: 'var(--fs-2)' }} />
+              <DateParts value={issuedDate} onChange={(v) => setIssuedDate(v)} style={{ fontSize: 'var(--fs-2)' }} />
               <button className="btn-p" disabled={busy || !pickedR.length || !isApprover} onClick={() => void issuePicked()}
                 title={isApprover ? '' : `발행완료는 ${FINAL_APPROVER}(부재 시 기장팀장·최고관리자)만 처리합니다`}>
                 발행완료 처리

@@ -37,6 +37,7 @@ import {
 import { listAuditLog, auditChanges, type DocAudit } from '../../lib/docClientsApi';
 import AttachmentsModal, { fmtSize } from './AttachmentsModal';
 import TrackingLink from './TrackingLink';
+import DateParts from '../common/DateParts';
 
 const dtTime = (s?: string): string => {
   if (!s) return '';
@@ -473,7 +474,7 @@ function CommonFields({ c, setC }: { c: SendCommon; setC: (patch: Partial<SendCo
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0 14px' }}>
       <div className="frow">
         <span className="fl">의뢰일자<span className="req">*</span></span>
-        <input type="date" value={c.requestDate} onChange={(e) => setC({ requestDate: e.target.value })} />
+        <DateParts value={c.requestDate} onChange={(v) => setC({ requestDate: v })} />
       </div>
       <div className="frow">
         <span className="fl">의뢰인<span className="req">*</span></span>
