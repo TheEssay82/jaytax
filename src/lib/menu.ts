@@ -34,7 +34,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     id: 'billing-req',
     label: '기장등청구관리',
     items: [
-      { id: 'invoice-request', label: '🧾 발행요청 · taxteam' },
+      { id: 'invoice-request', label: '🧾 발행요청 · 기장팀' },
       { id: 'audit-invoice', label: '🧾 발행요청 · 감사팀' },
       { id: 'erp-reconcile', label: '📥 ERP 발행내역 대사' },
       { id: 'receivable', label: '💰 수금·미수금' },

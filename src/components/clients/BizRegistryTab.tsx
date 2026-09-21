@@ -60,6 +60,7 @@ import { listPlaceContractStaff } from '../../lib/salesContractApi';
 import { ColFilter, useTableView, ColumnSettings, ResizeHandle, clip } from './tableKit';
 import DateParts from '../common/DateParts';
 import { VIEW_KEYS } from '../../lib/tableViewApi';
+import { teamLabel } from '../../lib/teams';
 
 const TAX_TYPES: TaxType[] = ['과세', '겸영', '면세'];
 const WITHHOLDINGS: Withholding[] = ['월별', '반기별', 'N/A'];
@@ -223,7 +224,7 @@ export default function BizRegistryTab() {
     { key: 'htpw', label: '홈텍스PW', w: 82, opts: ['있음'],
       val: (_e, p) => (hometaxPws ? (p ? hometaxPws.get(p.id) ?? '' : '') : (p?.hasHometaxPw ? '있음' : '')) },
     { key: 'nature', label: '성격', val: (_e, p) => p?.nature ?? '', w: 50, opts: ['매출', '일반'] },
-    { key: 'teams', label: '매출팀', val: (_e, p) => (p?.salesTeams ?? []).join(','), w: 88, opts: SALES_TEAMS },
+    { key: 'teams', label: '매출팀', val: (_e, p) => (p?.salesTeams ?? []).map(teamLabel).join(','), w: 88, opts: SALES_TEAMS.map(teamLabel) },
     { key: 'tax', label: '과세', val: (_e, p) => p?.taxType ?? '', w: 50, opts: TAX_TYPES },
     { key: 'wht', label: '원천', val: (_e, p) => p?.withholding ?? '', w: 56, opts: WITHHOLDINGS },
     { key: 'cpa', label: '담당CPA', val: (_e, p) => p?.cpa ?? '', w: 66, opts: CPA_OPTIONS },
@@ -527,7 +528,7 @@ export default function BizRegistryTab() {
                       <b style={{ fontSize: 'var(--fs-2)' }}>{p.placeName}</b>
                       {p.unitTaxation && <span style={unitBadge} title={p.filingPlaceId ? '사업자단위과세(지점)' : '사업자단위과세'}>단위과세</span>}
                       <span style={natureBadge(p.nature)}>{p.nature}</span>
-                      {p.nature === '매출' && p.salesTeams.map((t) => <span key={t} style={teamBadge}>{t}</span>)}
+                      {p.nature === '매출' && p.salesTeams.map((t) => <span key={t} style={teamBadge}>{teamLabel(t)}</span>)}
                       <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
                         {p.noBiz ? '🚫 사업자없음' : p.bizRegNo || '사업자번호 미입력'}
                       </span>
@@ -864,7 +865,7 @@ function PlaceFieldsInline({ d, setD, staff, siblings = [] }: { d: PlaceDraft; s
         <span style={{ display: 'flex', gap: 8 }}>
           {SALES_TEAMS.map((t) => (
             <label key={t} style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 3, alignItems: 'center', opacity: d.nature === '매출' ? 1 : 0.4 }}>
-              <input type="checkbox" disabled={d.nature !== '매출'} checked={d.salesTeams.includes(t)} onChange={() => toggleTeam(t)} />{t}
+              <input type="checkbox" disabled={d.nature !== '매출'} checked={d.salesTeams.includes(t)} onChange={() => toggleTeam(t)} />{teamLabel(t)}
             </label>
           ))}
         </span></div>
@@ -1288,7 +1289,7 @@ function BizHelpContent() {
         <li style={li}>법인명(필수)·법인등록번호·설립일 입력</li>
         <li style={li}><b>본사 사업장(필수)</b>: 사업장명·<b>본점/지점</b>·사업자번호. 폐업/무사업자면 <b>사업자없음</b> 체크</li>
         <li style={li}><b>사업자단위과세</b>면 체크하고, 지점이면 신고기준(본점) 사업장을 선택</li>
-        <li style={li}><b>성격</b> 매출/일반 선택 → 매출이면 매출팀(감사/tax) 체크. <b style={b}>taxteam 체크 시에만</b> 과세유형·원천세 입력칸이 나타납니다</li>
+        <li style={li}><b>성격</b> 매출/일반 선택 → 매출이면 매출팀(감사/tax) 체크. <b style={b}>기장팀 체크 시에만</b> 과세유형·원천세 입력칸이 나타납니다</li>
         <li style={li}>개업일·담당CPA(입력하면 자동완성)·홈텍스ID/PW(🔒 암호화 저장)·담당직원 칩 선택 → <b>거래처 등록</b></li>
         <li style={li}>등록되면 코드가 자동 부여됩니다 (법인 <b>L0001</b> / 개인 <b>I0001</b>, 사업장은 <b>L0001-01</b>)</li>
       </ul>
@@ -1310,7 +1311,7 @@ function BizHelpContent() {
 
       <div style={h}>4. 성격 구분</div>
       <ul style={{ margin: 0, paddingLeft: 18 }}>
-        <li style={li}><b>매출거래처</b>: 매출이 발생하는 곳 (감사team / taxteam)</li>
+        <li style={li}><b>매출거래처</b>: 매출이 발생하는 곳 (감사팀 / 기장팀)</li>
         <li style={li}><b>일반(비매출)</b>: 문서발송 등 정보관리만 하는 곳도 등록 가능</li>
       </ul>
 
@@ -1318,7 +1319,7 @@ function BizHelpContent() {
       <ul style={{ margin: 0, paddingLeft: 18 }}>
         <li style={li}>같은 거래처 안에서 <b>사업장명 중복 불가</b>, <b>본사는 1개</b>, 사업자번호는 전역 중복 불가</li>
         <li style={li}>거래처 삭제 시 사업장·담당자·대표이사·공동사업자가 <b>함께 삭제</b>됩니다</li>
-        <li style={li}>과세유형·원천세는 <b>taxteam 계약</b>에만 필요합니다</li>
+        <li style={li}>과세유형·원천세는 <b>기장팀 계약</b>에만 필요합니다</li>
       </ul>
     </div>
   );

@@ -48,7 +48,7 @@ function uploadSummary(us: UploadState[]): string {
     const l = by(t);
     return l.length ? `${label} ${l[0]}${l.length > 1 ? `~${l[l.length - 1]}` : ''} (${l.length}개월)` : '';
   };
-  return [part('taxteam', '기장24팀'), part('감사team', '2본부5팀')].filter(Boolean).join(' · ');
+  return [part('taxteam', '기장팀'), part('감사team', '감사팀')].filter(Boolean).join(' · ');
 }
 /** 'YYYY-MM' 을 n 달 옮긴다. */
 const shiftYm = (ym: string, n: number) => {
@@ -317,8 +317,8 @@ export default function ReceivableTab() {
           <button className="btn-sm" onClick={() => setYm(shiftYm(ym, 1))} title="한 달 뒤로">▶</button>
         </span>
         <select value={team} onChange={(e) => setTeam(e.target.value)} style={{ fontWeight: 700 }}>
-          <option value="taxteam">taxteam (기장24팀)</option>
-          <option value="감사team">감사팀 (2본부5팀)</option>
+          <option value="taxteam">기장팀</option>
+          <option value="감사team">감사팀</option>
         </select>
         {mineOnly && <span className="mine-tag">내 것만</span>}
         {msg && <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-2)', color: 'var(--good)' }}>{msg}</span>}
@@ -383,7 +383,7 @@ export default function ReceivableTab() {
                 {[...uploads].sort((a, b) => (b.ym + b.team).localeCompare(a.ym + a.team)).map((u) => (
                   <tr key={u.ym + u.team} style={{ background: u.ym === ym && u.team === team ? '#fdfaf3' : undefined }}>
                     <td style={{ fontWeight: 700 }}>{u.ym}</td>
-                    <td>{u.team === 'taxteam' ? '기장24팀' : '2본부5팀'}</td>
+                    <td>{u.team === 'taxteam' ? '기장팀' : '감사팀'}</td>
                     <td style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>{u.fileName}</td>
                     <td className="r">{u.rowCount}</td>
                     <td className="r" style={{ fontWeight: 700 }}>{won(u.amountTotal)}</td>
@@ -413,8 +413,8 @@ export default function ReceivableTab() {
           }}>
           <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: up ? '#92400E' : '#1A2B52' }}>
             {up
-              ? `${ym} ${team === 'taxteam' ? '기장24팀' : '2본부5팀'} 원장은 이미 올렸습니다 — 다시 올리면 덮어씁니다`
-              : `${ym} ${team === 'taxteam' ? '기장24팀' : '2본부5팀'} 부서별원장 엑셀을 끌어다 놓으세요`}
+              ? `${ym} ${team === 'taxteam' ? '기장팀' : '감사팀'} 원장은 이미 올렸습니다 — 다시 올리면 덮어씁니다`
+              : `${ym} ${team === 'taxteam' ? '기장팀' : '감사팀'} 부서별원장 엑셀을 끌어다 놓으세요`}
           </div>
           <div style={{ fontSize: 'var(--fs-1)', color: '#777', lineHeight: 1.7, marginTop: 4 }}>
             인덕 ERP ▸ 부서별원장 ▸ 기간 {ym}-01 ~ 말일 ▸ 조회 ▸ 엑셀 — <b>외상매출금</b> 시트를 읽습니다.
@@ -434,7 +434,7 @@ export default function ReceivableTab() {
           </div>
           {up && (
             <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
-              ⚠️ <b>{ym} {team === 'taxteam' ? '기장24팀' : '2본부5팀'} 원장은 이미 올려져 있습니다</b>
+              ⚠️ <b>{ym} {team === 'taxteam' ? '기장팀' : '감사팀'} 원장은 이미 올려져 있습니다</b>
               {' '}({up.fileName} · 입금 {up.rowCount}건 {won(up.amountTotal)} · {up.uploadedAt.slice(0, 10)}{up.uploadedBy && ` ${up.uploadedBy}`}).
               <br />저장하면 <b>그 달 입금을 지우고 이 파일로 바꿉니다</b> — 같은 파일이면 결과는 같고, 다른 파일이면 이전 것은 사라집니다.
               {up.rowCount === preview.rows.length && Math.round(up.amountTotal) === Math.round(preview.creditTotal)

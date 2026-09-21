@@ -349,7 +349,7 @@ function BudgetPanel({ onSetup }: { onSetup: (name: string) => void }) {
           ))}
         </select>
         <select value={team} onChange={(e) => setTeam(e.target.value)}>
-          <option value="taxteam">taxteam</option>
+          <option value="taxteam">기장팀</option>
           <option value="감사team">감사팀</option>
         </select>
         {isAudit ? (

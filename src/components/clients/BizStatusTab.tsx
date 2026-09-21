@@ -20,6 +20,7 @@ import { ChurnRiskPanel, InflowPanel } from './RiskPanel';
 import { listInvoiceRequests } from '../../lib/invoiceRequestApi';
 import { todayYmd } from '../../lib/format';
 import { listActualsForYear, type MonthlyActual } from '../../lib/revenueActualApi';
+import { teamLabel } from '../../lib/teams';
 
 const TEAMS = ['감사team', 'taxteam'] as const;
 
@@ -235,7 +236,7 @@ export default function BizStatusTab() {
             <tbody>
               {TEAMS.map((t) => (
                 <tr key={t} style={{ borderTop: '1px solid #E7ECF3' }}>
-                  <td style={{ ...tdc, fontWeight: 600, position: 'sticky', left: 0, background: '#F8FAFD' }}>{t}</td>
+                  <td style={{ ...tdc, fontWeight: 600, position: 'sticky', left: 0, background: '#F8FAFD' }}>{teamLabel(t)}</td>
                   {trend.months.map((m) => { const v = trend.byTeam.get(t)!.get(m) ?? 0; return <td key={m} style={{ ...tdc, textAlign: 'right', color: v ? (m > todayMonth ? '#9bb' : '#245') : '#ccc' }}>{v ? won(v) : '·'}</td>; })}
                   <td style={{ ...tdc, textAlign: 'right', fontWeight: 700, borderLeft: '2px solid #C3CEDC' }}>{won(trend.teamTotal(t))}</td>
                 </tr>

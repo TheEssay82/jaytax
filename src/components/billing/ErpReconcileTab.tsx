@@ -129,8 +129,8 @@ export default function ErpReconcileTab() {
         </select>
         <select value={team} onChange={(e) => setTeam(e.target.value)} style={{ fontWeight: 700 }}
           title="한 달에 두 팀 파일이 따로 올라옵니다. 팀마다 따로 대사합니다.">
-          <option value="taxteam">taxteam (기장24팀)</option>
-          <option value="감사team">감사팀 (2본부5팀)</option>
+          <option value="taxteam">기장팀</option>
+          <option value="감사team">감사팀</option>
         </select>
         <span style={{ display: 'flex', gap: 4 }}>
           <Step n={1} label="① 파일" /><Step n={2} label="② 확인" /><Step n={3} label="③ 처리" /><Step n={4} label="④ 마감" />
@@ -158,7 +158,7 @@ export default function ErpReconcileTab() {
           </div>
           <div style={{ fontSize: 'var(--fs-1)', color: '#777', lineHeight: 1.7 }}>
             인덕 ERP ▸ 회계관리 ▸ <b>거래전표 리스트</b> ▸ 기간 {ym}-01 ~ {ym} 말일 ▸
-            부서 <b>{team === 'taxteam' ? '기장24팀' : '2본부5팀'}</b> ▸ <b>검색</b> ▸ <b>엑셀</b><br />
+            부서 <b>{team === 'taxteam' ? '기장팀' : '감사팀'}</b> ▸ <b>검색</b> ▸ <b>엑셀</b><br />
             내려받은 파일을 그대로 올리시면 됩니다. 매입 전표는 자동으로 걸러냅니다.<br />
             <span style={{ color: 'var(--ink-3)' }}>파일을 고르기만 하고 아직 저장하지 않습니다 — 내용을 먼저 보여드립니다.</span>
           </div>
@@ -181,7 +181,7 @@ export default function ErpReconcileTab() {
           </div>
           {preview.fileTeam && preview.fileTeam !== team && (
             <div className="alert-w" style={{ fontSize: 'var(--fs-1)', marginBottom: 8 }}>
-              이 파일은 <b>{preview.fileTeam === 'taxteam' ? 'taxteam (기장24팀)' : '감사팀 (2본부5팀)'}</b> 자료로 보입니다.
+              이 파일은 <b>{preview.fileTeam === 'taxteam' ? '기장팀' : '감사팀'}</b> 자료로 보입니다.
               지금 고른 팀과 다릅니다 — 위에서 팀을 바꾸고 다시 올리시거나, 파일을 확인해 주세요.
             </div>
           )}
@@ -394,9 +394,9 @@ const CASES: { tag: string; title: string; why: string; fix: string; ex: string 
   {
     tag: '팀',
     title: '감사팀 발행이 섞여 보일 때',
-    why: 'ERP 파일을 뽑을 때 부서를 기장24팀으로 좁히지 않으면 감사팀 전표까지 들어옵니다.',
-    fix: 'ERP 거래전표 화면에서 부서를 기장24팀으로 고르고 다시 내려받으세요. 감사팀 건은 「발행요청 · 감사팀」에서 따로 관리합니다.',
-    ex: '2026-08 ㈜오톰 회계감사 중도금 10,000,000 이 taxteam 목록에 섞여 들어온 적이 있습니다.',
+    why: 'ERP 파일을 뽑을 때 부서를 기장팀으로 좁히지 않으면 감사팀 전표까지 들어옵니다.',
+    fix: 'ERP 거래전표 화면에서 부서를 기장팀으로 고르고 다시 내려받으세요. 감사팀 건은 「발행요청 · 감사팀」에서 따로 관리합니다.',
+    ex: '2026-08 ㈜오톰 회계감사 중도금 10,000,000 이 기장팀 목록에 섞여 들어온 적이 있습니다.',
   },
 ];
 

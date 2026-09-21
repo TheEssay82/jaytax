@@ -31,6 +31,7 @@ import {
   type OccurrenceUnit, type BillingUnit, type BillingCycle, type AdvisoryType, type StaffProfileLite,
 } from '../../lib/salesContractApi';
 import DateParts from '../common/DateParts';
+import { teamLabel } from '../../lib/teams';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
 // 연환산 계수(청구주기→연 횟수). 월환산 = 연환산/12.
@@ -217,7 +218,7 @@ export default function SalesContractTab() {
     { key: 'confirmed', label: '계약상태', val: (c) => (c.confirmed ? '확정' : '미계약'), w: 70, opts: ['확정', '미계약'] },
     { key: 'code', label: '거래처', val: (c) => entMap.get(c.entityId)?.code ?? '', w: 56 },
     { key: 'name', label: '거래처명', val: (c) => { const e = entMap.get(c.entityId); return e ? corpDisplayName(e.name, e.corpForm, e.corpFormPosition) : ''; }, w: 150 },
-    { key: 'team', label: '팀', val: (c) => c.team, w: 66, opts: ['감사team', 'taxteam'] },
+    { key: 'team', label: '팀', val: (c) => teamLabel(c.team), w: 66, opts: ['감사팀', '기장팀'] },
     { key: 'type', label: '매출유형', val: (c) => pathLabel(c.categoryCode) + (c.categoryEtcName ? ` (${c.categoryEtcName})` : ''), w: 200 },
     { key: 'occ', label: '발생단위', val: (c) => c.occurrenceUnit + (c.placeId ? `/${placeName(c.entityId, c.placeId)}` : ''), w: 100 },
     { key: 'cycle', label: '주기', val: (c) => c.billingCycle + (c.isInstallment ? '·분할' : ''), w: 66, opts: BILLING_CYCLES },
@@ -557,7 +558,7 @@ export default function SalesContractTab() {
         {viewMode === 'box' && (
           <>
             <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value as '' | Team)} style={selStyle}>
-              <option value="">팀 전체</option><option value="감사team">감사team</option><option value="taxteam">taxteam</option>
+              <option value="">팀 전체</option><option value="감사team">감사팀</option><option value="taxteam">기장팀</option>
             </select>
             <input placeholder="🔍 거래처·매출유형·CPA" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
           </>
@@ -630,7 +631,7 @@ export default function SalesContractTab() {
           <div className="modal-box" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontWeight: 700, color: 'var(--navy)', marginBottom: 8 }}>세무조정 계약도 함께 등록할까요?</div>
             <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.6, marginBottom: 10 }}>
-              방금 등록한 계약이 <b>taxteam · 담당 {TAX_ADJ_CPA}</b> 이라, 같은 거래처의{' '}
+              방금 등록한 계약이 <b>기장팀 · 담당 {TAX_ADJ_CPA}</b> 이라, 같은 거래처의{' '}
               <b>{taxOffer.code === 'TAX.FILING.CORP' ? '법인세' : '종합소득세'}</b> 계약도 대개 함께 생깁니다.
               여기서 등록해 두면 <b>세무조정 대상선정</b>에서 바로 가져올 수 있습니다.
               <div style={{ marginTop: 6, color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>
@@ -680,7 +681,7 @@ export default function SalesContractTab() {
                 {c.parentContractId && <span style={{ fontSize: 'var(--fs-0)', color: '#a80' }}>↳종속</span>}
                 {c.contractCode && <span style={{ fontSize: 'var(--fs-0)', fontFamily: 'monospace', color: '#667', background: '#f2f0ea', padding: '1px 5px', borderRadius: 3 }}>{c.contractCode}{c.dateEstimated && ' ·추정'}</span>}
                 {!c.confirmed && <span style={{ fontSize: 'var(--fs-0)', fontWeight: 700, color: 'var(--warn)', background: '#FEF3C7', border: '1px solid #FCD34D', padding: '1px 5px', borderRadius: 3 }}>미계약</span>}
-                <span style={teamBadge(c.team)}>{c.team}</span>
+                <span style={teamBadge(c.team)}>{teamLabel(c.team)}</span>
                 <b style={{ fontSize: 'var(--fs-2)' }}>{entName(c.entityId)}</b>
                 {c.placeId && <span style={{ fontSize: 'var(--fs-1)', color: '#777' }}>· {placeName(c.entityId, c.placeId)}</span>}
                 <span style={{ fontSize: 'var(--fs-1)', color: '#456' }}>{pathLabel(c.categoryCode)}{c.categoryEtcName && ` (${c.categoryEtcName})`}</span>
@@ -897,18 +898,18 @@ function CodeHelpModal({ onClose }: { onClose: () => void }) {
           <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
             <li><b>사업장코드</b>: 발생단위=사업장이면 사업장순번(01), 법인·개인 전체는 <b>00</b></li>
             <li><b>자동갱신</b>: 종료일 없음 = <b>R</b>(자동갱신) · 있음 = <b>F</b>(재계약)</li>
-            <li><b>팀코드</b>: 감사team = <b>A</b> · taxteam = <b>T</b></li>
+            <li><b>팀코드</b>: 감사팀 = <b>A</b> · 기장팀 = <b>T</b></li>
             <li><b>시작연도</b>: 개시연도 · <b>순번</b>: 동일 조합 내 일련번호</li>
             <li>표에 <b>·추정</b> 표시 = 정보관리 시작(2026-07) 이전이라 개시/종료일이 추정값</li>
           </ul>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <div>
-            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 4 }}>🅰 감사team (팀코드 A)</div>
+            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 4 }}>🅰 감사팀 (팀코드 A)</div>
             <table style={{ width: '100%', fontSize: 'var(--fs-1)', borderCollapse: 'collapse' }}><tbody>{aud.map((t) => <Row key={t.mnemonic + t.label} t={t} />)}</tbody></table>
           </div>
           <div>
-            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 4 }}>🆃 taxteam (팀코드 T)</div>
+            <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--ink-2)', marginBottom: 4 }}>🆃 기장팀 (팀코드 T)</div>
             <table style={{ width: '100%', fontSize: 'var(--fs-1)', borderCollapse: 'collapse' }}><tbody>{tax.map((t) => <Row key={t.mnemonic + t.label} t={t} />)}</tbody></table>
           </div>
         </div>
@@ -1093,7 +1094,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
       <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#345', margin: '10px 0 4px' }}>· 매출유형</div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         {(['감사team', 'taxteam'] as Team[]).map((t) => (
-          <button key={t} type="button" onClick={() => setF((p) => ({ ...p, team: t, categoryCode: '' }))} className={f.team === t ? 'btn-p' : 'btn-sm'}>{t}</button>
+          <button key={t} type="button" onClick={() => setF((p) => ({ ...p, team: t, categoryCode: '' }))} className={f.team === t ? 'btn-p' : 'btn-sm'}>{teamLabel(t)}</button>
         ))}
         <TaxonomyPicker team={f.team} code={f.categoryCode} onPick={pickCategory} />
       </div>

@@ -10,6 +10,7 @@ import {
 import { contractTypeOptions, findNode, leafOf } from './salesContractTaxonomy';
 import type { BizEntityFull } from './bizRegistryApi';
 import { FONT, FILL_HEADER, frame, setWidths, saveWorkbook } from './confirmExcelStyle';
+import { teamLabel } from './teams';
 
 async function loadExcelJS() {
   const mod = await import('exceljs');
@@ -34,7 +35,7 @@ const COLS: ColMeta[] = [
   { h: '사업장명(비우면 본사)', w: 16 },
   { h: '본점/지점', w: 9 },
   { h: '상태(정상/폐업/이관)', w: 13 },
-  { h: '매출팀(감사team,taxteam)', w: 16 },
+  { h: '매출팀(감사팀,기장팀)', w: 16 },
   { h: '매출유형(필수)', w: 30, typeRef: true },
   { h: '기타명칭', w: 14 },
   { h: '발생단위', w: 10, list: OCC },
@@ -99,7 +100,7 @@ export async function exportContractTemplate(entities: BizEntityFull[], contract
   const rows: { values: (string | number)[]; existing: boolean }[] = [];
   for (const e of entities) {
     for (const p of e.places) {
-      const ref = [e.code, e.name, e.kind, p.placeName, p.branchType ?? '', p.status, p.salesTeams.join(',')];
+      const ref = [e.code, e.name, e.kind, p.placeName, p.branchType ?? '', p.status, p.salesTeams.map(teamLabel).join(',')];
       const cs = conByPlace.get(p.id) ?? [];
       if (cs.length) for (const c of cs) rows.push({ values: [c.contractCode || '', ...ref, ...contractCells(c)], existing: true });
       else rows.push({ values: ['', ...ref, ...new Array(CONTRACT_COL_COUNT).fill('')], existing: false });

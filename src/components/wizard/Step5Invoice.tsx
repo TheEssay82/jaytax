@@ -31,7 +31,7 @@ export default function Step5Invoice({ clients, refreshClients, refreshBilling }
     // 거래처를 고르지 않은 직접입력 건은 매출계약에 붙을 수가 없다 — 확정 전에 한 번 알린다.
     if (isFinalizer && !S.selClientId) {
       const ok = confirm(
-        '거래처를 선택하지 않은 직접입력 건입니다. 이대로 확정하면 매출계약에 잡히지 않아 taxteam 매출집계에서 빠집니다. 계속할까요?',
+        '거래처를 선택하지 않은 직접입력 건입니다. 이대로 확정하면 매출계약에 잡히지 않아 기장팀 매출집계에서 빠집니다. 계속할까요?',
       );
       if (!ok) return;
     }

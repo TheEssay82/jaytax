@@ -7,7 +7,7 @@ import { useState } from 'react';
 import type { ArRead, ArUpload } from '../../lib/arLedgerApi';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
-const teamLabel = (t: string) => (t === 'taxteam' ? '기장24팀' : '2본부5팀');
+const teamLabel = (t: string) => (t === 'taxteam' ? '기장팀' : '감사팀');
 
 export interface PlaceOption { id: string | null; entityId: string; label: string }
 

@@ -9,6 +9,7 @@ import { contractFiscalYear, type SalesContract, type BillingCycle } from '../..
 import { pathLabel, type Team } from '../../lib/salesContractTaxonomy';
 import { periodRevenue, toNet } from '../../lib/billingSchedule';
 import { listBudgetRenewals, createBudgetRenewal, updateBudgetRenewal, type BudgetRenewal } from '../../lib/budgetApi';
+import { teamLabel } from '../../lib/teams';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
 const TEAMS: Team[] = ['감사team', 'taxteam'];
@@ -136,7 +137,7 @@ export default function BudgetPanel({ contracts, entMap }: { contracts: SalesCon
         <tbody>
           {TEAMS.map((t) => (
             <tr key={t} style={{ borderTop: '1px solid #e0e8d2' }}>
-              <td style={{ ...tdc, fontWeight: 600 }}>{t}</td>
+              <td style={{ ...tdc, fontWeight: 600 }}>{teamLabel(t)}</td>
               <td style={{ ...tdc, textAlign: 'right' }}>{won(confirmed[t] ?? 0)}</td>
               <td style={{ ...tdc, textAlign: 'right' }}>{won(renewByTeam[t] ?? 0)}</td>
               <td style={{ ...tdc, textAlign: 'right', fontWeight: 700, color: '#254' }}>{won((confirmed[t] ?? 0) + (renewByTeam[t] ?? 0))}</td>
@@ -174,7 +175,7 @@ export default function BudgetPanel({ contracts, entMap }: { contracts: SalesCon
                   </td>
                   <td style={{ ...tdc, fontWeight: 600 }}>{entName(r.entityId)}{r.alreadyRegistered && <span style={{ marginLeft: 5, fontSize: 9.5, color: '#a80', background: '#fdf3e0', padding: '0 4px', borderRadius: 3 }} title={`${year} 귀속에 동일 거래처·유형 계약이 이미 등록되어 확정분에 포함됨(중복 방지 위해 기본 제외)`}>이미등록</span>}</td>
                   <td style={tdc}>{r.label}</td>
-                  <td style={tdc}>{r.team}</td>
+                  <td style={tdc}>{teamLabel(r.team)}</td>
                   <td style={{ ...tdc, textAlign: 'right', color: 'var(--ink-3)' }}>{won(r.priorNet)}</td>
                   <td style={{ ...tdc, textAlign: 'right' }}>
                     {canEdit ? (

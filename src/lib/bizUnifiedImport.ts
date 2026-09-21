@@ -22,6 +22,7 @@ import {
   type BillingCycle,
 } from './salesContractApi';
 import { createBizContact, listBizContacts } from './bizContactApi';
+import { teamCodeOf } from './teams';
 
 const norm = (s: string) => (s || '').replace(/\D/g, '');
 /** 사업자번호 정제 — 숫자 10자리 이상일 때만 유효값, 아니면(''·'-' 등) 빈값(=null 저장, 중복충돌 방지). */
@@ -34,7 +35,7 @@ const asTax = (s: string): TaxType | null => (['과세', '겸영', '면세'] as 
 const asWht = (s: string): Withholding | null => (['월별', '반기별', 'N/A'] as string[]).includes(s) ? (s as Withholding) : null;
 const asCycle = (s: string): BillingCycle => (['월', '분기', '반기', '연', '발생시', '건'] as string[]).includes(s) ? (s as BillingCycle) : '월';
 const isO = (s: string) => /^(o|y|예|true|1|✓)$/i.test((s || '').trim());
-const parseTeams = (s: string): SalesTeam[] => (s || '').split(/[,\s]+/).map((x) => x.trim()).filter((x) => x === '감사team' || x === 'taxteam') as SalesTeam[];
+const parseTeams = (s: string): SalesTeam[] => [...new Set((s || '').split(/[,/·\s]+/).map((x) => teamCodeOf(x)).filter((x): x is SalesTeam => !!x))];
 
 // ── 시트 파싱 (SheetJS) ──
 /* eslint-disable @typescript-eslint/no-explicit-any */

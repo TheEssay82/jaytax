@@ -11,7 +11,7 @@ type Role = 'approver' | 'staff' | 'cpa';
 
 const TABS: { key: Role; label: string; who: string }[] = [
   { key: 'approver', label: `📮 ${FINAL_APPROVER} (발행 담당)`, who: '세금계산서를 실제로 발행하는 사람' },
-  { key: 'staff', label: '🧑‍💻 taxteam 담당직원', who: `${CHECKERS.join('·')}` },
+  { key: 'staff', label: '🧑‍💻 기장팀 담당직원', who: `${CHECKERS.join('·')}` },
   { key: 'cpa', label: '👔 담당 회계사 (감사팀)', who: '감사·용역 건을 요청하는 사람' },
 ];
 
@@ -70,8 +70,8 @@ function Approver() {
         {ISSUE_DAY}일 전에 열어 두고, 담당자 확인을 받은 뒤 등록하고, ERP에서 발행한 뒤 닫습니다.
       </Lead>
 
-      <H>taxteam — 매달 하는 일</H>
-      <Step n="1" t={`${ISSUE_DAY}일 전, 그 달을 연다`} where="발행요청 · taxteam">
+      <H>기장팀 — 매달 하는 일</H>
+      <Step n="1" t={`${ISSUE_DAY}일 전, 그 달을 연다`} where="발행요청 · 기장팀">
         <b>[📂 당월 전개 + 확인요청]</b> 한 번이면 됩니다. <b>전월 세금계산서가 그대로 복사</b>되어
         ① 청구예정이 되고, {CHECKERS.join('·')}에게 확인 알림이 갑니다.
         <br />엑셀에서 전월 열을 복사해 붙이던 그 일을 대신하는 것입니다. 계약에서 새로 계산하지 않습니다.
@@ -128,7 +128,7 @@ function Staff() {
         고친 내용은 자동으로 기록되니 따로 보고하지 않아도 됩니다.
       </Lead>
 
-      <Step n="1" t="알림을 받고 들어간다" where="발행요청 · taxteam">
+      <Step n="1" t="알림을 받고 들어간다" where="발행요청 · 기장팀">
         매달 {FINAL_APPROVER}가 그 달을 열면 알림이 옵니다. ① 청구예정에 <b>전월 세금계산서가 그대로</b> 들어와 있습니다.
       </Step>
       <Step n="2" t="내 것만 추린다">

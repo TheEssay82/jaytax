@@ -220,7 +220,7 @@ function StatsPanel() {
         <DateParts mode="month" value={to} onChange={(v) => { if (v) { setTo(v); setFy(''); } }} style={{ fontWeight: 700 }} />
         <select value={team} onChange={(e) => setTeam(e.target.value)}>
           <option value="">전체 팀</option>
-          <option value="taxteam">taxteam</option>
+          <option value="taxteam">기장팀</option>
           <option value="감사team">감사팀</option>
         </select>
         <select value={basis} onChange={(e) => setBasis(e.target.value as 'actual' | 'forecast')}

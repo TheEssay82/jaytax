@@ -10,6 +10,7 @@ import {
   type StaffStatus, type TaxType, type Withholding, type StaffProfile,
 } from './bizRegistryApi';
 import { FONT, FILL_HEADER, frame, setWidths, saveWorkbook } from './confirmExcelStyle';
+import { teamLabel, teamCodeOf } from './teams';
 
 /** ExcelJS 동적 로드 (CJS interop) */
 async function loadExcelJS() {
@@ -37,7 +38,7 @@ const COLS: ColMeta[] = [
   { h: '귀속월(YYYY-MM)', w: 13 },
   { h: '사업장주소', w: 28 },
   { h: '성격(매출/일반)', w: 12, list: ['매출', '일반'], strict: true },
-  { h: '매출팀(감사team,taxteam)', w: 20 },
+  { h: '매출팀(감사팀,기장팀)', w: 20 },
   { h: '과세유형', w: 12, list: ['과세', '겸영', '면세'], strict: true },
   { h: '원천세', w: 12, list: ['월별', '반기별', 'N/A'], strict: true },
   { h: '개업일(YYYY-MM-DD)', w: 15 },
@@ -77,7 +78,7 @@ export async function exportBizRegistry(entities: BizEntityFull[]): Promise<void
       ws.addRow([
         placeCode(e, p.placeNo), e.kind, e.name, e.corpForm ?? '', e.corpFormPosition ?? '',
         e.corpRegNo, '', e.establishedDate ?? '', p.placeName, p.branchType ?? '',
-        p.bizRegNo, p.noBiz ? 'O' : '', p.status, p.statusMonth, p.address, p.nature, p.salesTeams.join(','),
+        p.bizRegNo, p.noBiz ? 'O' : '', p.status, p.statusMonth, p.address, p.nature, p.salesTeams.map(teamLabel).join(','),
         p.taxType ?? '', p.withholding ?? '', p.openedDate ?? '', p.unitTaxation ? 'O' : '',
         p.cpa, p.hometaxId, '',
         p.staff.length ? p.staff.map((s) => s.staffName).filter(Boolean).join(',') : (p.staffStatus ?? ''), p.note,
@@ -201,7 +202,8 @@ const asStaffStatus = (s: string): StaffStatus | undefined => {
   if (/^n\/?a$/i.test(t)) return 'N/A';
   return (STAFF_STATUSES as string[]).includes(t) ? (t as StaffStatus) : undefined;
 };
-const parseTeams = (s: string): SalesTeam[] => s.split(/[,\s]+/).map((x) => x.trim()).filter((x) => x === '감사team' || x === 'taxteam') as SalesTeam[];
+// 표기(기장팀·감사팀)도, 옛 코드(taxteam·감사team)도, ERP 부서명도 받는다.
+const parseTeams = (s: string): SalesTeam[] => [...new Set(s.split(/[,/·\s]+/).map((x) => teamCodeOf(x)).filter((x): x is SalesTeam => !!x))];
 
 /** 파싱된 행 적용 — 코드 있으면 upsert(보강), 없으면 신규 등록. 빈 칸은 미변경. */
 export async function applyBizExcel(rows: ExcelRow[], entities: BizEntityFull[], staff: StaffProfile[]): Promise<ExcelApplyResult> {
