@@ -10,12 +10,9 @@
 // 자동 전개 시점이 어긋난다. 대신 24일이 지나면 화면이 알림을 권한다.
 import { supabase } from './supabase';
 
-/** taxteam 월 확인 담당자 — 이 3인이 각자 확인을 눌러야 최종확인이 열린다. */
-export const CHECKERS = ['김민섭', '김동주', '정남지'] as const;
-/** 최종확인·발행완료를 누를 수 있는 사람. 김민섭이 원칙이고 부재 시 팀장·최고관리자. */
-export const FINAL_APPROVER = '김민섭';
-/** taxteam 작성일(발행기준일)은 매월 24일 고정. */
-export const ISSUE_DAY = 24;
+// 사람·규칙은 순수 모듈(invoiceRoles)에 두고 여기서 다시 내보낸다 — 기존 import 경로를 그대로 쓰려고.
+export { CHECKERS, FINAL_APPROVER, ISSUE_DAY, defaultAuditInvoicePane, type AuditInvoicePane } from './invoiceRoles';
+import { CHECKERS, ISSUE_DAY } from './invoiceRoles';
 
 export interface MonthCheck { userId: string; name: string; checkedAt: string; note: string }
 export interface MonthState {

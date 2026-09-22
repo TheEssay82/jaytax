@@ -11,7 +11,7 @@
 //
 // 월 셀렉터는 두지 않는다 — 감사팀은 '이 달 것'이라는 개념이 약하고, 기한이 지난 건은
 // 몇 달 전 것이라도 지금 청구한다. 기간은 3층의 조회 조건일 뿐이다.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getMineOnly } from '../../lib/mineOnly';
 import Loading from '../common/Loading';
 import Guide from '../common/Guide';
@@ -30,7 +30,7 @@ import {
   listAuditProposals, notifyProposals, notifyRequested, notifyIssued, notifyCanceled, dismissProposals,
   AUDIT_TEAM, type AuditProposal,
 } from '../../lib/auditInvoiceApi';
-import { FINAL_APPROVER } from '../../lib/invoiceMonthApi';
+import { FINAL_APPROVER, defaultAuditInvoicePane, type AuditInvoicePane } from '../../lib/invoiceMonthApi';
 import { Grid, GridExport, useGrid, type GridCol } from './grid';
 import { ProposalRequestModal, type ProposalEdit } from './ProposalRequestModal';
 import { ColumnSettings } from '../clients/tableKit';
@@ -107,7 +107,16 @@ export default function AuditInvoiceTab() {
    *   발행  = ③ 발행 처리                      (김민섭이 끊는 자리)
    *   이력  = ④ 발행 이력                      (끝난 것을 보는 자리)
    */
-  const [pane, setPane] = useState<'request' | 'issue' | 'history'>('request');
+  // 발행 담당(김민섭)은 이 화면에 「끊으러」 들어온다 — 그 사람만 🖨️ 발행 처리로 열어 준다(2026-09-22 지시).
+  const [pane, setPane] = useState<AuditInvoicePane>(defaultAuditInvoicePane(profileName));
+  // 이름은 세션보다 한 박자 늦게 온다(AuthContext 가 세션을 먼저 놓고 프로필을 뒤따라 읽는다).
+  // 그 사이 이 화면이 먼저 뜨면 기본값이 '요청'으로 굳으므로, 이름이 도착하면 한 번만 바로잡는다.
+  // 사람이 탭을 누른 뒤에는 건드리지 않는다.
+  const paneTouched = useRef(false);
+  const pickPane = (k: AuditInvoicePane) => { paneTouched.current = true; setPane(k); };
+  useEffect(() => {
+    if (!paneTouched.current) setPane(defaultAuditInvoicePane(profileName));
+  }, [profileName]);
 
   const [f, setF] = useState({
     company: '', entityId: '', placeId: '', amount: '', account: '회계감사수입',
@@ -556,7 +565,7 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
           ['issue', '🖨️ 발행 처리', working.length],
           ['history', '📜 발행 이력', reqs.filter((r) => r.status === '발행완료').length],
         ] as const).map(([k, label, n]) => (
-          <button key={k} className={pane === k ? 'btn-p' : 'btn-sm'} onClick={() => setPane(k)}>
+          <button key={k} className={pane === k ? 'btn-p' : 'btn-sm'} onClick={() => pickPane(k)}>
             {label}{n > 0 && <span style={{ fontWeight: 400, opacity: .8 }}> {n}</span>}
           </button>
         ))}
