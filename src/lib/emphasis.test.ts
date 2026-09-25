@@ -62,6 +62,15 @@ test('괄호·별표가 섞여 있어도 안쪽 글은 그대로 살린다', () 
   assert.equal(got[1].text, '별표(**)가 그대로 보이던 것');
 });
 
+test('<b>…</b> 도 강조로 읽는다 — 「b…/b」 가 새어 나오면 안 된다', () => {
+  const got = emphasize('<b>표에서</b> 고치면 <b>표로</b> 돌아옵니다');
+  assert.deepEqual(got, [
+    { text: '표에서', em: true }, { text: ' 고치면 ', em: false },
+    { text: '표로', em: true }, { text: ' 돌아옵니다', em: false },
+  ]);
+  assert.equal(plain('<b>계약금액</b>에 쉼표'), '계약금액에 쉼표');
+});
+
 test('plain — 강조 표시를 걷어낸 맨 글', () => {
   assert.equal(plain('앞 <강조> 뒤'), '앞 강조 뒤');
   assert.equal(plain('강조 없음'), '강조 없음');

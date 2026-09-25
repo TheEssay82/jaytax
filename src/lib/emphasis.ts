@@ -20,8 +20,11 @@ export interface Piece {
  */
 export function emphasize(text: string): Piece[] {
   const out: Piece[] = [];
+  // 「<b>…</b>」 로 적은 것도 강조다 — 백로그 글과 같은 버릇으로 개발노트에도 44줄을 그렇게 적었다가
+  // 「b…/b」 로 새어 나왔다(2026-09-26 발견). 꺾쇠 한 쌍으로 바꿔 같은 길을 태운다.
+  const src = String(text ?? '').replace(/<b>([^<>]*)<\/b>/g, '<$1>');
   // split 의 캡처 그룹은 홀수 자리에 들어온다 — 그 자리가 꺾쇠 안이다.
-  const parts = String(text ?? '').split(/<([^<>]*)>/);
+  const parts = src.split(/<([^<>]*)>/);
   for (let i = 0; i < parts.length; i += 1) {
     const t = parts[i];
     if (!t) continue;               // 빈 조각은 버린다(꺾쇠가 맨 앞·뒤일 때 생긴다)
