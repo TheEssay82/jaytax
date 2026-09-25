@@ -34,6 +34,12 @@ import DateParts from '../common/DateParts';
 import { teamLabel } from '../../lib/teams';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
+/** 입력칸에 보이는 금액 — 세 자리마다 쉼표. 저장은 숫자만(persist 가 쉼표를 뗀다). */
+const commaNum = (s: string) => {
+  const n = Number(String(s ?? '').replace(/,/g, ''));
+  return s && Number.isFinite(n) ? Math.round(n).toLocaleString('ko-KR') : '';
+};
+const digitsOnly = (s: string) => s.replace(/[^\d]/g, '');
 // 연환산 계수(청구주기→연 횟수). 월환산 = 연환산/12.
 const CYCLE_ANN: Record<string, number> = { '월': 12, '분기': 4, '반기': 2, '연': 1, '발생시': 1, '건': 1 };
 const annualize = (c: SalesContract) => c.amount * (CYCLE_ANN[c.billingCycle] ?? 1);
@@ -130,6 +136,29 @@ export default function SalesContractTab() {
   useEscape(() => setTaxOffer(null), !!taxOffer);
   const [editId, setEditId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'box' | 'table'>('table');
+  /**
+   * 어디서 수정을 열었나. 표에서 열었으면 저장·취소 뒤 **표로 돌아간다** — 박스 화면에 남겨 두면
+   * 표에서 하던 일을 잃는다(사용자 지적 2026-09-26). 돌아가면 그 행으로 내려가 잠깐 칠해 준다.
+   */
+  const [editFrom, setEditFrom] = useState<'box' | 'table'>('box');
+  const [jumpRow, setJumpRow] = useState<string | null>(null);
+  useEffect(() => {
+    if (viewMode !== 'table' || !jumpRow) return;
+    const jump = () => document.getElementById(`crow-${jumpRow}`)?.scrollIntoView({ block: 'center' });
+    const raf = requestAnimationFrame(jump);
+    const t1 = setTimeout(jump, 250);
+    const t2 = setTimeout(() => setJumpRow(null), 2500);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t1); clearTimeout(t2); };
+  }, [viewMode, jumpRow]);
+  /** 수정 창을 닫는다 — 표에서 왔으면 표로 되돌린다. */
+  function closeEdit(id?: string | null) {
+    setEditId(null);
+    if (editFrom === 'table') {
+      setViewMode('table');
+      if (id) setJumpRow(id);
+    }
+    setEditFrom('box');
+  }
   /**
    * 표에서 '수정'을 누르면 박스 화면으로 넘어가는데, 화면이 맨 위로 올라가 그 계약을 다시 찾아야 했다.
    * 넘어간 뒤 그 행으로 내려가 준다.
@@ -479,7 +508,8 @@ export default function SalesContractTab() {
       } else {
         await saveContractStaff(id, staffRows);
       }
-      setShowAdd(false); setEditId(null); await load();
+      setShowAdd(false); await load();
+      if (existingId) closeEdit(existingId); else setEditId(null);
       flash(existingId ? '✓ 매출계약 수정됨' : '✓ 매출계약 등록됨');
       if (!existingId) maybeOfferTaxFiling(form);
     } catch (e) { alert('저장 실패: ' + (e instanceof Error ? e.message : e)); }
@@ -705,14 +735,14 @@ export default function SalesContractTab() {
                 {c.note && <span style={{ color: 'var(--ink-3)' }}>· {c.note}</span>}
                 {canWrite && (
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                    <button className="btn-sm btn-sm-blue" onClick={() => { setEditId(c.id); setShowAdd(false); }}>수정</button>
+                    <button className="btn-sm btn-sm-blue" onClick={() => { setEditId(c.id); setShowAdd(false); setEditFrom('box'); }}>수정</button>
                     <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
                   </span>
                 )}
               </div>
               {editId === c.id && canWrite && (
                 <div style={{ marginTop: 8 }}>
-                  <ContractForm entities={entities} staff={staff} contracts={contracts} initial={c} onSubmit={(f) => persist(f, c.id)} onCancel={() => setEditId(null)} />
+                  <ContractForm entities={entities} staff={staff} contracts={contracts} initial={c} onSubmit={(f) => persist(f, c.id)} onCancel={() => closeEdit(c.id)} />
                 </div>
               )}
             </div>
@@ -830,12 +860,12 @@ export default function SalesContractTab() {
                       action={{ label: '필터 초기화', onClick: () => setColF({}) }} />
               )}
               {sortedRows.map((c) => (
-                <tr key={c.id}>
+                <tr key={c.id} id={`crow-${c.id}`} style={jumpRow === c.id ? { background: '#FFF6D6', transition: 'background .4s' } : undefined}>
                   {shownCols.map((col) => <td key={col.key} style={{ ...tdc, ...clip, textAlign: col.num ? 'right' : 'left', fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid var(--rule-2)' }} title={col.val(c)}>{col.val(c)}</td>)}
                   {canWrite && (
                     <td style={{ ...tdc, borderTop: '1px solid var(--rule-2)' }}>
                       <span style={{ display: 'flex', gap: 3 }}>
-                        <button className="btn-sm btn-sm-blue" onClick={() => { setViewMode('box'); setEditId(c.id); setShowAdd(false); }}>수정</button>
+                        <button className="btn-sm btn-sm-blue" onClick={() => { setViewMode('box'); setEditId(c.id); setShowAdd(false); setEditFrom('table'); }}>수정</button>
                         <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
                       </span>
                     </td>
@@ -1140,7 +1170,8 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
             <option value="">(선택)</option>{BILL_UNITS.map((u) => <option key={u}>{u}</option>)}
           </select></div>
         <div className="frow"><span className="fl">{f.isInstallment ? '계약금액(총액)' : '계약금액'} <span style={{ fontSize: 'var(--fs-0)', color: '#a55' }}>VAT별도</span></span>
-          <input value={f.amount} onChange={(e) => set('amount', e.target.value)} placeholder={f.billingCycle === '월' ? '월 금액 (예: 150000)' : f.billingCycle === '건' ? '건당 금액' : '1회 금액'} /></div>
+          <input value={commaNum(f.amount)} onChange={(e) => set('amount', digitsOnly(e.target.value))} inputMode="numeric" style={{ textAlign: 'right' }}
+            placeholder={f.billingCycle === '월' ? '월 금액 (예: 150,000)' : f.billingCycle === '건' ? '건당 금액' : '1회 금액'} /></div>
         {f.billingCycle === '연' && (
           <div className="frow"><span className="fl">청구월 <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>(연 1회)</span></span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -1173,6 +1204,13 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
       </div>
       <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 2 }}>※ 귀속연도 = 정산기간(<b>7/1~익년 6/30</b>) 기준. <b>종료월을 넣으면 자동</b>(종료 7~12월→그 해, 1~6월→전년). 월 기장 등 계속거래는 비워둡니다.</div>
 
+      {f.billingCycle === '발생시' && !f.isInstallment && (
+        <div style={{ fontSize: 'var(--fs-1)', color: '#8a5a00', background: '#FFF8E6', border: '1px solid #F2DDA4', borderRadius: 5, padding: '6px 9px', marginTop: 6, lineHeight: 1.6 }}>
+          ※ <b>발생시 · 분할 없음</b>은 언제 청구할지 몰라 <b>매출통계 「예상」과 현황및예산조회에 잡히지 않습니다</b>.
+          {' '}한 번에 끝나는 용역이면 청구주기를 <b>「건」</b>으로, 나눠 청구하면 <b>분할</b>을 켜고 회차·청구기한을 넣으십시오 — 감사팀 발행요청 「제안」에도 그때 뜹니다.
+          {' '}매출통계 「실적」에는 발행요청을 하면 잡힙니다.
+        </div>
+      )}
       {f.isInstallment && <InstallmentsEditor rows={f.installments} onChange={(r) => set('installments', r)} sum={instSum} target={amountNum} />}
 
       {/* 담당 */}
@@ -1269,7 +1307,8 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
               </div>
             </div></div>
           <div className="frow" style={{ marginTop: 8 }}><span className="fl">비고</span>
-            <input value={f.note} onChange={(e) => set('note', e.target.value)} placeholder="(선택)" /></div>
+            <input value={f.note} onChange={(e) => set('note', e.target.value)}
+              placeholder="(선택) 예: 경비 3,000,000원 한도로 실비 청구 — 감사팀 발행요청 화면에 함께 보입니다" /></div>
         </div>
       )}
 
@@ -1308,7 +1347,7 @@ function InstallmentsEditor({ rows, onChange, sum, target }: { rows: Installment
       {rows.map((r, i) => (
         <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 3, flexWrap: 'wrap', alignItems: 'center' }}>
           <input value={r.label} onChange={(e) => upd(i, { label: e.target.value })} placeholder="명칭(계약금/중도금1차/잔금)" style={{ width: 160 }} />
-          <input value={r.amount ? String(r.amount) : ''} onChange={(e) => upd(i, { amount: Number(e.target.value.replace(/\D/g, '')) })} placeholder="금액" style={{ width: 110 }} />
+          <input value={r.amount ? won(r.amount) : ''} onChange={(e) => upd(i, { amount: Number(e.target.value.replace(/\D/g, '')) })} inputMode="numeric" placeholder="금액" style={{ width: 110, textAlign: 'right' }} />
           <DateParts value={r.dueDate ?? ''} onChange={(v) => upd(i, { dueDate: v || null })} />
           <input value={r.conditionNote} onChange={(e) => upd(i, { conditionNote: e.target.value })} placeholder="조건메모(착수 시 등)" style={{ width: 150 }} />
           <label style={{ fontSize: 'var(--fs-0)', display: 'flex', gap: 3, alignItems: 'center', color: r.billedAt ? '#2a7' : '#999' }}>
@@ -1335,7 +1374,7 @@ function DiscountsEditor({ rows, onChange }: { rows: Discount[]; onChange: (r: D
           <span style={{ fontSize: 'var(--fs-1)' }}>~</span>
           <DateParts value={r.endDate ?? ''} onChange={(v) => upd(i, { endDate: v || null })} />
           {r.discType === '할인' && <input value={r.rate != null ? String(r.rate) : ''} onChange={(e) => upd(i, { rate: e.target.value ? Number(e.target.value) : null })} placeholder="할인율%" style={{ width: 70 }} />}
-          {r.discType === '할인' && <input value={r.amount != null ? String(r.amount) : ''} onChange={(e) => upd(i, { amount: e.target.value ? Number(e.target.value.replace(/\D/g, '')) : null })} placeholder="또는 할인액" style={{ width: 100 }} />}
+          {r.discType === '할인' && <input value={r.amount != null ? won(r.amount) : ''} onChange={(e) => upd(i, { amount: e.target.value ? Number(e.target.value.replace(/\D/g, '')) : null })} inputMode="numeric" placeholder="또는 할인액" style={{ width: 100, textAlign: 'right' }} />}
           <input value={r.note} onChange={(e) => upd(i, { note: e.target.value })} placeholder="메모" style={{ width: 120 }} />
           <button type="button" className="btn-sm btn-sm-del" onClick={() => onChange(rows.filter((_, j) => j !== i))}>×</button>
         </div>

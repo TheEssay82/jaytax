@@ -81,6 +81,7 @@ export async function listAuditProposals(
         staff: c.effectiveStaff.map((s) => s.staffName).join(','),
         label: it.label || `${it.seq}회차`,
         supplyAmount: net,
+        contractNote: c.note ?? '',
         confirmed: c.confirmed,
         billingCycle: c.billingCycle,
         billingMonth: c.billingMonth,

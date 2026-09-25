@@ -183,6 +183,9 @@ export default function AuditInvoiceTab() {
       cell: (p) => won(p.supplyAmount), sum: (p) => p.supplyAmount },
     { key: 'cpa', label: '담당회계사', width: 82, value: (p) => p.cpa, cell: (p) => p.cpa || dash },
     { key: 'staff', label: '담당직원', width: 82, value: (p) => p.staff, cell: (p) => p.staff || dash },
+    // 경비 포함·한도 같은 청구 조건은 계약 비고에 적는다 — 발행할 때 눈에 띄게.
+    { key: 'cnote', label: '계약 비고', width: 150, value: (p) => p.contractNote ?? '',
+      cell: (p) => (p.contractNote ? <span style={{ color: '#8a5a00' }}>📌 {p.contractNote}</span> : dash) },
     { key: 'notified', label: '알림', width: 60, value: (p) => (p.notified ? '보냄' : '아직'),
       opts: ['보냄', '아직'],
       cell: (p) => (p.notified
@@ -464,12 +467,15 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
   const cum = useMemo(() => {
     const c = pickable.find((x) => x.id === f.contractId);
     if (!c) return null;
-    const billed = reqs
-      .filter((r) => r.contractId === c.id && r.status !== '취소')
-      .reduce((t, r) => t + r.supplyAmount, 0);
+    const mine = reqs.filter((r) => r.contractId === c.id && r.status !== '취소');
+    const billed = mine.reduce((t, r) => t + r.supplyAmount, 0);
+    // 제경비로 나눠 청구한 누계 — 계약 비고에 적힌 경비 한도와 대 보라고 보여 준다.
+    const expense = mine.reduce((t, r) => t + (r.detailLines ?? [])
+      .filter((d) => d.kind === '제경비').reduce((s, d) => s + (Number(d.amount) || 0), 0), 0);
     const now = Number(f.amount.replace(/[^\d-]/g, '')) || 0;
     return { amount: c.amount, billed, rest: c.amount - billed, after: c.amount - billed - now,
-             hasInstallments: c.installments.length > 0, code: c.contractCode };
+             hasInstallments: c.installments.length > 0, code: c.contractCode,
+             note: (c.note ?? '').trim(), expense };
   }, [pickable, f.contractId, f.amount, reqs]);
 
   /** 그 거래처의 감사팀 매출계약 — 적요 추천 단추로 쓴다. */
@@ -724,6 +730,12 @@ ${rows.slice(0, 6).map((p) => `· ${p.companyName} ${p.label} ${won(p.supplyAmou
                 {!cum.hasInstallments && (
                   <><br /><span style={{ color: 'var(--ink-2)' }}>
                     이 계약에는 분할회차가 없습니다 — 회차 대신 <b>누적</b>으로 따집니다.
+                  </span></>
+                )}
+                {cum.note && (
+                  <><br /><span style={{ color: '#8a5a00' }}>
+                    📌 계약 조건(비고): <b>{cum.note}</b>
+                    {cum.expense > 0 && <> · 지금까지 제경비로 청구 {won(cum.expense)}</>}
                   </span></>
                 )}
               </div>

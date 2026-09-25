@@ -162,6 +162,8 @@ export interface InvoiceCandidate {
   docEmail: string;             // 세금계산서 수신 이메일(담당자에서 자동)
   /** 청구서(서면)도 보내야 하는 건인가 — 제안을 넘길 때 화면이 채운다. */
   needsInvoiceDoc?: boolean;
+  /** 계약의 비고 — 경비 포함·한도 같은 청구 조건을 발행할 때 보이게(2026-09-26). */
+  contractNote?: string;
 }
 
 /**
@@ -212,6 +214,7 @@ export async function listInvoiceCandidates(
         staff: c.effectiveStaff.map((s) => s.staffName).join(','),
         label: it.label,
         supplyAmount: it.net,
+        contractNote: c.note ?? '',
         confirmed: c.confirmed,
         billingCycle: c.billingCycle,
         billingMonth: c.billingMonth,

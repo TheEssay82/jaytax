@@ -347,6 +347,31 @@ export function pivot(facts: RevenueFact[], row: Dim, col: Dim, value: 'supply' 
  *   실적처럼 청구별 배분이 없으니 균등으로 본다 — 화면이 그 사실을 밝힌다.
  * · 확정되지 않은 계약(confirmed=false)은 뺀다. 예산에 쓰려면 화면이 따로 켜야 한다.
  */
+/**
+ * 「예상」에 **넣지 못하는** 계약 — 청구주기 「발생시」이고 분할회차가 없는 것.
+ *
+ * 언제 몇 번 청구할지 몰라 청구엔진이 스케줄을 만들지 않는다(billingSchedule.monthlyRevenue ·
+ * isOneOff). 규칙은 그대로 두고, **빠졌다는 사실만** 화면이 알리게 한다 — 조용히 빠지면
+ * 「방금 넣은 계약이 통계에 없다」가 된다(㈜엔엑스씨 72,000,000, 2026-09-26).
+ * 기간이 창구와 겹치는 확정·미확정 계약 모두.
+ */
+export async function listUnscheduledContracts(
+  fromYm: string, toYm: string, team?: string,
+): Promise<{ id: string; company: string; amount: number; code: string; confirmed: boolean }[]> {
+  const [contracts, ents] = await Promise.all([listSalesContracts(), listBizEntities()]);
+  const nameOf = new Map(ents.map((e) => [e.id, e.name]));
+  return contracts
+    .filter((c) => c.billingCycle === '발생시' && !c.installments.length)
+    .filter((c) => !team || c.team === team)
+    .filter((c) => {
+      const s = (c.startDate ?? '').slice(0, 7);
+      const e = (c.endDate ?? '').slice(0, 7);
+      return (!s || s <= toYm) && (!e || e >= fromYm);
+    })
+    .map((c) => ({ id: c.id, company: nameOf.get(c.entityId) ?? '', amount: Number(c.amount) || 0, code: c.contractCode, confirmed: c.confirmed }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
 export async function listForecastFacts(
   fromYm: string, toYm: string, team?: string, opts: { includeDraft?: boolean } = {},
 ): Promise<RevenueFact[]> {

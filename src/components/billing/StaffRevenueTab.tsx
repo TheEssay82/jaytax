@@ -20,7 +20,7 @@ import { pivotMulti, measuresFor } from '../../lib/revenuePivot';
 import { todayYmd, kstDateTime } from '../../lib/format';
 import { listStaffChangeLog, type StaffChangeLog } from '../../lib/invoiceStaffApi';
 import {
-  listRevenueAll, listForecastFacts, pivot, DIMS, fyOf, fyRange, fyLabel,
+  listRevenueAll, listForecastFacts, listUnscheduledContracts, pivot, DIMS, fyOf, fyRange, fyLabel,
   type RevenueFact, type Dim,
 } from '../../lib/revenueStatsApi';
 import { useAuth } from '../../context/AuthContext';
@@ -94,6 +94,8 @@ function StatsPanel() {
   const [showLog, setShowLog] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  /** 「예상」에 못 넣은 계약(발생시 · 분할 없음) — 조용히 빠지지 않게 알린다. */
+  const [unsched, setUnsched] = useState<{ id: string; company: string; amount: number; code: string; confirmed: boolean }[]>([]);
 
   /** 감사팀은 회계사 단위로만 본다 — 팀을 감사팀으로 좁히면 행을 담당회계사로 바꿔 준다. */
   useEffect(() => {
@@ -111,6 +113,7 @@ function StatsPanel() {
         listStaffChangeLog(100),
       ]);
       setFacts(f); setLogs(l);
+      setUnsched(basis === 'forecast' ? await listUnscheduledContracts(from, to, team || undefined) : []);
     } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); }
     finally { setLoading(false); }
   }, [from, to, team, basis]);
@@ -320,6 +323,14 @@ function StatsPanel() {
         <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>
           🔮 <b>예상</b>입니다 — 실제로 청구한 것이 아니라 <b>매출계약대로라면 나올 금액</b>입니다.
           미확정(예정) 계약도 넣었습니다. 담당직원은 <b>지금 배정</b> 기준이라 그 사이 담당이 바뀌었으면 과거 실적과 다르게 보입니다.
+          {unsched.length > 0 && (
+            <div style={{ marginTop: 6, color: '#8a5a00' }}>
+              ⚠ <b>청구 시기를 몰라 넣지 못한 계약 {unsched.length}건</b> (합계 {unsched.reduce((t, c) => t + c.amount, 0).toLocaleString('ko-KR')}원) —
+              {' '}청구주기 「발생시」이고 분할회차가 없습니다:
+              {' '}{unsched.slice(0, 6).map((c) => `${c.company} ${c.amount.toLocaleString('ko-KR')}`).join(' · ')}{unsched.length > 6 ? ' …' : ''}.
+              {' '}매출계약등록에서 청구주기를 「건」으로 바꾸거나 분할회차를 넣으면 잡힙니다.
+            </div>
+          )}
         </div>
       )}
 
