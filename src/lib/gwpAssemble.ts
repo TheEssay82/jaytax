@@ -15,6 +15,7 @@ import { type TemplateCatalog, type TemplateSheet } from './gwpTemplate';
 import { transplantSheet, dropCalcChain, forceRecalc } from './xlsxTransplant';
 import { headRefs, headEdits } from './gwpRoll';
 import { setCells } from './xlsxCells';
+import { highlightCells } from './xlsxMark';
 
 export const COVER_SHEET = '조서표지(공통사항)';
 export const INDEX_SHEET_NAME = '조서목록';
@@ -26,6 +27,8 @@ export interface AssembleOptions {
   basis: string;
   firmName?: string;
   /** 초도감사인가 — 표지의 수임구분 */ firstYear?: boolean;
+  /** 이 코드의 조서만 넣는다 — 「올해 양식 참고 파일」(이월에서 양식이 다른 조서만 모아 본다). */ only?: string[];
+  /** 코드별로 노랗게 칠할 칸 — 참고 파일에서 전기와 다른 양식 글자를 보인다. */ highlight?: Record<string, string[]>;
 }
 
 /** 시트가 하나도 없는 빈 워크북. injectSheets 가 시트를 얹을 수 있는 최소 뼈대다. */
@@ -135,6 +138,7 @@ export function assembleWorkbook(
   const picked: TemplateSheet[] = [];
   for (const s of tpl.sheets) {
     if (!s.code) continue;
+    if (opts.only && !opts.only.includes(s.code)) continue;
     if (s.hidden) { report.skipped.push({ name: s.name, why: '양식에서 숨긴 시트' }); continue; }
     if (seen.has(s.code)) { report.skipped.push({ name: s.name, why: '같은 코드가 이미 있음' }); continue; }
     seen.add(s.code);
@@ -162,6 +166,8 @@ export function assembleWorkbook(
     const r = transplantSheet(files, filesOf(s.file), s.name);
     const edits = headEdits(headRefs(data), COVER_SHEET, INDEX_SHEET_NAME, rowOf.get(s.code!) ?? null, '');
     if (edits.length) files[r.part] = strToU8(setCells(strFromU8(files[r.part]), edits));
+    const marks = opts.highlight?.[s.code!];
+    if (marks?.length) highlightCells(files, r.part, marks);
     report.added.push({ code: s.code!, name: s.name, file: s.file });
   }
   dropCalcChain(files);

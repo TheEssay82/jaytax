@@ -24,6 +24,8 @@ import {
   transplantSheet, sheetEntries, dropCalcChain, forceRecalc, unzip, zip,
 } from './xlsxTransplant';
 import { setCells, excelSerial, type CellEdit } from './xlsxCells';
+import { dateRules, bumpSheetDates, bumpDatesInText, findPeriodColumns, carryForward, CARRY_FORWARD_CODES, type DateRules } from './gwpCarry';
+import { setTabColor, highlightCells, TAB } from './xlsxMark';
 
 const norm = (s: string | undefined) => (s ?? '').replace(/\s/g, '');
 function textOf(v: CellValue | undefined): string {
@@ -59,20 +61,48 @@ export interface Compare {
   /** 전기에 같은 자리 같은 글자로 있는 수 */ same: number;
   /** 0~1 */ score: number;
   /** 양식에는 있는데 전기는 다르거나 없는 자리 */ differ: string[];
+  /**
+   * 양식 문구 가운데 전기 시트 **어디에도** 없는 것의 자리 — 올해 새로 생기거나 고친 문구.
+   * 자리 대조(differ)는 줄 하나만 밀려도 전부 다르다고 나온다(명진 8100A 320칸 중 320칸). 「얼마나 다른가」는 이것으로 본다(2026-09-27).
+   */
+  missing: string[];
 }
 
-/** 양식이 바뀌었는지 — 양식의 글자 칸이 전기 시트 같은 자리에 얼마나 그대로 있는가. */
+/** 양식이 바뀌었는지 — 양식의 글자 칸이 전기 시트 같은 자리에 얼마나 그대로 있는가, 문구가 전기 어디엔가 있는가. */
 export function compareSheets(tpl: SheetData, prior: SheetData): Compare {
   const labels = labelCells(tpl);
+  const priorList = [...new Set(labelCells(prior).values())];
+  const priorTexts = new Set(priorList);
   let same = 0;
   const differ: string[] = [];
+  const missing: string[] = [];
   for (const [ref, t] of labels) {
     if (norm(textOf(prior.cells.get(ref))) === t) same += 1;
     else differ.push(ref);
+    if (!priorTexts.has(t) && !priorList.some((p) => sameWording(t, p))) missing.push(ref);
   }
   const total = labels.size;
-  return { total, same, score: total ? same / total : 1, differ };
+  return { total, same, score: total ? same / total : 1, differ, missing };
 }
+
+/**
+ * 같은 문구로 볼 것인가(공백 뺀 글자). 작년 조서는 문구 안에 답을 적는다 — 「경영진의 동의여부 : [ V ] 예」,
+ * 「… 만족함」 — 그래서 한쪽이 다른 쪽을 품거나, 글자쌍이 85% 넘게 같으면 같은 문구로 본다.
+ */
+export function sameWording(t: string, p: string): boolean {
+  if (t === p) return true;
+  if (t.length < 4 || p.length < 4) return false;
+  if (p.includes(t) || (t.includes(p) && p.length >= t.length * 0.7)) return true;
+  if (p.length < t.length * 0.6 || p.length > t.length * 1.8) return false;
+  const grams = (s: string) => { const m = new Map<string, number>(); for (let i = 0; i < s.length - 1; i++) { const g = s.slice(i, i + 2); m.set(g, (m.get(g) ?? 0) + 1); } return m; };
+  const a = grams(t), b = grams(p);
+  let both = 0;
+  for (const [g, n] of a) both += Math.min(n, b.get(g) ?? 0);
+  return (2 * both) / (t.length - 1 + p.length - 1) >= 0.85;
+}
+
+/** 문구가 이만큼 넘게 전기에 없으면 「올해 양식이 다르다」. 자리만 밀린 것은 다르다고 하지 않는다. */
+export const MISSING_THRESHOLD = 0.02;
 
 /** 이 점수 이상이면 「안 바뀐 양식」으로 본다. 오탈자 몇 개는 봐준다. */
 export const SAME_THRESHOLD = 0.98;
@@ -278,8 +308,14 @@ export interface SheetReport {
   differ?: number;
   moved?: number;
   left?: { from: string; value: string; why: string }[];
-  /** 갈아끼운 시트의 양식 파일 */ template?: string;
+  /** 짝지은 양식 시트의 파일 */ template?: string;
+  /** 짝지은 양식 시트의 코드 — 회사 「2700A-2」 ↔ 양식 「2700A-2(감사계획단계)」처럼 다를 수 있다 */ tplCode?: string;
   /** 당기 양식과 글자가 다르다(그대로 이었지만 골라서 갈아끼울 수 있다). */ templateDiffers?: boolean;
+  /** 어디가 다른지 — 양식 글자 칸 가운데 전기와 다른 것(앞 30개). 「올해 양식이 얼마나 다른가」(2026-09-27). */
+  diffs?: { ref: string; prior: string; tpl: string }[];
+  /** 다른 칸 전부(참고 파일에서 노랗게 칠한다) */ differRefs?: string[];
+  /** 한 해 올린 날짜 칸 수 */ dates?: number;
+  /** 전기 열로 옮긴 숫자 줄 수(2120A 같은 분석 시트) */ carried?: number;
   note?: string;
 }
 
@@ -288,6 +324,7 @@ export interface RollReport {
   sheets: SheetReport[];
   cover: { closing?: string; period?: string; reportDate: '비움' };
   index: { datesCleared: number };
+  /** 탭을 빨강으로 바꾼 시트 수 · 노랗게 칠한 칸 수 */ marks: { tabs: number; cells: number };
   warnings: string[];
 }
 
@@ -312,7 +349,7 @@ export function rollWorkbook(
   const files = unzip(priorBytes);
   const prior = readWorkbook(priorBytes);
   const cat = buildCatalog(prior);
-  const report: RollReport = { fy: opts.fy, sheets: [], cover: { reportDate: '비움' }, index: { datesCleared: 0 }, warnings: [] };
+  const report: RollReport = { fy: opts.fy, sheets: [], cover: { reportDate: '비움' }, index: { datesCleared: 0 }, marks: { tabs: 0, cells: 0 }, warnings: [] };
 
   const coverSheet = prior.find((s) => norm(s.name).includes('조서표지'));
   const indexSheet = prior.find((s) => kindOf(s.name) === 'index');
@@ -333,12 +370,51 @@ export function rollWorkbook(
   };
   const replaceSet = new Set(opts.replace ?? []);
   const addSet = new Set(opts.addCodes ?? []);
-  /** 전기 시트를 그대로 이을 때도 머리는 당기로 — 회사명·결산일은 표지, 작성자·일자는 조서목록, 검토자는 파트너. */
-  function relinkHead(sheetName: string, sheet: SheetData, code: string, reviewer: string) {
+  // 해가 바뀌는 칸 — 전기 결산일·개시일·기수(표지의 대상기간에서 읽는다).
+  const termMatch = /제\s*(\d+)\s*기/.exec(cat.period ?? '');
+  const rules: DateRules | null = cat.closing ? dateRules({
+    closing: cat.closing,
+    opening: openingOfPeriod(cat.period) ?? undefined,
+    term: termMatch ? Number(termMatch[1]) : null,
+  }) : null;
+  if (!rules) report.warnings.push('표지에서 전기 결산일을 읽지 못해 조서 안의 날짜를 올리지 못했습니다.');
+
+  /** 탭 빨강(올해 아직 손 안 댐) + 바뀐 칸 노랑. 사무소 관행(2026-09-27). */
+  function mark(part: string, refs: string[]) {
+    files[part] = strToU8(setTabColor(strFromU8(files[part]), TAB.red));
+    report.marks.tabs += 1;
+    report.marks.cells += highlightCells(files, part, refs);
+  }
+
+  /**
+   * 전기 시트를 그대로 잇는다. 머리는 당기로(회사명·결산일은 표지, 작성자·일자는 조서목록, 검토자는 파트너),
+   * 본문은 기간 날짜를 한 해 올리고, 분석 시트(2120A 등)는 당기 숫자를 전기 열로 옮긴다. 바뀐 본문 칸은 노랗게.
+   */
+  function keepSheet(sheetName: string, sheet: SheetData, code: string, reviewer: string, withHead = true): { dates: number; carried?: number; note?: string } {
     const e = sheetEntries(files).find((x) => x.name === sheetName);
-    if (!e) return;
-    const edits = headEdits(headRefs(sheet), coverName, indexName, indexRowFor(code), reviewer);
+    if (!e) return { dates: 0 };
+    const head = withHead ? headEdits(headRefs(sheet), coverName, indexName, indexRowFor(code), reviewer) : [];
+    const skip = new Set(head.map((x) => x.ref));
+    const body: CellEdit[] = []; const refs: string[] = [];
+    let carried: number | undefined; let note: string | undefined;
+    if (carryCodeOf(code)) {
+      const pc = findPeriodColumns(sheet);
+      if (pc) {
+        const c = carryForward(sheet, pc);
+        body.push(...c.edits); refs.push(...c.refs); c.refs.forEach((r) => skip.add(r));
+        carried = c.moved;
+        note = [
+          c.moved ? `당기 ${pc.curCol}열 숫자 ${c.moved}줄을 전기 ${pc.prevCol}열로 옮겼습니다(노란 칸 — 당기 칸은 비웠고, 외부 링크 수식은 두었으니 새 해 시산표로 다시 거세요).` : '',
+          c.linked ? `${c.linked}줄은 전기·당기 모두 외부 시산표 링크라 옮기지 않았습니다 — 링크를 새 해 파일로 바꾸면 따라옵니다.` : '',
+        ].filter(Boolean).join(' ') || '옮길 숫자가 없었습니다.';
+      } else note = '전기·당기 기간 열을 찾지 못해 숫자를 옮기지 못했습니다 — 손으로 옮기세요.';
+    }
+    const d = rules ? bumpSheetDates(sheet, rules, skip) : { edits: [], refs: [] };
+    body.push(...d.edits); refs.push(...d.refs);
+    const edits = [...head, ...body];
     if (edits.length) files[e.part] = strToU8(setCells(strFromU8(files[e.part]), edits));
+    mark(e.part, refs);
+    return { dates: d.refs.length, carried, note };
   }
 
   // 코드 → 회사 시트 이름(보이는 것 우선). 양식 수식의 시트 이름을 회사 이름으로 바꿀 때 쓴다.
@@ -362,33 +438,45 @@ export function rollWorkbook(
   }
 
   const seenCodes = new Set<string>();
+  /** 회사 시트와 짝지어진 양식 코드 — 「양식에만 있음」에서 뺀다 */
+  const matchedTpl = new Set<string>();
   for (const cs of cat.sheets) {
     if (cs.kind !== 'paper' || !cs.code) continue;
     const priorSheet = prior.find((s) => s.name === cs.name)!;
     if (cs.hidden) { report.sheets.push({ code: cs.code, name: cs.name, action: '숨김 그대로' }); continue; }
     const reviewer = opts.reviewer || cs.head.reviewer;
     if (seenCodes.has(cs.code)) {
-      relinkHead(cs.name, priorSheet, cs.code, reviewer);
-      report.sheets.push({ code: cs.code, name: cs.name, action: '그대로', note: '같은 코드의 시트가 둘 — 둘 다 전기 그대로 이었습니다' });
+      const k = keepSheet(cs.name, priorSheet, cs.code, reviewer);
+      report.sheets.push({ code: cs.code, name: cs.name, action: '그대로', dates: k.dates, carried: k.carried, note: k.note ?? '같은 코드의 시트가 둘 — 둘 다 전기 그대로 이었습니다' });
       continue;
     }
     seenCodes.add(cs.code);
     const ts = findTemplateSheet(tpl, cs.code);
+    if (ts?.code) matchedTpl.add(ts.code);
     if (!ts) {
-      relinkHead(cs.name, priorSheet, cs.code, reviewer);
-      report.sheets.push({ code: cs.code, name: cs.name, action: '양식 없음', note: '당기 양식에 같은 번호의 조서가 없습니다 — 전기 그대로 이었습니다.' });
+      const k = keepSheet(cs.name, priorSheet, cs.code, reviewer);
+      report.sheets.push({ code: cs.code, name: cs.name, action: '양식 없음', dates: k.dates, carried: k.carried, note: k.note ?? '당기 양식에 같은 번호의 조서가 없습니다 — 전기 그대로 이었습니다.' });
       continue;
     }
     const { files: srcFiles, sheet: tplData } = tplSheet(ts.file, ts.name);
     const cmp = compareSheets(tplData, priorSheet);
     // 기본은 전기 그대로 — 사람이 고른 조서만 갈아끼운다.
     if (!replaceSet.has(cs.code)) {
-      relinkHead(cs.name, priorSheet, cs.code, reviewer);
-      const differs = cmp.score < SAME_THRESHOLD;
+      const k = keepSheet(cs.name, priorSheet, cs.code, reviewer);
+      // 「얼마나 다른가」는 문구로 — 올해 양식 문구가 작년 시트 어디에도 없는 수. 자리만 밀린 것은 다르다고 하지 않는다.
+      const textScore = cmp.total ? 1 - cmp.missing.length / cmp.total : 1;
+      const differs = cmp.total > 0 && cmp.missing.length / cmp.total > MISSING_THRESHOLD;
+      const shifted = !differs && cmp.score < SAME_THRESHOLD;
+      const tplLabels = labelCells(tplData);
+      const diffNote = differs
+        ? `올해 양식 문구 ${cmp.total}개 중 ${cmp.missing.length}개가 작년 시트에 없습니다(새로 생기거나 고친 문구) — 작년 그대로 이었습니다.`
+        : shifted ? '문구는 올해 양식과 같고 줄 자리만 다릅니다 — 작년 그대로 이었습니다.' : undefined;
       report.sheets.push({
-        code: cs.code, name: cs.name, action: '그대로', score: cmp.score, differ: cmp.differ.length, template: ts.file,
-        templateDiffers: differs,
-        note: differs ? `당기 양식과 ${Math.round(cmp.score * 100)}% 같습니다 — 전기 그대로 이었습니다. 필요하면 골라서 갈아끼우세요.` : undefined,
+        code: cs.code, name: cs.name, action: '그대로', score: textScore, differ: cmp.missing.length, template: ts.file, tplCode: ts.code ?? undefined,
+        templateDiffers: differs, dates: k.dates, carried: k.carried,
+        diffs: differs ? cmp.missing.slice(0, 30).map((ref) => ({ ref, prior: textOf(priorSheet.cells.get(ref)), tpl: tplLabels.get(ref) ?? '' })) : undefined,
+        differRefs: differs ? cmp.missing : undefined,
+        note: [k.note, diffNote].filter(Boolean).join(' ') || undefined,
       });
       continue;
     }
@@ -396,11 +484,13 @@ export function rollWorkbook(
     const r = transplantSheet(files, srcFiles, ts.name, { as: cs.name, replace: true });
     const mig = migrateInputs(priorSheet, tplData);
     const refs = headRefs(tplData);
-    const edits: CellEdit[] = [...mig.edits, ...headEdits(refs, coverName, indexName, indexRowFor(cs.code), reviewer)];
+    const moved = rules ? mig.edits.map((x) => bumpEdit(x, rules)) : mig.edits;
+    const edits: CellEdit[] = [...moved, ...headEdits(refs, coverName, indexName, indexRowFor(cs.code), reviewer)];
     let xml = strFromU8(files[r.part]);
     xml = renameSheetRefs(xml, tplNameMap);
     if (edits.length) xml = setCells(xml, edits);
     files[r.part] = strToU8(xml);
+    mark(r.part, mig.edits.map((x) => x.ref));
     report.sheets.push({
       code: cs.code, name: cs.name, action: '갈아끼움', score: cmp.score, differ: cmp.differ.length,
       moved: mig.moved.length, left: mig.left, template: ts.file,
@@ -412,7 +502,7 @@ export function rollWorkbook(
     const existing = new Set(sheetEntries(files).map((e) => e.name));
     const have = new Set(cat.sheets.map((s) => s.code).filter(Boolean) as string[]);
     for (const t of tpl.sheets) {
-      if (!t.code || t.hidden || have.has(t.code) || seenCodes.has(t.code)) continue;
+      if (!t.code || t.hidden || have.has(t.code) || seenCodes.has(t.code) || matchedTpl.has(t.code)) continue;
       seenCodes.add(t.code);
       if (!addSet.has(t.code)) {
         report.sheets.push({ code: t.code, name: t.name, action: '양식에만 있음', template: t.file, note: '당기 양식에만 있는 조서입니다 — 넣지 않았습니다. 필요하면 골라서 넣으세요.' });
@@ -428,8 +518,23 @@ export function rollWorkbook(
       const edits = headEdits(headRefs(tplData), coverName, indexName, indexRowFor(t.code), opts.reviewer ?? '');
       if (edits.length) xml = setCells(xml, edits);
       files[r.part] = strToU8(xml);
+      mark(r.part, []);
       report.sheets.push({ code: t.code, name, action: '새 조서', template: t.file, note: '골라서 넣은 조서입니다. 맨 뒤에 붙였습니다.' });
     }
+  }
+
+  // 조서 번호가 없는 시트(회사가 더한 것). 분석 시트(8110ARP_BS 등)는 조서처럼 전기 이동·날짜 올리기를 하고,
+  // 나머지는 내용은 그대로 두고 탭만 빨강 — 「특수관계자검토25」 같은 해별 사본의 날짜를 올리면 기록이 바뀐다.
+  // 참고 시트(참고_…·감사조서철 작성 및 보존)는 손대지 않는다.
+  for (const cs of cat.sheets) {
+    if (cs.kind !== 'extra' || cs.hidden || /^참고/.test(norm(cs.name))) continue;
+    const e = sheetEntries(files).find((x) => x.name === cs.name);
+    if (!e) continue;
+    const carry = carryCodeOf(cs.name);
+    if (carry) {
+      const k = keepSheet(cs.name, prior.find((x) => x.name === cs.name)!, carry, '', false);
+      report.sheets.push({ code: carry, name: cs.name, action: '양식 없음', dates: k.dates, carried: k.carried, note: k.note });
+    } else mark(e.part, []);
   }
 
   // 조서표지 — 결산일·대상기간 올리고 감사보고서일 비움.
@@ -442,6 +547,7 @@ export function rollWorkbook(
     if (cat.period) { const p = bumpPeriodText(cat.period); edits.push({ ref: 'B16', text: p }); report.cover.period = p; }
     edits.push({ ref: 'B17', clear: true });
     files[e.part] = strToU8(setCells(strFromU8(files[e.part]), edits));
+    mark(e.part, edits.map((x) => x.ref));
   }
   // 조서목록 — 작성일 비움.
   if (indexSheet) {
@@ -449,12 +555,32 @@ export function rollWorkbook(
     const edits: CellEdit[] = cat.index.filter((r) => r.date).map((r) => ({ ref: `E${r.row}`, clear: true }));
     report.index.datesCleared = edits.length;
     if (edits.length) files[e.part] = strToU8(setCells(strFromU8(files[e.part]), edits));
+    mark(e.part, edits.map((x) => x.ref));
   }
 
   dropCalcChain(files);
   forceRecalc(files);
   const bytes = zip(files);
   return { bytes, report, catalog: buildCatalog(readWorkbook(bytes)) };
+}
+
+/** 시트 이름·코드 → 전기 이동 코드(「2120A」 「8110ARP_BS」). 괄호·공백은 뗀다. 전기 이동 조서가 아니면 null. */
+function carryCodeOf(name: string): string | null {
+  const s = norm(name).replace(/\(.*$/, '');
+  return CARRY_FORWARD_CODES.find((c) => s === c) ?? null;
+}
+
+/** 대상기간 「제18기 2025년 1월 1일 ～ 2025년 12월 31일」의 앞 날짜 → 「2025-01-01」. */
+function openingOfPeriod(period: string): string | null {
+  const m = /(\d{4})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})/.exec(period ?? '');
+  return m ? `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}` : null;
+}
+
+/** 옮겨 적는 전기 값의 기간 날짜를 한 해 올린다(갈아끼울 때). */
+function bumpEdit(e: CellEdit, r: DateRules): CellEdit {
+  if (e.num != null && r.serials.has(e.num)) return { ...e, num: r.serials.get(e.num)! };
+  if (e.text != null) { const t = bumpDatesInText(e.text, r); if (t !== e.text) return { ...e, text: t }; }
+  return e;
 }
 
 export { isoDate, codeOf };

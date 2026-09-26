@@ -25,6 +25,7 @@ export interface CatalogSheet {
   /** 「1100」·「2110-2」·「8500(별첨1)」. 조서가 아니면 null */ code: string | null;
   kind: SheetKind;
   hidden: boolean;
+  /** 시트 탭 색 — 사무소 관행: 빨강=손 안 댐 · 노랑=수정함 · 초록=확인·새로 넣을 것 없음 */ tab?: string;
   head: PaperHead;
   cells: number;
   formulas: number;
@@ -212,7 +213,7 @@ export function buildCatalog(sheets: SheetData[]): Catalog {
     let formulas = 0;
     for (const v of s.cells.values()) if (v.formula != null) formulas += 1;
     cat.sheets.push({
-      name: s.name, code: kind === 'paper' ? codeOf(s.name) : null, kind, hidden: s.hidden === true,
+      name: s.name, code: kind === 'paper' ? codeOf(s.name) : null, kind, hidden: s.hidden === true, tab: s.tabColor,
       head: kind === 'paper' ? readHead(s) : { company: '', closing: '', author: '', reviewer: '', date: '' },
       cells: s.cells.size, formulas,
     });

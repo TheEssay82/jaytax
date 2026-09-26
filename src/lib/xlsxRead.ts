@@ -7,6 +7,7 @@
 // 수식 칸은 **엑셀이 적어 둔 값**(cached value)을 읽는다. 사람이 엑셀에서 열어 저장하면
 // 값이 들어 있다. 값이 없으면 수식만 돌려주고 판단은 부르는 쪽에 맡긴다.
 import { unzipSync, strFromU8 } from 'fflate';
+import { tabColorOf } from './xlsxMark';
 
 export interface CellValue {
   /** 숫자 칸이면 숫자 */ num?: number;
@@ -18,6 +19,7 @@ export interface SheetData {
   name: string;
   /** 「C8」 → 값 */ cells: Map<string, CellValue>;
   /** 숨긴 시트인가(workbook.xml 의 state). 일반조서는 안 쓰는 조서를 숨겨 둔다. */ hidden?: boolean;
+  /** 시트 탭 색(「FFFF0000」, 테마 색은 「theme:N」). 일반조서는 탭 색으로 진행 상태를 적는다. */ tabColor?: string;
 }
 
 /**
@@ -132,8 +134,11 @@ export function readWorkbook(bytes: Uint8Array, want?: (name: string) => boolean
     const part = files[`xl/${target.get(rid) ?? ''}`];
     if (!part) continue;
     const state = /\bstate="([^"]*)"/.exec(m[1])?.[1];
-    const data: SheetData = { name, cells: readSheet(strFromU8(part), shared) };
+    const xml = strFromU8(part);
+    const data: SheetData = { name, cells: readSheet(xml, shared) };
     if (state && state !== 'visible') data.hidden = true;
+    const tab = tabColorOf(xml);
+    if (tab) data.tabColor = tab;
     out.push(data);
   }
   return out;
