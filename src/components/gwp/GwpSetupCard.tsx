@@ -68,7 +68,7 @@ export default function GwpSetupCard({ eng, year, prior, contractCpa, canWrite, 
       ? <>재무제표가 <b>K-IFRS</b> 라 조서도 K-IFRS 로 보입니다. 맞나요?</>
       : <>전기 세팅이 없습니다. 올해 감사계약에서 정한 조서 기준은 <b>일반</b>인가요, <b>소규모</b>인가요?
           <span style={{ color: 'var(--ink-3)' }}> (재무제표는 일반기업회계기준 — 조서 기준은 따로 정합니다)</span></>;
-  const qPartner = <>검토자(파트너)는 <b>{proposal.partner}</b>{prior ? ' — 전기와 같이' : ''} 두면 될까요?</>;
+  const qPartner = <>검토자(파트너)는 <b>{proposal.partner}</b> 님으로 둘까요?{prior && <span style={{ color: 'var(--ink-3)' }}> 전기와 같습니다.</span>}</>;
   const qAuthor = proposal.author
     ? <>작성자 기본값은 감사계약의 담당회계사 <b>{proposal.author}</b>입니다. 이대로 둘까요? <span style={{ color: 'var(--ink-3)' }}>조서마다 따로 바꿀 수 있습니다.</span></>
     : <>감사계약에서 담당회계사를 찾지 못했습니다{contractCpa ? ` (계약에는 「${contractCpa}」)` : ''}. 작성자 기본값을 적어 주세요.</>;
