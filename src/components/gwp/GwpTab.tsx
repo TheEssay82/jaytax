@@ -52,6 +52,11 @@ const KIND_TONE: Record<BookKind, { bg: string; ink: string }> = {
   작업중: { bg: 'var(--warn-bg)', ink: 'var(--warn)' },
   최종본: { bg: 'var(--good-bg)', ink: 'var(--good)' },
 };
+/** 표지 회사명과 작업 건 거래처명이 같은 회사인가 — 「주식회사·㈜·(주)·공백」은 떼고 한쪽이 다른 쪽을 품으면 같다고 본다. */
+function sameCompany(a: string, b: string): boolean {
+  const n = (s: string) => s.replace(/\s|주식회사|㈜|\(주\)/g, '');
+  return n(a).includes(n(b)) || n(b).includes(n(a));
+}
 function kdate(iso: string | null): string {
   if (!iso) return '';
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
@@ -83,6 +88,8 @@ export default function GwpTab() {
   const [setupOpen, setSetupOpen] = useState(false);
   const [prior, setPrior] = useState<{ fy: number; year: GwpYear } | null>(null);
   const [contractCpa, setContractCpa] = useState<string | null>(null);
+  // 전기 조서가 시스템에 없을 때(첫 해) — 이월 버튼이 파일을 직접 받는다. 전기 작업 건을 따로 만들 필요가 없다.
+  const [askPrior, setAskPrior] = useState(false);
 
   async function load(keep?: string) {
     try {
@@ -122,7 +129,7 @@ export default function GwpTab() {
   }
 
   async function pick(id: string) {
-    setPickedId(id); setReport(null); setAssembled(null); setMsg(null); setSetupOpen(false);
+    setPickedId(id); setReport(null); setAssembled(null); setMsg(null); setSetupOpen(false); setAskPrior(false);
     try {
       setBooks(await listBooks(id));
       const e = engs.find((x) => x.id === id);
@@ -138,15 +145,46 @@ export default function GwpTab() {
     setBusy('roll'); setErr(null); setMsg(null); setReport(null); setAssembled(null);
     try {
       const prev = await findEngagement(picked.entityId, picked.fy - 1, picked.scope);
-      if (!prev) throw new Error(`FY${picked.fy - 1} 작업 건이 없습니다. 초도면 「양식으로 새로 만들기」를 쓰십시오.`);
-      const base = pickBase(await listBooks(prev.id));
-      if (!base) throw new Error(`FY${picked.fy - 1} 건에 올린 조서 파일이 없습니다. 전기 파일을 그 건에 먼저 올리십시오.`);
+      const base = prev ? pickBase(await listBooks(prev.id)) : null;
+      if (!prev || !base) { setAskPrior(true); return; }   // 첫 해 — 전기 파일을 직접 고르게 한다
+      await rollFrom(await fileBytes(base.storagePath), `FY${prev.fy} ${base.kind} v${base.version}(${base.fileName})`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '만들지 못했습니다.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  /** 드롭박스 등에서 고른 전기 파일로 이월 — 첫 해에만 쓴다. 회사명이 맞는지 먼저 본다. */
+  async function rollFromFile(f: File | undefined) {
+    if (!f || !picked) return;
+    setBusy('roll'); setErr(null); setMsg(null);
+    try {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      const cat = buildCatalog(readWorkbook(bytes));
+      if (!cat.sheets.some((s) => s.kind === 'paper')) throw new Error('이 파일에서 조서 시트(1100·2110 … 꼴)를 찾지 못했습니다.');
+      if (cat.company && !sameCompany(cat.company, picked.entityName)) {
+        throw new Error(`고른 파일의 표지 회사명이 「${cat.company}」입니다 — ${picked.entityName} 의 전기 조서가 맞는지 확인하세요.`);
+      }
+      setAskPrior(false);
+      await rollFrom(bytes, `전기 파일 직접 선택 — ${f.name}(FY${picked.fy - 1}, 시스템 밖)`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '만들지 못했습니다.');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  /** 전기 워크북 바이트 + 당기 양식 → 이월본을 짓고 올리고 내려받는다. */
+  async function rollFrom(priorBytes: Uint8Array, source: string) {
+    if (!picked || !tpl || !year) return;
+    setBusy('roll'); setErr(null);
+    try {
       const { catalog, files } = readBundle(await fileBytes(tpl.storagePath));
-      const priorBytes = await fileBytes(base.storagePath);
       const r = rollWorkbook(priorBytes, catalog, files, { fy: picked.fy, closing: picked.periodTo ?? undefined, reviewer: year.partner });
       const name = `일반조서_${safeName(picked.entityName)}_FY${picked.fy}_이월본.xlsx`;
       const book = await addBook(picked.id, '이월본', { name, bytes: r.bytes }, r.catalog,
-        `FY${prev.fy} ${base.kind} v${base.version}(${base.fileName}) + ${tpl.fy} ${tpl.basis} 양식`);
+        `${source} + ${tpl.fy} ${tpl.basis} 양식`);
       download(r.bytes, name, XLSX);
       setBooks(await listBooks(picked.id));
       setReport(r.report);
@@ -346,6 +384,22 @@ export default function GwpTab() {
                   </span>
                 </div>
 
+                {askPrior && (
+                  <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 12, background: 'var(--surface-2)', fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
+                    <b>FY{picked.fy - 1} 조서가 시스템에 아직 없습니다</b> — 이 시스템을 처음 쓰는 해라 그렇습니다.
+                    드롭박스에 있는 <b>전기 최종 일반조서 파일</b>을 골라 주시면 그 파일로 이월합니다.
+                    <span style={{ color: 'var(--ink-3)' }}> 고른 파일은 이월본을 짓는 데만 쓰고 따로 저장하지 않습니다. 내년부터는 올해 최종본에서 저절로 이어집니다.</span>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                      <label className="btn-p" style={{ cursor: busy ? 'default' : 'pointer' }}>
+                        {busy === 'roll' ? '이월하는 중…' : '전기 파일 고르기'}
+                        <input type="file" accept=".xlsx" style={{ display: 'none' }} disabled={!!busy}
+                          onChange={(e) => { void rollFromFile(e.target.files?.[0]); e.target.value = ''; }} />
+                      </label>
+                      <button className="btn-sm" disabled={!!busy} onClick={() => setAskPrior(false)}>취소</button>
+                    </div>
+                  </div>
+                )}
+
                 {books.length > 0 && (
                   <div className="tbl-wide" style={{ marginTop: 12 }}>
                     <table className="tbl">
@@ -475,7 +529,7 @@ export default function GwpTab() {
       )}
 
       {adding && (
-        <NewEngagementModal
+        <NewEngagementModal purpose="gwp"
           entities={ents} auditIds={auditIds}
           onClose={() => setAdding(false)}
           onDone={async (id) => { setAdding(false); await load(id); setMsg('작업 건을 만들었습니다.'); }}

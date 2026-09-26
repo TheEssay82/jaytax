@@ -18,7 +18,10 @@ import DateParts from '../common/DateParts';
  * 빈 목록으로 만들면 결국 손으로 40줄을 넣게 된다. 첫 해에는 **작년 감사보고서 DSD** 를 넣는 것이
  * 가장 빠르고(파일에서 주석 목록이 그대로 읽힌다), 두 해째부터는 앞 해 건을 복제한다.
  */
-export default function NewEngagementModal({ entities, auditIds, onClose, onDone, onError }: {
+export default function NewEngagementModal({ entities, auditIds, onClose, onDone, onError, purpose = 'dsd' }: {
+  /** 어느 화면에서 여는가. 일반조서('gwp')는 주석 항목(단위·시트 구성·주석 목록)을 묻지 않는다 — 사용자 2026-09-26
+   *  「첨부화면은 주석양식화면이잖아?」. 작업 건 표를 두 화면이 함께 쓰기 때문에 생긴 혼동이다. */
+  purpose?: 'dsd' | 'gwp';
   entities: BizEntityFull[];
   auditIds: Set<string>;
   onClose: () => void;
@@ -37,7 +40,8 @@ export default function NewEngagementModal({ entities, auditIds, onClose, onDone
   const [moneyUnit, setMoneyUnit] = useState<'천원' | '원'>('천원');
   // 시트 구성 — 만들 때 정한다(사용자 결정 2026-09-14). 앞 해 건이 있으면 그것을 따른다.
   const [sheetLayout, setSheetLayout] = useState<SheetLayout>('sheets');
-  const [seed, setSeed] = useState<'previous' | 'file' | 'empty'>('file');
+  const gwp = purpose === 'gwp';
+  const [seed, setSeed] = useState<'previous' | 'file' | 'empty'>(gwp ? 'empty' : 'file');
   const [prevFound, setPrevFound] = useState<number | null>(null);
   const [dsd, setDsd] = useState<DsdInfo | null>(null);
   const [reading, setReading] = useState(false);
@@ -65,13 +69,13 @@ export default function NewEngagementModal({ entities, auditIds, onClose, onDone
       if (!alive) return;
       if (!prev) { setPrevFound(null); return; }
       setPrevFound((await listNotes(prev.id)).length);
-      setSeed('previous');
+      if (!gwp) setSeed('previous');   // 일반조서에서 만들 때는 주석 목록을 건드리지 않는다
       setBasis(prev.basis);
       setMoneyUnit(prev.moneyUnit);
       setSheetLayout(prev.sheetLayout);
     });
     return () => { alive = false; };
-  }, [entityId, fy, scope]);
+  }, [entityId, fy, scope, gwp]);
 
   async function takeFile(f: File | undefined) {
     if (!f) return;
@@ -131,7 +135,7 @@ export default function NewEngagementModal({ entities, auditIds, onClose, onDone
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
       <div className="card" style={{ maxWidth: 580, width: '100%', maxHeight: '88vh', overflowY: 'auto', marginBottom: 0 }}>
-        <div className="chdr">새 작업 건</div>
+        <div className="chdr">새 작업 건{gwp && <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>일반조서 — 거래처·사업연도·재무제표 회계기준만 정합니다</span>}</div>
 
         <div className="frow"><span className="fl">거래처<span className="req">*</span></span>
           <div>
@@ -185,20 +189,27 @@ export default function NewEngagementModal({ entities, auditIds, onClose, onDone
           </div>
         </div>
 
-        <div className="frow"><span className="fl">회계기준 · 단위</span>
+        <div className="frow"><span className="fl">{gwp ? '재무제표 회계기준' : '회계기준 · 단위'}</span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <select className="btn-sm" value={basis} onChange={(e) => setBasis(e.target.value as Basis)}>
               <option>K-IFRS</option><option>일반기업회계기준</option>
             </select>
+            {gwp ? (
+              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', alignSelf: 'center' }}>
+                조서 기준(일반·소규모)은 만든 뒤 당기 세팅에서 정합니다
+              </span>
+            ) : (<>
             <select className="btn-sm" value={moneyUnit} onChange={(e) => setMoneyUnit(e.target.value as '천원' | '원')}>
               <option>천원</option><option>원</option>
             </select>
             <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', alignSelf: 'center' }}>
               원화 금액만 환산합니다
             </span>
+            </>)}
           </div>
         </div>
 
+        {!gwp && (<>
         <div className="frow" style={{ alignItems: 'start' }}><span className="fl">시트 구성</span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             <label style={{ fontSize: 'var(--fs-2)' }}>
@@ -255,6 +266,7 @@ export default function NewEngagementModal({ entities, auditIds, onClose, onDone
             </label>
           </div>
         </div>
+        </>)}
 
         {say && (
           <div style={{
