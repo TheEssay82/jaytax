@@ -285,6 +285,7 @@ export interface RollOptions {
   /** 당기 사업연도(결산일이 속한 해). 결산일·대상기간을 이만큼 올린다. */ fy: number;
   /** 전기 결산일 「2025-12-31」 → 당기 결산일. 없으면 한 해 더한다. */ closing?: string;
   /** 양식에 새로 생긴 조서를 넣을까. 기본 넣는다(보이게). */ addNew?: boolean;
+  /** 검토자(파트너) — 당기 세팅 값. 없으면 전기 조서 머리의 검토자를 그대로 쓴다. */ reviewer?: string;
 }
 
 /**
@@ -345,7 +346,7 @@ export function rollWorkbook(
     const r = transplantSheet(files, srcFiles, ts.name, { as: cs.name, replace: true });
     const mig = migrateInputs(priorSheet, tplData);
     const refs = headRefs(tplData);
-    const edits: CellEdit[] = [...mig.edits, ...headEdits(refs, coverName, indexName, indexRowOf.get(cs.code.replace(/\(.*$/, '')) ?? null, cs.head.reviewer)];
+    const edits: CellEdit[] = [...mig.edits, ...headEdits(refs, coverName, indexName, indexRowOf.get(cs.code.replace(/\(.*$/, '')) ?? null, opts.reviewer || cs.head.reviewer)];
     let xml = strFromU8(files[r.part]);
     xml = renameSheetRefs(xml, tplNameMap);
     if (edits.length) xml = setCells(xml, edits);

@@ -188,7 +188,7 @@ export default function NewEngagementModal({ entities, auditIds, onClose, onDone
         <div className="frow"><span className="fl">회계기준 · 단위</span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <select className="btn-sm" value={basis} onChange={(e) => setBasis(e.target.value as Basis)}>
-              <option>K-IFRS</option><option>일반기업회계기준</option><option>소규모감사기준</option>
+              <option>K-IFRS</option><option>일반기업회계기준</option>
             </select>
             <select className="btn-sm" value={moneyUnit} onChange={(e) => setMoneyUnit(e.target.value as '천원' | '원')}>
               <option>천원</option><option>원</option>

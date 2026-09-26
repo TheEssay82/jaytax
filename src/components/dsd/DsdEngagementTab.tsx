@@ -339,7 +339,7 @@ export default function DsdEngagementTab() {
               <Field label="회계기준">
                 <select className="btn-sm" value={picked.basis}
                   onChange={(ev) => void updateEngagement(picked.id, { basis: ev.target.value as Basis }).then(() => load(picked.id))}>
-                  <option>K-IFRS</option><option>일반기업회계기준</option><option>소규모감사기준</option>
+                  <option>K-IFRS</option><option>일반기업회계기준</option>
                 </select>
               </Field>
               <Field label="금액 단위">

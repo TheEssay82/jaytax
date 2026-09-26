@@ -5,7 +5,7 @@
 import { supabase } from './supabase';
 import type { Catalog } from './gwpCatalog';
 import type { TemplateCatalog } from './gwpTemplate';
-import type { Basis } from './dsdNotes';
+import type { AuditBasis } from './gwpSetup';
 
 const BUCKET = 'gwp';
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -18,7 +18,7 @@ export function fmtKb(n: number): string {
 export interface GwpTemplate {
   id: string;
   fy: number;
-  basis: Basis;
+  basis: AuditBasis;
   storagePath: string;
   fileName: string;
   fileSize: number;
@@ -28,7 +28,7 @@ export interface GwpTemplate {
   updatedAt: string;
 }
 type TplRow = {
-  id: string; fy: number; basis: Basis; storage_path: string; file_name: string; file_size: number;
+  id: string; fy: number; basis: AuditBasis; storage_path: string; file_name: string; file_size: number;
   catalog: TemplateCatalog; note: string | null; uploaded_email: string | null; updated_at: string;
 };
 const TPL_SEL = 'id, fy, basis, storage_path, file_name, file_size, catalog, note, uploaded_email, updated_at';
@@ -46,7 +46,7 @@ export async function listTemplates(): Promise<GwpTemplate[]> {
   return ((data ?? []) as unknown as TplRow[]).map(toTpl);
 }
 
-export async function getTemplate(fy: number, basis: Basis): Promise<GwpTemplate | null> {
+export async function getTemplate(fy: number, basis: AuditBasis): Promise<GwpTemplate | null> {
   const { data, error } = await supabase.from('gwp_template').select(TPL_SEL).eq('fy', fy).eq('basis', basis).maybeSingle();
   if (error) throw error;
   return data ? toTpl(data as unknown as TplRow) : null;
@@ -54,7 +54,7 @@ export async function getTemplate(fy: number, basis: Basis): Promise<GwpTemplate
 
 /** 묶음을 등록한다 — 같은 연도·기준이 있으면 바꾼다(양식은 조서가 아니라 바꿔도 된다). */
 export async function saveTemplate(
-  fy: number, basis: Basis, file: { name: string; bytes: Uint8Array }, catalog: TemplateCatalog, note?: string,
+  fy: number, basis: AuditBasis, file: { name: string; bytes: Uint8Array }, catalog: TemplateCatalog, note?: string,
 ): Promise<GwpTemplate> {
   const { data: u } = await supabase.auth.getUser();
   const old = await getTemplate(fy, basis);

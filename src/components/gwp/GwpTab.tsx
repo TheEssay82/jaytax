@@ -12,10 +12,13 @@ import Empty from '../common/Empty';
 import { useAuth } from '../../context/AuthContext';
 import { listBizEntities, type BizEntityFull } from '../../lib/bizRegistryApi';
 import {
-  listEngagements, listAuditEntityIds, findEngagement, updateEngagement,
-  type Engagement, type Basis,
+  listEngagements, listAuditEntityIds, findEngagement,
+  type Engagement,
 } from '../../lib/dsdApi';
-import { BASES, defaultAuditFy } from '../../lib/dsdNotes';
+import { defaultAuditFy } from '../../lib/dsdNotes';
+import { AUDIT_BASIS_LABEL, basisMismatch, rollBlockedBy } from '../../lib/gwpSetup';
+import { listYears, auditContractCpa, type GwpYear } from '../../lib/gwpYearApi';
+import GwpSetupCard from './GwpSetupCard';
 import {
   listTemplates, listBooks, addBook, setBookKind, pickBase, fileBytes, fileUrl, fmtKb,
   type GwpTemplate, type GwpBook, type BookKind,
@@ -75,16 +78,24 @@ export default function GwpTab() {
   const [showLeft, setShowLeft] = useState(false);
   const [asFinal, setAsFinal] = useState(false);
   const [fyAt, setFyAt] = useState<number | null>(null);
+  // 당기 세팅(조서 양식 기준·검토자·작성자) — 작업 건 id → 세팅. 0152.
+  const [yearsBy, setYearsBy] = useState<Map<string, GwpYear>>(new Map());
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [prior, setPrior] = useState<{ fy: number; year: GwpYear } | null>(null);
+  const [contractCpa, setContractCpa] = useState<string | null>(null);
 
   async function load(keep?: string) {
     try {
       setErr(null);
-      const [list, es, aud, tpls] = await Promise.all([listEngagements(), listBizEntities(), listAuditEntityIds(), listTemplates()]);
-      setEngs(list.filter((e) => !e.isDemo));
-      setEnts(es); setAuditIds(aud); setTemplates(tpls);
+      const [list, es, aud, tpls, ys] = await Promise.all([listEngagements(), listBizEntities(), listAuditEntityIds(), listTemplates(), listYears()]);
+      const live = list.filter((e) => !e.isDemo);
+      setEngs(live);
+      setEnts(es); setAuditIds(aud); setTemplates(tpls); setYearsBy(ys);
       const id = keep ?? pickedId ?? null;
       setPickedId(id);
       setBooks(id ? await listBooks(id) : []);
+      const pe = id ? live.find((e) => e.id === id) : null;
+      if (pe) await loadSetupContext(pe, ys);
     } catch (e) {
       setErr(e instanceof Error ? e.message : '불러오지 못했습니다.');
     } finally {
@@ -97,17 +108,33 @@ export default function GwpTab() {
   const years = useMemo(() => [...new Set(engs.map((e) => e.fy))].sort((a, b) => b - a), [engs]);
   const fy = fyAt ?? years[0] ?? defaultAuditFy();
   const inYear = useMemo(() => engs.filter((e) => e.fy === fy), [engs, fy]);
-  const tpl = useMemo(() => (picked ? templates.find((t) => t.fy === picked.fy && t.basis === picked.basis) ?? null : null), [templates, picked]);
+  const year = picked ? yearsBy.get(picked.id) ?? null : null;
+  // 표준양식은 **조서 양식 기준**으로 고른다(재무제표 회계기준이 아니다).
+  const tpl = useMemo(() => (picked && year ? templates.find((t) => t.fy === picked.fy && t.basis === year.auditBasis) ?? null : null), [templates, picked, year]);
   const latest = books[0] ?? null;
 
+  /** 세팅 대화에 쓸 것 — 전기 건의 세팅과 감사계약의 담당회계사. */
+  async function loadSetupContext(e: Engagement, ys: Map<string, GwpYear> = yearsBy) {
+    const [prev, cpa] = await Promise.all([findEngagement(e.entityId, e.fy - 1, e.scope), auditContractCpa(e.entityId, e.fy)]);
+    const py = prev ? ys.get(prev.id) ?? null : null;
+    setPrior(prev && py ? { fy: prev.fy, year: py } : null);
+    setContractCpa(cpa);
+  }
+
   async function pick(id: string) {
-    setPickedId(id); setReport(null); setAssembled(null); setMsg(null);
-    try { setBooks(await listBooks(id)); } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); }
+    setPickedId(id); setReport(null); setAssembled(null); setMsg(null); setSetupOpen(false);
+    try {
+      setBooks(await listBooks(id));
+      const e = engs.find((x) => x.id === id);
+      if (e) await loadSetupContext(e);
+    } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); }
   }
 
   /** 이월본 — 전기 건의 최종본(없으면 최신 판) + 당기 양식. */
   async function makeRoll() {
-    if (!picked || !tpl) return;
+    if (!picked || !tpl || !year) return;
+    const blocked = rollBlockedBy(prior?.year.auditBasis, year.auditBasis);
+    if (blocked) { setErr(blocked); return; }
     setBusy('roll'); setErr(null); setMsg(null); setReport(null); setAssembled(null);
     try {
       const prev = await findEngagement(picked.entityId, picked.fy - 1, picked.scope);
@@ -115,8 +142,8 @@ export default function GwpTab() {
       const base = pickBase(await listBooks(prev.id));
       if (!base) throw new Error(`FY${picked.fy - 1} 건에 올린 조서 파일이 없습니다. 전기 파일을 그 건에 먼저 올리십시오.`);
       const { catalog, files } = readBundle(await fileBytes(tpl.storagePath));
-      const prior = await fileBytes(base.storagePath);
-      const r = rollWorkbook(prior, catalog, files, { fy: picked.fy, closing: picked.periodTo ?? undefined });
+      const priorBytes = await fileBytes(base.storagePath);
+      const r = rollWorkbook(priorBytes, catalog, files, { fy: picked.fy, closing: picked.periodTo ?? undefined, reviewer: year.partner });
       const name = `일반조서_${safeName(picked.entityName)}_FY${picked.fy}_이월본.xlsx`;
       const book = await addBook(picked.id, '이월본', { name, bytes: r.bytes }, r.catalog,
         `FY${prev.fy} ${base.kind} v${base.version}(${base.fileName}) + ${tpl.fy} ${tpl.basis} 양식`);
@@ -134,13 +161,13 @@ export default function GwpTab() {
 
   /** 초도 — 양식만으로. */
   async function makeNew() {
-    if (!picked || !tpl) return;
+    if (!picked || !tpl || !year) return;
     setBusy('new'); setErr(null); setMsg(null); setReport(null); setAssembled(null);
     try {
       const { catalog, files } = readBundle(await fileBytes(tpl.storagePath));
       const period = `제${picked.termNo ?? ''}기 ${kdate(picked.periodFrom)} ～ ${kdate(picked.periodTo)}`;
       const r = assembleWorkbook(catalog, files, {
-        company: picked.entityName, closing: picked.periodTo ?? '', period, basis: picked.basis, firstYear: true,
+        company: picked.entityName, closing: picked.periodTo ?? '', period, basis: year.auditBasis, firstYear: true,
       });
       const name = `일반조서_${safeName(picked.entityName)}_FY${picked.fy}_초도.xlsx`;
       const cat = buildCatalog(readWorkbook(r.bytes));
@@ -201,7 +228,7 @@ export default function GwpTab() {
         <div className="chdr">
           📘 일반조서 관리
           <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
-            {picked ? `${picked.entityName} · FY${picked.fy} ${picked.scope} · ${picked.basis}` : '작업 건을 고르세요'}
+            {picked ? `${picked.entityName} · FY${picked.fy} ${picked.scope} · 조서 ${year ? AUDIT_BASIS_LABEL[year.auditBasis] : '세팅 전'}` : '작업 건을 고르세요'}
           </span>
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             <button className={`btn-sm${sub === 'work' ? ' btn-sm-navy' : ''}`} onClick={() => setSub('work')}>① 작업 건·조서</button>
@@ -247,7 +274,9 @@ export default function GwpTab() {
                   background: e.id === pickedId ? 'var(--navy-bg)' : '#fff', borderRadius: 'var(--r-sm)', padding: '7px 11px',
                 }}>
                   <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--navy)' }}>{e.entityName}</div>
-                  <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 2 }}>{e.scope} · {e.basis}</div>
+                  <div style={{ fontSize: 'var(--fs-1)', color: yearsBy.get(e.id) ? 'var(--ink-3)' : 'var(--warn)', marginTop: 2 }}>
+                    {e.scope} · {yearsBy.get(e.id) ? `조서 ${AUDIT_BASIS_LABEL[yearsBy.get(e.id)!.auditBasis]}` : '세팅 전'}
+                  </div>
                 </button>
               ))}
             </div>
@@ -257,28 +286,42 @@ export default function GwpTab() {
             <div className="card"><Empty text="위에서 회사를 고르세요." /></div>
           ) : (
             <>
+              {(!year || setupOpen) && (
+                <GwpSetupCard key={`${picked.id}:${year?.updatedAt ?? 'new'}`} eng={picked} year={year} prior={prior} contractCpa={contractCpa} canWrite={canWrite}
+                  onCancel={year ? () => setSetupOpen(false) : undefined}
+                  onSaved={(y) => {
+                    setYearsBy((m) => new Map(m).set(y.engagementId, y)); setSetupOpen(false);
+                    setMsg(`당기 세팅을 저장했습니다 — 조서 ${AUDIT_BASIS_LABEL[y.auditBasis]} · 검토자 ${y.partner} · 작성자 ${y.authorDefault ?? '-'}.`);
+                  }} />
+              )}
               <div className="card">
                 <div className="chdr">
                   {picked.entityName}
                   <span style={{ fontSize: 'var(--fs-2)', fontWeight: 400, color: 'var(--ink-2)' }}>
                     FY{picked.fy} · {picked.scope}{picked.periodFrom ? ` · ${picked.periodFrom} ~ ${picked.periodTo}` : ''}
                   </span>
-                  <label style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-3)', display: 'flex', gap: 5, alignItems: 'center' }}>
-                    기준
-                    <select className="btn-sm" value={picked.basis} disabled={!canWrite}
-                      title="전기 일반기업이 당기 소규모가 될 수도, 반대도 됩니다. 양식 묶음이 이 값으로 정해집니다."
-                      onChange={(ev) => void updateEngagement(picked.id, { basis: ev.target.value as Basis }).then(() => load(picked.id))}>
-                      {BASES.map((b) => <option key={b}>{b}</option>)}
-                    </select>
-                  </label>
+                  {year && (
+                    <span style={{ marginLeft: 'auto', fontSize: 'var(--fs-1)', color: 'var(--ink-2)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                      조서 <b>{AUDIT_BASIS_LABEL[year.auditBasis]}</b> · 검토자 <b>{year.partner}</b> · 작성자 <b>{year.authorDefault ?? '-'}</b>
+                      {year.basisConfirmedAt && <span style={{ color: 'var(--ink-4)' }}>· 확인 {year.basisConfirmedAt.slice(0, 10)}</span>}
+                      {canWrite && <button className="btn-sm" onClick={() => setSetupOpen(true)}>세팅 고치기</button>}
+                    </span>
+                  )}
                 </div>
+                {year && basisMismatch(year.auditBasis, picked.basis) && (
+                  <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)', marginBottom: 8 }}>
+                    조서는 「{AUDIT_BASIS_LABEL[year.auditBasis]}」인데 주석·DSD 의 재무제표 회계기준은 「{picked.basis}」입니다 — 둘 중 하나를 확인하세요.
+                  </div>
+                )}
 
                 <div style={{ fontSize: 'var(--fs-2)', lineHeight: 1.7, marginBottom: 10 }}>
                   <b>표준양식</b>{' '}
-                  {tpl ? (
+                  {!year ? (
+                    <span style={{ color: 'var(--warn)' }}>당기 세팅을 먼저 마치세요 — 조서 기준이 정해져야 양식이 골라집니다.</span>
+                  ) : tpl ? (
                     <span style={{ color: 'var(--good)' }}>{tpl.fy} {tpl.basis} · {tpl.fileName} · 조서 시트 {tpl.catalog.sheets.filter((s) => s.code).length}장</span>
                   ) : (
-                    <span style={{ color: 'var(--warn)' }}>FY{picked.fy} {picked.basis} 묶음이 없습니다 — ② 표준양식에서 등록하십시오.</span>
+                    <span style={{ color: 'var(--warn)' }}>FY{picked.fy} {year.auditBasis} 묶음이 없습니다 — ② 표준양식에서 등록하십시오.</span>
                   )}
                 </div>
 

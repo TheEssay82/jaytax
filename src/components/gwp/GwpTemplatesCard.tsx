@@ -5,14 +5,15 @@
 import { useState } from 'react';
 import { readBundle } from '../../lib/gwpTemplate';
 import { saveTemplate, deleteTemplate, fileUrl, fmtKb, type GwpTemplate } from '../../lib/gwpApi';
-import { BASES, defaultAuditFy, type Basis } from '../../lib/dsdNotes';
+import { defaultAuditFy } from '../../lib/dsdNotes';
+import { AUDIT_BASES, type AuditBasis } from '../../lib/gwpSetup';
 import { confirmDanger } from '../common/DangerConfirm';
 
 export default function GwpTemplatesCard(
   { templates, onChange }: { templates: GwpTemplate[]; onChange: () => void | Promise<void> },
 ) {
   const [fy, setFy] = useState(defaultAuditFy());
-  const [basis, setBasis] = useState<Basis>('K-IFRS');
+  const [basis, setBasis] = useState<AuditBasis>('K-IFRS');
   const [busy, setBusy] = useState(false);
   const [say, setSay] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -60,8 +61,8 @@ export default function GwpTemplatesCard(
       <div className="frow"><span className="fl">등록</span>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <input className="btn-sm" style={{ width: 78 }} type="number" value={fy} onChange={(e) => setFy(Number(e.target.value))} title="양식 연도(배포 연도)" />
-          <select className="btn-sm" value={basis} onChange={(e) => setBasis(e.target.value as Basis)}>
-            {BASES.map((b) => <option key={b}>{b}</option>)}
+          <select className="btn-sm" value={basis} onChange={(e) => setBasis(e.target.value as AuditBasis)}>
+            {AUDIT_BASES.map((b) => <option key={b}>{b}</option>)}
           </select>
           <label className="btn-sm btn-sm-navy" style={{ cursor: busy ? 'default' : 'pointer' }}>
             {busy ? '읽는 중…' : 'zip 고르기'}
