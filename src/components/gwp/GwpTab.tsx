@@ -41,8 +41,12 @@ const STATUS_TONE: Record<Status, { bg: string; ink: string }> = {
   작성완료: { bg: 'var(--good-bg)', ink: 'var(--good)' },
   숨김: { bg: 'transparent', ink: 'var(--ink-4)' },
 };
-function statusOf(s: CatalogSheet): Status {
+/** 머리 값 가운데 깨진 것(0·#REF!)은 없는 것으로 — 전기 파일의 끊긴 링크다. */
+const clean = (v: string | undefined) => (!v || v === '0' || v.startsWith('#') ? '' : v);
+function statusOf(s: CatalogSheet, fromRoll = false): Status {
   if (s.hidden) return '숨김';
+  // 이월본은 아직 아무도 쓰지 않은 판이다 — 작년 날짜가 박힌 시트를 「작성완료」로 읽지 않는다(2026-09-27).
+  if (fromRoll) return '미착수';
   if (s.head.date) return '작성완료';
   if (s.head.author) return '작성중';
   return '미착수';
@@ -90,6 +94,10 @@ export default function GwpTab() {
   const [contractCpa, setContractCpa] = useState<string | null>(null);
   // 전기 조서가 시스템에 없을 때(첫 해) — 이월 버튼이 파일을 직접 받는다. 전기 작업 건을 따로 만들 필요가 없다.
   const [askPrior, setAskPrior] = useState(false);
+  // 마지막 이월에 쓴 전기 파일 — 「고른 것 반영해 다시 만들기」가 같은 전기에서 다시 짓는다.
+  const [lastPrior, setLastPrior] = useState<{ bytes: Uint8Array; label: string } | null>(null);
+  const [pickReplace, setPickReplace] = useState<Set<string>>(new Set());
+  const [pickAdd, setPickAdd] = useState<Set<string>>(new Set());
 
   async function load(keep?: string) {
     try {
@@ -129,7 +137,7 @@ export default function GwpTab() {
   }
 
   async function pick(id: string) {
-    setPickedId(id); setReport(null); setAssembled(null); setMsg(null); setSetupOpen(false); setAskPrior(false);
+    setPickedId(id); setReport(null); setAssembled(null); setMsg(null); setSetupOpen(false); setAskPrior(false); setLastPrior(null); setPickReplace(new Set()); setPickAdd(new Set());
     try {
       setBooks(await listBooks(id));
       const e = engs.find((x) => x.id === id);
@@ -176,20 +184,22 @@ export default function GwpTab() {
   }
 
   /** 전기 워크북 바이트 + 당기 양식 → 이월본을 짓고 올리고 내려받는다. */
-  async function rollFrom(priorBytes: Uint8Array, source: string) {
+  async function rollFrom(priorBytes: Uint8Array, source: string, pick: { replace?: string[]; addCodes?: string[] } = {}) {
     if (!picked || !tpl || !year) return;
     setBusy('roll'); setErr(null);
+    setLastPrior({ bytes: priorBytes, label: source });
     try {
       const { catalog, files } = readBundle(await fileBytes(tpl.storagePath));
-      const r = rollWorkbook(priorBytes, catalog, files, { fy: picked.fy, closing: picked.periodTo ?? undefined, reviewer: year.partner });
+      const r = rollWorkbook(priorBytes, catalog, files, { fy: picked.fy, closing: picked.periodTo ?? undefined, reviewer: year.partner, replace: pick.replace, addCodes: pick.addCodes });
       const name = `일반조서_${safeName(picked.entityName)}_FY${picked.fy}_이월본.xlsx`;
       const book = await addBook(picked.id, '이월본', { name, bytes: r.bytes }, r.catalog,
-        `${source} + ${tpl.fy} ${tpl.basis} 양식`);
+        `${source} + ${tpl.fy} ${tpl.basis} 양식${pick.replace?.length ? ` · 갈아끼움 ${pick.replace.join(',')}` : ''}${pick.addCodes?.length ? ` · 넣음 ${pick.addCodes.join(',')}` : ''}`);
       download(r.bytes, name, XLSX);
       setBooks(await listBooks(picked.id));
       setReport(r.report);
+      setPickReplace(new Set()); setPickAdd(new Set());
       const by = (a: string) => r.report.sheets.filter((s) => s.action === a).length;
-      setMsg(`이월본 v${book.version}을 만들어 올리고 내려받았습니다 — 그대로 ${by('그대로')} · 갈아끼움 ${by('갈아끼움')} · 새 조서 ${by('새 조서')} · 양식 없음 ${by('양식 없음')} · 숨김 ${by('숨김 그대로')}.`);
+      setMsg(`이월본 v${book.version}을 만들어 올리고 내려받았습니다 — 작년 그대로 ${by('그대로') + by('양식 없음')} · 숨김 ${by('숨김 그대로')}${by('갈아끼움') ? ` · 갈아끼움 ${by('갈아끼움')}` : ''}${by('새 조서') ? ` · 새 조서 ${by('새 조서')}` : ''}. 아래 「이월 결과」에서 확인하세요.`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : '만들지 못했습니다.');
     } finally {
@@ -258,7 +268,8 @@ export default function GwpTab() {
   const cat: Catalog | null = latest?.catalog ?? null;
   const papers = (cat?.sheets ?? []).filter((s) => s.kind === 'paper');
   const indexBy = new Map((cat?.index ?? []).map((r) => [r.code, r]));
-  const counts = papers.reduce((m, s) => { const k = statusOf(s); m[k] = (m[k] ?? 0) + 1; return m; }, {} as Record<Status, number>);
+  const fromRoll = latest?.kind === '이월본';
+  const counts = papers.reduce((m, s) => { const k = statusOf(s, fromRoll); m[k] = (m[k] ?? 0) + 1; return m; }, {} as Record<Status, number>);
 
   return (
     <div>
@@ -434,24 +445,72 @@ export default function GwpTab() {
                   <div className="chdr">이월 결과<span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
                     결산일 {report.cover.closing ?? '-'} · 대상기간 {report.cover.period ?? '-'} · 감사보고서일 비움 · 조서목록 작성일 {report.index.datesCleared}칸 비움
                   </span></div>
+                  {/* 무엇을 했는지 먼저 한 줄로 — 사용자 2026-09-27 「이월결과 내용을 이해를 잘 못하겠어」 */}
+                  <div style={{ fontSize: 'var(--fs-2)', lineHeight: 1.75, background: 'var(--surface-2)', borderRadius: 8, padding: '8px 12px', marginBottom: 10 }}>
+                    <b>작년 조서를 그대로 이어 올해 파일을 만들었습니다.</b> 조서마다 머리의 회사명·결산일은 표지로, 작성자·일자는 조서목록으로 이어 두었고
+                    검토자는 <b>{year?.partner ?? '-'}</b>로 채웠습니다. 조서목록의 작성일은 비워 두었으니 날짜를 적으면 각 조서에 따라 들어갑니다.
+                    <div style={{ marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap', color: 'var(--ink-2)' }}>
+                      {(['그대로', '양식 없음', '숨김 그대로', '양식에만 있음', '갈아끼움', '새 조서'] as const).map((a) => {
+                        const n = report.sheets.filter((s) => s.action === a).length;
+                        return n ? <span key={a}><b>{a}</b> {n}</span> : null;
+                      })}
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
+                      그대로 = 작년 시트를 이음 · 양식 없음 = 올해 양식에 같은 번호가 없어 작년 그대로 · 숨김 그대로 = 작년에 숨긴 안 쓰는 조서 ·
+                      양식에만 있음 = 올해 양식에만 있어 넣지 않음 · 갈아끼움·새 조서 = 아래에서 골라 반영한 것
+                    </div>
+                  </div>
                   {report.warnings.map((w) => <div key={w} style={{ color: 'var(--warn)', fontSize: 'var(--fs-2)' }}>{w}</div>)}
+                  {(() => {
+                    const differ = report.sheets.filter((s) => s.action === '그대로' && s.templateDiffers);
+                    const extra = report.sheets.filter((s) => s.action === '양식에만 있음');
+                    if (!differ.length && !extra.length) return null;
+                    return (
+                      <div style={{ fontSize: 'var(--fs-2)', lineHeight: 1.7, marginBottom: 8 }}>
+                        <b>고를 것(선택)</b> — 올해 양식과 글자가 다른 조서 {differ.length}개는 작년 그대로 두었고, 올해 양식에만 있는 조서 {extra.length}개는 넣지 않았습니다.
+                        올해 양식으로 바꾸거나 넣고 싶은 조서만 아래 표에서 체크한 뒤 <b>「고른 것 반영해 다시 만들기」</b>를 누르세요. 대부분은 그대로 두시면 됩니다.
+                        <span style={{ color: 'var(--ink-3)' }}> 다시 만들면 새 판이 하나 더 쌓입니다.</span>
+                        <div style={{ marginTop: 6 }}>
+                          <button className="btn-p" disabled={!canWrite || !!busy || !lastPrior || (!pickReplace.size && !pickAdd.size)}
+                            onClick={() => lastPrior && void rollFrom(lastPrior.bytes, lastPrior.label, { replace: [...pickReplace], addCodes: [...pickAdd] })}>
+                            {busy === 'roll' ? '만드는 중…' : `고른 것 반영해 다시 만들기 (갈아끼움 ${pickReplace.size} · 넣기 ${pickAdd.size})`}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="tbl-wide">
                     <table className="tbl">
                       <thead><tr style={{ background: 'var(--surface-2)' }}>
-                        <th style={{ width: 90 }}>처리</th><th style={{ width: 110 }}>조서</th><th>시트</th><th style={{ width: 70 }}>양식 일치</th><th style={{ width: 60 }}>옮김</th><th style={{ width: 70 }}>못 옮김</th><th>비고</th>
+                        <th style={{ width: 54 }}>고르기</th><th style={{ width: 96 }}>처리</th><th style={{ width: 110 }}>조서</th><th>시트</th><th style={{ width: 84 }}>올해 양식과</th><th style={{ width: 60 }}>옮김</th><th style={{ width: 70 }}>못 옮김</th><th>비고</th>
                       </tr></thead>
                       <tbody>
-                        {report.sheets.map((s) => (
-                          <tr key={s.name} style={{ opacity: s.action === '숨김 그대로' ? 0.55 : 1 }}>
-                            <td style={{ fontWeight: s.action === '갈아끼움' || s.action === '새 조서' ? 700 : 400, color: s.action === '양식 없음' ? 'var(--warn)' : undefined }}>{s.action}</td>
-                            <td>{s.code}</td>
-                            <td>{s.name}</td>
-                            <td style={{ textAlign: 'right' }}>{s.score != null ? `${Math.round(s.score * 100)}%` : ''}</td>
-                            <td style={{ textAlign: 'right' }}>{s.moved ?? ''}</td>
-                            <td style={{ textAlign: 'right', color: s.left?.length ? 'var(--warn)' : undefined }}>{s.left?.length || ''}</td>
-                            <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{s.note ?? (s.template ? s.template.split('/').pop() : '')}</td>
-                          </tr>
-                        ))}
+                        {report.sheets.map((s) => {
+                          const canReplace = s.action === '그대로' && s.templateDiffers;
+                          const canAdd = s.action === '양식에만 있음';
+                          const on = canReplace ? pickReplace.has(s.code) : canAdd ? pickAdd.has(s.code) : false;
+                          const toggle = () => {
+                            const set = canReplace ? setPickReplace : setPickAdd;
+                            set((prev) => { const n = new Set(prev); if (n.has(s.code)) n.delete(s.code); else n.add(s.code); return n; });
+                          };
+                          return (
+                            <tr key={s.name + s.action} style={{ opacity: s.action === '숨김 그대로' || s.action === '양식에만 있음' ? 0.6 : 1 }}>
+                              <td style={{ textAlign: 'center' }}>
+                                {(canReplace || canAdd) && (
+                                  <input type="checkbox" checked={on} disabled={!canWrite} onChange={toggle}
+                                    title={canReplace ? '올해 양식으로 갈아끼우고 작년 값을 옮깁니다' : '올해 양식의 이 조서를 넣습니다'} />
+                                )}
+                              </td>
+                              <td style={{ fontWeight: s.action === '갈아끼움' || s.action === '새 조서' ? 700 : 400, color: s.action === '양식 없음' ? 'var(--ink-2)' : undefined }}>{s.action}</td>
+                              <td>{s.code}</td>
+                              <td>{s.name}</td>
+                              <td style={{ textAlign: 'right', color: s.templateDiffers ? 'var(--warn)' : undefined }}>{s.score != null ? `${Math.round(s.score * 100)}% 같음` : ''}</td>
+                              <td style={{ textAlign: 'right' }}>{s.moved ?? ''}</td>
+                              <td style={{ textAlign: 'right', color: s.left?.length ? 'var(--warn)' : undefined }}>{s.left?.length || ''}</td>
+                              <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{s.note ?? (s.template ? s.template.split('/').pop() : '')}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -499,7 +558,7 @@ export default function GwpTab() {
                       </tr></thead>
                       <tbody>
                         {papers.map((s) => {
-                          const st = statusOf(s);
+                          const st = statusOf(s, fromRoll);
                           const ix = indexBy.get((s.code ?? '').replace(/\(.*$/, ''));
                           return (
                             <tr key={s.name} style={{ opacity: s.hidden ? 0.5 : 1 }}>
@@ -508,9 +567,9 @@ export default function GwpTab() {
                               <td>{ix?.title ?? ''}</td>
                               <td style={{ color: 'var(--ink-3)' }}>{s.name}</td>
                               <td style={{ textAlign: 'center' }}>{ix?.performed ? 'O' : ''}</td>
-                              <td>{s.head.author}</td>
-                              <td>{s.head.reviewer}</td>
-                              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{s.head.date}</td>
+                              <td>{fromRoll ? '' : clean(s.head.author)}</td>
+                              <td>{clean(s.head.reviewer)}</td>
+                              <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fromRoll ? '' : clean(s.head.date)}</td>
                               <td><span style={{ padding: '1px 8px', borderRadius: 999, fontSize: 'var(--fs-0)', fontWeight: 600, background: STATUS_TONE[st].bg, color: STATUS_TONE[st].ink }}>{st}</span></td>
                             </tr>
                           );
@@ -520,7 +579,9 @@ export default function GwpTab() {
                   </div>
                 )}
                 <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 6 }}>
-                  작성자·일자는 각 조서 머리에서 읽습니다(조서목록 링크의 계산값). 엑셀에서 저장한 파일이어야 값이 보입니다.
+                  {fromRoll
+                    ? <>지금 판은 <b>이월본</b>(아직 아무도 쓰지 않은 판)이라 모두 「미착수」로 봅니다. 엑셀에서 조서목록에 작성자·작성일을 적고 저장해 「채운 파일 올리기」로 올리면 여기에 반영됩니다.</>
+                    : <>작성자·일자는 각 조서 머리에서 읽습니다(조서목록 링크의 계산값). 엑셀에서 저장한 파일이어야 값이 보입니다.</>}
                 </div>
               </div>
             </>

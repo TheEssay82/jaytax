@@ -259,7 +259,16 @@ export function bumpPeriodText(s: string, by = 1): string {
 }
 
 // ── 이월 ────────────────────────────────────────────────────────
-export type SheetAction = '그대로' | '갈아끼움' | '새 조서' | '양식 없음' | '숨김 그대로';
+/**
+ * 조서마다 한 일.
+ *  그대로       — 전기 시트를 잇는다(기본). 머리의 작성자·일자·검토자만 당기로 건다.
+ *  갈아끼움     — 사람이 골라서 당기 양식으로 바꾸고 전기 값을 옮겼다.
+ *  새 조서      — 사람이 골라서 당기 양식에만 있는 조서를 넣었다.
+ *  양식에만 있음 — 당기 양식에만 있는 조서. 넣지 않았다(골라서 넣을 수 있다).
+ *  양식 없음    — 당기 양식에 없는 시트(회사가 더한 것 등). 전기 그대로.
+ *  숨김 그대로  — 전기에 숨겨 둔 안 쓰는 조서.
+ */
+export type SheetAction = '그대로' | '갈아끼움' | '새 조서' | '양식에만 있음' | '양식 없음' | '숨김 그대로';
 
 export interface SheetReport {
   code: string;
@@ -270,6 +279,7 @@ export interface SheetReport {
   moved?: number;
   left?: { from: string; value: string; why: string }[];
   /** 갈아끼운 시트의 양식 파일 */ template?: string;
+  /** 당기 양식과 글자가 다르다(그대로 이었지만 골라서 갈아끼울 수 있다). */ templateDiffers?: boolean;
   note?: string;
 }
 
@@ -284,7 +294,12 @@ export interface RollReport {
 export interface RollOptions {
   /** 당기 사업연도(결산일이 속한 해). 결산일·대상기간을 이만큼 올린다. */ fy: number;
   /** 전기 결산일 「2025-12-31」 → 당기 결산일. 없으면 한 해 더한다. */ closing?: string;
-  /** 양식에 새로 생긴 조서를 넣을까. 기본 넣는다(보이게). */ addNew?: boolean;
+  /**
+   * 당기 양식으로 **갈아끼울** 조서 코드. 기본은 없음 — 전기 시트를 그대로 잇는다(사용자 결정 2026-09-27:
+   * 「대부분의 시트는 양식이 많이 바뀌지 않습니다」). 명진 FY25 를 전부 갈아끼웠더니 2120A 702칸 등 전기 내용을 잃었다.
+   */
+  replace?: string[];
+  /** 당기 양식에만 있는 조서 가운데 **넣을** 코드. 기본은 넣지 않는다. */ addCodes?: string[];
   /** 검토자(파트너) — 당기 세팅 값. 없으면 전기 조서 머리의 검토자를 그대로 쓴다. */ reviewer?: string;
 }
 
@@ -306,6 +321,25 @@ export function rollWorkbook(
   if (!coverSheet) report.warnings.push('「조서표지(공통사항)」 시트가 없어 회사명·결산일 링크를 걸지 못했습니다.');
   if (!indexSheet) report.warnings.push('「조서목록」 시트가 없어 작성자·일자 링크를 걸지 못했습니다.');
   const indexRowOf = new Map(cat.index.map((r) => [r.code, r.row]));
+  /** 조서목록에서 이 조서의 줄 — 없으면 윗 조서 줄(2100A→2100, 2302→2301, 8110→8100, 2512→2511). */
+  const indexRowFor = (code: string): number | null => {
+    const base = code.replace(/\(.*$/, '');
+    const four = base.slice(0, 4);
+    for (const c of [base, four, `${four.slice(0, 3)}0`, `${four.slice(0, 3)}1`, `${four.slice(0, 2)}00`]) {
+      const r = indexRowOf.get(c);
+      if (r) return r;
+    }
+    return null;
+  };
+  const replaceSet = new Set(opts.replace ?? []);
+  const addSet = new Set(opts.addCodes ?? []);
+  /** 전기 시트를 그대로 이을 때도 머리는 당기로 — 회사명·결산일은 표지, 작성자·일자는 조서목록, 검토자는 파트너. */
+  function relinkHead(sheetName: string, sheet: SheetData, code: string, reviewer: string) {
+    const e = sheetEntries(files).find((x) => x.name === sheetName);
+    if (!e) return;
+    const edits = headEdits(headRefs(sheet), coverName, indexName, indexRowFor(code), reviewer);
+    if (edits.length) files[e.part] = strToU8(setCells(strFromU8(files[e.part]), edits));
+  }
 
   // 코드 → 회사 시트 이름(보이는 것 우선). 양식 수식의 시트 이름을 회사 이름으로 바꿀 때 쓴다.
   const nameOfCode = new Map<string, string>();
@@ -332,21 +366,37 @@ export function rollWorkbook(
     if (cs.kind !== 'paper' || !cs.code) continue;
     const priorSheet = prior.find((s) => s.name === cs.name)!;
     if (cs.hidden) { report.sheets.push({ code: cs.code, name: cs.name, action: '숨김 그대로' }); continue; }
-    if (seenCodes.has(cs.code)) { report.sheets.push({ code: cs.code, name: cs.name, action: '그대로', note: '같은 코드의 시트가 둘 — 앞의 것만 맞췄습니다' }); continue; }
+    const reviewer = opts.reviewer || cs.head.reviewer;
+    if (seenCodes.has(cs.code)) {
+      relinkHead(cs.name, priorSheet, cs.code, reviewer);
+      report.sheets.push({ code: cs.code, name: cs.name, action: '그대로', note: '같은 코드의 시트가 둘 — 둘 다 전기 그대로 이었습니다' });
+      continue;
+    }
     seenCodes.add(cs.code);
     const ts = findTemplateSheet(tpl, cs.code);
-    if (!ts) { report.sheets.push({ code: cs.code, name: cs.name, action: '양식 없음', note: '당기 양식에 이 조서가 없습니다(삭제·통합됐을 수 있습니다). 그대로 두었습니다.' }); continue; }
+    if (!ts) {
+      relinkHead(cs.name, priorSheet, cs.code, reviewer);
+      report.sheets.push({ code: cs.code, name: cs.name, action: '양식 없음', note: '당기 양식에 같은 번호의 조서가 없습니다 — 전기 그대로 이었습니다.' });
+      continue;
+    }
     const { files: srcFiles, sheet: tplData } = tplSheet(ts.file, ts.name);
     const cmp = compareSheets(tplData, priorSheet);
-    if (cmp.score >= SAME_THRESHOLD) {
-      report.sheets.push({ code: cs.code, name: cs.name, action: '그대로', score: cmp.score, differ: cmp.differ.length });
+    // 기본은 전기 그대로 — 사람이 고른 조서만 갈아끼운다.
+    if (!replaceSet.has(cs.code)) {
+      relinkHead(cs.name, priorSheet, cs.code, reviewer);
+      const differs = cmp.score < SAME_THRESHOLD;
+      report.sheets.push({
+        code: cs.code, name: cs.name, action: '그대로', score: cmp.score, differ: cmp.differ.length, template: ts.file,
+        templateDiffers: differs,
+        note: differs ? `당기 양식과 ${Math.round(cmp.score * 100)}% 같습니다 — 전기 그대로 이었습니다. 필요하면 골라서 갈아끼우세요.` : undefined,
+      });
       continue;
     }
     // 갈아끼운다 — 이름·자리·숨김은 회사 것 그대로.
     const r = transplantSheet(files, srcFiles, ts.name, { as: cs.name, replace: true });
     const mig = migrateInputs(priorSheet, tplData);
     const refs = headRefs(tplData);
-    const edits: CellEdit[] = [...mig.edits, ...headEdits(refs, coverName, indexName, indexRowOf.get(cs.code.replace(/\(.*$/, '')) ?? null, opts.reviewer || cs.head.reviewer)];
+    const edits: CellEdit[] = [...mig.edits, ...headEdits(refs, coverName, indexName, indexRowFor(cs.code), reviewer)];
     let xml = strFromU8(files[r.part]);
     xml = renameSheetRefs(xml, tplNameMap);
     if (edits.length) xml = setCells(xml, edits);
@@ -357,13 +407,17 @@ export function rollWorkbook(
     });
   }
 
-  // 양식에는 있는데 회사 파일에 없는 조서 — 새로 생긴 것(2533·3400-1 같은).
-  if (opts.addNew !== false) {
+  // 양식에는 있는데 회사 파일에 없는 조서 — 새로 생긴 것(2533·3400-1 같은). 기본은 넣지 않고 알려만 준다.
+  {
     const existing = new Set(sheetEntries(files).map((e) => e.name));
     const have = new Set(cat.sheets.map((s) => s.code).filter(Boolean) as string[]);
     for (const t of tpl.sheets) {
       if (!t.code || t.hidden || have.has(t.code) || seenCodes.has(t.code)) continue;
       seenCodes.add(t.code);
+      if (!addSet.has(t.code)) {
+        report.sheets.push({ code: t.code, name: t.name, action: '양식에만 있음', template: t.file, note: '당기 양식에만 있는 조서입니다 — 넣지 않았습니다. 필요하면 골라서 넣으세요.' });
+        continue;
+      }
       let name = t.name;
       if (existing.has(name)) name = `${name}(2026)`;
       const { files: srcFiles, sheet: tplData } = tplSheet(t.file, t.name);
@@ -371,10 +425,10 @@ export function rollWorkbook(
       existing.add(name);
       let xml = strFromU8(files[r.part]);
       xml = renameSheetRefs(xml, tplNameMap);
-      const edits = headEdits(headRefs(tplData), coverName, indexName, indexRowOf.get(t.code) ?? null, '');
+      const edits = headEdits(headRefs(tplData), coverName, indexName, indexRowFor(t.code), opts.reviewer ?? '');
       if (edits.length) xml = setCells(xml, edits);
       files[r.part] = strToU8(xml);
-      report.sheets.push({ code: t.code, name, action: '새 조서', template: t.file, note: '당기 양식에 새로 있는 조서입니다. 맨 뒤에 붙였습니다.' });
+      report.sheets.push({ code: t.code, name, action: '새 조서', template: t.file, note: '골라서 넣은 조서입니다. 맨 뒤에 붙였습니다.' });
     }
   }
 
