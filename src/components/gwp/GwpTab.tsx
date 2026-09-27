@@ -722,7 +722,7 @@ export default function GwpTab() {
 
               {/* ② 단계 진행 ─────────────────────────────── */}
               {view === 'stage' && year && latest && (
-                <GwpStageBoard key={picked.id} eng={picked} latest={latest} tpl={tpl} canWrite={canWrite}
+                <GwpStageBoard key={picked.id} eng={picked} latest={latest} tpl={tpl} basis={year.auditBasis} canWrite={canWrite}
                   partner={year.partner} author={year.authorDefault}
                   onBooks={async () => setBooks(await listBooks(picked.id))}
                   setMsg={setMsg} setErr={setErr} />

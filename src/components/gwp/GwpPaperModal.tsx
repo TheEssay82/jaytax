@@ -27,6 +27,8 @@ import Form2110 from './Form2110';
 import Form2120A from './Form2120A';
 import Form8110 from './Form8110';
 import Form2301 from './Form2301';
+import FormQA from './FormQA';
+import { withDraft, QA_DRAFTS, type PaperQA } from '../../lib/gwpPaperQA';
 import { readLibrary, type Paper2301, type LibCase } from '../../lib/gwpPaper2301';
 import { fillFromWtb, type Paper8110, type WtbReport } from '../../lib/gwpPaper8110';
 import { fillFromFs, balance, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
@@ -88,7 +90,13 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
         }
         let d: unknown;
         if (prevSaved?.data != null) { d = structuredClone(prevSaved.data); setNote(`${prevCode}(앞 단계)에 저장한 값에서 시작합니다.`); }
-        else if (s) { d = def.readBook ? def.readBook(sheets) : def.read(s); setNote('작년(이월본) 값을 불러왔습니다 — 올해 것으로 고치세요.'); }
+        else if (s) {
+          d = def.readBook ? def.readBook(sheets) : def.read(s);
+          setNote('작년(이월본) 값을 불러왔습니다 — 올해 것으로 고치세요.');
+          // 질문·기재형(소규모 2520·2530) — 빈 칸은 초안으로(사용자 2026-09-28 「지금 초안을 반영해 주세요」).
+          if (QA_DRAFTS[def.code]) { d = withDraft(d as PaperQA, QA_DRAFTS[def.code], author); setNote('빈 칸을 초안으로 채웠습니다 — 회사 사실과 맞는지 확인하고 [확인]을 누르세요.'); }
+          if (s.hidden) setErr(`${s.name} 시트가 숨겨져 있습니다 — ① 올해 파일의 「소규모 짝 정리」를 먼저 하세요.`);
+        }
         else { d = def.empty(); setNote(`최신 판(v${books[0].version})에 ${def.sheetCode} 시트가 없습니다 — 반영할 때 올해 양식으로 새로 넣습니다.`); }
         // 회계기간은 올해 것으로(표지의 대상기간).
         const period = books[0].catalog.period;
@@ -99,7 +107,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
       }
     })();
     return () => { off = true; };
-  }, [eng.id, def, saved?.data, prevSaved?.data, prevCode]);
+  }, [eng.id, def, saved?.data, prevSaved?.data, prevCode, author]);
 
   const change = (d: unknown) => { setData(d); setDirty(true); };
 
@@ -313,6 +321,8 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
                   title={dsd ? dsd.fileName : '자료함에 전기 DSD 를 먼저 올리세요'}>
                   {busy === 'dsd' ? '읽는 중…' : dsd ? '전기 DSD 로 당기 열 채우기' : '전기 DSD 없음(자료함에 올리세요)'}
                 </button>} />
+            ) : QA_DRAFTS[def.code] ? (
+              <FormQA value={data as PaperQA} onChange={change} readOnly={readOnly} draft={QA_DRAFTS[def.code]} author={author} />
             ) : def.code === '2301' ? (
               <Form2301 value={data as Paper2301} onChange={change} readOnly={readOnly} big={big2120} lib={lib2301} />
             ) : def.code === '8110ARP' ? (

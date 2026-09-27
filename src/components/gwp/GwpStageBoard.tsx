@@ -14,7 +14,8 @@ import { buildCatalog } from '../../lib/gwpCatalog';
 import { readBundle } from '../../lib/gwpTemplate';
 import { applyWebPapers } from '../../lib/gwpApply';
 import { STAGES, stageStates, currentStage, confirmBlockers, stageLocked, type StageNo, type StageEvent } from '../../lib/gwpStage';
-import { WEB_PAPERS, type WebPaperEntry } from '../../lib/gwpWebPapers';
+import { WEB_PAPERS, webPapersFor, type WebPaperEntry } from '../../lib/gwpWebPapers';
+import type { AuditBasis } from '../../lib/gwpSetup';
 import {
   listFiles, uploadFile, latestFile, updateFileMeta, listPapers, listStageEvents, addStageEvent, markApplied, FILE_KINDS,
   type EngFile, type FileKind, type PaperRow,
@@ -32,6 +33,7 @@ type Props = {
   eng: Engagement;
   latest: GwpBook | null;
   /** 올해 표준양식 — 웹 조서 반영 때 옛 모양 시트를 갈아끼운다 */ tpl: GwpTemplate | null;
+  /** 조서 기준 — 소규모만 보이는 웹 조서(2520·2530)가 있다 */ basis: AuditBasis;
   canWrite: boolean;
   partner: string;
   author: string | null;
@@ -40,7 +42,7 @@ type Props = {
   setErr: (m: string | null) => void;
 };
 
-export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, author, onBooks, setMsg, setErr }: Props) {
+export default function GwpStageBoard({ eng, latest, tpl, basis, canWrite, partner, author, onBooks, setMsg, setErr }: Props) {
   const [papers, setPapers] = useState<Map<string, PaperRow>>(new Map());
   const [events, setEvents] = useState<StageEvent[]>([]);
   const [files, setFiles] = useState<EngFile[]>([]);
@@ -81,7 +83,8 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
     3: plan?.reportDue ? `보고서 ${plan.reportDue}` : '',
   };
   const now = currentStage(states);
-  const rows = WEB_PAPERS.map((w) => ({ ...w, status: papers.get(w.code)?.status ?? null }));
+  const mineAll = webPapersFor(basis);
+  const rows = mineAll.map((w) => ({ ...w, status: papers.get(w.code)?.status ?? null }));
 
   // 엑셀 조서 탭 색 — 최신 판 목록에서.
   const tabs = useMemo(() => {
@@ -134,7 +137,7 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
   async function confirmStage(no: StageNo) {
     if (!latest || !closing) return;
     const st = STAGES[no - 1];
-    const items = WEB_PAPERS.filter((w) => w.def && w.stage === no && papers.get(w.code)?.status === '확인');
+    const items = mineAll.filter((w) => w.def && w.stage === no && papers.get(w.code)?.status === '확인');
     const codes = items.map((w) => w.code).join(', ');
     const close = !!STAGE_SERIES[no];
     setBusy(`stage:${no}`); setErr(null);
@@ -330,7 +333,7 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
 
       {closing && latest && (() => {
         const st = STAGES[closing.no - 1];
-        const items = WEB_PAPERS.filter((w) => w.def && w.stage === closing.no && papers.get(w.code)?.status === '확인');
+        const items = mineAll.filter((w) => w.def && w.stage === closing.no && papers.get(w.code)?.status === '확인');
         const excel = STAGE_SERIES[closing.no] ? stagePapers(latest.catalog, closing.no, otherStageCodes(closing.no)) : [];
         const red = excel.filter((s) => { const t = tabStateOf(s.tab); return t !== 'yellow' && t !== 'green'; });
         const emptyIdx = latest.catalog.index.filter((r) => /^[12]/.test(r.code) && !r.date).length;
