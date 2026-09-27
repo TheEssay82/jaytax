@@ -1,6 +1,6 @@
 // 2120A 위험평가 분석적절차 입력 — 전기(이월 때 옮겨 둔 열)와 당기(전기 DSD 로 채움)를 나란히, 증감·비고.
 import { useState } from 'react';
-import type { Paper2120A, Row2120, FillReport } from '../../lib/gwpPaper2120A';
+import { balance, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
 
 const fmt = (n: number | null | undefined) => (n == null ? '' : n.toLocaleString('ko-KR'));
 const parse = (s: string): number | null => { const t = s.replace(/[,\s]/g, ''); if (!t) return null; const n = Number(t.replace(/^\((.*)\)$/, '-$1')); return Number.isFinite(n) ? n : null; };
@@ -40,6 +40,20 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
           ))}
         </span>
       </div>
+      {/* 자산 = 부채 + 자본 — 사용자 2026-09-27 「2120A 는 자산=부채+자본 검증이 필요」 */}
+      {(['prev', 'cur'] as const).map((w) => {
+        const b = balance(value.rows, w);
+        if (!b) return null;
+        const ok = Math.abs(b.diff) < 1;
+        const lab = w === 'prev' ? '전기' : '당기';
+        return (
+          <div key={w} style={{ padding: '5px 10px', borderRadius: 8, marginBottom: 4, fontVariantNumeric: 'tabular-nums',
+            background: ok ? 'var(--good-bg)' : 'var(--bad-bg)', color: ok ? 'var(--good)' : 'var(--bad)' }}>
+            <b>{lab} {ok ? '✓' : '✗'}</b> 자산 {fmt(b.asset)} {ok ? '=' : '≠'} 부채 {fmt(b.liab)} + 자본 {fmt(b.equity)}
+            {!ok && <b> · 차이 {fmt(b.diff)}</b>}
+          </div>
+        );
+      })}
       {report && (
         <div style={{ padding: '6px 10px', borderRadius: 8, background: 'var(--surface-2)', marginBottom: 8, lineHeight: 1.6 }}>
           전기 DSD 로 채움 — 문구 {report.byLabel} · 차감 계정 {report.byContra} · 금액으로 짝 {report.byValue}
@@ -60,7 +74,7 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
                   </select>
                   <button className="btn-sm" disabled={readOnly || !pick[u.label]} onClick={() => {
                     const k = pick[u.label];
-                    onChange({ ...value, rows: value.rows.map((r) => (r.key === k ? { ...r, cur: (r.cur ?? 0) + u.cur, src: '손', note: r.note || `${u.label} 포함` } : r)) });
+                    onChange({ ...value, rows: value.rows.map((r) => (r.key === k ? { ...r, cur: (r.cur ?? 0) + u.cur, src: '손', note: r.note || `${u.label} 포함`, absorbs: [...(r.absorbs ?? []), u.label] } : r)) });
                     setPlaced(new Set(placed).add(u.label));
                   }}>이 줄에 더하기</button>
                 </div>

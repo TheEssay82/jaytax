@@ -23,7 +23,10 @@ export interface Row2120 {
   note: string;
   /** 당기 금액을 어디서 채웠나 */ src?: '문구' | '차감' | '금액' | '손' | '';
   /** 전기 열 금액이 DSD 전기 금액과 다르다 */ prevDiff?: number | null;
+  /** 재무상태표의 어느 부분인가 — 자산 = 부채 + 자본 검증(사용자 2026-09-27) */ sec?: Sec;
+  /** 「이 줄에 더하기」로 받은 DSD 계정 — 다시 채울 때 그 계정을 이미 받은 것으로 친다 */ absorbs?: string[];
 }
+export type Sec = '자산' | '부채' | '자본' | '손익';
 export interface Paper2120A { rows: Row2120[]; prevLabel: string; curLabel: string }
 
 type Hit = { row: number; col: string; text: string };
@@ -45,12 +48,16 @@ function layout(sheet: SheetData) {
   const noteHead = head.find((h) => normLabel(h.text) === '비고');
   const labelCol = acctHead ? colName(colNum(acctHead.col) + 1) : 'C';
   const plStart = hits.find((h) => h.row > pc.headerRow && /^(Ⅰ|I)\.?매출액$/.test(normLabel(h.text)))?.row ?? Infinity;
-  const rows: { row: number; label: string; fsli: string; pl: boolean }[] = [];
+  // 구분 줄 「자 산」「부 채」「자 본」(명진 B16·B64·B87) — 그 아래 줄이 그 부분이다.
+  const secRows = hits.filter((h) => h.row > pc.headerRow && h.row < plStart && /^(자산|부채|자본)$/.test(normLabel(h.text)))
+    .map((h) => ({ row: h.row, sec: normLabel(h.text) as Sec })).sort((a, b) => a.row - b.row);
+  const secOf = (row: number): Sec => (row > plStart ? '손익' : [...secRows].reverse().find((x) => x.row < row)?.sec ?? '자산');
+  const rows: { row: number; label: string; fsli: string; pl: boolean; sec: Sec }[] = [];
   for (const h of hits.filter((x) => x.col === labelCol && x.row > pc.headerRow + 1).sort((a, b) => a.row - b.row)) {
     const cur = sheet.cells.get(`${pc.curCol}${h.row}`);
     const prev = sheet.cells.get(`${pc.prevCol}${h.row}`);
     if (cur?.formula != null || prev?.formula != null) continue;   // 합계·비율 줄
-    rows.push({ row: h.row, label: h.text, fsli: fsliHead ? textOf(sheet.cells.get(`${fsliHead.col}${h.row}`)) : '', pl: h.row > plStart });
+    rows.push({ row: h.row, label: h.text, fsli: fsliHead ? textOf(sheet.cells.get(`${fsliHead.col}${h.row}`)) : '', pl: h.row > plStart, sec: secOf(h.row) });
   }
   return { pc, rows, noteCol: noteHead?.col ?? null };
 }
@@ -78,7 +85,7 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
     return {
       prevLabel: L.pc.prevLabel, curLabel: L.pc.curLabel,
       rows: keyed(L.rows).map((r) => ({
-        key: r.key, label: r.label, fsli: r.fsli, pl: r.pl,
+        key: r.key, label: r.label, fsli: r.fsli, pl: r.pl, sec: r.sec,
         prev: numOf(sheet, `${L.pc.prevCol}${r.row}`), cur: numOf(sheet, `${L.pc.curCol}${r.row}`),
         note: L.noteCol ? textOf(sheet.cells.get(`${L.noteCol}${r.row}`)) : '',
       })),
@@ -145,6 +152,13 @@ export function fillFromFs(d: Paper2120A, lines: FsLine[]): { data: Paper2120A; 
   const val = (n: number | undefined) => (n == null ? 0 : n * scale);
   // 한 DSD 줄은 한 번만 쓴다 — 판관비·영업외에 같은 이름(지급수수료)이 있다.
   const used = new Set<FsLine>();
+  // 손으로 고친 줄(src '손')은 건드리지 않되, 그 줄이 받은 계정은 이미 쓴 것으로 친다 — 30,345 를 넣었는데도 또 넣으라고 뜨던 것(사용자 2026-09-27).
+  for (const r of d.rows.filter((x) => x.src === '손')) {
+    const pool = r.pl ? pl : bs;
+    const names = new Set([cleanFs(r.label), ...(r.absorbs ?? []).map(cleanFs)]);
+    for (const x of pool) if (names.has(cleanFs(x.label))) used.add(x);
+  }
+  const handCur = new Set(d.rows.filter((x) => x.src === '손' && x.cur != null).map((x) => x.cur));
   const rows = d.rows.map((r): Row2120 => {
     if (r.src === '손') return r;
     const pool = (r.pl ? pl : bs).filter((x) => !used.has(x));
@@ -183,8 +197,17 @@ export function fillFromFs(d: Paper2120A, lines: FsLine[]): { data: Paper2120A; 
       if (cover >= 0 && x.level > cover) return;
       cover = -1;
       if (nextDeeper || x.level === 0 || /총계|합계/.test(cleanFs(x.label)) || !x.cur) return;
+      if (handCur.has(val(x.cur))) return;                       // 손으로 같은 금액을 넣어 둔 줄이 있다
       rep.unplaced.push({ statement: x.statement, label: x.label, cur: val(x.cur) });
     });
   }
   return { data: { ...d, rows }, report: rep };
+}
+
+/** 자산 = 부채 + 자본 — 전기·당기 각각. 차감 계정은 이미 음수다. */
+export function balance(rows: Row2120[], which: 'prev' | 'cur'): { asset: number; liab: number; equity: number; diff: number } | null {
+  if (!rows.some((r) => r.sec)) return null;
+  const sum = (sec: Sec) => rows.filter((r) => r.sec === sec).reduce((t, r) => t + (r[which] ?? 0), 0);
+  const asset = sum('자산'), liab = sum('부채'), equity = sum('자본');
+  return { asset, liab, equity, diff: asset - liab - equity };
 }

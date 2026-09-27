@@ -23,6 +23,7 @@ import { inspectFile, expectedFy, fitsEngagement } from '../../lib/gwpFiles';
 import { tabStateOf } from '../../lib/xlsxMark';
 import { safeName, download } from '../dsd/dsdUi';
 import GwpPaperModal from './GwpPaperModal';
+import { STAGE_SERIES, stagePapers, closeStage, planDate } from '../../lib/gwpStageClose';
 import type { Paper2110 } from '../../lib/gwpPaper2110';
 
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -46,6 +47,8 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
   const [open, setOpen] = useState<WebPaperEntry | null>(null);
   const [busy, setBusy] = useState('');
   const [reopen, setReopen] = useState<{ stage: StageNo; reason: string } | null>(null);
+  /** 확정 창 — 1차는 계획조서(1000·2000번대) 마감을 함께 보여 준다 */
+  const [closing, setClosing] = useState<{ no: StageNo; date: string; author: string } | null>(null);
 
   const load = useCallback(async () => {
     const [p, e, f] = await Promise.all([listPapers(eng.id), listStageEvents(eng.id), listFiles(eng.id)]);
@@ -119,34 +122,55 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
   }
 
   /** N차 확정 — 이 단계에서 확인한 웹 조서를 한꺼번에 엑셀에 써 넣어 판 하나를 만들고, 그 판을 확정본으로 둔다. */
+  /** 다른 단계의 웹 조서 코드 — 단계 마감에서 뺀다(2700A-3·4 는 2000번대지만 2·3차). */
+  const otherStageCodes = (no: StageNo) => WEB_PAPERS.filter((w) => w.stage !== no).map((w) => w.code);
+
+  /** [N차 확정] — 확인 창을 연다. 기본 작성일은 2110 의 감사계획일, 없으면 오늘. */
+  function openConfirm(no: StageNo) {
+    const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+    setClosing({ no, date: (no === 1 ? planDate(when('감사계획')) : null) ?? today, author: author ?? '' });
+  }
+
   async function confirmStage(no: StageNo) {
-    if (!latest) return;
+    if (!latest || !closing) return;
     const st = STAGES[no - 1];
     const items = WEB_PAPERS.filter((w) => w.def && w.stage === no && papers.get(w.code)?.status === '확인');
     const codes = items.map((w) => w.code).join(', ');
-    if (!confirm(`${st.label}(${st.when})을 합니다.\n\n${items.length ? `확인한 웹 조서 ${items.length}개(${codes})를 엑셀에 한꺼번에 써 넣어 새 판 하나를 만들고,\n` : ''}그 판을 ${st.label}본으로 고정합니다. 이 단계의 웹 조서는 잠깁니다.`)) return;
+    const close = !!STAGE_SERIES[no];
     setBusy(`stage:${no}`); setErr(null);
     try {
       const base = (await listBooks(eng.id))[0];
       if (!base) throw new Error('조서 판이 없습니다.');
       let version = base.version;
       let changed = 0;
-      if (items.length) {
-        const template = tpl ? { ...readBundle(await fileBytes(tpl.storagePath)), reviewer: partner } : undefined;
-        const r = applyWebPapers(await fileBytes(base.storagePath), items.map((w) => ({ def: w.def!, data: papers.get(w.code)!.data })), template);
-        if (r.missing.length) throw new Error(`최신 판(v${base.version})에 ${r.missing.join(', ')} 시트가 없습니다 — 표준양식이 등록돼 있는지 보세요.`);
-        changed = r.done.reduce((n, d) => n + d.changed, 0);
+      let closed = { dated: [] as string[], tabbed: [] as string[] };
+      if (items.length || close) {
+        let bytes = await fileBytes(base.storagePath);
+        if (items.length) {
+          const template = tpl ? { ...readBundle(await fileBytes(tpl.storagePath)), reviewer: partner } : undefined;
+          const r = applyWebPapers(bytes, items.map((w) => ({ def: w.def!, data: papers.get(w.code)!.data })), template);
+          if (r.missing.length) throw new Error(`최신 판(v${base.version})에 ${r.missing.join(', ')} 시트가 없습니다 — 표준양식이 등록돼 있는지 보세요.`);
+          changed = r.done.reduce((n, d) => n + d.changed, 0);
+          bytes = r.bytes;
+        }
+        // 계획조서 마감 — 조서목록 작성자·작성일, 빨간 탭 → 노랑(사용자 2026-09-27 「1000·2000번대가 1차로 반영 완료」).
+        if (close) {
+          const c = closeStage(bytes, no, { date: closing.date, author: closing.author, exclude: otherStageCodes(no) });
+          bytes = c.bytes;
+          closed = c;
+        }
         const name = `일반조서_${safeName(eng.entityName)}_FY${eng.fy}_${no}차확정.xlsx`;
-        const book = await addBook(eng.id, '작업중', { name, bytes: r.bytes }, buildCatalog(readWorkbook(r.bytes)),
-          `${st.label}본(${st.when}) — 웹 조서 반영 ${codes} · 바뀐 칸 ${changed}개(노랑)`);
+        const book = await addBook(eng.id, '작업중', { name, bytes }, buildCatalog(readWorkbook(bytes)),
+          `${st.label}본(${st.when})${items.length ? ` — 웹 조서 반영 ${codes} · 바뀐 칸 ${changed}개(노랑)` : ''}${close ? ` · 조서목록 작성일 ${closing.date} ${closed.dated.length}줄 · 빨간 탭 → 노랑 ${closed.tabbed.length}개` : ''}`);
         version = book.version;
         for (const w of items) await markApplied(eng.id, w.code, papers.get(w.code)!.data, version);
-        download(r.bytes, name, XLSX);
+        download(bytes, name, XLSX);
       }
       await addStageEvent(eng.id, no, '확정', version);
+      setClosing(null);
       await load();
       await onBooks();
-      setMsg(`${st.label} — ${items.length ? `웹 조서 ${items.length}개를 반영한 ` : ''}v${version}을 ${st.when} 확정본으로 고정했습니다${items.length ? '(내려받았습니다)' : ''}.`);
+      setMsg(`${st.label} — v${version}을 ${st.when} 확정본으로 고정하고 내려받았습니다.${items.length ? ` 웹 조서 ${items.length}개 반영.` : ''}${close ? ` 계획조서 조서목록 작성일 ${closed.dated.length}줄을 채우고 빨간 탭 ${closed.tabbed.length}개를 노랑으로 바꿨습니다.` : ''}`);
     } catch (e) { setErr(e instanceof Error ? e.message : '확정하지 못했습니다.'); } finally { setBusy(''); }
   }
 
@@ -283,7 +307,7 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
                 ) : (
                   <>
                     <button className="btn-p" style={{ width: '100%' }} disabled={!canWrite || !latest || blockers.length > 0 || !!busy}
-                      onClick={() => void confirmStage(st.no)}>
+                      onClick={() => openConfirm(st.no)}>
                       {busy === `stage:${st.no}` ? '엑셀에 반영하고 확정하는 중…' : `${st.label} — 엑셀에 반영하고 고정`}
                     </button>
                     {blockers.length > 0 && isNow && (
@@ -303,6 +327,50 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
         그 조서들을 <b>한꺼번에</b> 엑셀에 써 넣어 판 하나를 만들고(바뀐 칸 노랑·탭 노랑, 바뀐 게 없으면 탭 초록) 그 판을 확정본으로 고정합니다.
         확정 전에 엑셀을 보고 싶으면 조서 창의 「엑셀 미리보기」를 누르세요(판을 만들지 않습니다).
       </div>
+
+      {closing && latest && (() => {
+        const st = STAGES[closing.no - 1];
+        const items = WEB_PAPERS.filter((w) => w.def && w.stage === closing.no && papers.get(w.code)?.status === '확인');
+        const excel = STAGE_SERIES[closing.no] ? stagePapers(latest.catalog, closing.no, otherStageCodes(closing.no)) : [];
+        const red = excel.filter((s) => { const t = tabStateOf(s.tab); return t !== 'yellow' && t !== 'green'; });
+        const emptyIdx = latest.catalog.index.filter((r) => /^[12]/.test(r.code) && !r.date).length;
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div className="card" style={{ maxWidth: 660, width: '100%', maxHeight: '88vh', overflowY: 'auto', marginBottom: 0, fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
+              <div className="chdr">{st.label}
+                <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>{st.when} — 지금 판 v{latest.version}에 아래를 반영해 새 판 하나를 만들고 확정본으로 고정합니다</span>
+              </div>
+              <div><b>① 웹 조서 {items.length}개</b> {items.length ? `— ${items.map((w) => w.code).join(' · ')} (바뀐 칸 노랑)` : '— 없음'}</div>
+              {STAGE_SERIES[closing.no] && (
+                <div style={{ marginTop: 8 }}>
+                  <b>② 엑셀 계획조서 {excel.length}개</b>(1000·2000번대) — 🔴 손 안 댐 {red.length} · 🟡🟢 {excel.length - red.length}
+                  <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                    <li>조서목록 작성자·작성일이 빈 줄({emptyIdx}개)을 아래 값으로 채웁니다(노랑) — 각 조서 머리에 따라 들어갑니다. 이미 적힌 것은 둡니다.</li>
+                    <li>빨간 탭 {red.length}개를 노랑으로 바꿉니다 — 이번 단계에 확인했다는 표시입니다.
+                      {red.length > 0 && <span style={{ color: 'var(--ink-3)' }}> ({red.map((s) => s.code).join(', ')})</span>}</li>
+                  </ul>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                    작성일 <input type="date" className="btn-sm" value={closing.date} onChange={(e) => setClosing({ ...closing, date: e.target.value })} />
+                    작성자 <input className="btn-sm" style={{ width: 110 }} value={closing.author} onChange={(e) => setClosing({ ...closing, author: e.target.value })} />
+                    <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>기본 작성일은 2110 의 감사계획일(없으면 오늘)</span>
+                  </div>
+                  {red.length > 0 && (
+                    <div style={{ color: 'var(--warn)', marginTop: 6 }}>
+                      빨간 탭은 엑셀에서 아직 손대지 않은 조서입니다. 올해 내용을 적어야 하는 조서가 있으면 먼저 엑셀에서 쓰고 「채운 파일 올리기」로 올린 뒤 확정하세요.
+                    </div>
+                  )}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+                <button className="btn-s" disabled={!!busy} onClick={() => setClosing(null)}>닫기</button>
+                <button className="btn-p" disabled={!!busy || (!!STAGE_SERIES[closing.no] && !closing.date)} onClick={() => void confirmStage(closing.no)}>
+                  {busy ? '반영하고 확정하는 중…' : `${st.label} — v${latest.version + 1} 만들고 고정`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {open && open.def && (
         <GwpPaperModal entry={open} eng={eng} saved={papers.get(open.code)} papers={papers} files={files} tpl={tpl} locked={stageLocked(open.stage, states)} canWrite={canWrite}

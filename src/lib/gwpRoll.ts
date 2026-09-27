@@ -344,11 +344,10 @@ export interface RollOptions {
  * 머리 링크 도우미 — 조서표지·조서목록 이름과 조서목록의 그 조서 줄(없으면 윗 조서 줄).
  * 웹 조서 반영(gwpApply)이 올해 양식 시트를 새로 넣을 때 쓴다. 이월(rollWorkbook)과 같은 규칙이다.
  */
-export function headLinker(sheets: SheetData[], cat: Catalog) {
-  const coverName = sheets.find((s) => norm(s.name).includes('조서표지'))?.name ?? '조서표지(공통사항)';
-  const indexName = sheets.find((s) => kindOf(s.name) === 'index')?.name ?? '조서목록';
+/** 조서목록에서 이 조서의 줄 — 없으면 윗 조서 줄(2100A→2100, 2302→2301, 8110→8100). */
+export function indexRowResolver(cat: Catalog): (code: string) => number | null {
   const indexRowOf = new Map(cat.index.map((r) => [r.code, r.row]));
-  const indexRowFor = (code: string): number | null => {
+  return (code: string) => {
     const base = code.replace(/\(.*$/, '');
     const four = base.slice(0, 4);
     for (const c of [base, four, `${four.slice(0, 3)}0`, `${four.slice(0, 3)}1`, `${four.slice(0, 2)}00`]) {
@@ -357,6 +356,12 @@ export function headLinker(sheets: SheetData[], cat: Catalog) {
     }
     return null;
   };
+}
+
+export function headLinker(sheets: SheetData[], cat: Catalog) {
+  const coverName = sheets.find((s) => norm(s.name).includes('조서표지'))?.name ?? '조서표지(공통사항)';
+  const indexName = sheets.find((s) => kindOf(s.name) === 'index')?.name ?? '조서목록';
+  const indexRowFor = indexRowResolver(cat);
   return (sheet: SheetData, code: string, reviewer: string): CellEdit[] =>
     headEdits(headRefs(sheet), coverName, indexName, indexRowFor(code), reviewer);
 }

@@ -29,7 +29,7 @@ import Form8110 from './Form8110';
 import Form2301 from './Form2301';
 import { readLibrary, type Paper2301, type LibCase } from '../../lib/gwpPaper2301';
 import { fillFromWtb, type Paper8110, type WtbReport } from '../../lib/gwpPaper8110';
-import { fillFromFs, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
+import { fillFromFs, balance, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
 import type { Paper2110 } from '../../lib/gwpPaper2110';
 import Form2700A from './Form2700A';
 import Form2700A1 from './Form2700A1';
@@ -79,7 +79,13 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
         if (off) return;
         setVersion(books[0].version);
         setSheet(s);
-        if (saved?.data != null) return;
+        if (saved?.data != null) {
+          if (def.code === '2120A' && s) {
+            const secBy = new Map((def.read(s) as Paper2120A).rows.map((r) => [r.key, r.sec]));
+            setData((cur: unknown) => { const d = (cur ?? saved.data) as Paper2120A; return { ...d, rows: d.rows.map((r) => ({ ...r, sec: r.sec ?? secBy.get(r.key) })) }; });
+          }
+          return;
+        }
         let d: unknown;
         if (prevSaved?.data != null) { d = structuredClone(prevSaved.data); setNote(`${prevCode}(앞 단계)에 저장한 값에서 시작합니다.`); }
         else if (s) { d = def.readBook ? def.readBook(sheets) : def.read(s); setNote('작년(이월본) 값을 불러왔습니다 — 올해 것으로 고치세요.'); }
@@ -132,6 +138,12 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
 
   /** 확인 — 저장하고 「확인」으로 둔다. 엑셀·판 번호는 그대로([N차 확정] 때 한꺼번에). */
   async function check() {
+    if (def.code === '2120A') {
+      for (const w of ['prev', 'cur'] as const) {
+        const b = balance((data as Paper2120A).rows, w);
+        if (b && Math.abs(b.diff) >= 1 && !confirm(`${w === 'prev' ? '전기' : '당기'} 자산이 부채+자본과 ${b.diff.toLocaleString('ko-KR')}원 다릅니다.\n그래도 확인할까요?`)) return;
+      }
+    }
     setBusy('check'); setErr(null);
     try {
       await markChecked(eng.id, def.code, data);
