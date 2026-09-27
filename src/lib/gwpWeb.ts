@@ -21,6 +21,8 @@ export interface WebPaperDef<T = unknown> {
    * 2110·2120A 처럼 회사가 손본 시트는 맞추지 않는다 — 갈아끼우면 양식에 없는 회사 내용을 잃는다.
    */
   useTemplate?: boolean;
+  /** 올해 양식으로 맞출 때 숨길 옛 조서(2301 → 옛 2302 계정 수준) */ retire?: string[];
+  /** 칸을 쓰기 전에 시트 XML 을 고친다(2301 계정이 양식 칸보다 많으면 줄 끼우기) */ prepareXml?(xml: string, sheet: SheetData, data: T): string;
   /** 반영할 때 함께 올해 양식으로 맞출 조서(2700A 요약표처럼 수식으로 이 조서를 읽는 것) */ companions?: string[];
   /** 워크북 시트(작년 값·지금 판)에서 화면 값을 읽는다. 옛 모양 시트도 읽는다. */ read(sheet: SheetData): T;
   /** 여러 시트를 한 조서로 읽는다(8110ARP_BS·PL). 있으면 read 대신 쓴다. */ readBook?(sheets: SheetData[]): T;

@@ -284,7 +284,10 @@ export default function GwpTab() {
       }
       const book = await addBook(picked.id, asFinal ? '최종본' : '작업중', { name: f.name, bytes }, cat);
       setBooks(await listBooks(picked.id));
-      setMsg(`v${book.version}(${book.kind})으로 올렸습니다 — 조서 시트 ${papers}장.`);
+      // 📎 엑셀로 넘긴 조서에 붙인 별도조서 — 앞 판에 없던 시트를 알려 준다.
+      const before = new Set((latest?.catalog.sheets ?? []).map((s) => s.name));
+      const added = latest ? cat.sheets.filter((s) => !before.has(s.name)).map((s) => s.name) : [];
+      setMsg(`v${book.version}(${book.kind})으로 올렸습니다 — 조서 시트 ${papers}장.${added.length ? ` 새로 붙은 시트: ${added.join(', ')}.` : ''}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : '올리지 못했습니다.');
     } finally {

@@ -110,6 +110,20 @@ export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[], templa
   const prepared: Prepared = template
     ? prepareTemplateSheets(files, [...new Set(items.filter(({ def }) => def.useTemplate).flatMap(({ def }) => [def.sheetCode, ...(def.companions ?? [])]))], template)
     : { replaced: [], added: [], hidden: [] };
+  // 올해 양식으로 맞춘 조서의 옛 짝(2302)은 숨긴다.
+  if (template) {
+    const retire = new Set(items.filter(({ def }) => def.useTemplate).flatMap(({ def }) => def.retire ?? []));
+    for (const s of readWorkbook(zip(files))) {
+      if (!s.hidden && retire.has(baseOf(s.name))) { setSheetHidden(files, s.name, true); prepared.hidden.push(s.name); }
+    }
+  }
+  // 칸을 쓰기 전에 시트 XML 을 고칠 조서(줄 끼우기).
+  for (const { def, data } of items) {
+    if (!def.prepareXml) continue;
+    const s0 = pickSheet(def, readWorkbook(zip(files)));
+    const entry = s0 ? sheetEntries(files).find((x) => x.name === s0.name) : null;
+    if (s0 && entry) files[entry.part] = strToU8(def.prepareXml(strFromU8(files[entry.part]), s0, data));
+  }
   const sheets = readWorkbook(zip(files));
   const done: ApplyResult['done'] = [];
   const missing: string[] = [];

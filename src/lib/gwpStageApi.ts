@@ -97,6 +97,18 @@ export async function markApplied(engagementId: string, code: string, data: unkn
   return toPaper(row as unknown as PRow);
 }
 
+/**
+ * 📎 엑셀로 넘기기 — 이 조서의 정본을 엑셀로 바꾼다(기말 별도조서를 붙이려고). 웹은 읽기 전용.
+ * 되돌리면(작성중) 다시 웹이 정본 — 그때는 엑셀의 지금 값을 웹으로 읽어 온다(data).
+ */
+export async function setPaperStatus(engagementId: string, code: string, status: PaperStatus, data?: unknown): Promise<PaperRow> {
+  const row: Record<string, unknown> = { engagement_id: engagementId, code, status };
+  if (data !== undefined) row.data = data;
+  const { data: r, error } = await supabase.from('gwp_paper').upsert(row, { onConflict: 'engagement_id,code' }).select(P_SEL).single();
+  if (error) throw new Error(error.message);
+  return toPaper(r as unknown as PRow);
+}
+
 // ── 단계 확정 ─────────────────────────────────────────────
 type ERow = { stage: StageNo; action: '확정' | '확정 취소'; book_version: number | null; reason: string | null; created_email: string | null; created_at: string };
 

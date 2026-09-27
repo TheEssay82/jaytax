@@ -12,7 +12,7 @@ import { pickSheet } from '../../lib/gwpWeb';
 import { applyWebPapers } from '../../lib/gwpApply';
 import { readBundle } from '../../lib/gwpTemplate';
 import { parseStatements } from '../../lib/fsParse';
-import { savePaper, markApplied, latestFile, type PaperRow, type EngFile } from '../../lib/gwpStageApi';
+import { savePaper, markApplied, setPaperStatus, latestFile, type PaperRow, type EngFile } from '../../lib/gwpStageApi';
 import { STAGES } from '../../lib/gwpStage';
 import type { WebPaperEntry } from '../../lib/gwpWebPapers';
 import type { Paper2110A } from '../../lib/gwpPaper2110A';
@@ -21,6 +21,8 @@ import Form2110A from './Form2110A';
 import Form2110 from './Form2110';
 import Form2120A from './Form2120A';
 import Form8110 from './Form8110';
+import Form2301 from './Form2301';
+import { readLibrary, type Paper2301, type LibCase } from '../../lib/gwpPaper2301';
 import { fillFromWtb, type Paper8110, type WtbReport } from '../../lib/gwpPaper8110';
 import { fillFromFs, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
 import type { Paper2110 } from '../../lib/gwpPaper2110';
@@ -54,7 +56,9 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
   const [dirty, setDirty] = useState(false);
   const [fillRep, setFillRep] = useState<FillReport | null>(null);
   const [wtbRep, setWtbRep] = useState<WtbReport | null>(null);
-  const readOnly = locked || !canWrite;
+  /** 📎 엑셀로 넘긴 조서 — 엑셀이 정본, 웹은 읽기만 */
+  const handedOff = saved?.status === '엑셀로 넘김';
+  const readOnly = locked || !canWrite || handedOff;
   const prevCode = PREV_STAGE[def.code];
   const prevSaved = prevCode ? papers.get(prevCode) : undefined;
 
@@ -88,6 +92,20 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
 
   const change = (d: unknown) => { setData(d); setDirty(true); };
 
+  // 2301 — 올해 양식의 「참고자료」(계정별 왜곡표시위험 사례).
+  const [lib2301, setLib2301] = useState<LibCase[]>([]);
+  useEffect(() => {
+    if (def.code !== '2301' || !tpl) return;
+    let off = false;
+    void (async () => {
+      const { catalog, files: tf } = readBundle(await fileBytes(tpl.storagePath));
+      const t = catalog.sheets.find((s) => s.code?.replace(/\(.*$/, '') === '2301' && !s.hidden);
+      const s = t ? readWorkbook(tf[t.file]).find((x) => x.name === t.name) : null;
+      if (!off && s) setLib2301(readLibrary(s));
+    })().catch(() => undefined);
+    return () => { off = true; };
+  }, [def.code, tpl]);
+
   async function save() {
     setBusy('save'); setErr(null);
     try {
@@ -95,6 +113,30 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
       setDirty(false);
       await onChanged(`${def.code} ${def.title}을 저장했습니다 — 아직 엑셀에는 반영하지 않았습니다.`);
     } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } finally { setBusy(''); }
+  }
+
+  /** 📎 — 반영한 조서의 정본을 엑셀로. 별도조서를 붙여 보완한 뒤 「채운 파일 올리기」. */
+  async function handOff() {
+    setBusy('hand'); setErr(null);
+    try {
+      await setPaperStatus(eng.id, def.code, '엑셀로 넘김');
+      await onChanged(`${def.code} ${def.title}을 엑셀로 넘겼습니다 — 최신 판을 내려받아 별도조서를 붙이고 「채운 파일 올리기」로 올리세요. 단계 확정에는 반영한 것으로 칩니다.`);
+      onClose();
+    } catch (e) { setErr(e instanceof Error ? e.message : '넘기지 못했습니다.'); } finally { setBusy(''); }
+  }
+
+  /** 웹으로 되돌리기 — 엑셀의 지금 값을 웹으로 읽어 온다. */
+  async function takeBack() {
+    setBusy('back'); setErr(null);
+    try {
+      const books = await listBooks(eng.id);
+      const sheets = readWorkbook(await fileBytes(books[0].storagePath));
+      const s = pickSheet(def, sheets);
+      const d = s ? (def.readBook ? def.readBook(sheets) : def.read(s)) : data;
+      await setPaperStatus(eng.id, def.code, '작성중', d);
+      await onChanged(`${def.code} ${def.title}을 웹으로 되돌렸습니다 — 엑셀(v${books[0].version})의 지금 값을 읽어 왔습니다.`);
+      onClose();
+    } catch (e) { setErr(e instanceof Error ? e.message : '되돌리지 못했습니다.'); } finally { setBusy(''); }
   }
 
   async function apply() {
@@ -179,6 +221,15 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
   const dsd = latestFile(files, '전기DSD');
   const factors = (papers.get('2700A-1')?.data as Paper2700A1 | undefined) ?? null;
   const is2700 = /^2700A-[234]$/.test(def.code);
+  // 2301 추천 재료 — 2120A 에서 크게 변한 계정(1천만원·20% 이상).
+  const big2120 = new Map<string, string>();
+  for (const r of ((papers.get('2120A')?.data as Paper2120A | undefined)?.rows ?? [])) {
+    if (r.prev == null || r.cur == null) continue;
+    const g = r.cur - r.prev;
+    if (Math.abs(g) >= 10_000_000 && (r.prev === 0 || Math.abs(g / r.prev) >= 0.2)) {
+      big2120.set(r.label, `전기 대비 ${g > 0 ? '+' : ''}${r.prev ? `${Math.round((g / r.prev) * 100)}%` : '신규'} (${g.toLocaleString('ko-KR')}원)`);
+    }
+  }
   const wtb = latestFile(files, '정산표');
   // 8110ARP 기준 — 2700A-4 의 수행중요성(백만원 → 원). 사용자 2026-09-27 「8110 의 중요성은 2700A-4 에 연결」.
   const m4 = papers.get('2700A-4')?.data as Paper2700 | undefined;
@@ -194,6 +245,12 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
           <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { if (!dirty || confirm('저장하지 않은 입력이 있습니다. 닫을까요?')) onClose(); }}>닫기</button>
         </div>
         {locked && <div style={{ color: 'var(--warn)', fontSize: 'var(--fs-2)', marginBottom: 6 }}>{stage.label}이 끝나 잠겨 있습니다 — 고치려면 보드에서 확정을 취소하세요.</div>}
+        {handedOff && !locked && (
+          <div style={{ fontSize: 'var(--fs-2)', marginBottom: 6, padding: '6px 10px', borderRadius: 8, background: 'var(--surface-2)', lineHeight: 1.7 }}>
+            📎 <b>엑셀로 넘긴 조서</b>입니다 — 지금은 엑셀이 정본입니다. ① 판 목록에서 최신 판을 내려받아 ② 별도조서 시트를 붙이고 보완한 뒤 ③ 「채운 파일 올리기」로 올리면 됩니다.
+            {canWrite && <button className="btn-sm" style={{ marginLeft: 8 }} disabled={!!busy} onClick={() => void takeBack()}>웹으로 되돌리기</button>}
+          </div>
+        )}
         {err && <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)', marginBottom: 6 }}>{err}</div>}
         {note && !readOnly && <div style={{ color: 'var(--ink-2)', fontSize: 'var(--fs-1)', marginBottom: 6 }}>{note}</div>}
         <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
@@ -209,6 +266,8 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
                   title={dsd ? dsd.fileName : '자료함에 전기 DSD 를 먼저 올리세요'}>
                   {busy === 'dsd' ? '읽는 중…' : dsd ? '전기 DSD 로 당기 열 채우기' : '전기 DSD 없음(자료함에 올리세요)'}
                 </button>} />
+            ) : def.code === '2301' ? (
+              <Form2301 value={data as Paper2301} onChange={change} readOnly={readOnly} big={big2120} lib={lib2301} />
             ) : def.code === '8110ARP' ? (
               <Form8110 value={data as Paper8110} onChange={change} readOnly={readOnly} report={wtbRep} pm={pm8110.pm} pmNote={pm8110.note}
                 fill={<button className="btn-sm btn-sm-navy" disabled={!wtb || !!busy} onClick={() => void fill8110()}
@@ -241,6 +300,10 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
               {saved?.status === '확인' && !dirty ? `v${saved.appliedVersion}에 반영돼 있습니다.` : dirty ? '고친 것이 있습니다.' : ''}
               {!tpl && is2700 ? ' 표준양식이 없어 옛 모양 시트는 반영하지 못합니다.' : ''}
             </span>
+            {saved?.status === '확인' && !dirty && (
+              <button className="btn-s" disabled={!!busy} onClick={() => void handOff()}
+                title="기말에 별도조서를 붙여야 하는 조서 — 이 조서의 정본을 엑셀로 넘깁니다. 웹은 읽기 전용이 됩니다.">📎 엑셀로 넘기기</button>
+            )}
             <button className="btn-s" disabled={!!busy || !dirty} onClick={() => void save()}>{busy === 'save' ? '저장하는 중…' : '저장'}</button>
             <button className="btn-p" disabled={!!busy} onClick={() => void apply()}
               title="최신 판에 이 조서를 써 넣은 새 판을 만듭니다. 바뀐 칸은 노랗게, 탭은 노랑(바뀐 게 없으면 초록).">
