@@ -50,6 +50,7 @@ import GwpTab from './gwp/GwpTab';
 import InternalHome from './home/InternalHome';
 import PlaceholderTab from './common/PlaceholderTab';
 import DevNotesModal from './common/DevNotesModal';
+import UpdateBanner from './common/UpdateBanner';
 import { MENU_GROUPS, ICON_ITEMS, menuAllowed, groupAllowed, type MenuItem } from '../lib/menu';
 
 /** 옛 탭 주소 → 지금 화면. 합치거나 이름을 바꿀 때 여기 한 줄을 더한다. */
@@ -247,6 +248,7 @@ function Shell() {
 
   return (
     <>
+      <UpdateBanner />
       <header id="hdr">
         <button
           type="button"

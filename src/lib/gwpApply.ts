@@ -2,22 +2,40 @@
 //
 // 바뀐 칸만 쓰고 노랗게 칠한다. 탭은 사무소 관행대로(사용자 2026-09-27):
 //   바뀐 칸이 있으면 🟡 노랑(수정함), 확인했는데 바뀐 것이 없으면 🟢 초록(새로 넣을 내용 없음).
+//
+// 웹 조서는 **올해 양식 시트에 쓴다**(설계서 14.2). 회사 시트가 옛 모양이면(명진 2700A-2(소규모)) 반영할 때
+// 올해 양식 시트로 갈아끼우고(이름·자리는 회사 것), 없으면(2700A-4) 새로 넣고, 짝이 없어진 옛 시트는 숨긴다.
+// 작년 값은 갈아끼우기 전에 화면으로 먼저 읽어 두었다(조서 정의의 read 가 옛 모양도 읽는다).
 import { strFromU8, strToU8 } from 'fflate';
-import { readWorkbook, type CellValue } from './xlsxRead';
+import { readWorkbook, type CellValue, type SheetData } from './xlsxRead';
 import { setCells, type CellEdit } from './xlsxCells';
-import { sheetEntries, dropCalcChain, forceRecalc, unzip, zip } from './xlsxTransplant';
+import { sheetEntries, dropCalcChain, forceRecalc, unzip, zip, transplantSheet, setSheetHidden } from './xlsxTransplant';
 import { setTabColor, highlightCells, TAB } from './xlsxMark';
-import { findPaperSheet, textOf, type WebPaperDef } from './gwpWeb';
+import { findPaperSheet, pickSheet, textOf, type WebPaperDef } from './gwpWeb';
+import { findTemplateSheet, type TemplateCatalog } from './gwpTemplate';
+import { buildCatalog, codeOf } from './gwpCatalog';
+import { compareSheets, headLinker, renameSheetRefs, MISSING_THRESHOLD } from './gwpRoll';
 
 export interface ApplyItem {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   def: WebPaperDef<any>;
   data: unknown;
 }
+export interface TemplateSource {
+  catalog: TemplateCatalog;
+  /** readBundle 이 준 묶음 안 파일들 */ files: Record<string, Uint8Array>;
+  /** 새로 넣는 시트 머리의 검토자 */ reviewer: string;
+}
+export interface Prepared {
+  /** 올해 양식으로 갈아끼운 시트 */ replaced: string[];
+  /** 새로 넣은 시트 */ added: string[];
+  /** 짝이 없어져 숨긴 옛 시트 */ hidden: string[];
+}
 export interface ApplyResult {
   bytes: Uint8Array;
   done: { code: string; sheet: string; changed: number }[];
   /** 워크북에 시트가 없는 조서 */ missing: string[];
+  prepared: Prepared;
 }
 
 /** 이 칸에 이 값을 쓰면 바뀌는가. */
@@ -29,13 +47,74 @@ export function changes(cur: CellValue | undefined, e: CellEdit): boolean {
   return false;
 }
 
-export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[]): ApplyResult {
+const baseOf = (name: string) => (codeOf(name) ?? '').replace(/\(.*$/, '');
+
+/** 시트가 올해 양식 모양인가 — 양식 문구가 거의 다 있다. */
+export function isTemplateShape(tplData: SheetData, sheet: SheetData): boolean {
+  const c = compareSheets(tplData, sheet);
+  return c.total === 0 || c.missing.length / c.total <= MISSING_THRESHOLD;
+}
+
+/**
+ * 이 조서 코드들의 시트를 올해 양식 모양으로 맞춘다. files 를 제자리에서 고친다.
+ * 회사 시트가 여럿이면(명진 2700A-1(적용지침)·2700A-1(소규모)) 양식에 가장 가까운 것을 쓰고 나머지는 숨긴다.
+ */
+export function prepareTemplateSheets(files: Record<string, Uint8Array>, codes: string[], src: TemplateSource): Prepared {
+  const out: Prepared = { replaced: [], added: [], hidden: [] };
+  const tplBooks = new Map<string, { files: Record<string, Uint8Array>; sheets: SheetData[] }>();
+  const tplBook = (file: string) => {
+    if (!tplBooks.has(file)) tplBooks.set(file, { files: unzip(src.files[file]), sheets: readWorkbook(src.files[file]) });
+    return tplBooks.get(file)!;
+  };
+  const touched: { part: string; tplData: SheetData; code: string }[] = [];
+  for (const code of codes) {
+    const ts = findTemplateSheet(src.catalog, code);
+    if (!ts) continue;
+    const tb = tplBook(ts.file);
+    const tplData = tb.sheets.find((s) => s.name === ts.name);
+    if (!tplData) continue;
+    const sheets = readWorkbook(zip(files));
+    const cands = sheets.filter((s) => baseOf(s.name) === code);
+    const scored = cands.map((s) => ({ s, c: compareSheets(tplData, s) }))
+      .sort((a, b) => a.c.missing.length / Math.max(1, a.c.total) - b.c.missing.length / Math.max(1, b.c.total));
+    const best = scored[0]?.s;
+    for (const o of scored.slice(1)) if (!o.s.hidden) { setSheetHidden(files, o.s.name, true); out.hidden.push(o.s.name); }
+    if (best && isTemplateShape(tplData, best)) continue;
+    const r = best
+      ? transplantSheet(files, tb.files, ts.name, { as: best.name, replace: true, hidden: false })
+      : transplantSheet(files, tb.files, ts.name, { hidden: false });
+    (best ? out.replaced : out.added).push(r.name);
+    touched.push({ part: r.part, tplData, code });
+  }
+  if (!touched.length) return out;
+  // 양식 수식의 시트 이름(2700A-2(감사계획단계))을 회사 시트 이름(2700A-2(소규모))으로, 머리는 표지·조서목록으로.
+  const sheets = readWorkbook(zip(files));
+  const nameMap = new Map<string, string>();
+  for (const t of src.catalog.sheets) {
+    if (!t.code) continue;
+    const mine = findPaperSheet(sheets, t.code.replace(/\(.*$/, ''));
+    if (mine) nameMap.set(t.name, mine.name);
+  }
+  const link = headLinker(sheets, buildCatalog(sheets));
+  for (const t of touched) {
+    let xml = renameSheetRefs(strFromU8(files[t.part]), nameMap);
+    const head = link(t.tplData, t.code, src.reviewer);
+    if (head.length) xml = setCells(xml, head);
+    files[t.part] = strToU8(setTabColor(xml, TAB.yellow));
+  }
+  return out;
+}
+
+export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[], template?: TemplateSource): ApplyResult {
   const files = unzip(bookBytes);
-  const sheets = readWorkbook(bookBytes);
+  const prepared: Prepared = template
+    ? prepareTemplateSheets(files, [...new Set(items.flatMap(({ def }) => [def.sheetCode, ...(def.companions ?? [])]))], template)
+    : { replaced: [], added: [], hidden: [] };
+  const sheets = readWorkbook(zip(files));
   const done: ApplyResult['done'] = [];
   const missing: string[] = [];
   for (const { def, data } of items) {
-    const sheet = findPaperSheet(sheets, def.sheetCode);
+    const sheet = pickSheet(def, sheets);
     if (!sheet) { missing.push(def.code); continue; }
     const entry = sheetEntries(files).find((x) => x.name === sheet.name);
     if (!entry) { missing.push(def.code); continue; }
@@ -49,5 +128,5 @@ export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[]): Apply
   }
   dropCalcChain(files);
   forceRecalc(files);
-  return { bytes: zip(files), done, missing };
+  return { bytes: zip(files), done, missing, prepared };
 }

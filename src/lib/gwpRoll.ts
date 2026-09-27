@@ -341,6 +341,27 @@ export interface RollOptions {
 }
 
 /**
+ * 머리 링크 도우미 — 조서표지·조서목록 이름과 조서목록의 그 조서 줄(없으면 윗 조서 줄).
+ * 웹 조서 반영(gwpApply)이 올해 양식 시트를 새로 넣을 때 쓴다. 이월(rollWorkbook)과 같은 규칙이다.
+ */
+export function headLinker(sheets: SheetData[], cat: Catalog) {
+  const coverName = sheets.find((s) => norm(s.name).includes('조서표지'))?.name ?? '조서표지(공통사항)';
+  const indexName = sheets.find((s) => kindOf(s.name) === 'index')?.name ?? '조서목록';
+  const indexRowOf = new Map(cat.index.map((r) => [r.code, r.row]));
+  const indexRowFor = (code: string): number | null => {
+    const base = code.replace(/\(.*$/, '');
+    const four = base.slice(0, 4);
+    for (const c of [base, four, `${four.slice(0, 3)}0`, `${four.slice(0, 3)}1`, `${four.slice(0, 2)}00`]) {
+      const r = indexRowOf.get(c);
+      if (r) return r;
+    }
+    return null;
+  };
+  return (sheet: SheetData, code: string, reviewer: string): CellEdit[] =>
+    headEdits(headRefs(sheet), coverName, indexName, indexRowFor(code), reviewer);
+}
+
+/**
  * 전기 워크북 + 양식 묶음 → 당기 워크북. 묶음 파일은 `tplFiles[path]` 로 준다(readBundle 이 준 것).
  */
 export function rollWorkbook(

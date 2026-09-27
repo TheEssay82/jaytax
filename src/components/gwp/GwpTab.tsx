@@ -479,7 +479,7 @@ export default function GwpTab() {
               </div>
 
               {year && latest && (
-                <GwpStageBoard key={picked.id} eng={picked} latest={latest} canWrite={canWrite}
+                <GwpStageBoard key={picked.id} eng={picked} latest={latest} tpl={tpl} canWrite={canWrite}
                   partner={year.partner} author={year.authorDefault}
                   onBooks={async () => setBooks(await listBooks(picked.id))}
                   setMsg={setMsg} setErr={setErr} />

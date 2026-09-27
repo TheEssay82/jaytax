@@ -15,7 +15,9 @@ export interface WebPaperDef<T = unknown> {
   /** 한 줄 설명(무엇을 채우는가) */ note: string;
   /** 워크북에서 이 조서의 시트 — 조서 코드(「2110A」). 「2110A(소규모)」도 같은 조서다. */ sheetCode: string;
   /** 비어 있는 입력 */ empty(): T;
-  /** 워크북 시트(작년 값·지금 판)에서 화면 값을 읽는다 */ read(sheet: SheetData): T;
+  /** 같은 코드의 시트가 여럿일 때 이 조서의 시트를 고른다(없으면 보이는 첫 시트) */ pick?(sheets: SheetData[]): SheetData | null;
+  /** 반영할 때 함께 올해 양식으로 맞출 조서(2700A 요약표처럼 수식으로 이 조서를 읽는 것) */ companions?: string[];
+  /** 워크북 시트(작년 값·지금 판)에서 화면 값을 읽는다. 옛 모양 시트도 읽는다. */ read(sheet: SheetData): T;
   /** 화면 값 → 이 시트에 쓸 칸. 같은 값이어도 돌려준다 — 바뀐 칸만 고르는 것은 반영(gwpApply)이 한다. */ write(sheet: SheetData, data: T): CellEdit[];
 }
 
@@ -36,6 +38,11 @@ export const rowOf = (ref: string) => Number(/(\d+)$/.exec(ref)![1]);
 export function findPaperSheet(sheets: SheetData[], code: string): SheetData | null {
   const hits = sheets.filter((s) => (codeOf(s.name) ?? '').replace(/\(.*$/, '') === code);
   return hits.find((s) => !s.hidden) ?? hits[0] ?? null;
+}
+
+/** 조서 정의로 시트를 고른다. */
+export function pickSheet(def: { sheetCode: string; pick?(sheets: SheetData[]): SheetData | null }, sheets: SheetData[]): SheetData | null {
+  return def.pick?.(sheets) ?? findPaperSheet(sheets, def.sheetCode);
 }
 
 /** 머리 줄 — 이 문구들이 한 줄에 모두 있는 첫 줄과 각 문구의 열. */

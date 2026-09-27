@@ -3,9 +3,9 @@
 // 사용자 2026-09-27: 「일반조서 작성 절차를 편리하게 하기 위함」 — 지금 할 일이 한눈에 보이게.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Engagement } from '../../lib/dsdApi';
-import { fileBytes, fileUrl, fmtKb, type GwpBook } from '../../lib/gwpApi';
+import { fileBytes, fileUrl, fmtKb, type GwpBook, type GwpTemplate } from '../../lib/gwpApi';
 import { readWorkbook, sheetNames } from '../../lib/xlsxRead';
-import { findPaperSheet } from '../../lib/gwpWeb';
+import { pickSheet } from '../../lib/gwpWeb';
 import { STAGES, stageStates, currentStage, confirmBlockers, stageLocked, type StageNo, type StageEvent } from '../../lib/gwpStage';
 import { WEB_PAPERS, type WebPaperEntry } from '../../lib/gwpWebPapers';
 import {
@@ -20,6 +20,7 @@ import GwpPaperModal from './GwpPaperModal';
 type Props = {
   eng: Engagement;
   latest: GwpBook | null;
+  /** 올해 표준양식 — 웹 조서 반영 때 옛 모양 시트를 갈아끼운다 */ tpl: GwpTemplate | null;
   canWrite: boolean;
   partner: string;
   author: string | null;
@@ -28,7 +29,7 @@ type Props = {
   setErr: (m: string | null) => void;
 };
 
-export default function GwpStageBoard({ eng, latest, canWrite, partner, author, onBooks, setMsg, setErr }: Props) {
+export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, author, onBooks, setMsg, setErr }: Props) {
   const [papers, setPapers] = useState<Map<string, PaperRow>>(new Map());
   const [events, setEvents] = useState<StageEvent[]>([]);
   const [files, setFiles] = useState<EngFile[]>([]);
@@ -54,7 +55,7 @@ export default function GwpStageBoard({ eng, latest, canWrite, partner, author, 
       const sheets = readWorkbook(await fileBytes(latest.storagePath));
       const d = new Set<string>();
       for (const w of stale) {
-        const s = findPaperSheet(sheets, w.def!.sheetCode);
+        const s = pickSheet(w.def!, sheets);
         if (s && JSON.stringify(w.def!.read(s)) !== JSON.stringify(papers.get(w.code)!.data)) d.add(w.code);
       }
       if (!off) setDrift(d);
@@ -239,7 +240,7 @@ export default function GwpStageBoard({ eng, latest, canWrite, partner, author, 
       </div>
 
       {open && open.def && (
-        <GwpPaperModal entry={open} eng={eng} saved={papers.get(open.code)} locked={stageLocked(open.stage, states)} canWrite={canWrite}
+        <GwpPaperModal entry={open} eng={eng} saved={papers.get(open.code)} papers={papers} files={files} tpl={tpl} locked={stageLocked(open.stage, states)} canWrite={canWrite}
           partner={partner} author={author} onClose={() => setOpen(null)}
           onChanged={async (m) => { await load(); await onBooks(); setMsg(m); }} />
       )}
