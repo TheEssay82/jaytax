@@ -18,6 +18,10 @@ import type { WebPaperEntry } from '../../lib/gwpWebPapers';
 import type { Paper2110A } from '../../lib/gwpPaper2110A';
 import { amountsFromFs, type Paper2700, type Paper2700A1 } from '../../lib/gwpPaper2700A';
 import Form2110A from './Form2110A';
+import Form2110 from './Form2110';
+import Form2120A from './Form2120A';
+import { fillFromFs, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
+import type { Paper2110 } from '../../lib/gwpPaper2110';
 import Form2700A from './Form2700A';
 import Form2700A1 from './Form2700A1';
 
@@ -46,6 +50,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [fillRep, setFillRep] = useState<FillReport | null>(null);
   const readOnly = locked || !canWrite;
   const prevCode = PREV_STAGE[def.code];
   const prevSaved = prevCode ? papers.get(prevCode) : undefined;
@@ -114,6 +119,26 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
     } catch (e) { setErr(e instanceof Error ? e.message : '반영하지 못했습니다.'); } finally { setBusy(''); }
   }
 
+  /** 자료함의 전기 DSD 재무제표. */
+  async function dsdLines() {
+    const f = latestFile(files, '전기DSD')!;
+    const z = unzipSync(await fileBytes(f.storagePath));
+    if (!z['contents.xml']) throw new Error('DSD 안에 본문이 없습니다.');
+    return { f, lines: parseStatements(strFromU8(z['contents.xml'])) };
+  }
+
+  /** 2120A 당기 열을 전기 DSD 로. 손으로 고친 줄은 둔다. */
+  async function fill2120() {
+    setBusy('dsd'); setErr(null);
+    try {
+      const { f, lines } = await dsdLines();
+      const r = fillFromFs(data as Paper2120A, lines);
+      change(r.data);
+      setFillRep(r.report);
+      setNote(`전기 DSD(${f.fileName})로 당기 열을 채웠습니다.`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); } finally { setBusy(''); }
+  }
+
   /** 자료함의 전기 DSD 에서 기준 금액을 채운다(백만원). */
   async function fillFromDsd() {
     const f = latestFile(files, '전기DSD');
@@ -151,6 +176,14 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
             : def.code === '2110A' ? (
               <Form2110A value={data as Paper2110A} onChange={change} readOnly={readOnly} partner={partner} author={author}
                 onReset={sheet ? () => change(def.read(sheet)) : undefined} />
+            ) : def.code === '2110' ? (
+              <Form2110 value={data as Paper2110} onChange={change} readOnly={readOnly} fy={eng.fy} author={author} />
+            ) : def.code === '2120A' ? (
+              <Form2120A value={data as Paper2120A} onChange={change} readOnly={readOnly} report={fillRep}
+                fill={<button className="btn-sm btn-sm-navy" disabled={!dsd || !!busy} onClick={() => void fill2120()}
+                  title={dsd ? dsd.fileName : '자료함에 전기 DSD 를 먼저 올리세요'}>
+                  {busy === 'dsd' ? '읽는 중…' : dsd ? '전기 DSD 로 당기 열 채우기' : '전기 DSD 없음(자료함에 올리세요)'}
+                </button>} />
             ) : def.code === '2700A-1' ? (
               <Form2700A1 value={data as Paper2700A1} onChange={change} readOnly={readOnly} />
             ) : is2700 ? (

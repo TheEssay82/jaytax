@@ -16,6 +16,11 @@ export interface WebPaperDef<T = unknown> {
   /** 워크북에서 이 조서의 시트 — 조서 코드(「2110A」). 「2110A(소규모)」도 같은 조서다. */ sheetCode: string;
   /** 비어 있는 입력 */ empty(): T;
   /** 같은 코드의 시트가 여럿일 때 이 조서의 시트를 고른다(없으면 보이는 첫 시트) */ pick?(sheets: SheetData[]): SheetData | null;
+  /**
+   * 반영할 때 시트를 올해 표준양식 모양으로 맞추는가(옛 모양이면 갈아끼운다). 중요성처럼 양식 칸이 곧 입력인 조서만.
+   * 2110·2120A 처럼 회사가 손본 시트는 맞추지 않는다 — 갈아끼우면 양식에 없는 회사 내용을 잃는다.
+   */
+  useTemplate?: boolean;
   /** 반영할 때 함께 올해 양식으로 맞출 조서(2700A 요약표처럼 수식으로 이 조서를 읽는 것) */ companions?: string[];
   /** 워크북 시트(작년 값·지금 판)에서 화면 값을 읽는다. 옛 모양 시트도 읽는다. */ read(sheet: SheetData): T;
   /** 화면 값 → 이 시트에 쓸 칸. 같은 값이어도 돌려준다 — 바뀐 칸만 고르는 것은 반영(gwpApply)이 한다. */ write(sheet: SheetData, data: T): CellEdit[];

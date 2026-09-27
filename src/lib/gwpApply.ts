@@ -108,7 +108,7 @@ export function prepareTemplateSheets(files: Record<string, Uint8Array>, codes: 
 export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[], template?: TemplateSource): ApplyResult {
   const files = unzip(bookBytes);
   const prepared: Prepared = template
-    ? prepareTemplateSheets(files, [...new Set(items.flatMap(({ def }) => [def.sheetCode, ...(def.companions ?? [])]))], template)
+    ? prepareTemplateSheets(files, [...new Set(items.filter(({ def }) => def.useTemplate).flatMap(({ def }) => [def.sheetCode, ...(def.companions ?? [])]))], template)
     : { replaced: [], added: [], hidden: [] };
   const sheets = readWorkbook(zip(files));
   const done: ApplyResult['done'] = [];

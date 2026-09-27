@@ -16,6 +16,7 @@ import { readDsd, readContents } from '../../lib/dsdFile';
 import { parseStatements } from '../../lib/fsParse';
 import { tabStateOf } from '../../lib/xlsxMark';
 import GwpPaperModal from './GwpPaperModal';
+import type { Paper2110 } from '../../lib/gwpPaper2110';
 
 type Props = {
   eng: Engagement;
@@ -64,6 +65,14 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
   }, [latest, papers]);
 
   const states = useMemo(() => stageStates(events), [events]);
+  // 2110 감사일정 — 단계 머리에 예정일을 보인다(1차 = 중간감사 전, 2차 = 기말감사 전, 3차 = 보고서).
+  const plan = papers.get('2110')?.data as Paper2110 | undefined;
+  const when = (lab: string) => plan?.schedule.find((x) => x.label === lab)?.value || '';
+  const due: Record<StageNo, string> = {
+    1: when('중간감사') ? `중간감사 ${when('중간감사')}` : '',
+    2: when('기말감사') ? `기말감사 ${when('기말감사')}` : '',
+    3: plan?.reportDue ? `보고서 ${plan.reportDue}` : '',
+  };
   const now = currentStage(states);
   const rows = WEB_PAPERS.map((w) => ({ ...w, status: papers.get(w.code)?.status ?? null }));
 
@@ -193,6 +202,7 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
                   {s.confirmed ? `확정 v${s.version} · ${s.at?.slice(0, 10)}` : isNow ? '진행 중' : '대기'}
                 </span>
               </div>
+              {due[st.no] && !s.confirmed && <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginBottom: 4 }}>📅 {due[st.no]} 전까지</div>}
               {s.reopenReason && !s.confirmed && <div style={{ fontSize: 'var(--fs-0)', color: 'var(--warn)', marginBottom: 4 }}>확정 취소됨 — {s.reopenReason}</div>}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
                 {mine.map((w) => (

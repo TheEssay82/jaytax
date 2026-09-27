@@ -227,7 +227,7 @@ export function amountsFromFs(lines: FsLine[], unit: '원' | '천원'): Partial<
 
 function stageDef(code: string, title: string, stage: StageNo, note: string): WebPaperDef<Paper2700> {
   return {
-    code, title, stage, note, sheetCode: code, companions: ['2700A'],
+    code, title, stage, note, sheetCode: code, useTemplate: true, companions: ['2700A'],
     empty: emptyMateriality, read: read2700, write: write2700,
   };
 }
@@ -264,7 +264,7 @@ export function layout2700A1(sheet: SheetData): Layout1 | null {
 const levelOf = (s: string): Level => (/낮은/.test(s) ? '낮은' : /중간/.test(s) ? '중간' : /높은/.test(s) ? '높은' : '');
 
 export const PAPER_2700A_1: WebPaperDef<Paper2700A1> = {
-  code: '2700A-1', title: '중요성 산정 적용지침', stage: 1, sheetCode: '2700A-1',
+  code: '2700A-1', title: '중요성 산정 적용지침', stage: 1, sheetCode: '2700A-1', useTemplate: true,
   // 명진은 옛 2700A-1(소규모)(기본정보)와 2700A-1(적용지침)이 함께 있다 — 고려요소 표가 있는 쪽.
   pick: (sheets) => sheets.filter((s) => /^2700A-1/.test(s.name.replace(/\s/g, '')))
     .sort((a, b) => Number(!!a.hidden) - Number(!!b.hidden)).find((s) => layout2700A1(s)) ?? null,
