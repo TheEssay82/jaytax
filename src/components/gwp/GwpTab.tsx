@@ -32,6 +32,7 @@ import { tabStateOf } from '../../lib/xlsxMark';
 import NewEngagementModal from '../dsd/NewEngagementModal';
 import { safeName, download } from '../dsd/dsdUi';
 import GwpTemplatesCard from './GwpTemplatesCard';
+import GwpStageBoard from './GwpStageBoard';
 
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -476,6 +477,13 @@ export default function GwpTab() {
                   </div>
                 )}
               </div>
+
+              {year && latest && (
+                <GwpStageBoard key={picked.id} eng={picked} latest={latest} canWrite={canWrite}
+                  partner={year.partner} author={year.authorDefault}
+                  onBooks={async () => setBooks(await listBooks(picked.id))}
+                  setMsg={setMsg} setErr={setErr} />
+              )}
 
               {report && (
                 <div className="card">
