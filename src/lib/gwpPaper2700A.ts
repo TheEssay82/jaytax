@@ -190,7 +190,11 @@ export function write2700(sheet: SheetData, d: Paper2700): CellEdit[] {
       { ref: `${H}${r}`, formula: `${G}${r}-${F}${r}` }, { ref: `${K}${r}`, formula: `IFERROR(${C}${r}*${J}${r},0)` });
   }
   put(L.benchName, L.benchRows.find((b) => b.key === d.bench)?.label ?? d.bench);
-  put(L.matRef, d.materiality);
+  // 결정된 중요성 = 적용한 줄의 「적용할 중요성금액」(기준 금액 × 적용비율)에 링크 — 사용자 2026-09-28
+  // 「결정된 중요성금액은 2%를 적용한 금액으로 셀에 링크가 걸려야 한다」. 값으로 적지 않는다.
+  const chosen = L.benchRows.find((b) => b.key === d.bench);
+  if (L.matRef && chosen) e.push({ ref: L.matRef, formula: `${K}${chosen.row}` });
+  else put(L.matRef, d.materiality);
   put(L.reasonRef, d.reason);
   put(L.changeRef, d.changeReason);
   put(L.pmRateRef, d.pmRate);
@@ -203,6 +207,11 @@ export function write2700(sheet: SheetData, d: Paper2700): CellEdit[] {
 }
 
 /** 계산된 중요성(기준 금액 × 적용비율). */
+/** 결정된 중요성 — 엑셀은 적용한 줄에 링크하므로 계산값이 곧 결정값이다(옛 데이터의 손 입력값은 계산값이 없을 때만). */
+export function decidedMateriality(d: Paper2700): number | null {
+  return computedMateriality(d) ?? d.materiality;
+}
+
 export function computedMateriality(d: Paper2700): number | null {
   const a = d.amounts[d.bench];
   return a != null && d.rate != null ? a * d.rate : null;

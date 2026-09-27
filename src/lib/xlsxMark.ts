@@ -72,8 +72,47 @@ function ensureFill(files: Record<string, Uint8Array>, rgb: string): { fillId: n
   return entry;
 }
 
-/** 원래 서식(cellXfs 의 k 번)에 바탕색만 바꾼 서식을 만들어 번호를 돌려준다. */
-function xfWithFill(files: Record<string, Uint8Array>, entry: { fillId: number; xf: Map<number, number> }, k: number): number {
+// ── 글자색 검정 ───────────────────────────────────────────
+// 사용자 2026-09-28: 「전체적으로 폰트색까지 변경할 필요는 없어. 폰트색은 검정색으로 — 눈이 아픈 시트가 많아」.
+// 한공회 양식은 입력 칸이 파란 글씨다. 시스템이 칠하는 칸과 새로 넣은 양식 시트의 글자는 검정으로 둔다.
+const FONT_RE = /<font\b[^>]*?(?:\/>|>[\s\S]*?<\/font>)/g;
+/** 이 글꼴이 검정(또는 기본)인가 — 색이 없거나, 검정 rgb, 테마 1(본문 어두운색), 색인 8·64(검정·자동). */
+export function isBlackFont(font: string): boolean {
+  const c = /<color\b([^>]*?)\/>/.exec(font)?.[1];
+  if (!c) return true;
+  const rgb = /\brgb="([0-9A-Fa-f]{6,8})"/.exec(c)?.[1];
+  if (rgb) return /000000$/i.test(rgb);
+  const theme = /\btheme="(\d+)"/.exec(c)?.[1];
+  if (theme != null) return theme === '1' && !/\btint=/.test(c);
+  const idx = /\bindexed="(\d+)"/.exec(c)?.[1];
+  if (idx != null) return idx === '8' || idx === '64';
+  return /\bauto="1"/.test(c);
+}
+const blackCache = new WeakMap<Record<string, Uint8Array>, Map<number, number>>();
+/** fontId 번 글꼴을 검정으로 본뜬 글꼴 번호(이미 검정이면 그대로). */
+function blackFontId(files: Record<string, Uint8Array>, fontId: number): number {
+  let per = blackCache.get(files);
+  if (!per) { per = new Map(); blackCache.set(files, per); }
+  const hit = per.get(fontId);
+  if (hit != null) return hit;
+  const path = 'xl/styles.xml';
+  let xml = strFromU8(files[path]);
+  const fonts = /<fonts\b[^>]*>([\s\S]*?)<\/fonts>/.exec(xml);
+  const list = fonts ? [...fonts[1].matchAll(FONT_RE)].map((m) => m[0]) : [];
+  const base = list[fontId];
+  if (!fonts || !base || isBlackFont(base)) { per.set(fontId, fontId); return fontId; }
+  const black = /<color\b[^>]*?\/>/.test(base)
+    ? base.replace(/<color\b[^>]*?\/>/, '<color rgb="FF000000"/>')
+    : base.replace(/<\/font>$/, '<color rgb="FF000000"/></font>');
+  const id = list.length;
+  xml = xml.replace(fonts[0], `<fonts count="${id + 1}">${fonts[1]}${black}</fonts>`);
+  files[path] = strToU8(xml);
+  per.set(fontId, id);
+  return id;
+}
+
+/** 원래 서식(cellXfs 의 k 번)에 바탕색을 바꾸고(fill) 글자를 검정으로 한 서식을 만들어 번호를 돌려준다. */
+function xfWithFill(files: Record<string, Uint8Array>, entry: { fillId: number | null; xf: Map<number, number> }, k: number): number {
   const hit = entry.xf.get(k);
   if (hit != null) return hit;
   const path = 'xl/styles.xml';
@@ -83,18 +122,46 @@ function xfWithFill(files: Record<string, Uint8Array>, entry: { fillId: number; 
   const xfs = [...cx[1].matchAll(XF_RE)].map((m) => m[0]);
   const base = xfs[k] ?? xfs[0];
   const open = /^<xf\b([^>]*?)(\/?)>/.exec(base)!;
-  let attrs = open[1].replace(/\s*\bfillId="[^"]*"/, '').replace(/\s*\bapplyFill="[^"]*"/, '');
-  attrs += ` fillId="${entry.fillId}" applyFill="1"`;
+  const fontId = Number(/\bfontId="(\d+)"/.exec(open[1])?.[1] ?? '0');
+  const black = blackFontId(files, fontId);
+  // 글꼴만 바꿀 때(fill 없음) 이미 검정이면 새 서식을 만들지 않는다.
+  if (entry.fillId == null && black === fontId) { entry.xf.set(k, k); return k; }
+  xml = strFromU8(files[path]);                                 // blackFontId 가 styles 를 고쳤을 수 있다
+  const cx2 = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(xml)!;
+  const xfs2 = [...cx2[1].matchAll(XF_RE)].map((m) => m[0]);
+  let attrs = open[1].replace(/\s*\bfontId="[^"]*"/, '').replace(/\s*\bapplyFont="[^"]*"/, '');
+  attrs += ` fontId="${black}"${black !== fontId ? ' applyFont="1"' : ''}`;
+  if (entry.fillId != null) {
+    attrs = attrs.replace(/\s*\bfillId="[^"]*"/, '').replace(/\s*\bapplyFill="[^"]*"/, '');
+    attrs += ` fillId="${entry.fillId}" applyFill="1"`;
+  }
   const clone = base.replace(open[0], `<xf${attrs}${open[2]}>`);
-  const id = xfs.length;
-  xml = xml.replace(cx[0], `<cellXfs count="${id + 1}">${cx[1]}${clone}</cellXfs>`);
+  const id = xfs2.length;
+  xml = xml.replace(cx2[0], `<cellXfs count="${id + 1}">${cx2[1]}${clone}</cellXfs>`);
   files[path] = strToU8(xml);
   entry.xf.set(k, id);
   return id;
 }
 
+/** 시트의 모든 칸 글자를 검정으로 — 새로 넣거나 갈아끼운 양식 시트. 바탕색·테두리 등은 그대로. */
+const blackXfCache = new WeakMap<Record<string, Uint8Array>, { fillId: null; xf: Map<number, number> }>();
+export function blackenSheet(files: Record<string, Uint8Array>, sheetPart: string): number {
+  if (!files['xl/styles.xml'] || !files[sheetPart]) return 0;
+  let entry = blackXfCache.get(files);
+  if (!entry) { entry = { fillId: null, xf: new Map() }; blackXfCache.set(files, entry); }
+  let n = 0;
+  const xml = strFromU8(files[sheetPart]).replace(/(<c\b[^>]*?\bs=")(\d+)(")/g, (m, a: string, s: string, z: string) => {
+    const ns = xfWithFill(files, entry!, Number(s));
+    if (ns === Number(s)) return m;
+    n += 1;
+    return `${a}${ns}${z}`;
+  });
+  files[sheetPart] = strToU8(xml);
+  return n;
+}
+
 /**
- * 시트의 칸들에 바탕색을 칠한다. 값·수식은 건드리지 않고 서식 번호만 바꾼다.
+ * 시트의 칸들에 바탕색을 칠하고 글자는 검정으로 둔다. 값·수식은 건드리지 않고 서식 번호만 바꾼다.
  * 칸이 없으면(값을 비운 칸 등) 빈 칸을 만들어 칠한다 — 「여기를 채우세요」가 보이게.
  */
 export function highlightCells(files: Record<string, Uint8Array>, sheetPart: string, refs: string[], rgb = CELL_YELLOW): number {

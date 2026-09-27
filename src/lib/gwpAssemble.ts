@@ -15,7 +15,7 @@ import { type TemplateCatalog, type TemplateSheet } from './gwpTemplate';
 import { transplantSheet, dropCalcChain, forceRecalc } from './xlsxTransplant';
 import { headRefs, headEdits } from './gwpRoll';
 import { setCells } from './xlsxCells';
-import { highlightCells } from './xlsxMark';
+import { highlightCells, blackenSheet } from './xlsxMark';
 
 export const COVER_SHEET = '조서표지(공통사항)';
 export const INDEX_SHEET_NAME = '조서목록';
@@ -164,6 +164,7 @@ export function assembleWorkbook(
     const data = sheetsOf(s.file).find((x) => x.name === s.name);
     if (!data) { report.skipped.push({ name: s.name, why: '양식 파일에서 읽지 못함' }); continue; }
     const r = transplantSheet(files, filesOf(s.file), s.name);
+    blackenSheet(files, r.part);                                    // 양식의 파란 글씨 → 검정(사용자 2026-09-28)
     const edits = headEdits(headRefs(data), COVER_SHEET, INDEX_SHEET_NAME, rowOf.get(s.code!) ?? null, '');
     if (edits.length) files[r.part] = strToU8(setCells(strFromU8(files[r.part]), edits));
     const marks = opts.highlight?.[s.code!];

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { strFromU8, strToU8 } from 'fflate';
-import { tabStateOf, tabColorOf, setTabColor, highlightCells, TAB } from './xlsxMark';
+import { tabStateOf, tabColorOf, setTabColor, highlightCells, blackenSheet, isBlackFont, TAB } from './xlsxMark';
 
 test('탭 색 → 사무소 관행의 뜻 — 조금 다른 색도 가까운 쪽으로', () => {
   assert.equal(tabStateOf('FFFF0000'), 'red');
@@ -25,6 +25,21 @@ test('탭 색 읽고 쓰기 — sheetPr 이 없을 때·빈 태그·다른 자�
   assert.equal(tabColorOf('<worksheet><sheetPr><tabColor theme="5"/></sheetPr></worksheet>'), 'theme:5');
 });
 
+test('글자 검정 — 파란 글씨(양식 입력 칸)는 검정 글꼴을 본떠 바꾸고, 이미 검정·테마 본문색은 그대로', () => {
+  assert.equal(isBlackFont('<font><sz val="10"/><color theme="1"/><name val="맑은 고딕"/></font>'), true);
+  assert.equal(isBlackFont('<font><color rgb="FF0070C0"/></font>'), false);
+  assert.equal(isBlackFont('<font><sz val="9"/></font>'), true);
+  const files: Record<string, Uint8Array> = {
+    'xl/styles.xml': strToU8('<styleSheet><fonts count="2"><font><sz val="10"/></font><font><sz val="10"/><color rgb="FF0070C0"/></font></fonts>'
+      + '<fills count="2"><fill/><fill/></fills><cellXfs count="2"><xf fontId="0" fillId="0"/><xf fontId="1" fillId="0" applyFont="1"/></cellXfs></styleSheet>'),
+    'xl/worksheets/sheet1.xml': strToU8('<worksheet><sheetData><row r="1"><c r="A1" s="1"><v>1</v></c><c r="B1" s="0"><v>2</v></c></row></sheetData></worksheet>'),
+  };
+  assert.equal(blackenSheet(files, 'xl/worksheets/sheet1.xml'), 1);
+  const st = strFromU8(files['xl/styles.xml']);
+  assert.match(st, /<fonts count="3">.*<font><sz val="10"\/><color rgb="FF000000"\/><\/font><\/fonts>/);
+  assert.match(strFromU8(files['xl/worksheets/sheet1.xml']), /<c r="A1" s="2">.*<c r="B1" s="0">/);
+});
+
 test('칸 바탕색 — 원래 서식을 본뜬 서식을 한 번만 만들고, 없는 칸은 빈 칸으로 끼운다', () => {
   const files: Record<string, Uint8Array> = {
     'xl/styles.xml': strToU8('<styleSheet><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
@@ -36,7 +51,7 @@ test('칸 바탕색 — 원래 서식을 본뜬 서식을 한 번만 만들고, 
   const styles = strFromU8(files['xl/styles.xml']);
   assert.match(styles, /<fills count="3">.*<fgColor rgb="FFFFFF00"\/>/);
   assert.match(styles, /<cellXfs count="4">/);                                       // s=1 본뜬 것, s=0 본뜬 것
-  assert.match(styles, /<xf numFmtId="14" fontId="1" borderId="1" applyNumberFormat="1" fillId="2" applyFill="1"\/>/);
+  assert.match(styles, /<xf numFmtId="14" borderId="1" applyNumberFormat="1" fontId="1" fillId="2" applyFill="1"\/>/);
   const sheet = strFromU8(files['xl/worksheets/sheet1.xml']);
   assert.match(sheet, /<c r="B3" s="2"><v>46022<\/v><\/c><c s="3" r="C3"\/><c s="3" r="D3">/); // 자리 순서 지킴
   assert.match(sheet, /<\/row><row r="4"><c s="3" r="E4"\/><\/row><row r="5">/);

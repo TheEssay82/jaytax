@@ -21,7 +21,7 @@ import { download } from '../dsd/dsdUi';
 import { STAGES } from '../../lib/gwpStage';
 import type { WebPaperEntry } from '../../lib/gwpWebPapers';
 import type { Paper2110A } from '../../lib/gwpPaper2110A';
-import { amountsFromFs, type Paper2700, type Paper2700A1 } from '../../lib/gwpPaper2700A';
+import { amountsFromFs, decidedMateriality, type Paper2700, type Paper2700A1 } from '../../lib/gwpPaper2700A';
 import Form2110A from './Form2110A';
 import Form2110 from './Form2110';
 import Form2120A from './Form2120A';
@@ -279,8 +279,9 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
   const wtb = latestFile(files, '정산표', eng.fy);
   // 8110ARP 기준 — 2700A-4 의 수행중요성(백만원 → 원). 사용자 2026-09-27 「8110 의 중요성은 2700A-4 에 연결」.
   const m4 = papers.get('2700A-4')?.data as Paper2700 | undefined;
-  const pm8110 = m4?.materiality != null && m4.pmRate != null
-    ? { pm: m4.materiality * m4.pmRate * 1_000_000, note: `(2700A-4 ${m4.materiality.toLocaleString('ko-KR')}백만원 × ${Math.round(m4.pmRate * 100)}%)` }
+  const m4mat = m4 ? decidedMateriality(m4) : null;
+  const pm8110 = m4mat != null && m4?.pmRate != null
+    ? { pm: m4mat * m4!.pmRate! * 1_000_000, note: `(2700A-4 ${m4mat.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}백만원 × ${Math.round(m4!.pmRate! * 100)}%)` }
     : { pm: null, note: '— 2700A-4(중요성 감사완결단계)를 먼저 저장하세요.' };
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>

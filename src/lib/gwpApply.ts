@@ -10,7 +10,7 @@ import { strFromU8, strToU8 } from 'fflate';
 import { readWorkbook, type CellValue, type SheetData } from './xlsxRead';
 import { setCells, type CellEdit } from './xlsxCells';
 import { sheetEntries, dropCalcChain, forceRecalc, unzip, zip, transplantSheet, setSheetHidden } from './xlsxTransplant';
-import { setTabColor, highlightCells, tabColorOf, tabStateOf, TAB } from './xlsxMark';
+import { setTabColor, highlightCells, blackenSheet, tabColorOf, tabStateOf, TAB } from './xlsxMark';
 import { findPaperSheet, pickSheet, textOf, type WebPaperDef } from './gwpWeb';
 import { findTemplateSheet, type TemplateCatalog } from './gwpTemplate';
 import { buildCatalog, codeOf } from './gwpCatalog';
@@ -101,6 +101,7 @@ export function prepareTemplateSheets(files: Record<string, Uint8Array>, codes: 
     const head = link(t.tplData, t.code, src.reviewer);
     if (head.length) xml = setCells(xml, head);
     files[t.part] = strToU8(setTabColor(xml, TAB.yellow));
+    blackenSheet(files, t.part);                                  // 양식의 파란 글씨 → 검정(사용자 2026-09-28)
   }
   return out;
 }

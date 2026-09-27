@@ -23,7 +23,9 @@ import {
   listTemplates, listBooks, addBook, setBookKind, pickBase, fileBytes, fileUrl, fmtKb,
   type GwpTemplate, type GwpBook, type BookKind,
 } from '../../lib/gwpApi';
-import { readBundle } from '../../lib/gwpTemplate';
+import { readBundle, templateCodes } from '../../lib/gwpTemplate';
+import { planSmall, applySmall } from '../../lib/gwpSmall';
+import { unzip, zip } from '../../lib/xlsxTransplant';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { buildCatalog, sectionOf, type Catalog, type CatalogSheet } from '../../lib/gwpCatalog';
 import { rollWorkbook, type RollReport } from '../../lib/gwpRoll';
@@ -145,6 +147,13 @@ export default function GwpTab() {
   const tpl = useMemo(() => (picked && year ? templates.find((t) => t.fy === picked.fy && t.basis === year.auditBasis) ?? null : null), [templates, picked, year]);
   const latest = books[0] ?? null;
   const final = books.find((b) => b.kind === '최종본') ?? null;
+  // 소규모 짝(「2511(소규모)」 숨김 + 「2511」 보임) — 소규모 감사일 때만.
+  const smallPlan = useMemo(() => {
+    if (!latest || year?.auditBasis !== '소규모감사기준') return null;
+    const tc = tpl ? new Set(templateCodes(tpl.catalog).map((c) => c.replace(/\(.*$/, ''))) : undefined;
+    const p = planSmall(latest.catalog.sheets.map((s) => ({ name: s.name, hidden: s.hidden })), tc);
+    return p.pairs.length || p.hide.length ? p : null;
+  }, [latest, year?.auditBasis, tpl]);
   // 회사를 바꾸면 — 올해 파일이 있으면 ② 단계 진행부터, 없으면 ① 올해 파일부터.
   const hasBook = !!latest;
   // 방금 이월·새로 만들었으면(report·assembled) ① 에 머물러 요약을 보인다.
@@ -217,10 +226,25 @@ export default function GwpTab() {
     try {
       const { catalog, files } = readBundle(await fileBytes(tpl.storagePath));
       const r = rollWorkbook(priorBytes, catalog, files, { fy: picked.fy, closing: picked.periodTo ?? undefined, reviewer: year.partner, replace: pick.replace, addCodes: pick.addCodes });
+      // 소규모 감사면 「번호(소규모)」 시트를 쓰고 일반 짝은 숨긴다(사용자 2026-09-28 — 번호 중복).
+      let outBytes = r.bytes;
+      let outCat = r.catalog;
+      let smallNote = '';
+      if (year.auditBasis === '소규모감사기준') {
+        const tc = new Set(templateCodes(catalog).map((c) => c.replace(/\(.*$/, '')));
+        const plan = planSmall(readWorkbook(r.bytes).map((s) => ({ name: s.name, hidden: s.hidden })), tc);
+        if (plan.pairs.length || plan.hide.length) {
+          const uf = unzip(r.bytes);
+          const sr = applySmall(uf, plan, year.partner);
+          outBytes = zip(uf);
+          outCat = buildCatalog(readWorkbook(outBytes));
+          smallNote = ` · 소규모 짝 정리 ${sr.done.map((d) => d.small).join(',')}${sr.hidden.length ? ` · 숨김 ${sr.hidden.join(',')}` : ''}`;
+        }
+      }
       const name = `일반조서_${safeName(picked.entityName)}_FY${picked.fy}_이월본.xlsx`;
-      const book = await addBook(picked.id, '이월본', { name, bytes: r.bytes }, r.catalog,
-        `${source} + ${tpl.fy} ${tpl.basis} 양식${pick.replace?.length ? ` · 갈아끼움 ${pick.replace.join(',')}` : ''}${pick.addCodes?.length ? ` · 넣음 ${pick.addCodes.join(',')}` : ''}`);
-      download(r.bytes, name, XLSX);
+      const book = await addBook(picked.id, '이월본', { name, bytes: outBytes }, outCat,
+        `${source} + ${tpl.fy} ${tpl.basis} 양식${pick.replace?.length ? ` · 갈아끼움 ${pick.replace.join(',')}` : ''}${pick.addCodes?.length ? ` · 넣음 ${pick.addCodes.join(',')}` : ''}${smallNote}`);
+      download(outBytes, name, XLSX);
       setBooks(await listBooks(picked.id));
       setReport(r.report);
       setPickReplace(new Set()); setPickAdd(new Set());
@@ -256,6 +280,22 @@ export default function GwpTab() {
     } finally {
       setBusy('');
     }
+  }
+
+  /** 소규모 짝 정리 — 이미 만든 판에서 「번호(소규모)」를 쓰고 일반 짝은 숨긴 새 판을 만든다(사용자 2026-09-28). */
+  async function fixSmall() {
+    if (!picked || !year || !latest || !smallPlan) return;
+    setBusy('small'); setErr(null);
+    try {
+      const uf = unzip(await fileBytes(latest.storagePath));
+      const sr = applySmall(uf, smallPlan, year.partner);
+      const bytes = zip(uf);
+      const book = await addBook(picked.id, '작업중', { name: latest.fileName, bytes }, buildCatalog(readWorkbook(bytes)),
+        `소규모 짝 정리 — ${sr.done.map((d) => `${d.small} 보임·${d.plain} 숨김(작년 값 ${d.moved}칸 옮김)`).join(' · ')}${sr.hidden.length ? ` · 숨김 ${sr.hidden.join(',')}` : ''}`);
+      download(bytes, book.fileName, XLSX);
+      setBooks(await listBooks(picked.id));
+      setMsg(`소규모 짝을 정리해 v${book.version}을 만들고 내려받았습니다 — ${sr.done.map((d) => d.small).join(', ')} 을 쓰고 일반 양식 ${[...sr.done.map((d) => d.plain), ...sr.hidden].join(', ')} 은 숨겼습니다(지우지 않음).`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '정리하지 못했습니다.'); } finally { setBusy(''); }
   }
 
   /** 초도 — 양식만으로. */
@@ -627,6 +667,23 @@ export default function GwpTab() {
                     <div style={{ marginTop: 10, fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
                       <b>양식으로 지은 시트 {assembled.added.length}장</b> — {assembled.added.map((a) => a.code).join(' · ')}
                       {assembled.skipped.length > 0 && <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-0)' }}>뺀 것: {assembled.skipped.map((s) => `${s.name}(${s.why})`).join(' · ')}</div>}
+                    </div>
+                  )}
+
+                  {smallPlan && (
+                    <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--warn)', fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
+                      <b>소규모 짝 정리가 필요합니다</b> — 같은 번호가 두 벌 있습니다. 소규모 감사이니 <b>「번호(소규모)」</b> 시트를 쓰고 일반 양식은 숨기겠습니다(지우지 않고 숨길 뿐 — 작년 내용은 그대로 남습니다).
+                      <table className="tbl" style={{ marginTop: 6 }}>
+                        <thead><tr style={{ background: 'var(--surface-2)' }}><th>번호</th><th>쓸 시트(보이게)</th><th>숨길 시트</th></tr></thead>
+                        <tbody>
+                          {smallPlan.pairs.map((p) => <tr key={p.code}><td>{p.code}</td><td><b>{p.small}</b> <span style={{ color: 'var(--ink-3)' }}>(작년 값은 줄 이름이 같은 곳만 옮김)</span></td><td>{p.plain}</td></tr>)}
+                          {smallPlan.hide.map((n) => <tr key={n}><td>{n}</td><td style={{ color: 'var(--ink-3)' }}>— 올해 소규모 양식에 없는 일반 양식 딸림 시트</td><td>{n}</td></tr>)}
+                        </tbody>
+                      </table>
+                      <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)', marginTop: 4 }}>작년 일반 양식과 올해 소규모 양식은 모양이 달라 옮겨지지 않는 칸이 많습니다 — 숨긴 일반 시트를 보면서 소규모 시트에 적으세요.</div>
+                      <button className="btn-p" style={{ marginTop: 8 }} disabled={!canWrite || !!busy} onClick={() => void fixSmall()}>
+                        {busy === 'small' ? '정리하는 중…' : `정리해서 v${(latest?.version ?? 0) + 1} 만들기`}
+                      </button>
                     </div>
                   )}
 

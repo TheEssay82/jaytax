@@ -1,5 +1,5 @@
 // 중요성 입력 — 2700A-2(1차)·2700A-3(2차)·2700A-4(3차)가 같은 폼을 쓴다. 금액 단위는 백만원(양식 그대로).
-import { BENCHES, RATE_RANGE, computedMateriality, suggestRate, suggestLevel, type Paper2700, type BenchKey, type Paper2700A1 } from '../../lib/gwpPaper2700A';
+import { BENCHES, RATE_RANGE, computedMateriality, decidedMateriality, suggestRate, suggestLevel, type Paper2700, type BenchKey, type Paper2700A1 } from '../../lib/gwpPaper2700A';
 
 const pct = (n: number | null) => (n == null ? '' : String(Math.round(n * 10000) / 100));
 const fromPct = (s: string): number | null => (s.trim() === '' || Number.isNaN(Number(s)) ? null : Math.round(Number(s) * 100) / 10000);
@@ -14,12 +14,14 @@ export default function Form2700A({ value, onChange, readOnly, factors, tools }:
   /** 위쪽 버튼들(전기 DSD 에서 채우기·앞 단계 값 가져오기) */ tools?: React.ReactNode;
 }) {
   const v = value;
-  const set = (p: Partial<Paper2700>) => onChange({ ...v, ...p });
   const calc = computedMateriality(v);
   const level = factors ? suggestLevel(factors.factors) : '';
   const sug = level ? suggestRate(v.bench, level) : null;
-  const pmAmt = v.materiality != null && v.pmRate != null ? v.materiality * v.pmRate : null;
-  const ctAmt = v.materiality != null && v.ctRate != null ? v.materiality * v.ctRate : null;
+  // 결정된 중요성 = 적용한 줄의 계산값(엑셀도 그 칸에 링크). 사용자 2026-09-28.
+  const mat = decidedMateriality(v);
+  const set = (p: Partial<Paper2700>) => { const n = { ...v, ...p }; onChange({ ...n, materiality: computedMateriality(n) ?? n.materiality }); };
+  const pmAmt = mat != null && v.pmRate != null ? mat * v.pmRate : null;
+  const ctAmt = mat != null && v.ctRate != null ? mat * v.ctRate : null;
   const ta = (val: string, on: (s: string) => void, rows = 3) => (
     <textarea className="btn-sm" rows={rows} value={val} disabled={readOnly} onChange={(e) => on(e.target.value)}
       style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
@@ -70,12 +72,8 @@ export default function Form2700A({ value, onChange, readOnly, factors, tools }:
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-          <b>결정된 중요성 금액</b>
-          <input className="btn-sm" style={{ width: 120, textAlign: 'right' }} value={v.materiality ?? ''} disabled={readOnly}
-            onChange={(e) => set({ materiality: fromNum(e.target.value) })} /> 백만원
-          {calc != null && !readOnly && v.materiality !== Math.round(calc) && (
-            <button className="btn-sm" onClick={() => set({ materiality: Math.round(calc) })}>계산값 {fmt(Math.round(calc))} 쓰기</button>
-          )}
+          <b>결정된 중요성 금액</b> <b style={{ fontSize: 'var(--fs-3)' }}>{fmt(mat)}</b> 백만원
+          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>= {v.bench} × {pct(v.rate)}% — 엑셀에서도 적용한 줄의 금액에 링크됩니다</span>
         </div>
         <div style={{ marginTop: 8 }}>근거</div>{ta(v.reason, (s) => set({ reason: s }), 4)}
         <div style={{ marginTop: 6 }}>전기와 다른 Benchmark·적용률이면 변경 근거</div>{ta(v.changeReason, (s) => set({ changeReason: s }), 2)}

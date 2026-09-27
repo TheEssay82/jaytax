@@ -76,7 +76,7 @@ test('중요성 — 올해 양식에 쓴다: 적용/미적용, 적용비율은 �
   assert.equal(e.get('F22')?.formula, '$C22*D22');
   assert.equal(e.get('K22')?.formula, 'IFERROR(C22*J22,0)');
   assert.equal(e.get('K28')?.text, '총자산');
-  assert.equal(e.get('K29')?.num, 735);
+  assert.equal(e.get('K29')?.formula, 'K22');                  // 적용한 줄(총자산)의 금액에 링크
   assert.equal(e.get('B32')?.text, '보유자산이 중요\n감사RISK 낮음');
   assert.equal(e.get('K51')?.num, 0.75);
   assert.equal(e.get('B71')?.text, '최대치');

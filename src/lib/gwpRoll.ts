@@ -25,7 +25,7 @@ import {
 } from './xlsxTransplant';
 import { setCells, excelSerial, type CellEdit } from './xlsxCells';
 import { dateRules, bumpSheetDates, bumpDatesInText, findPeriodColumns, carryForward, CARRY_FORWARD_CODES, type DateRules } from './gwpCarry';
-import { setTabColor, highlightCells, TAB } from './xlsxMark';
+import { setTabColor, highlightCells, blackenSheet, TAB } from './xlsxMark';
 
 const norm = (s: string | undefined) => (s ?? '').replace(/\s/g, '');
 function textOf(v: CellValue | undefined): string {
@@ -516,6 +516,7 @@ export function rollWorkbook(
     xml = renameSheetRefs(xml, tplNameMap);
     if (edits.length) xml = setCells(xml, edits);
     files[r.part] = strToU8(xml);
+    blackenSheet(files, r.part);                                  // 양식의 파란 글씨 → 검정(사용자 2026-09-28)
     mark(r.part, mig.edits.map((x) => x.ref));
     report.sheets.push({
       code: cs.code, name: cs.name, action: '갈아끼움', score: cmp.score, differ: cmp.differ.length,
@@ -544,6 +545,7 @@ export function rollWorkbook(
       const edits = headEdits(headRefs(tplData), coverName, indexName, indexRowFor(t.code), opts.reviewer ?? '');
       if (edits.length) xml = setCells(xml, edits);
       files[r.part] = strToU8(xml);
+      blackenSheet(files, r.part);
       mark(r.part, []);
       report.sheets.push({ code: t.code, name, action: '새 조서', template: t.file, note: '골라서 넣은 조서입니다. 맨 뒤에 붙였습니다.' });
     }
