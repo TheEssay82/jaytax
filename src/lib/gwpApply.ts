@@ -126,6 +126,15 @@ export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[], templa
     if (s0 && entry) files[entry.part] = strToU8(def.prepareXml(strFromU8(files[entry.part]), s0, data));
   }
   const sheets = readWorkbook(zip(files));
+  // 올해 양식을 쓰는 조서(2301·2700A 묶음)는 반영할 때마다 글자를 검정으로 — 이미 갈아끼운 판(명진 v15)의 파란 글씨도 고친다.
+  {
+    const codes = new Set(items.filter(({ def }) => def.useTemplate).flatMap(({ def }) => [def.sheetCode, ...(def.companions ?? [])]));
+    for (const s of sheets) {
+      if (s.hidden || !codes.has(baseOf(s.name))) continue;
+      const e = sheetEntries(files).find((x) => x.name === s.name);
+      if (e) blackenSheet(files, e.part);
+    }
+  }
   const done: ApplyResult['done'] = [];
   const missing: string[] = [];
   for (const { def, data } of items) {
