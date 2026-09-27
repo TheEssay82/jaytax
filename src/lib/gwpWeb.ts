@@ -23,6 +23,8 @@ export interface WebPaperDef<T = unknown> {
   useTemplate?: boolean;
   /** 반영할 때 함께 올해 양식으로 맞출 조서(2700A 요약표처럼 수식으로 이 조서를 읽는 것) */ companions?: string[];
   /** 워크북 시트(작년 값·지금 판)에서 화면 값을 읽는다. 옛 모양 시트도 읽는다. */ read(sheet: SheetData): T;
+  /** 여러 시트를 한 조서로 읽는다(8110ARP_BS·PL). 있으면 read 대신 쓴다. */ readBook?(sheets: SheetData[]): T;
+  /** 여러 시트에 쓴다. 있으면 write 대신 쓴다. */ writeBook?(sheets: SheetData[], data: T): { sheet: string; edits: CellEdit[] }[];
   /** 화면 값 → 이 시트에 쓸 칸. 같은 값이어도 돌려준다 — 바뀐 칸만 고르는 것은 반영(gwpApply)이 한다. */ write(sheet: SheetData, data: T): CellEdit[];
 }
 

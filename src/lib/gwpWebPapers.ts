@@ -5,6 +5,7 @@ import type { WebPaperDef } from './gwpWeb';
 import { PAPER_2110A } from './gwpPaper2110A';
 import { PAPER_2110 } from './gwpPaper2110';
 import { PAPER_2120A } from './gwpPaper2120A';
+import { PAPER_8110 } from './gwpPaper8110';
 import { PAPER_2700A_1, PAPER_2700A_2, PAPER_2700A_3, PAPER_2700A_4 } from './gwpPaper2700A';
 
 export interface WebPaperEntry {
@@ -26,6 +27,6 @@ export const WEB_PAPERS: WebPaperEntry[] = [
   { code: '2700A-2', title: '중요성(감사계획단계)', stage: 1, note: PAPER_2700A_2.note, def: PAPER_2700A_2 },
   { code: '2700A-3', title: '중요성(감사수행단계)', stage: 2, note: PAPER_2700A_3.note, def: PAPER_2700A_3 },
   { code: '2700A-4', title: '중요성(감사완결단계)', stage: 3, note: PAPER_2700A_4.note, def: PAPER_2700A_4 },
-  { code: '8110ARP', title: '종결단계 분석적검토', stage: 3, note: '자료함의 확정 정산표로 당기 숫자, 증감 큰 줄만 Explanation' },
+  { code: '8110ARP', title: '종결단계 분석적검토', stage: 3, note: PAPER_8110.note, def: PAPER_8110 },
   { code: '3500', title: '특수관계자 등', stage: 3, note: '나중에 — 특수관계자 검토조서와 함께(웹 1차 작성 → 엑셀로 넘겨 별도조서를 붙인다)', attach: true },
 ];

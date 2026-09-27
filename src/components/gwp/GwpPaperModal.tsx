@@ -20,6 +20,8 @@ import { amountsFromFs, type Paper2700, type Paper2700A1 } from '../../lib/gwpPa
 import Form2110A from './Form2110A';
 import Form2110 from './Form2110';
 import Form2120A from './Form2120A';
+import Form8110 from './Form8110';
+import { fillFromWtb, type Paper8110, type WtbReport } from '../../lib/gwpPaper8110';
 import { fillFromFs, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
 import type { Paper2110 } from '../../lib/gwpPaper2110';
 import Form2700A from './Form2700A';
@@ -51,6 +53,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
   const [note, setNote] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [fillRep, setFillRep] = useState<FillReport | null>(null);
+  const [wtbRep, setWtbRep] = useState<WtbReport | null>(null);
   const readOnly = locked || !canWrite;
   const prevCode = PREV_STAGE[def.code];
   const prevSaved = prevCode ? papers.get(prevCode) : undefined;
@@ -70,7 +73,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
         if (saved?.data != null) return;
         let d: unknown;
         if (prevSaved?.data != null) { d = structuredClone(prevSaved.data); setNote(`${prevCode}(앞 단계)에 저장한 값에서 시작합니다.`); }
-        else if (s) { d = def.read(s); setNote('작년(이월본) 값을 불러왔습니다 — 올해 것으로 고치세요.'); }
+        else if (s) { d = def.readBook ? def.readBook(sheets) : def.read(s); setNote('작년(이월본) 값을 불러왔습니다 — 올해 것으로 고치세요.'); }
         else { d = def.empty(); setNote(`최신 판(v${books[0].version})에 ${def.sheetCode} 시트가 없습니다 — 반영할 때 올해 양식으로 새로 넣습니다.`); }
         // 회계기간은 올해 것으로(표지의 대상기간).
         const period = books[0].catalog.period;
@@ -139,6 +142,22 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
     } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); } finally { setBusy(''); }
   }
 
+  /** 8110ARP 당기(와 링크였던 전기)를 자료함의 확정 정산표로. */
+  async function fill8110() {
+    const f = latestFile(files, '정산표');
+    if (!f) return;
+    setBusy('wtb'); setErr(null);
+    try {
+      const wtb = readWorkbook(await fileBytes(f.storagePath), (n) => /^W(BS|PL)$/i.test(n.replace(/\s/g, '')));
+      if (!wtb.length) throw new Error('정산표에서 WBS·WPL 시트를 찾지 못했습니다.');
+      const r = fillFromWtb(data as Paper8110, wtb, eng.periodTo ?? `${eng.fy}-12-31`);
+      if (!r.report.curCol.BS && !r.report.curCol.PL) throw new Error(`정산표 머리에서 ${eng.periodTo ?? eng.fy} 결산일 열을 찾지 못했습니다 — 올해 확정 정산표가 맞는지 보세요.`);
+      change(r.data);
+      setWtbRep(r.report);
+      setNote(`확정 정산표(${f.fileName})로 채웠습니다.`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); } finally { setBusy(''); }
+  }
+
   /** 자료함의 전기 DSD 에서 기준 금액을 채운다(백만원). */
   async function fillFromDsd() {
     const f = latestFile(files, '전기DSD');
@@ -160,6 +179,12 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
   const dsd = latestFile(files, '전기DSD');
   const factors = (papers.get('2700A-1')?.data as Paper2700A1 | undefined) ?? null;
   const is2700 = /^2700A-[234]$/.test(def.code);
+  const wtb = latestFile(files, '정산표');
+  // 8110ARP 기준 — 2700A-4 의 수행중요성(백만원 → 원). 사용자 2026-09-27 「8110 의 중요성은 2700A-4 에 연결」.
+  const m4 = papers.get('2700A-4')?.data as Paper2700 | undefined;
+  const pm8110 = m4?.materiality != null && m4.pmRate != null
+    ? { pm: m4.materiality * m4.pmRate * 1_000_000, note: `(2700A-4 ${m4.materiality.toLocaleString('ko-KR')}백만원 × ${Math.round(m4.pmRate * 100)}%)` }
+    : { pm: null, note: '— 2700A-4(중요성 감사완결단계)를 먼저 저장하세요.' };
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div className="card" style={{ maxWidth: 920, width: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', marginBottom: 0 }}>
@@ -183,6 +208,12 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
                 fill={<button className="btn-sm btn-sm-navy" disabled={!dsd || !!busy} onClick={() => void fill2120()}
                   title={dsd ? dsd.fileName : '자료함에 전기 DSD 를 먼저 올리세요'}>
                   {busy === 'dsd' ? '읽는 중…' : dsd ? '전기 DSD 로 당기 열 채우기' : '전기 DSD 없음(자료함에 올리세요)'}
+                </button>} />
+            ) : def.code === '8110ARP' ? (
+              <Form8110 value={data as Paper8110} onChange={change} readOnly={readOnly} report={wtbRep} pm={pm8110.pm} pmNote={pm8110.note}
+                fill={<button className="btn-sm btn-sm-navy" disabled={!wtb || !!busy} onClick={() => void fill8110()}
+                  title={wtb ? wtb.fileName : '자료함에 확정 정산표를 먼저 올리세요'}>
+                  {busy === 'wtb' ? '읽는 중…' : wtb ? '확정 정산표로 당기 채우기' : '확정 정산표 없음(자료함에 올리세요)'}
                 </button>} />
             ) : def.code === '2700A-1' ? (
               <Form2700A1 value={data as Paper2700A1} onChange={change} readOnly={readOnly} />

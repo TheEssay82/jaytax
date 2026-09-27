@@ -116,15 +116,21 @@ export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[], templa
   for (const { def, data } of items) {
     const sheet = pickSheet(def, sheets);
     if (!sheet) { missing.push(def.code); continue; }
-    const entry = sheetEntries(files).find((x) => x.name === sheet.name);
-    if (!entry) { missing.push(def.code); continue; }
-    const edits = def.write(sheet, data).filter((e) => changes(sheet.cells.get(e.ref), e));
-    let xml = strFromU8(files[entry.part]);
-    if (edits.length) xml = setCells(xml, edits);
-    xml = setTabColor(xml, edits.length ? TAB.yellow : TAB.green);
-    files[entry.part] = strToU8(xml);
-    if (edits.length) highlightCells(files, entry.part, edits.map((e) => e.ref));
-    done.push({ code: def.code, sheet: sheet.name, changed: edits.length });
+    const plan = def.writeBook ? def.writeBook(sheets, data) : [{ sheet: sheet.name, edits: def.write(sheet, data) }];
+    let changed = 0;
+    for (const p of plan) {
+      const sd = sheets.find((x) => x.name === p.sheet);
+      const entry = sheetEntries(files).find((x) => x.name === p.sheet);
+      if (!sd || !entry) continue;
+      const edits = p.edits.filter((e) => changes(sd.cells.get(e.ref), e));
+      let xml = strFromU8(files[entry.part]);
+      if (edits.length) xml = setCells(xml, edits);
+      xml = setTabColor(xml, edits.length ? TAB.yellow : TAB.green);
+      files[entry.part] = strToU8(xml);
+      if (edits.length) highlightCells(files, entry.part, edits.map((e) => e.ref));
+      changed += edits.length;
+    }
+    done.push({ code: def.code, sheet: plan.map((p) => p.sheet).join(' · '), changed });
   }
   dropCalcChain(files);
   forceRecalc(files);
