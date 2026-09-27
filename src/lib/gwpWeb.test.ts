@@ -74,6 +74,16 @@ test('반영 — 그대로면 칸은 안 바꾸고 탭 초록, 바꾸면 그 칸
   assert.equal(tabStateOf(out.tabColor), 'yellow');
 });
 
+test('반영 — 다시 반영해 바뀐 게 없어도 이미 노랑(올해 수정함)은 초록으로 내리지 않는다', () => {
+  const bytes = book2110A();
+  const same = PAPER_2110A.read(readWorkbook(bytes)[0]);
+  const edited = { rows: same.rows.map((r) => (r.label.startsWith('1)') ? { ...r, mid: '김준성' } : r)) };
+  const once = applyWebPapers(bytes, [{ def: PAPER_2110A, data: edited }]);
+  const twice = applyWebPapers(once.bytes, [{ def: PAPER_2110A, data: edited }]);
+  assert.equal(twice.done[0].changed, 0);
+  assert.equal(tabStateOf(readWorkbook(twice.bytes)[0].tabColor), 'yellow');
+});
+
 test('반영 — 시트가 없는 조서는 알려 준다', () => {
   const r = applyWebPapers(injectSheets(emptyWorkbook(), [{ name: '1100', cells: [{ row: 1, col: 1, text: 'x' }], lastRow: 1 }]), [{ def: PAPER_2110A, data: { rows: [] } }]);
   assert.deepEqual(r.missing, ['2110A']);

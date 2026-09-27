@@ -1,22 +1,31 @@
 // 일반조서 단계 보드 — 1차(중간감사 전)·2차(중간감사 후)·3차(기말감사 완료 후) 세 칸에 그 단계의 웹 조서를 늘어놓고,
-// 칸마다 [N차 확정]. 위에는 자료함(전기 DSD·확정 정산표)과 엑셀 조서 탭 색 개수.
-// 사용자 2026-09-27: 「일반조서 작성 절차를 편리하게 하기 위함」 — 지금 할 일이 한눈에 보이게.
+// 칸마다 [N차 확정]. 위에는 자료함(전기 DSD·수정전 정산표·확정 정산표).
+//
+// 사용자 2026-09-27:
+//   · 「하나씩 저장할 때마다 판 번호가 올라갈 필요가 있을까요? [1차 확정] 때 한꺼번에」 — 웹 조서는 저장·확인만 하고,
+//     [N차 확정]이 그 단계 조서를 한 번에 엑셀에 써 넣어 **판을 하나만** 만든다. 그 판이 확정본이다.
+//   · 「엑셀과 다름이 계속 뜹니다」 — 없앴다(웹에서 고치면 옛 판과 다른 게 당연하다).
+//   · FY2026 건에 FY2025 정산표를 올린 실수 — 파일마다 몇 년 것인지 크게 보이고, 해가 다르면 막고 쓰지 않는다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Engagement } from '../../lib/dsdApi';
-import { fileBytes, fileUrl, fmtKb, type GwpBook, type GwpTemplate } from '../../lib/gwpApi';
-import { readWorkbook, sheetNames } from '../../lib/xlsxRead';
-import { pickSheet } from '../../lib/gwpWeb';
+import { fileBytes, fileUrl, fmtKb, listBooks, addBook, type GwpBook, type GwpTemplate } from '../../lib/gwpApi';
+import { readWorkbook } from '../../lib/xlsxRead';
+import { buildCatalog } from '../../lib/gwpCatalog';
+import { readBundle } from '../../lib/gwpTemplate';
+import { applyWebPapers } from '../../lib/gwpApply';
 import { STAGES, stageStates, currentStage, confirmBlockers, stageLocked, type StageNo, type StageEvent } from '../../lib/gwpStage';
 import { WEB_PAPERS, type WebPaperEntry } from '../../lib/gwpWebPapers';
 import {
-  listFiles, uploadFile, latestFile, listPapers, listStageEvents, addStageEvent, FILE_KINDS,
+  listFiles, uploadFile, latestFile, updateFileMeta, listPapers, listStageEvents, addStageEvent, markApplied, FILE_KINDS,
   type EngFile, type FileKind, type PaperRow,
 } from '../../lib/gwpStageApi';
-import { readDsd, readContents } from '../../lib/dsdFile';
-import { parseStatements } from '../../lib/fsParse';
+import { inspectFile, expectedFy, fitsEngagement } from '../../lib/gwpFiles';
 import { tabStateOf } from '../../lib/xlsxMark';
+import { safeName, download } from '../dsd/dsdUi';
 import GwpPaperModal from './GwpPaperModal';
 import type { Paper2110 } from '../../lib/gwpPaper2110';
+
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 type Props = {
   eng: Engagement;
@@ -37,8 +46,6 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
   const [open, setOpen] = useState<WebPaperEntry | null>(null);
   const [busy, setBusy] = useState('');
   const [reopen, setReopen] = useState<{ stage: StageNo; reason: string } | null>(null);
-  /** 반영 뒤 엑셀 판이 바뀌어 웹 값과 달라진 조서 */
-  const [drift, setDrift] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const [p, e, f] = await Promise.all([listPapers(eng.id), listStageEvents(eng.id), listFiles(eng.id)]);
@@ -46,23 +53,20 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
   }, [eng.id]);
   useEffect(() => { void load().catch((e) => setErr(e instanceof Error ? e.message : '단계 정보를 읽지 못했습니다.')); }, [load, setErr]);
 
-  // 반영한 뒤에 누가 엑셀을 올렸으면(판이 늘었으면) 웹 값과 엑셀이 같은지 본다.
+  // 해를 모르는 파일(이 기능 전에 올린 것)은 한 번 읽어 적어 둔다.
   useEffect(() => {
-    const stale = WEB_PAPERS.filter((w) => w.def && papers.get(w.code)?.status === '확인'
-      && latest && (papers.get(w.code)?.appliedVersion ?? 0) < latest.version);
-    if (!latest || !stale.length) { setDrift(new Set()); return; }
+    const unknown = files.filter((f) => typeof f.meta.fy !== 'number' && !f.meta.void && !f.meta.inspected);
+    if (!unknown.length) return;
     let off = false;
     void (async () => {
-      const sheets = readWorkbook(await fileBytes(latest.storagePath));
-      const d = new Set<string>();
-      for (const w of stale) {
-        const s = pickSheet(w.def!, sheets);
-        if (s && JSON.stringify(w.def!.read(s)) !== JSON.stringify(papers.get(w.code)!.data)) d.add(w.code);
+      for (const f of unknown) {
+        const m = inspectFile(f.kind, await fileBytes(f.storagePath));
+        await updateFileMeta(f.id, { ...f.meta, ...m, inspected: true });
       }
-      if (!off) setDrift(d);
+      if (!off) await load();
     })().catch(() => undefined);
     return () => { off = true; };
-  }, [latest, papers]);
+  }, [files, load]);
 
   const states = useMemo(() => stageStates(events), [events]);
   // 2110 감사일정 — 단계 머리에 예정일을 보인다(1차 = 중간감사 전, 2차 = 기말감사 전, 3차 = 보고서).
@@ -91,32 +95,58 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
     if (!f) return;
     setBusy(`file:${kind}`); setErr(null);
     try {
-      let meta: Record<string, unknown> = {};
       const bytes = new Uint8Array(await f.arrayBuffer());
-      if (kind === '정산표') {
-        const names = sheetNames(bytes);
-        meta = { sheets: names.slice(0, 80), sheetCount: names.length };
-      } else {
-        const info = await readDsd(f);
-        const lines = parseStatements(await readContents(f));
-        meta = { docName: info.docName, period: info.period, notes: info.notes.length, fsLines: lines.length };
-        if (!lines.length) throw new Error('이 DSD 에서 재무제표를 읽지 못했습니다 — 감사보고서 DSD 가 맞는지 확인하세요.');
+      const m = inspectFile(kind, bytes);
+      const want = expectedFy(kind, eng.fy);
+      const label = FILE_KINDS.find((k) => k.kind === kind)!.label;
+      if (m.fy != null && m.fy !== want) {
+        throw new Error(`이 파일은 FY${m.fy}(${m.periodEnd}) 것입니다 — FY${eng.fy} 작업 건의 「${label}」에는 FY${want} 파일을 올리세요. 올리지 않았습니다.`);
       }
-      await uploadFile(eng.id, kind, { name: f.name, bytes }, meta);
+      if (m.fy == null && !confirm(`이 파일이 몇 년 것인지 알아내지 못했습니다(${m.note}).\nFY${want} 파일이 맞으면 [확인]을 누르세요.`)) return;
+      await uploadFile(eng.id, kind, { name: f.name, bytes }, { ...m, inspected: true });
       await load();
-      setMsg(`자료함에 ${FILE_KINDS.find((k) => k.kind === kind)!.label}을 올렸습니다 — ${f.name}.`);
+      setMsg(`자료함에 ${label}을 올렸습니다 — ${f.name}${m.fy ? ` (FY${m.fy} · ${m.periodEnd})` : ''}.`);
     } catch (e) { setErr(e instanceof Error ? e.message : '올리지 못했습니다.'); } finally { setBusy(''); }
   }
 
+  async function voidFile(f: EngFile) {
+    if (!confirm(`「${f.fileName}」을 쓰지 않게 뺍니다(파일은 기록으로 남습니다).`)) return;
+    try {
+      await updateFileMeta(f.id, { ...f.meta, void: true }, '잘못 올림 — 쓰지 않음');
+      await load();
+      setMsg(`「${f.fileName}」을 뺐습니다 — 이제 쓰지 않습니다.`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '빼지 못했습니다.'); }
+  }
+
+  /** N차 확정 — 이 단계에서 확인한 웹 조서를 한꺼번에 엑셀에 써 넣어 판 하나를 만들고, 그 판을 확정본으로 둔다. */
   async function confirmStage(no: StageNo) {
     if (!latest) return;
     const st = STAGES[no - 1];
-    if (!confirm(`${st.label}(${st.when})을 합니다.\n지금 최신 판 v${latest.version}을 ${st.label}본으로 고정하고, 이 단계의 웹 조서를 잠급니다.`)) return;
+    const items = WEB_PAPERS.filter((w) => w.def && w.stage === no && papers.get(w.code)?.status === '확인');
+    const codes = items.map((w) => w.code).join(', ');
+    if (!confirm(`${st.label}(${st.when})을 합니다.\n\n${items.length ? `확인한 웹 조서 ${items.length}개(${codes})를 엑셀에 한꺼번에 써 넣어 새 판 하나를 만들고,\n` : ''}그 판을 ${st.label}본으로 고정합니다. 이 단계의 웹 조서는 잠깁니다.`)) return;
     setBusy(`stage:${no}`); setErr(null);
     try {
-      await addStageEvent(eng.id, no, '확정', latest.version);
+      const base = (await listBooks(eng.id))[0];
+      if (!base) throw new Error('조서 판이 없습니다.');
+      let version = base.version;
+      let changed = 0;
+      if (items.length) {
+        const template = tpl ? { ...readBundle(await fileBytes(tpl.storagePath)), reviewer: partner } : undefined;
+        const r = applyWebPapers(await fileBytes(base.storagePath), items.map((w) => ({ def: w.def!, data: papers.get(w.code)!.data })), template);
+        if (r.missing.length) throw new Error(`최신 판(v${base.version})에 ${r.missing.join(', ')} 시트가 없습니다 — 표준양식이 등록돼 있는지 보세요.`);
+        changed = r.done.reduce((n, d) => n + d.changed, 0);
+        const name = `일반조서_${safeName(eng.entityName)}_FY${eng.fy}_${no}차확정.xlsx`;
+        const book = await addBook(eng.id, '작업중', { name, bytes: r.bytes }, buildCatalog(readWorkbook(r.bytes)),
+          `${st.label}본(${st.when}) — 웹 조서 반영 ${codes} · 바뀐 칸 ${changed}개(노랑)`);
+        version = book.version;
+        for (const w of items) await markApplied(eng.id, w.code, papers.get(w.code)!.data, version);
+        download(r.bytes, name, XLSX);
+      }
+      await addStageEvent(eng.id, no, '확정', version);
       await load();
-      setMsg(`${st.label} — v${latest.version} 판을 ${st.when} 확정본으로 고정했습니다.`);
+      await onBooks();
+      setMsg(`${st.label} — ${items.length ? `웹 조서 ${items.length}개를 반영한 ` : ''}v${version}을 ${st.when} 확정본으로 고정했습니다${items.length ? '(내려받았습니다)' : ''}.`);
     } catch (e) { setErr(e instanceof Error ? e.message : '확정하지 못했습니다.'); } finally { setBusy(''); }
   }
 
@@ -134,8 +164,8 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
 
   const statusChip = (w: (typeof rows)[number]) => {
     if (!w.def) return <span style={{ color: 'var(--ink-4)' }}>준비 중</span>;
-    if (drift.has(w.code)) return <span style={{ color: 'var(--warn)', fontWeight: 700 }} title="반영한 뒤 올라온 엑셀 판과 웹 값이 다릅니다">⚠️ 엑셀과 다름</span>;
-    if (w.status === '확인') return <span style={{ color: 'var(--good)', fontWeight: 700 }}>✅ 반영함{papers.get(w.code)?.appliedVersion ? ` v${papers.get(w.code)!.appliedVersion}` : ''}</span>;
+    const p = papers.get(w.code);
+    if (w.status === '확인') return <span style={{ color: 'var(--good)', fontWeight: 700 }}>✅ 확인{p?.appliedVersion ? ` · v${p.appliedVersion}` : ''}</span>;
     if (w.status === '엑셀로 넘김') return <span style={{ color: 'var(--ink-2)' }}>📎 엑셀로 넘김</span>;
     if (w.status === '작성중') return <span style={{ color: 'var(--warn)' }}>✏️ 작성 중</span>;
     return <span style={{ color: 'var(--ink-3)' }}>○ 할 차례</span>;
@@ -155,30 +185,54 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
         </span>
       </div>
 
-      {/* 자료함 */}
+      {/* 자료함 — 단계 순서대로 */}
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 4 }}>📁 자료함 — 파일마다 몇 년 것인지 보입니다. 이 작업 건(FY{eng.fy})과 맞지 않는 파일은 쓰지 않습니다.</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8, marginBottom: 12 }}>
         {FILE_KINDS.filter((k) => k.kind !== '당기DSD').map((k) => {
-          const f = latestFile(files, k.kind);
+          const use = latestFile(files, k.kind, eng.fy);
+          const newest = files.find((f) => f.kind === k.kind);
+          const bad = newest && newest !== use ? newest : null;     // 가장 최근에 올린 것이 맞지 않거나 뺀 것
+          const want = expectedFy(k.kind, eng.fy);
+          const fyTag = (f: EngFile) => {
+            const ok = fitsEngagement(k.kind, f.meta, eng.fy);
+            const fy = typeof f.meta.fy === 'number' ? `FY${f.meta.fy}` : '해 모름';
+            return (
+              <span style={{ padding: '0 8px', borderRadius: 999, fontWeight: 700, fontSize: 'var(--fs-1)',
+                background: f.meta.void || ok === false ? 'var(--bad-bg)' : ok ? 'var(--good-bg)' : 'var(--surface-2)',
+                color: f.meta.void || ok === false ? 'var(--bad)' : ok ? 'var(--good)' : 'var(--ink-3)' }}>
+                {fy}{typeof f.meta.periodEnd === 'string' ? ` · ${f.meta.periodEnd}` : ''}
+              </span>
+            );
+          };
+          const link = (f: EngFile) => (
+            <button style={{ background: 'none', border: 'none', padding: 0, color: 'var(--navy)', cursor: 'pointer', textAlign: 'left' }}
+              onClick={() => void fileUrl(f.storagePath, f.fileName).then((u) => window.open(u, '_blank', 'noopener')).catch((e) => setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'))}>
+              {f.fileName}
+            </button>
+          );
           return (
-            <div key={k.kind} style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '8px 10px', fontSize: 'var(--fs-1)' }}>
+            <div key={k.kind} style={{ border: `1px solid ${bad && !use ? 'var(--bad)' : 'var(--line)'}`, borderRadius: 10, padding: '8px 10px', fontSize: 'var(--fs-1)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <b>📁 {k.label}</b>
+                <b>{k.stage}차 · {k.label}</b>
                 <label className="btn-sm" style={{ marginLeft: 'auto', cursor: canWrite && !busy ? 'pointer' : 'default', opacity: canWrite ? 1 : 0.5 }}>
-                  {busy === `file:${k.kind}` ? '올리는 중…' : f ? '새로 올리기' : '올리기'}
+                  {busy === `file:${k.kind}` ? '올리는 중…' : use ? '새로 올리기' : '올리기'}
                   <input type="file" accept={k.accept} style={{ display: 'none' }} disabled={!canWrite || !!busy}
                     onChange={(e) => { void upload(k.kind, e.target.files?.[0]); e.target.value = ''; }} />
                 </label>
               </div>
-              <div style={{ color: 'var(--ink-3)', marginTop: 2 }}>{k.use}</div>
-              {f ? (
-                <div style={{ marginTop: 4 }}>
-                  <button className="btn-link" style={{ background: 'none', border: 'none', padding: 0, color: 'var(--navy)', cursor: 'pointer', textAlign: 'left' }}
-                    onClick={() => void fileUrl(f.storagePath, f.fileName).then((u) => window.open(u, '_blank', 'noopener')).catch((e) => setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'))}>
-                    {f.fileName}
-                  </button>
-                  <span style={{ color: 'var(--ink-4)' }}> · {fmtKb(f.fileSize)} · {f.createdAt.slice(0, 10)}</span>
+              <div style={{ color: 'var(--ink-3)', marginTop: 2 }}>{k.use} · <b>FY{want}</b> 파일</div>
+              {use ? (
+                <div style={{ marginTop: 4, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {fyTag(use)} {link(use)}
+                  <span style={{ color: 'var(--ink-4)' }}>· {fmtKb(use.fileSize)} · {use.createdAt.slice(0, 10)}</span>
+                  {canWrite && <button className="btn-sm" style={{ fontSize: 'var(--fs-0)' }} onClick={() => void voidFile(use)}>잘못 올림 — 빼기</button>}
                 </div>
-              ) : <div style={{ marginTop: 4, color: 'var(--ink-4)' }}>아직 없음</div>}
+              ) : <div style={{ marginTop: 4, color: 'var(--ink-4)' }}>쓸 파일 없음</div>}
+              {bad && (
+                <div style={{ marginTop: 4, color: 'var(--bad)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {fyTag(bad)} {bad.fileName} — {bad.meta.void ? '뺀 파일' : `이 작업 건(FY${eng.fy})과 맞지 않아 쓰지 않습니다`}
+                </div>
+              )}
             </div>
           );
         })}
@@ -230,11 +284,11 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
                   <>
                     <button className="btn-p" style={{ width: '100%' }} disabled={!canWrite || !latest || blockers.length > 0 || !!busy}
                       onClick={() => void confirmStage(st.no)}>
-                      {busy === `stage:${st.no}` ? '확정하는 중…' : `${st.label}`}
+                      {busy === `stage:${st.no}` ? '엑셀에 반영하고 확정하는 중…' : `${st.label} — 엑셀에 반영하고 고정`}
                     </button>
                     {blockers.length > 0 && isNow && (
                       <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 4, lineHeight: 1.5 }}>
-                        {blockers.map((b) => <div key={b}>· {b}</div>)}
+                        {blockers.map((b) => <div key={b}>· {b.replace('아직 엑셀에 반영하지 않았습니다', '아직 확인하지 않았습니다')}</div>)}
                       </div>
                     )}
                   </>
@@ -245,8 +299,9 @@ export default function GwpStageBoard({ eng, latest, tpl, canWrite, partner, aut
         })}
       </div>
       <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 8, lineHeight: 1.6 }}>
-        웹 조서는 [열기] → 확인·수정 → <b>「확인하고 엑셀에 반영」</b>하면 최신 판에 써 넣은 새 판이 쌓입니다(바뀐 칸 노랑, 탭 노랑 · 바뀐 게 없으면 탭 초록).
-        단계의 웹 조서를 모두 반영하면 [N차 확정]이 열립니다 — 그때의 최신 판이 그 단계의 확정본이 되고, 그 단계 웹 조서는 잠깁니다.
+        웹 조서는 [열기] → 고치고 <b>「확인」</b>만 누르면 됩니다(엑셀은 아직 그대로, 판 번호도 그대로). 단계의 웹 조서를 모두 확인하면 <b>[N차 확정]</b>이
+        그 조서들을 <b>한꺼번에</b> 엑셀에 써 넣어 판 하나를 만들고(바뀐 칸 노랑·탭 노랑, 바뀐 게 없으면 탭 초록) 그 판을 확정본으로 고정합니다.
+        확정 전에 엑셀을 보고 싶으면 조서 창의 「엑셀 미리보기」를 누르세요(판을 만들지 않습니다).
       </div>
 
       {open && open.def && (

@@ -1,8 +1,11 @@
-// 웹 조서 입력 창 — 조서마다 폼을 띄우고 [저장] · [확인하고 엑셀에 반영]. 반영하면 최신 판에 써 넣은 새 판이 쌓인다.
+// 웹 조서 입력 창 — 조서마다 폼을 띄우고 [임시 저장] · [확인]. 엑셀 반영은 [N차 확정] 때 단계째 한꺼번에(판 하나).
+// 확정 전에 보고 싶으면 [엑셀 미리보기](판을 만들지 않는다).
 //
 // 처음 여는 조서는 최신 판(이월본)의 시트에서 작년 값을 읽어 채운다. 옛 모양 시트도 읽는다.
 // 반영할 때 시트가 올해 양식 모양이 아니면(명진 2700A-2(소규모)) 표준양식으로 갈아끼운 뒤 쓴다.
 import { useEffect, useState } from 'react';
+
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 import { unzipSync, strFromU8 } from 'fflate';
 import type { Engagement } from '../../lib/dsdApi';
 import { listBooks, addBook, fileBytes, type GwpTemplate } from '../../lib/gwpApi';
@@ -12,7 +15,9 @@ import { pickSheet } from '../../lib/gwpWeb';
 import { applyWebPapers } from '../../lib/gwpApply';
 import { readBundle } from '../../lib/gwpTemplate';
 import { parseStatements } from '../../lib/fsParse';
-import { savePaper, markApplied, setPaperStatus, latestFile, type PaperRow, type EngFile } from '../../lib/gwpStageApi';
+import { savePaper, markApplied, markChecked, setPaperStatus, latestFile, type PaperRow, type EngFile } from '../../lib/gwpStageApi';
+import { amountsFromWtb } from '../../lib/gwpFiles';
+import { download } from '../dsd/dsdUi';
 import { STAGES } from '../../lib/gwpStage';
 import type { WebPaperEntry } from '../../lib/gwpWebPapers';
 import type { Paper2110A } from '../../lib/gwpPaper2110A';
@@ -115,12 +120,49 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
     } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } finally { setBusy(''); }
   }
 
-  /** 📎 — 반영한 조서의 정본을 엑셀로. 별도조서를 붙여 보완한 뒤 「채운 파일 올리기」. */
+  /** 최신 판에 이 조서를 써 넣은 바이트 — 미리보기·엑셀로 넘기기가 쓴다(확정은 보드가 단계째 한꺼번에). */
+  async function build() {
+    const base = (await listBooks(eng.id))[0];
+    if (!base) throw new Error('조서 판이 없습니다.');
+    const template = tpl ? { ...readBundle(await fileBytes(tpl.storagePath)), reviewer: partner } : undefined;
+    const r = applyWebPapers(await fileBytes(base.storagePath), [{ def, data }], template);
+    if (r.missing.length) throw new Error(`최신 판(v${base.version})에 ${def.sheetCode} 시트가 없고 표준양식에서도 찾지 못했습니다.`);
+    return { base, r };
+  }
+
+  /** 확인 — 저장하고 「확인」으로 둔다. 엑셀·판 번호는 그대로([N차 확정] 때 한꺼번에). */
+  async function check() {
+    setBusy('check'); setErr(null);
+    try {
+      await markChecked(eng.id, def.code, data);
+      setDirty(false);
+      await onChanged(`${def.code} ${def.title}을 확인했습니다 — [${stage.label}] 때 다른 조서와 함께 엑셀에 반영됩니다.`);
+      onClose();
+    } catch (e) { setErr(e instanceof Error ? e.message : '확인하지 못했습니다.'); } finally { setBusy(''); }
+  }
+
+  /** 엑셀 미리보기 — 판을 만들지 않고, 이 조서를 써 넣은 파일을 내려받는다. */
+  async function preview() {
+    setBusy('preview'); setErr(null);
+    try {
+      const { base, r } = await build();
+      download(r.bytes, `미리보기_${def.code}_v${base.version}.xlsx`, XLSX);
+      setNote(`미리보기를 내려받았습니다 — 판은 만들지 않았습니다(바뀐 칸 ${r.done[0]?.changed ?? 0}개 노랑).`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '미리보기를 만들지 못했습니다.'); } finally { setBusy(''); }
+  }
+
+  /** 📎 — 별도조서를 붙일 조서. 지금 엑셀에 써 넣은 판을 만들고 정본을 엑셀로 넘긴다. */
   async function handOff() {
+    if (!confirm(`${def.code} ${def.title}을 지금 엑셀에 써 넣은 새 판을 만들고, 이 조서의 정본을 엑셀로 넘깁니다.\n그 판을 내려받아 별도조서를 붙이고 「채운 파일 올리기」로 올리세요.`)) return;
     setBusy('hand'); setErr(null);
     try {
+      const { r } = await build();
+      const book = await addBook(eng.id, '작업중', { name: `일반조서_${eng.entityName}_FY${eng.fy}_${def.code}_엑셀로.xlsx`, bytes: r.bytes },
+        buildCatalog(readWorkbook(r.bytes)), `📎 엑셀로 넘김: ${def.code} ${def.title} — 별도조서를 붙여 올릴 판`);
+      await markApplied(eng.id, def.code, data, book.version);
       await setPaperStatus(eng.id, def.code, '엑셀로 넘김');
-      await onChanged(`${def.code} ${def.title}을 엑셀로 넘겼습니다 — 최신 판을 내려받아 별도조서를 붙이고 「채운 파일 올리기」로 올리세요. 단계 확정에는 반영한 것으로 칩니다.`);
+      download(r.bytes, book.fileName, XLSX);
+      await onChanged(`${def.code} ${def.title}을 엑셀로 넘겼습니다 — v${book.version}을 내려받았습니다. 별도조서를 붙여 「채운 파일 올리기」로 올리세요.`);
       onClose();
     } catch (e) { setErr(e instanceof Error ? e.message : '넘기지 못했습니다.'); } finally { setBusy(''); }
   }
@@ -139,34 +181,26 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
     } catch (e) { setErr(e instanceof Error ? e.message : '되돌리지 못했습니다.'); } finally { setBusy(''); }
   }
 
-  async function apply() {
-    setBusy('apply'); setErr(null);
+  /** 2700A-3(수정전 정산표)·2700A-4(확정 정산표) 기준 금액 — 사용자 2026-09-27 「2차는 기말감사 전 숫자(수정전)」. */
+  async function fillFromWtbTotals(kind: '수정전정산표' | '정산표') {
+    const f = latestFile(files, kind, eng.fy);
+    if (!f) return;
+    setBusy('wtbm'); setErr(null);
     try {
-      // 반영은 늘 그 순간의 최신 판 위에 — 그 사이 누가 채운 파일을 올렸을 수 있다.
-      const books = await listBooks(eng.id);
-      const base = books[0];
-      if (!base) throw new Error('조서 판이 없습니다.');
-      const template = tpl ? { ...readBundle(await fileBytes(tpl.storagePath)), reviewer: partner } : undefined;
-      const r = applyWebPapers(await fileBytes(base.storagePath), [{ def, data }], template);
-      if (r.missing.length) throw new Error(`최신 판(v${base.version})에 ${def.sheetCode} 시트가 없고 표준양식에서도 찾지 못했습니다.`);
-      const changed = r.done[0].changed;
-      const prep = [
-        r.prepared.replaced.length ? `올해 양식으로 갈아끼움 ${r.prepared.replaced.join(', ')}` : '',
-        r.prepared.added.length ? `새로 넣음 ${r.prepared.added.join(', ')}` : '',
-        r.prepared.hidden.length ? `숨김 ${r.prepared.hidden.join(', ')}` : '',
-      ].filter(Boolean).join(' · ');
-      const book = await addBook(eng.id, '작업중', { name: base.fileName, bytes: r.bytes }, buildCatalog(readWorkbook(r.bytes)),
-        `웹 조서 반영: ${def.code} ${def.title} — ${changed ? `바뀐 칸 ${changed}개(노랑)` : '바뀐 것 없음(탭 초록)'}${prep ? ` · ${prep}` : ''}`);
-      await markApplied(eng.id, def.code, data, book.version);
-      setDirty(false);
-      await onChanged(`${def.code} ${def.title}을 엑셀에 반영해 v${book.version}을 만들었습니다 — ${changed ? `바뀐 칸 ${changed}개는 노랗게, 탭은 노랑(수정함)` : '바뀐 것이 없어 탭을 초록(확인·새로 넣을 것 없음)'}으로 두었습니다.${prep ? ` (${prep})` : ''}`);
-      onClose();
-    } catch (e) { setErr(e instanceof Error ? e.message : '반영하지 못했습니다.'); } finally { setBusy(''); }
+      const sheets = readWorkbook(await fileBytes(f.storagePath), (n) => /^W(BS|PL)$/i.test(n.replace(/\s/g, '')));
+      const side = kind === '수정전정산표' ? 'left' : 'right';
+      const { amounts, cols } = amountsFromWtb(sheets, eng.periodTo ?? `${eng.fy}-12-31`, side);
+      const n = Object.keys(amounts).length;
+      if (!n) throw new Error(`정산표에서 ${eng.periodTo ?? eng.fy} 결산일 열이나 자산총계·자본총계·영업수익·세전이익 줄을 찾지 못했습니다.`);
+      const d = data as Paper2700;
+      change({ ...d, amounts: { ...d.amounts, ...amounts } });
+      setNote(`${kind === '수정전정산표' ? '수정전' : '확정(수정후)'} 정산표(${f.fileName}) ${side === 'left' ? '수정전' : '수정후'} 열(WBS ${cols.WBS ?? '-'} · WPL ${cols.WPL ?? '-'})에서 ${n}개 금액을 백만원으로 채웠습니다.`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); } finally { setBusy(''); }
   }
 
   /** 자료함의 전기 DSD 재무제표. */
   async function dsdLines() {
-    const f = latestFile(files, '전기DSD')!;
+    const f = latestFile(files, '전기DSD', eng.fy)!;
     const z = unzipSync(await fileBytes(f.storagePath));
     if (!z['contents.xml']) throw new Error('DSD 안에 본문이 없습니다.');
     return { f, lines: parseStatements(strFromU8(z['contents.xml'])) };
@@ -186,7 +220,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
 
   /** 8110ARP 당기(와 링크였던 전기)를 자료함의 확정 정산표로. */
   async function fill8110() {
-    const f = latestFile(files, '정산표');
+    const f = latestFile(files, '정산표', eng.fy);
     if (!f) return;
     setBusy('wtb'); setErr(null);
     try {
@@ -202,7 +236,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
 
   /** 자료함의 전기 DSD 에서 기준 금액을 채운다(백만원). */
   async function fillFromDsd() {
-    const f = latestFile(files, '전기DSD');
+    const f = latestFile(files, '전기DSD', eng.fy);
     if (!f) return;
     setBusy('dsd'); setErr(null);
     try {
@@ -218,7 +252,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
   }
 
   const stage = STAGES[entry.stage - 1];
-  const dsd = latestFile(files, '전기DSD');
+  const dsd = latestFile(files, '전기DSD', eng.fy);
   const factors = (papers.get('2700A-1')?.data as Paper2700A1 | undefined) ?? null;
   const is2700 = /^2700A-[234]$/.test(def.code);
   // 2301 추천 재료 — 2120A 에서 크게 변한 계정(1천만원·20% 이상).
@@ -230,7 +264,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
       big2120.set(r.label, `전기 대비 ${g > 0 ? '+' : ''}${r.prev ? `${Math.round((g / r.prev) * 100)}%` : '신규'} (${g.toLocaleString('ko-KR')}원)`);
     }
   }
-  const wtb = latestFile(files, '정산표');
+  const wtb = latestFile(files, '정산표', eng.fy);
   // 8110ARP 기준 — 2700A-4 의 수행중요성(백만원 → 원). 사용자 2026-09-27 「8110 의 중요성은 2700A-4 에 연결」.
   const m4 = papers.get('2700A-4')?.data as Paper2700 | undefined;
   const pm8110 = m4?.materiality != null && m4.pmRate != null
@@ -285,6 +319,17 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
                       {busy === 'dsd' ? '읽는 중…' : dsd ? '전기 DSD 에서 금액 채우기' : '전기 DSD 없음(자료함)'}
                     </button>
                   )}
+                  {(def.code === '2700A-3' || def.code === '2700A-4') && (() => {
+                    const kind = def.code === '2700A-3' ? '수정전정산표' as const : '정산표' as const;
+                    const f = latestFile(files, kind, eng.fy);
+                    const label = kind === '수정전정산표' ? '수정전 정산표' : '확정 정산표';
+                    return (
+                      <button className="btn-sm btn-sm-navy" disabled={!f || !!busy} onClick={() => void fillFromWtbTotals(kind)}
+                        title={f ? f.fileName : `자료함에 FY${eng.fy} ${label}를 먼저 올리세요`}>
+                        {busy === 'wtbm' ? '읽는 중…' : f ? `${label}에서 금액 채우기(${kind === '수정전정산표' ? '수정전' : '수정후'} 열)` : `${label} 없음(자료함)`}
+                      </button>
+                    );
+                  })()}
                   {prevSaved?.data != null && (
                     <button className="btn-sm" onClick={() => change({ ...(structuredClone(prevSaved.data) as Paper2700), period: (data as Paper2700).period })}>
                       {prevCode}(앞 단계) 값 가져오기
@@ -297,17 +342,22 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
         {!readOnly && data != null && (
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginRight: 'auto' }}>
-              {saved?.status === '확인' && !dirty ? `v${saved.appliedVersion}에 반영돼 있습니다.` : dirty ? '고친 것이 있습니다.' : ''}
-              {!tpl && is2700 ? ' 표준양식이 없어 옛 모양 시트는 반영하지 못합니다.' : ''}
+              {saved?.status === '확인' && !dirty ? `확인해 두었습니다 — [${stage.label}] 때 엑셀에 반영됩니다.` : dirty ? '고친 것이 있습니다.' : ''}
+              {!tpl && (is2700 || def.code === '2301') ? ' 표준양식이 없어 옛 모양 시트는 반영하지 못합니다.' : ''}
             </span>
             {saved?.status === '확인' && !dirty && (
               <button className="btn-s" disabled={!!busy} onClick={() => void handOff()}
-                title="기말에 별도조서를 붙여야 하는 조서 — 이 조서의 정본을 엑셀로 넘깁니다. 웹은 읽기 전용이 됩니다.">📎 엑셀로 넘기기</button>
+                title="기말에 별도조서를 붙여야 하는 조서 — 지금 엑셀에 써 넣은 판을 만들고 정본을 엑셀로 넘깁니다. 웹은 읽기 전용이 됩니다.">
+                {busy === 'hand' ? '넘기는 중…' : '📎 엑셀로 넘기기'}
+              </button>
             )}
-            <button className="btn-s" disabled={!!busy || !dirty} onClick={() => void save()}>{busy === 'save' ? '저장하는 중…' : '저장'}</button>
-            <button className="btn-p" disabled={!!busy} onClick={() => void apply()}
-              title="최신 판에 이 조서를 써 넣은 새 판을 만듭니다. 바뀐 칸은 노랗게, 탭은 노랑(바뀐 게 없으면 초록).">
-              {busy === 'apply' ? '반영하는 중…' : '확인하고 엑셀에 반영'}
+            <button className="btn-s" disabled={!!busy} onClick={() => void preview()} title="판을 만들지 않고, 이 조서를 써 넣은 엑셀을 내려받아 봅니다.">
+              {busy === 'preview' ? '만드는 중…' : '엑셀 미리보기'}
+            </button>
+            <button className="btn-s" disabled={!!busy || !dirty} onClick={() => void save()}>{busy === 'save' ? '저장하는 중…' : '임시 저장'}</button>
+            <button className="btn-p" disabled={!!busy} onClick={() => void check()}
+              title={`저장하고 「확인」으로 둡니다. 엑셀·판 번호는 그대로 — [${stage.label}] 때 이 단계 조서를 한꺼번에 엑셀에 씁니다.`}>
+              {busy === 'check' ? '저장하는 중…' : '확인'}
             </button>
           </div>
         )}

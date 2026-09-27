@@ -102,9 +102,26 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
 
 // ── 전기 DSD 로 당기 열 채우기 ─────────────────────────────
 const CONTRA = /^(대손충당금|감가상각누계액|손상차손누계액|정부보조금|현재가치할인차금)[-−–](.+)$/;
-export const cleanFs = (s: string) => normLabel(s)
-  .replace(/^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+\./, '').replace(/^\(\d+\)/, '').replace(/^\d+\./, '')
-  .replace(/\(손실\)$|\(수익\)$/, '');
+/**
+ * 같은 계정의 다른 이름 — 대표 이름으로 모은다. 사용자 2026-09-27: 「당기법인세자산은 선납법인세와 동일한 계정」.
+ * 개정·회사 관행으로 이름만 바뀐 것들이다(접대비 → 기업업무추진비 2024 세법 개정 등).
+ */
+export const SYNONYMS: string[][] = [
+  ['선납법인세', '당기법인세자산', '선급법인세'],
+  ['미지급법인세', '당기법인세부채'],
+  ['기업업무추진비', '접대비'],
+  ['퇴직급여충당부채', '퇴직급여부채'],
+  ['자본금', '보통주자본금'],
+  ['매출액', '영업수익'],
+  ['법인세비용', '법인세등', '법인세비용(수익)'],
+];
+const SYN = new Map(SYNONYMS.flatMap((g) => g.map((n) => [normLabel(n), normLabel(g[0])] as const)));
+export const cleanFs = (s: string) => {
+  const c = normLabel(s)
+    .replace(/^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+\./, '').replace(/^\(\d+\)/, '').replace(/^\d+\./, '')
+    .replace(/\(손실\)$|\(수익\)$/, '');
+  return SYN.get(c) ?? c;
+};
 
 export interface FillReport {
   byLabel: number; byContra: number; byValue: number; missing: string[]; prevDiff: string[]; scale: number;

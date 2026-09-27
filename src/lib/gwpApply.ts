@@ -10,7 +10,7 @@ import { strFromU8, strToU8 } from 'fflate';
 import { readWorkbook, type CellValue, type SheetData } from './xlsxRead';
 import { setCells, type CellEdit } from './xlsxCells';
 import { sheetEntries, dropCalcChain, forceRecalc, unzip, zip, transplantSheet, setSheetHidden } from './xlsxTransplant';
-import { setTabColor, highlightCells, TAB } from './xlsxMark';
+import { setTabColor, highlightCells, tabColorOf, tabStateOf, TAB } from './xlsxMark';
 import { findPaperSheet, pickSheet, textOf, type WebPaperDef } from './gwpWeb';
 import { findTemplateSheet, type TemplateCatalog } from './gwpTemplate';
 import { buildCatalog, codeOf } from './gwpCatalog';
@@ -139,7 +139,10 @@ export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[], templa
       const edits = p.edits.filter((e) => changes(sd.cells.get(e.ref), e));
       let xml = strFromU8(files[entry.part]);
       if (edits.length) xml = setCells(xml, edits);
-      xml = setTabColor(xml, edits.length ? TAB.yellow : TAB.green);
+      // 바뀐 칸이 있으면 노랑. 없으면 — 손 안 댄(빨강·색 없음) 시트만 초록으로. 이미 노랑(올해 수정함)은 그대로 둔다.
+      const was = tabStateOf(tabColorOf(xml));
+      if (edits.length) xml = setTabColor(xml, TAB.yellow);
+      else if (was !== 'yellow' && was !== 'green') xml = setTabColor(xml, TAB.green);
       files[entry.part] = strToU8(xml);
       if (edits.length) highlightCells(files, entry.part, edits.map((e) => e.ref));
       changed += edits.length;

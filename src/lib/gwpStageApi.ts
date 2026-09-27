@@ -4,15 +4,18 @@
 // 2120A(전기 DSD)·8110ARP(확정 정산표)가 다시 고르지 않고 쓴다. 같은 종류를 다시 올리면 줄이 늘고 최신 것을 쓴다.
 import { supabase } from './supabase';
 import type { StageEvent, StageNo } from './gwpStage';
+import { expectedFy, type FileKind } from './gwpFiles';
 
 const BUCKET = 'gwp';
 
 // ── 자료함 ───────────────────────────────────────────────
-export type FileKind = '전기DSD' | '당기DSD' | '정산표';
-export const FILE_KINDS: { kind: FileKind; label: string; accept: string; use: string }[] = [
-  { kind: '전기DSD', label: '전기 DSD', accept: '.dsd', use: '1차 — 2120A 당기 숫자, 2301 계정 목록, 2700A-2 기준 금액' },
-  { kind: '정산표', label: '확정 정산표', accept: '.xlsx,.xlsm', use: '3차 — 8110ARP 당기 숫자' },
-  { kind: '당기DSD', label: '당기 DSD', accept: '.dsd', use: '감사보고서 DSD(참고)' },
+export type { FileKind };
+/** 자료함 칸 — 단계 순서대로. 2차는 기말감사 때 받은 정산표의 수정전 금액(사용자 2026-09-27). */
+export const FILE_KINDS: { kind: FileKind; label: string; accept: string; use: string; stage: 1 | 2 | 3 }[] = [
+  { kind: '전기DSD', label: '전기 DSD', accept: '.dsd', use: '1차 — 2120A 당기 열, 2301 계정, 2700A-2 기준 금액', stage: 1 },
+  { kind: '수정전정산표', label: '정산표(기말감사 수정전)', accept: '.xlsx,.xlsm', use: '2차 — 2700A-3 기준 금액(수정전 열)', stage: 2 },
+  { kind: '정산표', label: '확정 정산표(수정후)', accept: '.xlsx,.xlsm', use: '3차 — 2700A-4 기준 금액·8110ARP 당기(수정후 열)', stage: 3 },
+  { kind: '당기DSD', label: '당기 DSD', accept: '.dsd', use: '감사보고서 DSD(참고)', stage: 3 },
 ];
 
 export interface EngFile {
@@ -37,9 +40,21 @@ export async function listFiles(engagementId: string): Promise<EngFile[]> {
   return ((data ?? []) as unknown as FileRow[]).map(toFile);
 }
 
-/** 종류별 최신 한 개. */
-export function latestFile(files: EngFile[], kind: FileKind): EngFile | null {
-  return files.find((f) => f.kind === kind) ?? null;
+/**
+ * 종류별로 쓸 파일 — 최신부터, 뺀 것(meta.void)과 **해가 맞지 않는 것**은 건너뛴다.
+ * 사용자 2026-09-27: FY2026 건에 FY2025 확정 정산표를 올린 실수 — 그런 파일은 쓰지 않는다.
+ */
+export function latestFile(files: EngFile[], kind: FileKind, fy?: number): EngFile | null {
+  return files.find((f) => f.kind === kind && !f.meta.void
+    && (fy == null || typeof f.meta.fy !== 'number' || f.meta.fy === expectedFy(kind, fy))) ?? null;
+}
+
+/** 메모·읽어 둔 요약(meta)만 고친다 — 해를 늦게 알아냈을 때, 잘못 올린 것을 뺄 때(void). */
+export async function updateFileMeta(id: string, meta: Record<string, unknown>, memo?: string): Promise<void> {
+  const row: Record<string, unknown> = { meta };
+  if (memo !== undefined) row.memo = memo;
+  const { error } = await supabase.from('engagement_file').update(row).eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 export async function uploadFile(
@@ -86,7 +101,20 @@ export async function savePaper(engagementId: string, code: string, data: unknow
   return toPaper(row as unknown as PRow);
 }
 
-/** 엑셀 판에 반영했다 — 확인. */
+/**
+ * 확인 — 입력을 저장하고 「확인」으로 둔다. 엑셀에는 아직 쓰지 않는다: [N차 확정]이 그 단계 조서를 한꺼번에 써 넣어
+ * 판을 하나만 만든다(사용자 2026-09-27 「하나씩 저장할 때마다 판 번호가 올라갈 필요가 있을까요?」).
+ */
+export async function markChecked(engagementId: string, code: string, data: unknown): Promise<PaperRow> {
+  const { data: u } = await supabase.auth.getUser();
+  const { data: row, error } = await supabase.from('gwp_paper').upsert({
+    engagement_id: engagementId, code, data, status: '확인', checked_by: u.user?.id ?? null, checked_at: new Date().toISOString(),
+  }, { onConflict: 'engagement_id,code' }).select(P_SEL).single();
+  if (error) throw new Error(error.message);
+  return toPaper(row as unknown as PRow);
+}
+
+/** 엑셀 판에 반영했다 — 확인 + 반영된 판 번호. */
 export async function markApplied(engagementId: string, code: string, data: unknown, version: number): Promise<PaperRow> {
   const { data: u } = await supabase.auth.getUser();
   const { data: row, error } = await supabase.from('gwp_paper').upsert({

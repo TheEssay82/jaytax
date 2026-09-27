@@ -17,6 +17,9 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
   report: FillReport | null;
 }) {
   const [only, setOnly] = useState<'all' | 'big' | 'todo'>('all');
+  /** 받을 줄 없는 계정을 더할 줄(계정 → 줄 key) · 이미 더한 계정 */
+  const [pick, setPick] = useState<Record<string, string>>({});
+  const [placed, setPlaced] = useState<Set<string>>(new Set());
   const set = (key: string, p: Partial<Row2120>) => onChange({ ...value, rows: value.rows.map((r) => (r.key === key ? { ...r, ...p } : r)) });
   const big = (r: Row2120) => {
     if (r.prev == null || r.cur == null) return false;
@@ -43,10 +46,25 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
           {report.scale !== 1 && ` · DSD 단위 ×${report.scale}`}
           {report.missing.length > 0 && <div style={{ color: 'var(--warn)' }}>작년 금액이 있는데 DSD 에서 못 찾은 줄: {report.missing.join(', ')} — 손으로 넣으세요.</div>}
           {report.prevDiff.length > 0 && <div style={{ color: 'var(--warn)' }}>전기 열 금액이 DSD 전기 금액과 다른 줄: {report.prevDiff.join(', ')} — 재분류·재작성인지 보세요.</div>}
-          {report.unplaced.length > 0 && (
+          {report.unplaced.filter((u) => !placed.has(u.label)).length > 0 && (
             <div style={{ color: 'var(--warn)' }}>
-              DSD 에는 있는데 2120A 에 받을 줄이 없는 계정(합계가 이만큼 어긋납니다): {report.unplaced.map((u) => `${u.label} ${fmt(u.cur)}`).join(', ')}
-              {' '}— 비슷한 줄에 더하거나 엑셀에서 줄을 넣으세요.
+              DSD 에는 있는데 2120A 에 받을 줄이 없는 계정 — 합계가 이만큼 어긋납니다. 같은 계정인 줄을 골라 더하세요:
+              {report.unplaced.filter((u) => !placed.has(u.label)).map((u) => (
+                <div key={u.label} style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, color: 'var(--ink-1)' }}>
+                  <b>{u.label}</b> {fmt(u.cur)} →
+                  <select className="btn-sm" disabled={readOnly} value={pick[u.label] ?? ''} onChange={(e) => setPick({ ...pick, [u.label]: e.target.value })}>
+                    <option value="">줄 고르기</option>
+                    {value.rows.filter((r) => (r.pl ? /손익/ : /재무상태|대차대조/).test(u.statement)).map((r) => (
+                      <option key={r.key} value={r.key}>{r.label}{r.fsli ? ` (${r.fsli})` : ''}{r.cur ? ` · ${fmt(r.cur)}` : ''}</option>
+                    ))}
+                  </select>
+                  <button className="btn-sm" disabled={readOnly || !pick[u.label]} onClick={() => {
+                    const k = pick[u.label];
+                    onChange({ ...value, rows: value.rows.map((r) => (r.key === k ? { ...r, cur: (r.cur ?? 0) + u.cur, src: '손', note: r.note || `${u.label} 포함` } : r)) });
+                    setPlaced(new Set(placed).add(u.label));
+                  }}>이 줄에 더하기</button>
+                </div>
+              ))}
             </div>
           )}
         </div>

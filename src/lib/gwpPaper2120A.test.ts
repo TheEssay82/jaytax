@@ -92,6 +92,13 @@ test('2120A — 문구·차감 계정·전기 금액으로 짝짓고, 같은 이
   assert.equal(e.get('F140')?.clear, true);
 });
 
+test('2120A — 같은 계정의 다른 이름(선급법인세 = 당기법인세자산)은 문구로 짝짓는다', () => {
+  const s = sheet('2120A', { ...Object.fromEntries(S2120.cells), C33: t('선급법인세'), D33: t('선급법인세') });
+  const { data, report } = fillFromFs(PAPER_2120A.read(s), FS);
+  assert.equal(data.rows.find((r) => r.label === '선급법인세')?.cur, 30345);
+  assert.deepEqual(report.unplaced, []);
+});
+
 test('2120A — DSD 가 천원 단위면 전기 열과 견주어 ×1000', () => {
   const d = PAPER_2120A.read(S2120);
   const k = FS.map((l) => ({ ...l, cur: l.cur == null ? undefined : Math.round(l.cur / 1000), pri: l.pri == null ? undefined : Math.round(l.pri / 1000) }));
