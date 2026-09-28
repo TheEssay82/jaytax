@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import {
   sheetEntries, parseStyles, mergeStyles, sharedItems, usedStyleIds, rewriteSheet,
-  transplantSheet, dropCalcChain, setSheetHidden,
+  transplantSheet, dropCalcChain, setSheetHidden, moveSheetAfter,
 } from './xlsxTransplant.ts';
 import { readWorkbook } from './xlsxRead.ts';
 
@@ -191,4 +191,16 @@ test('숨김 바꾸기', () => {
   assert.equal(sheetEntries(t).find((e) => e.name === '8700')!.state, 'hidden');
   assert.ok(!setSheetHidden(t, '없음', true));
   assert.equal(unzipSync(zipSync(t))['xl/workbook.xml'].length > 0, true);
+});
+
+test('시트 옮기기 — 차례·localSheetId·activeTab 을 새 차례로', () => {
+  const wb = '<workbook><bookViews><workbookView activeTab="3" firstSheet="0"/></bookViews><sheets><sheet name="A" sheetId="1" r:id="r1"/><sheet name="B" sheetId="2" r:id="r2"/><sheet name="C" sheetId="3" r:id="r3"/><sheet name="D" sheetId="4" r:id="r4"/></sheets>'
+    + '<definedNames><definedName name="x" localSheetId="1">B!A1</definedName><definedName name="y" localSheetId="3">D!A1</definedName></definedNames></workbook>';
+  const files: Record<string, Uint8Array> = { 'xl/workbook.xml': strToU8(wb) };
+  assert.equal(moveSheetAfter(files, 'D', 'A'), true);
+  const out = strFromU8(files['xl/workbook.xml']);
+  assert.deepEqual([...out.matchAll(/name="([A-D])" sheetId/g)].map((m) => m[1]), ['A', 'D', 'B', 'C']);
+  assert.match(out, /name="x" localSheetId="2"/);
+  assert.match(out, /name="y" localSheetId="1"/);
+  assert.match(out, /activeTab="1"/);
 });

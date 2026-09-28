@@ -408,3 +408,27 @@ export const MINIMAL_STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="
   + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
   + '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>'
   + '</styleSheet>';
+
+/**
+ * 시트 차례 옮기기 — name 을 after 바로 뒤로. 시트 번호로 걸린 것(정의된 이름의 localSheetId, 열 때 탭 activeTab·firstSheet)도
+ * 새 차례로 바꾼다(평안정공: 이름 1만8천 개가 localSheetId 로 묶여 있다). 소규모 → 일반 정리에서 새 일반 시트를 숨긴 소규모 옆에 둔다.
+ */
+export function moveSheetAfter(files: Record<string, Uint8Array>, name: string, after: string): boolean {
+  let wb = strFromU8(files['xl/workbook.xml']);
+  const block = /<sheets>([\s\S]*?)<\/sheets>/.exec(wb);
+  if (!block) return false;
+  const els = [...block[1].matchAll(/<sheet\b[^>]*?\/>/g)].map((m) => m[0]);
+  const nameOf = (el: string) => unesc(/\bname="([^"]*)"/.exec(el)?.[1] ?? '');
+  const i = els.findIndex((el) => nameOf(el) === name), j = els.findIndex((el) => nameOf(el) === after);
+  if (i < 0 || j < 0 || i === j + 1) return false;
+  const order = els.map((_, k) => k).filter((k) => k !== i);
+  order.splice(order.indexOf(j) + 1, 0, i);                         // order[새 자리] = 옛 자리
+  const newOf = new Map(order.map((old, nw) => [old, nw]));
+  wb = wb.replace(block[0], `<sheets>${order.map((k) => els[k]).join('')}</sheets>`);
+  wb = wb.replace(/\blocalSheetId="(\d+)"/g, (_m, n: string) => `localSheetId="${newOf.get(Number(n)) ?? n}"`);
+  wb = wb.replace(/<workbookView\b[^>]*?\/?>/, (v) => v
+    .replace(/\bactiveTab="(\d+)"/, (_m, n: string) => `activeTab="${newOf.get(Number(n)) ?? n}"`)
+    .replace(/\bfirstSheet="(\d+)"/, (_m, n: string) => `firstSheet="${Math.min(Number(n), newOf.get(Number(n)) ?? Number(n))}"`));
+  files['xl/workbook.xml'] = strToU8(wb);
+  return true;
+}

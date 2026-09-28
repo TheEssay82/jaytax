@@ -74,7 +74,9 @@ export function prepareTemplateSheets(files: Record<string, Uint8Array>, codes: 
     const tplData = tb.sheets.find((s) => s.name === ts.name);
     if (!tplData) continue;
     const sheets = readWorkbook(zip(files));
-    const cands = sheets.filter((s) => baseOf(s.name) === code);
+    // 보이는 시트가 있으면 그 가운데서만 고른다 — 숨긴 「2700A (소규모)」를 쓰고 보이던 일반 「2700A」를 숨기던 것(평안정공 v4, 2026-09-28).
+    const all = sheets.filter((s) => baseOf(s.name) === code);
+    const cands = all.some((s) => !s.hidden) ? all.filter((s) => !s.hidden) : all;
     const scored = cands.map((s) => ({ s, c: compareSheets(tplData, s) }))
       .sort((a, b) => a.c.missing.length / Math.max(1, a.c.total) - b.c.missing.length / Math.max(1, b.c.total));
     const best = scored[0]?.s;

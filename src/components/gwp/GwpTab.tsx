@@ -24,7 +24,7 @@ import {
   type GwpTemplate, type GwpBook, type BookKind,
 } from '../../lib/gwpApi';
 import { readBundle, templateCodes, findTemplateSheet } from '../../lib/gwpTemplate';
-import { planSmall, applySmall, planLarge, applyLarge } from '../../lib/gwpSmall';
+import { planSmall, applySmall, planLarge, applyLarge, planTidy } from '../../lib/gwpSmall';
 import { unzip, zip } from '../../lib/xlsxTransplant';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { buildCatalog, sectionOf, type Catalog, type CatalogSheet } from '../../lib/gwpCatalog';
@@ -158,8 +158,10 @@ export default function GwpTab() {
   // 반대 — 일반·K-IFRS 감사인데 「번호(소규모)」 시트를 쓰고 있다(평안정공: 작년 소규모 → 올해 일반, 2026-09-28).
   const largePlan = useMemo(() => {
     if (!latest || !tpl || !year || year.auditBasis === '소규모감사기준') return null;
-    const p = planLarge(latest.catalog.sheets.map((s) => ({ name: s.name, hidden: s.hidden })), (c) => findTemplateSheet(tpl.catalog, c), tpl.catalog.sheets);
-    return p.steps.length ? p : null;
+    const list = latest.catalog.sheets.map((s) => ({ name: s.name, hidden: s.hidden }));
+    const p = planLarge(list, (c) => findTemplateSheet(tpl.catalog, c), tpl.catalog.sheets);
+    const t = planTidy(list);
+    return p.steps.length || t.show.length || t.move.length ? { ...p, tidy: t } : null;
   }, [latest, year, tpl]);
   // 회사를 바꾸면 — 올해 파일이 있으면 ② 단계 진행부터, 없으면 ① 올해 파일부터.
   const hasBook = !!latest;
@@ -741,6 +743,8 @@ export default function GwpTab() {
                       <table className="tbl" style={{ marginTop: 6 }}>
                         <thead><tr style={{ background: 'var(--surface-2)' }}><th>번호</th><th>숨길 시트</th><th>쓸 시트(보이게)</th></tr></thead>
                         <tbody>
+                          {largePlan.tidy?.show.map((n) => <tr key={`s:${n}`}><td>—</td><td>—</td><td><b>{n}</b> <span style={{ color: 'var(--ink-3)' }}>(숨어 있음 → 보이게)</span></td></tr>)}
+                          {largePlan.tidy?.move.map((m) => <tr key={`m:${m.name}`}><td>—</td><td>{m.after}</td><td><b>{m.name}</b> <span style={{ color: 'var(--ink-3)' }}>(맨 뒤 → {m.after} 바로 뒤로)</span></td></tr>)}
                           {largePlan.steps.map((p) => (
                             <tr key={p.to}><td>{p.code}</td><td>{p.small || '—'}</td><td><b>{p.to}</b> <span style={{ color: 'var(--ink-3)' }}>{p.how === '양식에서' ? (p.small ? '(올해 양식에서 새로)' : '(2700A 요약이 쓰는 짝 — 올해 양식에서 새로)') : p.how === '보이기' ? '(숨겨 둔 일반 시트)' : ''}</span></td></tr>
                           ))}
