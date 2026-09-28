@@ -55,6 +55,14 @@ export function inspectFile(kind: FileKind, bytes: Uint8Array): FileMeta & Recor
 }
 
 /** 파일이 이 작업 건에 맞는가 — 모르면 null. */
+/** 자료함에 올리기 전 — 이 작업 건의 이 칸에 맞는 해인가. 직접 올리기·업무 폴더에서 올리기가 같이 쓴다. */
+export function checkForKind(kind: FileKind, fy: number, bytes: Uint8Array): { meta: FileMeta & Record<string, unknown>; want: number; wrong: string | null } {
+  const meta = inspectFile(kind, bytes);
+  const want = expectedFy(kind, fy);
+  const wrong = meta.fy != null && meta.fy !== want ? `이 파일은 FY${meta.fy}(${meta.periodEnd}) 것입니다 — FY${fy} 작업 건에는 FY${want} 파일을 올려야 합니다. 올리지 않았습니다.` : null;
+  return { meta, want, wrong };
+}
+
 export function fitsEngagement(kind: FileKind, meta: { fy?: unknown }, fy: number): boolean | null {
   return typeof meta.fy === 'number' ? meta.fy === expectedFy(kind, fy) : null;
 }

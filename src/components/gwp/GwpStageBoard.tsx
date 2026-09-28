@@ -20,7 +20,7 @@ import {
   listFiles, uploadFile, latestFile, updateFileMeta, listPapers, listStageEvents, addStageEvent, markApplied, FILE_KINDS,
   type EngFile, type FileKind, type PaperRow,
 } from '../../lib/gwpStageApi';
-import { inspectFile, expectedFy, fitsEngagement } from '../../lib/gwpFiles';
+import { inspectFile, expectedFy, fitsEngagement, checkForKind } from '../../lib/gwpFiles';
 import { tabStateOf } from '../../lib/xlsxMark';
 import { safeName, download } from '../dsd/dsdUi';
 import GwpPaperModal from './GwpPaperModal';
@@ -102,12 +102,9 @@ export default function GwpStageBoard({ eng, latest, tpl, basis, canWrite, partn
     setBusy(`file:${kind}`); setErr(null);
     try {
       const bytes = new Uint8Array(await f.arrayBuffer());
-      const m = inspectFile(kind, bytes);
-      const want = expectedFy(kind, eng.fy);
+      const { meta: m, want, wrong } = checkForKind(kind, eng.fy, bytes);
       const label = FILE_KINDS.find((k) => k.kind === kind)!.label;
-      if (m.fy != null && m.fy !== want) {
-        throw new Error(`이 파일은 FY${m.fy}(${m.periodEnd}) 것입니다 — FY${eng.fy} 작업 건의 「${label}」에는 FY${want} 파일을 올리세요. 올리지 않았습니다.`);
-      }
+      if (wrong) throw new Error(`「${label}」 — ${wrong}`);
       if (m.fy == null && !confirm(`이 파일이 몇 년 것인지 알아내지 못했습니다(${m.note}).\nFY${want} 파일이 맞으면 [확인]을 누르세요.`)) return;
       await uploadFile(eng.id, kind, { name: f.name, bytes }, { ...m, inspected: true });
       await load();

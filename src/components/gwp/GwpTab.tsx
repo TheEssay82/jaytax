@@ -35,6 +35,7 @@ import NewEngagementModal from '../dsd/NewEngagementModal';
 import { safeName, download } from '../dsd/dsdUi';
 import GwpTemplatesCard from './GwpTemplatesCard';
 import GwpStageBoard from './GwpStageBoard';
+import GwpFolderCard from './GwpFolderCard';
 
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -81,7 +82,7 @@ function kdate(iso: string | null): string {
 }
 
 export default function GwpTab() {
-  const { role, readonly } = useAuth();
+  const { role, readonly, profileName } = useAuth();
   const canWrite = !readonly && (role === 'superuser' || role === 'accountant');
   const [engs, setEngs] = useState<Engagement[]>([]);
   const [ents, setEnts] = useState<BizEntityFull[]>([]);
@@ -200,17 +201,22 @@ export default function GwpTab() {
 
   /** 드롭박스 등에서 고른 전기 파일로 이월 — 첫 해에만 쓴다. 회사명이 맞는지 먼저 본다. */
   async function rollFromFile(f: File | undefined) {
-    if (!f || !picked) return;
+    if (!f) return;
+    await rollFromBytes(new Uint8Array(await f.arrayBuffer()), `전기 파일 직접 선택 — ${f.name}(FY${(picked?.fy ?? 0) - 1}, 시스템 밖)`);
+  }
+
+  /** 전기 파일 바이트로 이월 — 직접 고른 파일·업무 폴더에서 찾은 파일. 회사명이 맞는지 먼저 본다. */
+  async function rollFromBytes(bytes: Uint8Array, label: string) {
+    if (!picked) return;
     setBusy('roll'); setErr(null); setMsg(null);
     try {
-      const bytes = new Uint8Array(await f.arrayBuffer());
       const cat = buildCatalog(readWorkbook(bytes));
       if (!cat.sheets.some((s) => s.kind === 'paper')) throw new Error('이 파일에서 조서 시트(1100·2110 … 꼴)를 찾지 못했습니다.');
       if (cat.company && !sameCompany(cat.company, picked.entityName)) {
         throw new Error(`고른 파일의 표지 회사명이 「${cat.company}」입니다 — ${picked.entityName} 의 전기 조서가 맞는지 확인하세요.`);
       }
       setAskPrior(false);
-      await rollFrom(bytes, `전기 파일 직접 선택 — ${f.name}(FY${picked.fy - 1}, 시스템 밖)`);
+      await rollFrom(bytes, label);
     } catch (e) {
       setErr(e instanceof Error ? e.message : '만들지 못했습니다.');
     } finally {
@@ -499,6 +505,12 @@ export default function GwpTab() {
                   </div>
                 )}
               </div>
+
+              {/* 업무 폴더에서 가져오기 — 내가 담당회계사인 건만(사용자 2026-09-28). 다른 건은 직접 올리기. */}
+              {year && (view === 'file' || view === 'stage') && !!contractCpa && contractCpa === profileName && (
+                <GwpFolderCard key={picked.id} eng={picked} canWrite={canWrite} canRoll={!!tpl && canWrite} hasBook={!!latest}
+                  onRoll={(bytes, label) => rollFromBytes(bytes, label)} onMsg={(m) => setMsg(m)} />
+              )}
 
               {/* ① 올해 파일 ─────────────────────────────── */}
               {view === 'file' && (
