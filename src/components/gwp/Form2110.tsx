@@ -53,11 +53,12 @@ export default function Form2110({ value, onChange, readOnly, fy, author }: {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
           주요감사계약 확인 수행자 {inp(v.contractPerformer, (s) => set({ contractPerformer: s }), 120)}
           <span style={{ marginLeft: 12 }}>감사목적과 범위</span>
-          {(['일반', '임의'] as const).map((k) => (
+          {v.scopeText != null ? inp(v.scopeText, (s) => set({ scopeText: s }), 140) : (['일반', '임의'] as const).map((k) => (
             <label key={k} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               <input type="radio" checked={v.scope === k} disabled={readOnly} onChange={() => set({ scope: k })} />{k}
             </label>
           ))}
+          {v.consolidated != null && <><span style={{ marginLeft: 12 }}>연결재무제표 감사</span>{inp(v.consolidated, (s) => set({ consolidated: s }), 60)}</>}
         </div>
         {anyOld && <div style={{ color: 'var(--warn)', marginTop: 6 }}>주황 테두리 칸은 작년 날짜가 남아 있습니다 — 올해 일정으로 고치세요.</div>}
         <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 6, marginTop: 8, alignItems: 'center' }}>

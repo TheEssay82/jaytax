@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { stageStates, currentStage, confirmBlockers, stageLocked, type StageEvent } from './gwpStage';
-import { PAPER_2110A } from './gwpPaper2110A';
+import { PAPER_2110A, norm2110A } from './gwpPaper2110A';
 import { applyWebPapers, changes } from './gwpApply';
 import { emptyWorkbook } from './gwpAssemble';
 import { injectSheets } from './xlsxInject';
@@ -52,9 +52,10 @@ test('2110A — 작년 값을 읽고, 소제목 줄은 담당자 칸 없이', ()
   const sheet = readWorkbook(book2110A())[0];
   const d = PAPER_2110A.read(sheet);
   assert.equal(d.rows.length, 4);
-  assert.deepEqual(d.rows[0], { label: '(1) 감사계획의 수립', mid: '정우철', fin: '정우철', rev: '조현규' });
+  assert.deepEqual(d.cols, ['중간감사', '기말감사', '검토']);
+  assert.deepEqual(d.rows[0], { label: '(1) 감사계획의 수립', vals: ['정우철', '정우철', '조현규'] });
   assert.equal(d.rows[1].heading, true);
-  assert.equal(d.rows[3].mid, 'N/A');
+  assert.equal(d.rows[3].vals[0], 'N/A');
 });
 
 test('반영 — 그대로면 칸은 안 바꾸고 탭 초록, 바꾸면 그 칸만 쓰고 탭 노랑', () => {
@@ -65,7 +66,7 @@ test('반영 — 그대로면 칸은 안 바꾸고 탭 초록, 바꾸면 그 칸
   assert.deepEqual(r1.done, [{ code: '2110A', sheet: '2110A(소규모)', changed: 0 }]);
   assert.equal(tabStateOf(readWorkbook(r1.bytes)[0].tabColor), 'green');
 
-  const edited = { rows: same.rows.map((r) => (r.label.startsWith('1)') ? { ...r, mid: '김준성', fin: '김준성' } : r)) };
+  const edited = { ...same, rows: same.rows.map((r) => (r.label.startsWith('1)') ? { ...r, vals: ['김준성', '김준성', r.vals[2]] } : r)) };
   const r2 = applyWebPapers(bytes, [{ def: PAPER_2110A, data: edited }]);
   assert.equal(r2.done[0].changed, 2);
   const out = readWorkbook(r2.bytes)[0];
@@ -77,15 +78,34 @@ test('반영 — 그대로면 칸은 안 바꾸고 탭 초록, 바꾸면 그 칸
 test('반영 — 다시 반영해 바뀐 게 없어도 이미 노랑(올해 수정함)은 초록으로 내리지 않는다', () => {
   const bytes = book2110A();
   const same = PAPER_2110A.read(readWorkbook(bytes)[0]);
-  const edited = { rows: same.rows.map((r) => (r.label.startsWith('1)') ? { ...r, mid: '김준성' } : r)) };
+  const edited = { ...same, rows: same.rows.map((r) => (r.label.startsWith('1)') ? { ...r, vals: ['김준성', ...r.vals.slice(1)] } : r)) };
   const once = applyWebPapers(bytes, [{ def: PAPER_2110A, data: edited }]);
   const twice = applyWebPapers(once.bytes, [{ def: PAPER_2110A, data: edited }]);
   assert.equal(twice.done[0].changed, 0);
   assert.equal(tabStateOf(readWorkbook(twice.bytes)[0].tabColor), 'yellow');
 });
 
+test('2110A — 열은 머리 줄 그대로(알티스트 7열), 담당자가 있는 (1) 줄은 소제목이 아니다, 옛 저장 모양도 쓴다', () => {
+  const c = (row: number, col: number, text: string) => ({ row, col, text });
+  const heads = ['1분기검토', '반기검토', '3분기검토', '중간감사', '기말감사', '1차검토', '2차검토'];
+  const cells = [
+    c(1, 1, '2110A 업 무 분 장 표'), c(5, 1, '감 사 절 차'), ...heads.map((h, i) => c(5, 3 + i, h)),
+    c(7, 1, '(1) 위험평가'), c(7, 6, '정우철'), c(7, 7, '정우철'), c(7, 8, '조현규'), c(7, 9, '조현규'),
+    c(8, 1, '1) 회사의 사업등에 대한 이해'), c(8, 6, '정우철'),
+  ];
+  const bytes = injectSheets(emptyWorkbook(), [{ name: '2110A', cells, lastRow: 8 }]);
+  const d = PAPER_2110A.read(readWorkbook(bytes)[0]);
+  assert.deepEqual(d.cols, heads);
+  assert.equal(d.rows[0].heading, undefined);
+  assert.deepEqual(d.rows[0].vals, ['', '', '', '정우철', '정우철', '조현규', '조현규']);
+  const e = PAPER_2110A.write(readWorkbook(bytes)[0], { ...d, rows: d.rows.map((r, i) => (i === 1 ? { ...r, vals: r.vals.map((v, k) => (k === 4 ? '김준성' : v)) } : r)) });
+  assert.equal(e.find((x) => x.ref === 'G8')?.text, '김준성');
+  // 명진 1차 확정 때 저장한 옛 모양(mid·fin·rev)
+  assert.deepEqual(norm2110A({ rows: [{ label: 'x', mid: 'a', fin: 'b', rev: 'c' }] }), { cols: ['중간감사', '기말감사', '검토'], rows: [{ label: 'x', heading: undefined, vals: ['a', 'b', 'c'] }] });
+});
+
 test('반영 — 시트가 없는 조서는 알려 준다', () => {
-  const r = applyWebPapers(injectSheets(emptyWorkbook(), [{ name: '1100', cells: [{ row: 1, col: 1, text: 'x' }], lastRow: 1 }]), [{ def: PAPER_2110A, data: { rows: [] } }]);
+  const r = applyWebPapers(injectSheets(emptyWorkbook(), [{ name: '1100', cells: [{ row: 1, col: 1, text: 'x' }], lastRow: 1 }]), [{ def: PAPER_2110A, data: { cols: [], rows: [] } }]);
   assert.deepEqual(r.missing, ['2110A']);
 });
 

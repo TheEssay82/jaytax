@@ -73,7 +73,7 @@ function readNew(sheet: SheetData, L: Layout): Paper2301 {
 }
 
 // ── 옛 모양(명진 FY25: 2301 전사 + 2302 계정) ────────────────
-function readOld(s2301: SheetData | null, s2302: SheetData | null): Paper2301 {
+export function readOld(s2301: SheetData | null, s2302: SheetData | null): Paper2301 {
   const entity: RiskLine[] = [];
   if (s2301) {
     const hits = hitsOf(s2301);

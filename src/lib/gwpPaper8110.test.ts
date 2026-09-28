@@ -74,3 +74,44 @@ test('8110ARP 쓰기 — 링크 칸에 값, Explanation 은 새로 쓴 것만, O
   assert.equal(p.get('H30')?.text, '공실 증가');
   assert.equal(p.get('C23')?.formula, "'8110ARP_BS'!C20");   // 숫자로 시작하는 시트 이름은 따옴표
 });
+
+// 일반·K-IFRS 2026 양식(알티스트) — 8110A 한 장에 재무상태표·손익계산서. 이월 뒤: 전기 D 에 숫자, 당기 E 비움.
+const A8110 = sheet('8110A', {
+  C13: t('재무제표 전체에 대한 중요성 :'), E13: { formula: "'2700A-4(감사완결단계)'!$K$29*100000", num: 1 },
+  C14: t('수행 중요성 :'), E14: { formula: "+'2700A-4(감사완결단계)'!$K$54*10000", num: 1 },
+  D16: t('전기'), E16: t('당기'), H16: t('Variance'), L16: t('설명 또는 검토할 조서의 번호/링크'),
+  D18: t('12/31/2025'), E18: t('12/31/2026'),
+  A19: t('재무상태표'),
+  A20: t('유동자산'), D20: { formula: 'D21+D24', num: 1 }, E20: { formula: 'E21+E24' },
+  B21: t('당좌자산'), D21: { formula: 'SUM(D22:D23)', num: 1 }, E21: { formula: 'SUM(E22:E23)' },
+  C22: t('현금및현금성자산'), D22: n(1630779245), H22: { formula: '+E22-D22', num: 1 }, L22: t('작년 설명'),
+  C23: t('국고보조금-현금'), H23: { formula: '+E23-D23', num: 0 },
+  B24: t('재고자산'), D24: n(6298360355), H24: { formula: '+E24-D24', num: 1 },
+  A82: t('자본총계'), D82: { formula: 'D79', num: 1 }, E82: { formula: 'E79' },
+  D85: t('전기'), E85: t('당기'), H85: t('Variance'),
+  A88: t('손익계산서'),
+  A89: t('매출액'), D89: n(25446258577), H89: { formula: '+E89-D89', num: 1 },
+  A91: t('매출총이익'), D91: { formula: '+D89-D90', num: 1 }, E91: { formula: '+E89-E90' },
+  A95: t('영업외수익'), D95: n(463409431), H95: n(1),
+  B96: t('이자수익'), D96: n(32211321), H96: n(1),
+  A104: t('위험평가 분석적절차에 따른 결론:'), D104: t('감사 결과 …'),
+});
+
+test('8110A — 한 시트의 재무상태표·손익계산서 구간, 합계 줄·결론 줄은 빼고, 중요성은 2700A-4 로', () => {
+  const d = PAPER_8110.readBook!([A8110, M4]);
+  assert.deepEqual(d.rows.map((r) => `${r.sheet}|${r.group}|${r.label}`), [
+    'BS|당좌자산|현금및현금성자산', 'BS|당좌자산|국고보조금-현금', 'BS|유동자산|재고자산', 'PL||매출액', 'PL||영업외수익', 'PL|영업외수익|이자수익',
+  ]);
+  assert.equal(d.rows[0].prev, 1630779245);
+  assert.equal(d.rows[0].lastYear, '작년 설명');
+  assert.equal(PAPER_8110.pick!([A8110])?.name, '8110A');
+  d.rows[0] = { ...d.rows[0], cur: 1057740725, explanation: '예금 해지' };
+  const out = PAPER_8110.writeBook!([A8110, M4], d);
+  assert.equal(out.length, 1);
+  const e = new Map(out[0].edits.map((x) => [x.ref, x]));
+  assert.equal(e.get('E22')?.num, 1057740725);
+  assert.equal(e.get('L22')?.text, '예금 해지');
+  assert.equal(e.get('E13')?.formula, "'2700A-4(감사완결단계)'!K29*1000000");
+  assert.equal(e.get('E14')?.formula, "'2700A-4(감사완결단계)'!K54*1000000");
+  assert.equal(e.has('E91'), false);
+});

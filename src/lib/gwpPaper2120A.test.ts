@@ -45,6 +45,49 @@ test('2110 — 고친 값만 문구를 살려 바꾼다(줄바꿈은 그대로)'
   assert.equal(e.has('A21'), false);
 });
 
+// 2026 일반·K-IFRS 양식(알티스트) — 값은 B열, 항목은 조서번호 F · 수행자 G · 비고 H
+const G2110 = sheet('2110', {
+  A8: t('항 목'), F8: t('조서번호'), G8: t('수행자'), H8: t('비고'),
+  A9: t('(감사팀의 구성)'),
+  A10: t('1.업무수행이사 … 감사팀을 구성한다.'), G10: t('정우철'), H10: t('감사팀을 구성하였음.'),
+  A11: t('2 업무품질관리검토자 …'), G11: t('정우철'),
+  A12: t('3 감사인 측 전문가 …'), F12: t('2131'), G12: t('N/A'),
+  A17: t('(업무의 지휘/감독, 검토 및 자문)'),
+  A18: t('1 업무팀원들에 대한 지휘와 감독'), G18: t('정우철'),
+  A38: t('1 주요감사계약 내용의 확인'), G38: t('정우철'),
+  A39: t('(1) 감사목적과범위：'), B39: t('일반비상장'),
+  A40: t('(2) 연결재무제표 감사 여부：'), B40: t('부'),
+  A41: t('(3)감사일정:'), A42: t('감사계획:'), B42: t('2025년 4월'), A44: t('재고 실사입회:'), B44: n(46027), A47: t('연결감사:'), B47: t('N/A'),
+  A48: t('(4) 실사장소:'), A49: t('본사:'), B49: { formula: "'2100A'!D26", text: '서울 마포구' },
+  A51: t('(5) 감사보고서 제출 예정일:'), B51: n(46112),
+  A52: t('국문'), B52: t('30부'), A53: t('영문'), B53: t('N/A'),
+});
+
+test('2110 — 일반 양식: 값은 B열(날짜 칸·링크), 감사팀 항목은 비고·조서번호 열, 그대로면 안 바꾼다', () => {
+  const d = PAPER_2110.read(G2110);
+  assert.equal(d.team.length, 3);
+  assert.deepEqual(d.team[0], { label: '1.업무수행이사 … 감사팀을 구성한다.', performer: '정우철', text: '감사팀을 구성하였음.', ref: '' });
+  assert.equal(d.team[2].ref, '2131');
+  assert.equal(d.scopeText, '일반비상장');
+  assert.equal(d.consolidated, '부');
+  assert.equal(d.schedule.find((x) => x.label === '재고 실사입회')?.value, '2026-01-05');
+  assert.equal(d.schedule.find((x) => x.label === '연결감사')?.value, 'N/A');
+  assert.equal(d.sites[0].value, '서울 마포구');
+  assert.equal(d.reportDue, '2026-03-31');
+  assert.equal(d.copiesKo, '30');
+  assert.deepEqual(PAPER_2110.write(G2110, d), []);
+  d.schedule = d.schedule.map((x) => (x.label === '재고 실사입회' ? { ...x, value: '2027-01-04' } : x.label === '감사계획' ? { ...x, value: '2026년 4월' } : x));
+  d.team[1] = { ...d.team[1], text: '품질관리검토자 지정됨' };
+  d.copiesKo = '20';
+  const e = new Map(PAPER_2110.write(G2110, d).map((x) => [x.ref, x]));
+  assert.equal(e.get('B44')?.num, 46391);
+  assert.equal(e.get('B42')?.text, '2026년 4월');
+  assert.equal(e.get('H11')?.text, '품질관리검토자 지정됨');
+  assert.equal(e.get('B52')?.text, '20부');
+  assert.equal(e.has('B49'), false);                 // 링크는 값이 그대로면 두고
+  assert.equal(e.size, 4);
+});
+
 // 명진 2120A 모양 — 이월 뒤: 전기(E) 에 숫자, 당기(F) 비움
 const S2120 = sheet('2120A', {
   B14: t('계정과목 (FSLI)'), D14: t('계정과목 (IFRS 공시용)'), E14: t('BS: 2024_4Q\nPL: 2024_4Q'), F14: t('BS: 2025_4Q\nPL: 2025_4Q'), L14: t('비고'),

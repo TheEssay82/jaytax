@@ -121,6 +121,14 @@ test('서식 합치기 — 있는 것은 재사용, 없는 것은 뒤에 붙이�
   assert.ok(r.xml.indexOf('<dxfs') > r.xml.indexOf('</cellStyles>'), 'dxfs 는 cellStyles 뒤');
 });
 
+test('서식 합치기 — 비어 스스로 닫힌 묶음(<dxfs count="0"/>)에도 제대로 붙인다(알티스트)', () => {
+  const tgt = TGT_STYLES.replace('</cellStyles>', '</cellStyles><dxfs count="0"/>');
+  const r = mergeStyles(tgt, parseStyles(SRC_STYLES), new Set([1]), new Set([0]));
+  assert.ok(/<dxfs count="1"><dxf>[\s\S]*?<\/dxf><\/dxfs>/.test(r.xml), r.xml.slice(r.xml.indexOf('<dxfs'), r.xml.indexOf('<dxfs') + 120));
+  assert.ok(r.xml.trimEnd().endsWith('</styleSheet>'), '끝 태그는 그대로');
+  assert.equal(parseStyles(r.xml).dxfs.length, 1);
+});
+
 test('시트 손질 — 공유문자열 인라인(서식 조각 유지·발음 제거) · 서식 번호 교체 · 외부수식 값만 · 그림 제거', () => {
   const xfMap = new Map([[1, 4], [2, 3], [3, 2]]);
   const out = rewriteSheet(`<worksheet>${SRC_SHEET}</worksheet>`, sharedItems(`<sst><si>${SHARED[0]}</si><si>${SHARED[1]}</si></sst>`), xfMap, new Map([[0, 0]]));

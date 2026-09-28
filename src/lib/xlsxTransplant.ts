@@ -99,6 +99,11 @@ function appendItems(xml: string, wrap: string, items: string[], makeBefore: Reg
     const block = `<${wrap} count="${items.length}">${items.join('')}</${wrap}>`;
     return at < 0 ? xml.replace('</styleSheet>', `${block}</styleSheet>`) : xml.slice(0, at) + block + xml.slice(at);
   }
+  // 빈 목록은 「<dxfs count="0"/>」 처럼 스스로 닫힌다 — 닫는 태그가 없으니 통째로 바꾼다(알티스트 styles.xml, 2026-09-28).
+  if (/\/>$/.test(m[0])) {
+    const attrs = m[1].replace(/\/$/, '').replace(/\s*count="\d+"/, '');
+    return xml.slice(0, m.index) + `<${wrap}${attrs} count="${items.length}">${items.join('')}</${wrap}>` + xml.slice(m.index + m[0].length);
+  }
   const close = `</${wrap}>`;
   const at = xml.indexOf(close, m.index);
   const countM = /count="(\d+)"/.exec(m[0]);

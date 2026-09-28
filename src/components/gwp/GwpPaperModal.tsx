@@ -30,6 +30,8 @@ import Form2301 from './Form2301';
 import FormQA from './FormQA';
 import { withDraft, QA_DRAFTS, fsFacts, blanksLeft, BLANK, type PaperQA, type FsFact } from '../../lib/gwpPaperQA';
 import { readLibrary, type Paper2301, type LibCase } from '../../lib/gwpPaper2301';
+import { PAPER_2301G, readExamples, type Paper2301G, type FsRisk } from '../../lib/gwpPaper2301G';
+import Form2301G from './Form2301G';
 import { fillFromWtb, type Paper8110, type WtbReport } from '../../lib/gwpPaper8110';
 import { fillFromFs, balance, PAPER_2120A, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
 import type { Paper2110 } from '../../lib/gwpPaper2110';
@@ -126,6 +128,8 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
 
   // 2301 — 올해 양식의 「참고자료」(계정별 왜곡표시위험 사례).
   const [lib2301, setLib2301] = useState<LibCase[]>([]);
+  /** 일반·K-IFRS 2301 — 양식의 작성 예시 줄 */
+  const [ex2301, setEx2301] = useState<FsRisk[]>([]);
   useEffect(() => {
     if (def.code !== '2301' || !tpl) return;
     let off = false;
@@ -133,7 +137,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
       const { catalog, files: tf } = readBundle(await fileBytes(tpl.storagePath));
       const t = catalog.sheets.find((s) => s.code?.replace(/\(.*$/, '') === '2301' && !s.hidden);
       const s = t ? readWorkbook(tf[t.file]).find((x) => x.name === t.name) : null;
-      if (!off && s) setLib2301(readLibrary(s));
+      if (!off && s) { setLib2301(readLibrary(s)); setEx2301(readExamples(s)); }
     })().catch(() => undefined);
     return () => { off = true; };
   }, [def.code, tpl]);
@@ -337,6 +341,8 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
                 </button>} />
             ) : QA_DRAFTS[def.code] ? (
               <FormQA value={data as PaperQA} onChange={change} readOnly={readOnly} draft={QA_DRAFTS[def.code]} fs={qaFs} author={author} />
+            ) : def === PAPER_2301G ? (
+              <Form2301G value={data as Paper2301G} onChange={change} readOnly={readOnly} examples={ex2301} big={big2120} />
             ) : def.code === '2301' ? (
               <Form2301 value={data as Paper2301} onChange={change} readOnly={readOnly} big={big2120} lib={lib2301} />
             ) : def.code === '8110ARP' ? (

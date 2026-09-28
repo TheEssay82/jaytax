@@ -80,6 +80,72 @@ function arpLayout(sheet: SheetData) {
   return { pc, rows, explCol, mat };
 }
 
+type Layout = NonNullable<ReturnType<typeof arpLayout>>;
+/** 한 부분 — 8110ARP 는 시트 둘(BS·PL), 8110A(일반·K-IFRS 2026 양식·알티스트)는 한 시트의 두 구간. */
+type Part = { which: 'BS' | 'PL'; sheet: SheetData; L: Layout };
+const find8110A = (sheets: SheetData[]) => sheets.filter((s) => normLabel(s.name).toUpperCase() === '8110A').sort((a, b) => Number(!!a.hidden) - Number(!!b.hidden))[0] ?? null;
+
+/**
+ * 8110A 전반적인 결론을 위한 분석적절차 — 머리 「전기 · 당기」(D·E), 「설명 …」(L). 계정 이름은 A·B·C 열에 층으로
+ * (유동자산 A → 당좌자산 B → 현금 C), 합계 줄은 당기 칸이 시트 안 수식이다. 「재무상태표」·「손익계산서」 줄로 나눈다.
+ * 중요성은 머리 위 「재무제표 전체에 대한 중요성 :」·「수행 중요성 :」 오른쪽 칸.
+ */
+function a8110Parts(sheet: SheetData): Part[] {
+  const pc = findPeriodColumns(sheet);
+  if (!pc) return [];
+  let explCol: string | null = null, varCol: string | null = null;
+  const labels = new Map<number, { col: string; text: string }>();
+  let plRow = Infinity, bsRow = pc.headerRow;
+  for (const [ref, v] of sheet.cells) {
+    const r = rowOf(ref), c = colOf(ref), t = v.formula == null ? textOf(v) : '';
+    if (!t) continue;
+    if (r <= pc.headerRow + 3 && !explCol && nm(t).startsWith('설명')) explCol = c;
+    if (r <= pc.headerRow + 3 && !varCol && /^variance$/i.test(nm(t))) varCol = c;
+    if (r <= pc.headerRow || !['A', 'B', 'C'].includes(c)) continue;
+    const cur = labels.get(r);
+    if (!cur || c < cur.col) labels.set(r, { col: c, text: t });
+    if (c === 'A' && nm(t) === '재무상태표') bsRow = r;
+    if (c === 'A' && /손익계산서|포괄손익계산서/.test(nm(t)) && !/누계/.test(t)) plRow = Math.min(plRow, r);
+  }
+  const num = (ref: string) => { const v = sheet.cells.get(ref); return v?.num != null && (v.formula == null || isLink(v)); };
+  const rows: Record<'BS' | 'PL', { row: number; group: string; label: string }[]> = { BS: [], PL: [] };
+  const parent: Record<string, string> = {};
+  for (const r of [...labels.keys()].sort((a, b) => a - b)) {
+    const { col, text } = labels.get(r)!;
+    if (r === bsRow || r === plRow) continue;
+    parent[col] = text;
+    const cur = sheet.cells.get(`${pc.curCol}${r}`);
+    if (cur?.formula != null && !isLink(cur)) continue;                       // 합계·비율 줄
+    const vv = varCol ? sheet.cells.get(`${varCol}${r}`) : undefined;
+    if (!num(`${pc.prevCol}${r}`) && !num(`${pc.curCol}${r}`) && vv?.num == null) continue;   // 머리·결론 줄(두 해 0 인 계정은 증감 칸으로)
+    const group = col === 'C' ? parent.B ?? '' : col === 'B' ? parent.A ?? '' : '';
+    rows[r > plRow ? 'PL' : 'BS'].push({ row: r, group, label: text });
+  }
+  const mat: Record<'OM' | 'PM' | 'DM', string | null> = { OM: null, PM: null, DM: null };
+  for (const [ref, v] of sheet.cells) {
+    const r = rowOf(ref);
+    if (r >= pc.headerRow || v.formula != null) continue;
+    const t = nm(textOf(v));
+    const k = t.includes('전체에대한중요성') ? 'OM' : t.startsWith('수행중요성') ? 'PM' : null;
+    if (!k) continue;
+    const right = [...sheet.cells.entries()].filter(([x, y]) => rowOf(x) === r && colOf(x) > colOf(ref) && colOf(x).length === colOf(ref).length && (y.formula != null || y.num != null)).map(([x]) => x).sort()[0];
+    mat[k] = right ?? null;
+  }
+  return (['BS', 'PL'] as const).map((which) => ({ which, sheet, L: { pc, rows: rows[which], explCol, mat: which === 'BS' ? mat : { OM: null, PM: null, DM: null } } }));
+}
+
+/** 이 워크북의 종결단계 분석적검토 — 8110ARP_BS·PL, 없으면 8110A. */
+function partsOf(sheets: SheetData[]): Part[] {
+  const arp = (['BS', 'PL'] as const).flatMap((which) => {
+    const s = findArp(sheets, which);
+    const L = s ? arpLayout(s) : null;
+    return s && L ? [{ which, sheet: s, L }] : [];
+  });
+  if (arp.length) return arp;
+  const a = find8110A(sheets);
+  return a ? a8110Parts(a) : [];
+}
+
 function keyed(which: 'BS' | 'PL', rows: { label: string; group: string }[]): string[] {
   const seen = new Map<string, number>();
   return rows.map((r) => {
@@ -95,16 +161,13 @@ const qs = (name: string) => (/^[A-Za-z가-힣_][A-Za-z0-9가-힣_.]*$/.test(nam
 
 export const PAPER_8110: WebPaperDef<Paper8110> = {
   code: '8110ARP', title: '종결단계 분석적검토', stage: 3, sheetCode: '8110ARP_BS',
-  note: '자료함의 확정 정산표로 당기(·손익 전기) 숫자를 채우고, 증감이 수행중요성을 넘는 줄만 Explanation 을 적는다. 기준은 2700A-4.',
-  pick: (sheets) => findArp(sheets, 'BS') ?? findArp(sheets, 'PL'),
+  note: '자료함의 확정 정산표로 당기(·손익 전기) 숫자를 채우고, 증감이 수행중요성을 넘는 줄만 설명을 적는다. 기준은 2700A-4. 시트는 8110ARP_BS·PL, 없으면 8110A(일반·K-IFRS 2026 양식).',
+  pick: (sheets) => findArp(sheets, 'BS') ?? findArp(sheets, 'PL') ?? find8110A(sheets),
   empty: () => ({ rows: [] }),
   read: (sheet) => PAPER_8110.readBook!([sheet]),
   readBook(sheets) {
     const rows: ArpRow[] = [];
-    for (const which of ['BS', 'PL'] as const) {
-      const s = findArp(sheets, which);
-      const L = s ? arpLayout(s) : null;
-      if (!s || !L) continue;
+    for (const { which, sheet: s, L } of partsOf(sheets)) {
       const keys = keyed(which, L.rows);
       L.rows.forEach((r, i) => {
         const cur = s.cells.get(`${L.pc.curCol}${r.row}`);
@@ -122,10 +185,8 @@ export const PAPER_8110: WebPaperDef<Paper8110> = {
   writeBook(sheets, d) {
     const out: { sheet: string; edits: CellEdit[] }[] = [];
     const m4 = findPaperSheet(sheets, '2700A-4');
-    for (const which of ['BS', 'PL'] as const) {
-      const s = findArp(sheets, which);
-      const L = s ? arpLayout(s) : null;
-      if (!s || !L) continue;
+    const parts = partsOf(sheets);
+    for (const { which, sheet: s, L } of parts) {
       const at = new Map(keyed(which, L.rows).map((k, i) => [k, L.rows[i].row]));
       const e: CellEdit[] = [];
       for (const r of d.rows.filter((x) => x.sheet === which)) {
@@ -143,13 +204,13 @@ export const PAPER_8110: WebPaperDef<Paper8110> = {
         if (L.mat.DM) e.push({ ref: L.mat.DM, formula: `${q}!K68*1000000` });
       }
       if (which === 'PL') {
-        const bs = findArp(sheets, 'BS');
-        const bl = bs ? arpLayout(bs) : null;
-        if (bs && bl) for (const k of ['OM', 'PM', 'DM'] as const) {
-          if (L.mat[k] && bl.mat[k]) e.push({ ref: L.mat[k]!, formula: `${qs(bs.name)}!${bl.mat[k]}` });
+        const bs = parts.find((x) => x.which === 'BS');
+        if (bs && bs.sheet !== s) for (const k of ['OM', 'PM', 'DM'] as const) {
+          if (L.mat[k] && bs.L.mat[k]) e.push({ ref: L.mat[k]!, formula: `${qs(bs.sheet.name)}!${bs.L.mat[k]}` });
         }
       }
-      out.push({ sheet: s.name, edits: e });
+      const same = out.find((x) => x.sheet === s.name);         // 8110A — 두 구간이 한 시트
+      if (same) same.edits.push(...e); else out.push({ sheet: s.name, edits: e });
     }
     return out;
   },
