@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.37.3',
+    date: '2026-09-28',
+    title: '업무 폴더 카드 — 폴더 바꾸기',
+    highlights: [
+      '연결한 폴더를 <b>[폴더 바꾸기]</b>로 다시 고를 수 있습니다(잘못 고른 폴더). 고른 폴더 아래에 회사 폴더가 거의 없으면 업무파일 폴더를 고르라고 알려 줍니다.',
+    ],
+  },
+  {
     version: '3.37.2',
     date: '2026-09-28',
     title: '업무 폴더 카드 — 당기 세팅 전에도 보이게',

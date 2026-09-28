@@ -70,11 +70,13 @@ export default function GwpFolderCard({ eng, canWrite, canRoll, hasBook, onRoll,
     return () => { off = true; };
   }, [root, ok, company, eng.fy]);
 
-  const connect = useCallback(async () => {
+  /** again = 다른 폴더로 바꾸기(잘못 고른 폴더 — 사용자 2026-09-28 「다시 고르기가 없어요」). */
+  const connect = useCallback(async (again = false) => {
     setErr(null);
     try {
-      if (root && !ok) { setOk(await canRead(root, true)); return; }
+      if (!again && root && !ok) { setOk(await canRead(root, true)); return; }
       const h = await connectRoot();
+      setCompany(null); setCompanies([]);
       setRoot(h); setOk(await canRead(h, true));
     } catch (e) { if (!(e instanceof DOMException && e.name === 'AbortError')) setErr(e instanceof Error ? e.message : '폴더를 연결하지 못했습니다.'); }
   }, [root, ok]);
@@ -137,6 +139,7 @@ export default function GwpFolderCard({ eng, canWrite, canRoll, hasBook, onRoll,
       {!root || !ok ? (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--fs-2)' }}>
           <button className="btn-p" onClick={() => void connect()}>{root ? `폴더 다시 허락 (${root.name})` : '업무파일 폴더 연결'}</button>
+          {root && <button className="btn-sm" onClick={() => void connect(true)}>다른 폴더 고르기</button>}
           <span style={{ color: 'var(--ink-3)' }}>
             {root ? '브라우저를 새로 열면 한 번 다시 허락해야 합니다.' : <>회사 폴더들이 들어 있는 폴더를 고르세요(예: <code>D:\Dropbox\0_우철업무\1000.업무\업무파일</code>). 읽기만 합니다.</>}
           </span>
@@ -144,12 +147,16 @@ export default function GwpFolderCard({ eng, canWrite, canRoll, hasBook, onRoll,
       ) : (
         <div style={{ fontSize: 'var(--fs-2)' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
-            <span style={{ color: 'var(--ink-3)' }}>{root.name} /</span>
+            <span style={{ color: 'var(--ink-3)' }}>연결한 폴더 <b>{root.name}</b></span>
+            <button className="btn-sm" onClick={() => void connect(true)} title="회사 폴더들이 든 폴더(업무파일)를 다시 고릅니다">폴더 바꾸기</button>
+            <span style={{ color: 'var(--ink-3)' }}>/</span>
             <select className="btn-sm" value={company ?? ''} onChange={(e) => { setCompany(e.target.value || null); if (e.target.value) rememberFolder(eng.entityId, e.target.value); }}>
               <option value="">— 회사 폴더 고르기 —</option>
               {companies.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            {!company && <span style={{ color: 'var(--warn)' }}>「{eng.entityName}」 폴더를 이름으로 찾지 못했습니다 — 한 번 골라 주시면 기억합니다.</span>}
+            {!company && (companies.length < 10
+              ? <span style={{ color: 'var(--warn)' }}>「{root.name}」 아래에 회사 폴더가 거의 없습니다 — 회사 폴더들이 든 <b>업무파일</b> 폴더를 고르셨는지 보시고, 아니면 [폴더 바꾸기]를 누르세요.</span>
+              : <span style={{ color: 'var(--warn)' }}>「{eng.entityName}」 폴더를 이름으로 찾지 못했습니다 — 한 번 골라 주시면 기억합니다.</span>)}
             {busy === 'scan' && <span style={{ color: 'var(--ink-3)' }}>찾는 중…</span>}
           </div>
           {company && (
