@@ -2,7 +2,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SheetData, CellValue } from './xlsxRead';
-import { PAPER_2530, withDraft, DRAFT_2530, layoutQA } from './gwpPaperQA';
+import { PAPER_2530, withDraft, draft2520, draft2530, layoutQA, redraft, blanksLeft, fsFacts, significantLines, estimatesOf, BLANK } from './gwpPaperQA';
+import type { Paper2120A } from './gwpPaper2120A';
+
+const DRAFT_2530 = draft2530({ fs: null, keeper: '외부' });
 
 const sheet = (name: string, cells: Record<string, CellValue>): SheetData => ({ name, cells: new Map(Object.entries(cells)) });
 const t = (text: string): CellValue => ({ text });
@@ -49,4 +52,42 @@ test('쓰기 — 기재 줄 문구·줄바꿈은 두고 값만, 수행자는 질
   // 그대로면 기재 줄은 쓰지 않는다
   const same = PAPER_2530.write(S, PAPER_2530.read(S)).filter((y) => y.ref.startsWith('A'));
   assert.deepEqual(same, []);
+});
+
+const row = (label: string, cur: number, sec: '자산' | '부채' | '자본' | '손익', pl = false) =>
+  ({ key: label, label, fsli: '', pl, prev: null, cur, note: '', sec });
+const P: Paper2120A = { prevLabel: '', curLabel: '', rows: [
+  row('현금및현금성자산', 500, '자산'), row('매출채권', 3000, '자산'), row('대손충당금', -30, '자산'), row('재고자산', 2500, '자산'),
+  row('건물', 4000, '자산'), row('단기차입금', 3500, '부채'), row('퇴직급여충당부채', 200, '부채'), row('자본금', 1000, '자본'),
+  row('Ⅰ.매출액', 10000, '손익', true), row('Ⅱ.매출원가', 7000, '손익', true), row('급여', 1200, '손익', true),
+  row('매출총이익', 3000, '손익', true), row('이자비용', 150, '손익', true), row('소모품비', 5, '손익', true),
+] };
+
+test('재무제표 사실 — 큰 계정이 거래유형, 계정 있는 추정만', () => {
+  const fs = fsFacts(P)!;
+  const sig = significantLines(fs);
+  assert.deepEqual(sig.labels, ['매출액', '매출원가', '급여', '건물', '단기차입금', '매출채권']);
+  assert.deepEqual(sig.kinds, ['판매', '구매', '인건비', '설비투자', '자금']);
+  assert.deepEqual(estimatesOf(fs), ['대손충당금', '재고자산 평가', '유형자산 내용연수', '퇴직급여부채']);
+});
+
+test('회사별 초안 — 회계처리 주체 모르면 ○○, 고르면 채워지고 직접 고친 칸은 둔다', () => {
+  const fs = fsFacts(P);
+  const unknown = draft2520({ fs, keeper: null });
+  assert.match(unknown[0].text, /^매출액, 매출원가, 급여/);
+  assert.ok(unknown[1].text.includes(BLANK));
+  assert.match(unknown[4].text, /유의적 회계추정은 대손충당금, 재고자산 평가/);
+  const inner = draft2520({ fs, keeper: '내부' });
+  assert.equal(inner[4].text.startsWith('결산은 회계담당자가 작성'), true);
+  assert.equal(draft2520({ fs, keeper: '외부' })[5].text.startsWith('결산 수정분개는 기장대리인이'), true);
+  // 재무제표가 없으면 거래유형·추정도 ○○
+  assert.ok(draft2520({ fs: null, keeper: '외부' })[0].text.includes(BLANK));
+
+  const d0 = withDraft(PAPER_2530.read(S), draft2530({ fs, keeper: null }), null);
+  assert.equal(blanksLeft(d0), 1);
+  d0.items[0] = { ...d0.items[0], text: '직접', draft: false };
+  const d1 = redraft(d0, draft2530({ fs, keeper: 'ERP' }));
+  assert.equal(d1.items[0].text, '직접');
+  assert.match(d1.items[2].text, /^ERP/);
+  assert.equal(blanksLeft(d1), 0);
 });

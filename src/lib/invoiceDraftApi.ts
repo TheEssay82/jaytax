@@ -99,6 +99,8 @@ export function candidateFromDraft(d: InvoiceDraft): InvoiceCandidate {
     billingCycle: d.billingCycle, billingMonth: d.billingMonth,
     erpAccount: (d.erpAccount || erpAccountOf(d.typeLabel)) as InvoiceCandidate['erpAccount'],
     docEmail: d.docEmail,
+    // 적요를 넘긴다 — 다음 달 전월복사가 발행요청의 적요를 그대로 가져간다(openDrafts).
+    summary: d.summary,
   };
 }
 

@@ -28,10 +28,10 @@ import Form2120A from './Form2120A';
 import Form8110 from './Form8110';
 import Form2301 from './Form2301';
 import FormQA from './FormQA';
-import { withDraft, QA_DRAFTS, type PaperQA } from '../../lib/gwpPaperQA';
+import { withDraft, QA_DRAFTS, fsFacts, blanksLeft, BLANK, type PaperQA, type FsFact } from '../../lib/gwpPaperQA';
 import { readLibrary, type Paper2301, type LibCase } from '../../lib/gwpPaper2301';
 import { fillFromWtb, type Paper8110, type WtbReport } from '../../lib/gwpPaper8110';
-import { fillFromFs, balance, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
+import { fillFromFs, balance, PAPER_2120A, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
 import type { Paper2110 } from '../../lib/gwpPaper2110';
 import Form2700A from './Form2700A';
 import Form2700A1 from './Form2700A1';
@@ -68,6 +68,10 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
   const readOnly = locked || !canWrite || handedOff;
   const prevCode = PREV_STAGE[def.code];
   const prevSaved = prevCode ? papers.get(prevCode) : undefined;
+  // 2520·2530 초안 재료 — 저장한 2120A(없으면 판의 2120A 시트), 짝 조서에서 고른 「회계처리를 누가」.
+  const saved2120 = papers.get('2120A')?.data as Paper2120A | undefined;
+  const pairKeeper = (papers.get(def.code === '2520' ? '2530' : '2520')?.data as PaperQA | undefined)?.keeper ?? null;
+  const [qaFs, setQaFs] = useState<FsFact[] | null>(null);
 
   // 최신 판의 이 조서 시트 — 처음 여는 조서는 여기서 작년(이월) 값을 읽어 채운다.
   useEffect(() => {
@@ -81,6 +85,12 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
         if (off) return;
         setVersion(books[0].version);
         setSheet(s);
+        let fsl: FsFact[] | null = null;
+        if (QA_DRAFTS[def.code]) {
+          const s2120 = pickSheet(PAPER_2120A, sheets);
+          fsl = fsFacts(saved2120) ?? (s2120 ? fsFacts(PAPER_2120A.read(s2120)) : null);
+          setQaFs(fsl);
+        }
         if (saved?.data != null) {
           if (def.code === '2120A' && s) {
             const secBy = new Map((def.read(s) as Paper2120A).rows.map((r) => [r.key, r.sec]));
@@ -94,7 +104,10 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
           d = def.readBook ? def.readBook(sheets) : def.read(s);
           setNote('작년(이월본) 값을 불러왔습니다 — 올해 것으로 고치세요.');
           // 질문·기재형(소규모 2520·2530) — 빈 칸은 초안으로(사용자 2026-09-28 「지금 초안을 반영해 주세요」).
-          if (QA_DRAFTS[def.code]) { d = withDraft(d as PaperQA, QA_DRAFTS[def.code], author); setNote('빈 칸을 초안으로 채웠습니다 — 회사 사실과 맞는지 확인하고 [확인]을 누르세요.'); }
+          if (QA_DRAFTS[def.code]) {
+            d = { ...withDraft(d as PaperQA, QA_DRAFTS[def.code]({ fs: fsl, keeper: pairKeeper }), author), keeper: pairKeeper };
+            setNote(`빈 칸을 초안으로 채웠습니다${pairKeeper ? '' : ' — 맨 위에서 「회계처리는 누가?」를 고르면 문장이 맞춰집니다'}. 회사 사실과 맞는지 확인하고 [확인]을 누르세요.`);
+          }
           if (s.hidden) setErr(`${s.name} 시트가 숨겨져 있습니다 — ① 올해 파일의 「소규모 짝 정리」를 먼저 하세요.`);
         }
         else { d = def.empty(); setNote(`최신 판(v${books[0].version})에 ${def.sheetCode} 시트가 없습니다 — 반영할 때 올해 양식으로 새로 넣습니다.`); }
@@ -107,7 +120,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
       }
     })();
     return () => { off = true; };
-  }, [eng.id, def, saved?.data, prevSaved?.data, prevCode, author]);
+  }, [eng.id, def, saved?.data, prevSaved?.data, prevCode, author, saved2120, pairKeeper]);
 
   const change = (d: unknown) => { setData(d); setDirty(true); };
 
@@ -152,6 +165,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
         if (b && Math.abs(b.diff) >= 1 && !confirm(`${w === 'prev' ? '전기' : '당기'} 자산이 부채+자본과 ${b.diff.toLocaleString('ko-KR')}원 다릅니다.\n그래도 확인할까요?`)) return;
       }
     }
+    if (QA_DRAFTS[def.code] && blanksLeft(data as PaperQA)) { setErr(`${BLANK} 자리가 ${blanksLeft(data as PaperQA)}곳 남았습니다 — 채우고 [확인]하세요(빨간 칸).`); return; }
     setBusy('check'); setErr(null);
     try {
       await markChecked(eng.id, def.code, data);
@@ -322,7 +336,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
                   {busy === 'dsd' ? '읽는 중…' : dsd ? '전기 DSD 로 당기 열 채우기' : '전기 DSD 없음(자료함에 올리세요)'}
                 </button>} />
             ) : QA_DRAFTS[def.code] ? (
-              <FormQA value={data as PaperQA} onChange={change} readOnly={readOnly} draft={QA_DRAFTS[def.code]} author={author} />
+              <FormQA value={data as PaperQA} onChange={change} readOnly={readOnly} draft={QA_DRAFTS[def.code]} fs={qaFs} author={author} />
             ) : def.code === '2301' ? (
               <Form2301 value={data as Paper2301} onChange={change} readOnly={readOnly} big={big2120} lib={lib2301} />
             ) : def.code === '8110ARP' ? (

@@ -164,6 +164,11 @@ export interface InvoiceCandidate {
   needsInvoiceDoc?: boolean;
   /** 계약의 비고 — 경비 포함·한도 같은 청구 조건을 발행할 때 보이게(2026-09-26). */
   contractNote?: string;
+  /**
+   * 적요 — 청구예정(초안)에서 담당자가 적은 것. 발행요청으로 **반드시 넘겨야** 한다:
+   * 다음 달은 이 달 발행요청을 복사해 시작하므로, 여기서 빠지면 적요가 매달 사라진다(2026-09-28 발견).
+   */
+  summary?: string;
 }
 
 /**
@@ -255,6 +260,7 @@ export async function createInvoiceRequests(
       place_name: r.placeName,
       contract_code: r.contractCode,
       note: r.label || null,
+      summary: r.summary?.trim() || null,
       requested_by: u.user?.id ?? null,
     };
   });

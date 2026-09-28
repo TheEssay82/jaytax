@@ -42,6 +42,12 @@ import {
 import DateParts from '../common/DateParts';
 
 const won = (n: number) => n.toLocaleString('ko-KR');
+/** 입력 중인 금액을 세 자리 쉼표로 다시 적는다(음수 부호는 살린다). */
+const commaInput = (s: string) => {
+  const neg = s.trim().startsWith('-');
+  const d = s.replace(/[^\d]/g, '');
+  return d ? `${neg ? '-' : ''}${Number(d).toLocaleString('ko-KR')}` : (neg ? '-' : '');
+};
 const dash = <span style={{ color: 'var(--ink-4)' }}>—</span>;
 /**
  * 매출계약 대사 창 — 청구예정(초안)과 매출계약 전개분을 맞춰 본다.
@@ -493,6 +499,19 @@ ${noContract ? `
     catch (e) { alert('저장 실패: ' + (e instanceof Error ? e.message : e)); }
   }
 
+  /** 사업자번호 — 청구의 사업장 것. 사업장이 비어 있으면 그 거래처의 본점(없으면 첫 사업장). */
+  const bizNoOf = useMemo(() => {
+    const byPlace = new Map<string, string>();
+    const byEntity = new Map<string, string>();
+    for (const e of entities) {
+      for (const p of e.places ?? []) if (p.bizRegNo) byPlace.set(p.id, p.bizRegNo);
+      const hq = (e.places ?? []).find((p) => p.isHeadquarters && p.bizRegNo) ?? (e.places ?? []).find((p) => p.bizRegNo);
+      if (hq) byEntity.set(e.id, hq.bizRegNo);
+    }
+    return (placeId: string | null, entityId: string | null) =>
+      (placeId && byPlace.get(placeId)) || (entityId && byEntity.get(entityId)) || '';
+  }, [entities]);
+
   // ── 표 열 정의 ────────────────────────────────────────
   // 제목행을 누르면 정렬, 아래 칸에 값을 넣으면 그 열만 걸러진다. 너비는 끝을 끌어 조절(더블클릭=내용맞춤).
   const draftCols: GridCol<InvoiceDraft>[] = [
@@ -507,13 +526,16 @@ ${noContract ? `
         </>
       ) },
     { key: 'place', label: '사업장', width: 110, value: (d) => d.placeName },
+    { key: 'bizno', label: '사업자번호', width: 104, value: (d) => bizNoOf(d.placeId, d.entityId),
+      cell: (d) => bizNoOf(d.placeId, d.entityId) || dash, style: { fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-1)' } },
     { key: 'erp', label: '매출계정', width: 118, value: (d) => d.erpAccount, cell: (d) => d.erpAccount || dash, style: { color: 'var(--ink-2)' } },
     { key: 'code', label: '계약코드', width: 100, value: (d) => d.contractCode, style: { fontFamily: 'monospace', fontSize: 'var(--fs-0)' } },
     { key: 'round', label: '회차', width: 64, value: (d) => d.label },
     { key: 'supply', label: '공급가액', width: 104, num: true, value: (d) => d.supplyAmount,
       sum: (d) => d.supplyAmount,
       cell: (d) => (canWrite ? (
-        <input defaultValue={String(Math.round(d.supplyAmount))} key={`${d.id}:${d.supplyAmount}`}
+        <input defaultValue={won(Math.round(d.supplyAmount))} key={`${d.id}:${d.supplyAmount}`} inputMode="numeric"
+          onChange={(e) => { e.currentTarget.value = commaInput(e.currentTarget.value); }}
           onBlur={(e) => {
             const v = Number(e.target.value.replace(/[^\d-]/g, '')) || 0;
             if (v !== Math.round(d.supplyAmount)) void saveDraft(d.id, { supplyAmount: v }, d);
@@ -538,6 +560,7 @@ ${noContract ? `
     { key: 'summary', label: '적요', width: 130, value: (d) => d.summary,
       cell: (d) => (canWrite ? (
         <input defaultValue={d.summary} key={`${d.id}:s:${d.summary}`}
+          title="칸을 벗어나면 저장됩니다. 발행요청으로 넘어가고, 다음 달 전월복사 때 그대로 따라옵니다."
           onBlur={(e) => { if (e.target.value !== d.summary) void saveDraft(d.id, { summary: e.target.value }, d); }}
           style={{ width: '100%', fontSize: 'var(--fs-1)', padding: '1px 3px', boxSizing: 'border-box' }} />
       ) : d.summary) },
@@ -561,6 +584,8 @@ ${noContract ? `
       style: { fontWeight: 700, color: 'var(--navy)' },
       cell: (r) => <>{r.companyName}<DiffBadge d={diff.mark.get(r.contractId ?? '')} amount={r.supplyAmount} /></> },
     { key: 'place', label: '사업장', width: 110, value: (r) => r.placeName },
+    { key: 'bizno', label: '사업자번호', width: 104, value: (r) => bizNoOf(r.placeId, r.entityId),
+      cell: (r) => bizNoOf(r.placeId, r.entityId) || dash, style: { fontVariantNumeric: 'tabular-nums', fontSize: 'var(--fs-1)' } },
     { key: 'erp', label: '매출계정', width: 120, value: (r) => r.erpAccount, cell: (r) => r.erpAccount || dash, style: { color: 'var(--ink-2)' } },
     { key: 'code', label: '계약코드', width: 100, value: (r) => r.contractCode, style: { fontFamily: 'monospace', fontSize: 'var(--fs-0)' } },
     { key: 'cpa', label: '담당회계사', width: 80, value: (r) => r.cpa, opts: cpaOpts, cell: (r) => r.cpa || dash },
