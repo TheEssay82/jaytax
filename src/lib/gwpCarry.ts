@@ -118,7 +118,7 @@ export interface PeriodColumns { headerRow: number; prevCol: string; curCol: str
 
 /** 머리 줄에서 기간 열 둘을 찾는다 — 한 해 차이 나는 두 칸(2023_4Q │ 2024_4Q), 없으면 「전기」「당기」 글자. */
 export function findPeriodColumns(sheet: SheetData, maxHeaderRow = 40): PeriodColumns | null {
-  const byRow = new Map<number, { col: string; text: string; md?: string; y?: number | null }[]>();
+  const byRow = new Map<number, { col: string; text: string; md?: string; y?: number | null; f?: boolean }[]>();
   for (const [ref, v] of sheet.cells) {
     const row = rowOf(ref);
     if (row > maxHeaderRow) continue;
@@ -130,7 +130,7 @@ export function findPeriodColumns(sheet: SheetData, maxHeaderRow = 40): PeriodCo
       y = d.getUTCFullYear(); md = `${d.getUTCMonth()}-${d.getUTCDate()}`;
     }
     if (!v.text && y == null) continue;
-    (byRow.get(row) ?? byRow.set(row, []).get(row)!).push({ col: colOf(ref), text: v.formula != null ? '' : v.text ?? '', md, y });
+    (byRow.get(row) ?? byRow.set(row, []).get(row)!).push({ col: colOf(ref), text: v.formula != null ? '' : v.text ?? '', md, y, f: v.formula != null });
   }
   for (const row of [...byRow.keys()].sort((a, b) => a - b)) {
     const cells = byRow.get(row)!;
@@ -138,6 +138,11 @@ export function findPeriodColumns(sheet: SheetData, maxHeaderRow = 40): PeriodCo
     const dates = cells.filter((c) => c.y != null);
     for (const a of dates) for (const b of dates) {
       if (b.y === a.y! + 1 && a.md === b.md) return { headerRow: row, prevCol: a.col, curCol: b.col, prevLabel: a.text, curLabel: b.text };
+    }
+    // 이월 직후 — 전기 머리(글자 날짜)는 한 해 올렸는데 당기 머리가 수식(=B3)이면 저장된 값이 아직 작년이라 둘이 같다
+    // (윤성 8110ARP_BS D23 「=B3」, 2026-09-28). 엑셀이 열면 다시 계산한다 — 수식 쪽을 당기로 본다.
+    for (const a of dates) for (const b of dates) {
+      if (a !== b && a.y === b.y && a.md === b.md && !a.f && b.f) return { headerRow: row, prevCol: a.col, curCol: b.col, prevLabel: a.text, curLabel: b.text };
     }
     const withYear = cells.map((c) => ({ ...c, y: c.text ? yearIn(c.text) : null })).filter((c) => c.y != null);
     for (const a of withYear) for (const b of withYear) {

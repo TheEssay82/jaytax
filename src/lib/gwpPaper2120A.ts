@@ -46,6 +46,7 @@ function layout(sheet: SheetData) {
   const fsliHead = head.find((h) => normLabel(h.text).includes('IFRS공시'));
   const acctHead = head.find((h) => normLabel(h.text).startsWith('계정과목') && h !== fsliHead);
   const noteHead = head.find((h) => normLabel(h.text) === '비고');
+  if (!acctHead) return layered(sheet, pc, hits);
   const labelCol = acctHead ? colName(colNum(acctHead.col) + 1) : 'C';
   const plStart = hits.find((h) => h.row > pc.headerRow && /^(Ⅰ|I)\.?매출액$/.test(normLabel(h.text)))?.row ?? Infinity;
   // 구분 줄 「자 산」「부 채」「자 본」(명진 B16·B64·B87) — 그 아래 줄이 그 부분이다.
@@ -60,6 +61,38 @@ function layout(sheet: SheetData) {
     rows.push({ row: h.row, label: h.text, fsli: fsliHead ? textOf(sheet.cells.get(`${fsliHead.col}${h.row}`)) : '', pl: h.row > plStart, sec: secOf(h.row) });
   }
   return { pc, rows, noteCol: noteHead?.col ?? null };
+}
+
+/**
+ * 2026 양식 그대로의 2120A(윤성이 숨겨 둔 예시·새로 쓰기 시작하는 회사) — 「계정과목」 머리가 없고 계정이 A·B·C 열에
+ * 층으로 있다(유동자산 A → 당좌자산 B → 현금 C). 합계 줄은 전기·당기 칸이 수식이다. 8110A 와 같은 모양.
+ * 재무상태표의 부분은 「자산총계」·「부채총계」 줄로 나누고, 「손익계산서」 줄 아래는 손익이다. 비고 = 「설명 …」 머리.
+ */
+function layered(sheet: SheetData, pc: NonNullable<ReturnType<typeof findPeriodColumns>>, hits: Hit[]) {
+  const near = hits.filter((h) => h.row >= pc.headerRow && h.row <= pc.headerRow + 3);
+  const noteCol = near.find((h) => /^(설명|비고)/.test(normLabel(h.text)))?.col ?? null;
+  const varCol = near.find((h) => /^variance$/i.test(normLabel(h.text)))?.col ?? null;
+  const label = new Map<number, Hit>();
+  for (const h of hits) {
+    if (h.row <= pc.headerRow || !['A', 'B', 'C'].includes(h.col)) continue;
+    const cur = label.get(h.row);
+    if (!cur || h.col < cur.col) label.set(h.row, h);
+  }
+  const aRow = (re: RegExp) => [...label.values()].find((h) => h.col === 'A' && re.test(normLabel(h.text)))?.row ?? Infinity;
+  const plStart = aRow(/^손익계산서$|^포괄손익계산서$/);
+  const assetEnd = aRow(/^자산총계$/), liabEnd = aRow(/^부채총계$/);
+  const isNum = (ref: string) => sheet.cells.get(ref)?.num != null;
+  const rows: { row: number; label: string; fsli: string; pl: boolean; sec: Sec }[] = [];
+  for (const r of [...label.keys()].sort((a, b) => a - b)) {
+    const t = normLabel(label.get(r)!.text);
+    if (r === plStart || t === '재무상태표') continue;
+    const cur = sheet.cells.get(`${pc.curCol}${r}`), prev = sheet.cells.get(`${pc.prevCol}${r}`);
+    if (cur?.formula != null || prev?.formula != null) continue;                       // 합계·비율 줄
+    if (!isNum(`${pc.prevCol}${r}`) && !isNum(`${pc.curCol}${r}`) && !(varCol && isNum(`${varCol}${r}`))) continue;
+    const pl = r > plStart;
+    rows.push({ row: r, label: label.get(r)!.text, fsli: '', pl, sec: pl ? '손익' : r < assetEnd ? '자산' : r < liabEnd ? '부채' : '자본' });
+  }
+  return { pc, rows, noteCol };
 }
 
 const keyOf = (label: string, fsli: string, n: number) => `${normLabel(label)}|${normLabel(fsli)}#${n}`;

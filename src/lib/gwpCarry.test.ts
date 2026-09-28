@@ -80,3 +80,12 @@ test('전기 이동 — 기간 열을 못 찾으면 null(억지로 옮기지 않
   const pc = findPeriodColumns(sheet({ C3: { text: '전기' }, D3: { text: '당기' } }))!;
   assert.deepEqual([pc.prevCol, pc.curCol], ['C', 'D']);
 });
+
+test('기간 열 — 이월 직후 당기 머리가 수식(=B3)이라 저장값이 전기와 같으면 수식 쪽이 당기(윤성 8110ARP_BS)', () => {
+  const s: SheetData = { name: '8110ARP_BS', cells: new Map<string, CellValue>([
+    ['C23', { text: '소계정' }], ['D23', { formula: 'B3', num: 46022 }], ['E23', { num: 46022 }],
+  ]) };
+  const pc = findPeriodColumns(s)!;
+  assert.equal(pc.curCol, 'D');
+  assert.equal(pc.prevCol, 'E');
+});
