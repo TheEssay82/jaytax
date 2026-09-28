@@ -12,6 +12,7 @@ import type { CellEdit } from './xlsxCells';
 import { normLabel, textOf, colOf, rowOf, type WebPaperDef } from './gwpWeb';
 import { findPeriodColumns } from './gwpCarry';
 import type { FsLine } from './fsParse';
+import { insertRowsAfter, moveFormula } from './xlsxRows';
 
 export interface Row2120 {
   key: string;
@@ -25,6 +26,8 @@ export interface Row2120 {
   /** 전기 열 금액이 DSD 전기 금액과 다르다 */ prevDiff?: number | null;
   /** 재무상태표의 어느 부분인가 — 자산 = 부채 + 자본 검증(사용자 2026-09-27) */ sec?: Sec;
   /** 「이 줄에 더하기」로 받은 DSD 계정 — 다시 채울 때 그 계정을 이미 받은 것으로 친다 */ absorbs?: string[];
+  /** 분류(「Ⅰ. 유 동 자 산」·「(1) 유 형 자 산」·「Ⅳ. 판매비와관리비」) — 새 줄을 어디에 끼울지 */ group?: string;
+  /** 웹에서 새로 넣은 계정 줄 — 반영할 때 그 분류의 끝에 줄을 끼운다(평안정공 2026-09-28) */ added?: boolean;
 }
 export type Sec = '자산' | '부채' | '자본' | '손익';
 export interface Paper2120A { rows: Row2120[]; prevLabel: string; curLabel: string }
@@ -38,7 +41,9 @@ function textsOf(sheet: SheetData): Hit[] {
 function colNum(c: string): number { let n = 0; for (const ch of c) n = n * 26 + ch.charCodeAt(0) - 64; return n; }
 function colName(n: number): string { let s = ''; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; }
 
-function layout(sheet: SheetData) {
+type LRow = { row: number; label: string; fsli: string; pl: boolean; sec: Sec; group: string; col: string };
+type Layout = { pc: NonNullable<ReturnType<typeof findPeriodColumns>>; rows: LRow[]; noteCol: string | null; fsliCol: string | null };
+function layout(sheet: SheetData): Layout | null {
   const pc = findPeriodColumns(sheet);
   if (!pc) return null;
   const hits = textsOf(sheet);
@@ -53,14 +58,21 @@ function layout(sheet: SheetData) {
   const secRows = hits.filter((h) => h.row > pc.headerRow && h.row < plStart && /^(자산|부채|자본)$/.test(normLabel(h.text)))
     .map((h) => ({ row: h.row, sec: normLabel(h.text) as Sec })).sort((a, b) => a.row - b.row);
   const secOf = (row: number): Sec => (row > plStart ? '손익' : [...secRows].reverse().find((x) => x.row < row)?.sec ?? '자산');
-  const rows: { row: number; label: string; fsli: string; pl: boolean; sec: Sec }[] = [];
+  // 분류 줄 — 계정과목 머리 열(B)에 글자가 있고 계정 열(C)은 빈 줄(「Ⅰ. 유 동 자 산」「(1) 유 형 자 산」). 번호(「1.」)는 아니다.
+  const labelRows = new Set(hits.filter((x) => x.col === labelCol).map((x) => x.row));
+  const heads = hits.filter((x) => x.col === acctHead.col && x.row > pc.headerRow && !labelRows.has(x.row) && !/^\d+\.?$/.test(x.text.trim()))
+    .sort((a, b) => a.row - b.row);
+  const groupOf = (row: number) => [...heads].reverse().find((x) => x.row < row)?.text.trim() ?? '';
+  const rows: LRow[] = [];
   for (const h of hits.filter((x) => x.col === labelCol && x.row > pc.headerRow + 1).sort((a, b) => a.row - b.row)) {
     const cur = sheet.cells.get(`${pc.curCol}${h.row}`);
     const prev = sheet.cells.get(`${pc.prevCol}${h.row}`);
     if (cur?.formula != null || prev?.formula != null) continue;   // 합계·비율 줄
-    rows.push({ row: h.row, label: h.text, fsli: fsliHead ? textOf(sheet.cells.get(`${fsliHead.col}${h.row}`)) : '', pl: h.row > plStart, sec: secOf(h.row) });
+    rows.push({ row: h.row, label: h.text, fsli: fsliHead ? textOf(sheet.cells.get(`${fsliHead.col}${h.row}`)) : '', pl: h.row > plStart, sec: secOf(h.row), group: groupOf(h.row), col: labelCol });
   }
-  return { pc, rows, noteCol: noteHead?.col ?? null };
+  // 공시 계정 열 — 짝 키에는 「IFRS 공시」 머리만 쓴다(키가 바뀌면 저장한 입력과 어긋난다). 새 줄 쓰기에는 「계정과목 (공시용)」(평안정공)도.
+  const fsliAny = fsliHead ?? head.find((h) => h !== acctHead && normLabel(h.text).includes('공시'));
+  return { pc, rows, noteCol: noteHead?.col ?? null, fsliCol: fsliAny?.col ?? null };
 }
 
 /**
@@ -68,7 +80,7 @@ function layout(sheet: SheetData) {
  * 층으로 있다(유동자산 A → 당좌자산 B → 현금 C). 합계 줄은 전기·당기 칸이 수식이다. 8110A 와 같은 모양.
  * 재무상태표의 부분은 「자산총계」·「부채총계」 줄로 나누고, 「손익계산서」 줄 아래는 손익이다. 비고 = 「설명 …」 머리.
  */
-function layered(sheet: SheetData, pc: NonNullable<ReturnType<typeof findPeriodColumns>>, hits: Hit[]) {
+function layered(sheet: SheetData, pc: NonNullable<ReturnType<typeof findPeriodColumns>>, hits: Hit[]): Layout {
   const near = hits.filter((h) => h.row >= pc.headerRow && h.row <= pc.headerRow + 3);
   const noteCol = near.find((h) => /^(설명|비고)/.test(normLabel(h.text)))?.col ?? null;
   const varCol = near.find((h) => /^variance$/i.test(normLabel(h.text)))?.col ?? null;
@@ -82,17 +94,52 @@ function layered(sheet: SheetData, pc: NonNullable<ReturnType<typeof findPeriodC
   const plStart = aRow(/^손익계산서$|^포괄손익계산서$/);
   const assetEnd = aRow(/^자산총계$/), liabEnd = aRow(/^부채총계$/);
   const isNum = (ref: string) => sheet.cells.get(ref)?.num != null;
-  const rows: { row: number; label: string; fsli: string; pl: boolean; sec: Sec }[] = [];
+  const rows: LRow[] = [];
+  const parent: Record<string, string> = {};
   for (const r of [...label.keys()].sort((a, b) => a - b)) {
     const t = normLabel(label.get(r)!.text);
+    const col = label.get(r)!.col;
+    parent[col] = label.get(r)!.text.trim();
+    if (col === 'A') delete parent.B;
     if (r === plStart || t === '재무상태표') continue;
     const cur = sheet.cells.get(`${pc.curCol}${r}`), prev = sheet.cells.get(`${pc.prevCol}${r}`);
     if (cur?.formula != null || prev?.formula != null) continue;                       // 합계·비율 줄
     if (!isNum(`${pc.prevCol}${r}`) && !isNum(`${pc.curCol}${r}`) && !(varCol && isNum(`${varCol}${r}`))) continue;
     const pl = r > plStart;
-    rows.push({ row: r, label: label.get(r)!.text, fsli: '', pl, sec: pl ? '손익' : r < assetEnd ? '자산' : r < liabEnd ? '부채' : '자본' });
+    const group = col === 'C' ? parent.B ?? '' : col === 'B' ? parent.A ?? '' : pl ? '손익계산서' : '재무상태표';
+    rows.push({ row: r, label: label.get(r)!.text, fsli: '', pl, sec: pl ? '손익' : r < assetEnd ? '자산' : r < liabEnd ? '부채' : '자본', group, col });
   }
-  return { pc, rows, noteCol };
+  return { pc, rows, noteCol, fsliCol: null };
+}
+
+/** 아직 시트에 없는 새 계정 줄 — 분류별로, 그 분류의 끝줄. 분류를 못 찾으면 알린다. */
+function pendingAdds(L: Layout, d: Paper2120A): Map<string, { last: number; rows: Row2120[] }> {
+  const out = new Map<string, { last: number; rows: Row2120[] }>();
+  for (const x of d.rows.filter((r) => r.added && r.label.trim())) {
+    const g = x.group ?? '';
+    const inGroup = L.rows.filter((r) => normLabel(r.group) === normLabel(g) && r.pl === x.pl);
+    if (!inGroup.length) throw new Error(`2120A 에서 분류 「${g}」를 찾지 못했습니다 — 새 계정 「${x.label}」을 넣을 곳이 없습니다.`);
+    if (inGroup.some((r) => normLabel(r.label) === normLabel(x.label))) continue;   // 이미 넣었다(다시 반영)
+    const cur = out.get(g) ?? { last: Math.max(...inGroup.map((r) => r.row)), rows: [] };
+    cur.rows.push(x);
+    out.set(g, cur);
+  }
+  return out;
+}
+
+/** 계정 줄마다 수식이 있는 열(증감·비율·Material 판정) — 열마다 수식이 적힌 가장 가까운 계정 줄. 공유 수식은 첫 줄에만 글자가 있다. */
+function formulaCols(sheet: SheetData, L: Layout, keep: Set<string>, tpl: LRow): Map<string, { row: number; formula: string }> {
+  const out = new Map<string, { row: number; formula: string }>();
+  // 같은 구간(재무상태·손익)의 계정 줄에서, 윗줄(tpl)에도 칸이 있는 열만 — 손익에만 있는 열(평안 P118)이 자산 줄로 오지 않게.
+  const dataRows = new Set(L.rows.filter((r) => r.pl === tpl.pl).map((r) => r.row));
+  for (const [ref, v] of sheet.cells) {
+    const r = rowOf(ref), c = colOf(ref);
+    if (!dataRows.has(r) || v.formula == null || keep.has(c) || c === 'A' || c === 'B' || !sheet.cells.has(`${c}${tpl.row}`)) continue;
+    if (!new RegExp(`[A-Z]\\$?${r}(?!\\d)`).test(v.formula)) continue;   // 제 줄을 쓰는 수식만(F18-E18)
+    const had = out.get(c);
+    if (!had || Math.abs(r - tpl.row) < Math.abs(had.row - tpl.row)) out.set(c, { row: r, formula: v.formula });
+  }
+  return out;
 }
 
 const keyOf = (label: string, fsli: string, n: number) => `${normLabel(label)}|${normLabel(fsli)}#${n}`;
@@ -118,17 +165,42 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
     return {
       prevLabel: L.pc.prevLabel, curLabel: L.pc.curLabel,
       rows: keyed(L.rows).map((r) => ({
-        key: r.key, label: r.label, fsli: r.fsli, pl: r.pl, sec: r.sec,
+        key: r.key, label: r.label, fsli: r.fsli, pl: r.pl, sec: r.sec, group: r.group,
         prev: numOf(sheet, `${L.pc.prevCol}${r.row}`), cur: numOf(sheet, `${L.pc.curCol}${r.row}`),
         note: L.noteCol ? textOf(sheet.cells.get(`${L.noteCol}${r.row}`)) : '',
       })),
     };
+  },
+  // 새 계정 줄 — 분류 끝줄 아래에 끼우고 그 분류의 합계 범위를 늘린다(아래 분류부터 — 위 줄 번호가 밀리지 않게).
+  prepareXml(xml, sheet, d) {
+    const L = layout(sheet);
+    if (!L) return xml;
+    const plan = [...pendingAdds(L, d).values()].sort((a, b) => b.last - a.last);
+    for (const p of plan) xml = insertRowsAfter(xml, p.last, p.rows.length);
+    return xml;
   },
   write(sheet, d) {
     const L = layout(sheet);
     if (!L) throw new Error('2120A 에서 전기·당기 기간 열(머리 줄)을 찾지 못했습니다.');
     const at = new Map(keyed(L.rows).map((r) => [r.key, r.row]));
     const e: CellEdit[] = [];
+    // 새 계정 줄 — 끼워 둔 빈 줄(분류 끝줄 바로 아래)에 이름·금액·비고와 이웃 줄의 수식(증감·비율·판정)을 쓴다.
+    for (const p of pendingAdds(L, d).values()) {
+      const tpl = L.rows.find((r) => r.row === p.last)!;
+      const keep = new Set([tpl.col, L.pc.prevCol, L.pc.curCol, L.noteCol, L.fsliCol].filter(Boolean) as string[]);
+      const fcols = formulaCols(sheet, L, keep, tpl);
+      p.rows.forEach((x, i) => {
+        const r = p.last + 1 + i;
+        if (textOf(sheet.cells.get(`${tpl.col}${r}`))) throw new Error(`2120A ${r}행이 비어 있지 않습니다 — 새 줄(${x.label})을 끼우지 못했습니다.`);
+        e.push({ ref: `${tpl.col}${r}`, text: x.label.trim() });
+        const fsli = (x.fsli || tpl.fsli || (L.fsliCol ? textOf(sheet.cells.get(`${L.fsliCol}${p.last}`)) : '')).trim();
+        if (L.fsliCol && fsli) e.push({ ref: `${L.fsliCol}${r}`, text: fsli });
+        if (x.prev != null) e.push({ ref: `${L.pc.prevCol}${r}`, num: x.prev });
+        if (x.cur != null) e.push({ ref: `${L.pc.curCol}${r}`, num: x.cur });
+        if (L.noteCol && x.note.trim()) e.push({ ref: `${L.noteCol}${r}`, text: x.note.trim() });
+        for (const [c, f] of fcols) e.push({ ref: `${c}${r}`, formula: moveFormula(f.formula, r - f.row) });
+      });
+    }
     for (const r of d.rows) {
       const row = at.get(r.key);
       if (!row) continue;

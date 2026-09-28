@@ -96,8 +96,9 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
         }
         if (saved?.data != null) {
           if (def.code === '2120A' && s) {
-            const secBy = new Map((def.read(s) as Paper2120A).rows.map((r) => [r.key, r.sec]));
-            setData((cur: unknown) => { const d = (cur ?? saved.data) as Paper2120A; return { ...d, rows: d.rows.map((r) => ({ ...r, sec: r.sec ?? secBy.get(r.key) })) }; });
+            // 저장 뒤에 생긴 칸(부분 sec · 분류 group)은 시트에서 채운다.
+            const by = new Map((def.read(s) as Paper2120A).rows.map((r) => [r.key, r]));
+            setData((cur: unknown) => { const d = (cur ?? saved.data) as Paper2120A; return { ...d, rows: d.rows.map((r) => ({ ...r, sec: r.sec ?? by.get(r.key)?.sec, group: r.group ?? by.get(r.key)?.group })) }; });
           }
           return;
         }

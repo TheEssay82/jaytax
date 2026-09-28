@@ -20,6 +20,24 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
   /** 받을 줄 없는 계정을 더할 줄(계정 → 줄 key) · 이미 더한 계정 */
   const [pick, setPick] = useState<Record<string, string>>({});
   const [placed, setPlaced] = useState<Set<string>>(new Set());
+  /** 받을 줄 없는 계정을 새 줄로 넣을 분류(계정 → 「BS|분류」) · 아래 「+ 계정 줄 추가」 입력 */
+  const [grp, setGrp] = useState<Record<string, string>>({});
+  const [adding, setAdding] = useState<{ g: string; label: string; cur: string; fsli: string } | null>(null);
+  // 분류 — 새 계정 줄을 끼울 곳(「Ⅰ. 유동자산」·「(1) 유형자산」·「Ⅳ. 판매비와관리비」). 평안정공 2026-09-28.
+  const groups: { id: string; name: string; pl: boolean; sec?: Row2120['sec'] }[] = [];
+  for (const r of value.rows) {
+    if (!r.group) continue;
+    const id = `${r.pl ? 'PL' : 'BS'}|${r.group}`;
+    if (!groups.some((g) => g.id === id)) groups.push({ id, name: r.group.replace(/\s+/g, ' '), pl: r.pl, sec: r.sec });
+  }
+  /** 새 계정 줄을 그 분류의 끝에 — 반영할 때 엑셀에도 그 분류 끝에 줄을 끼우고 합계 범위를 늘린다. */
+  const addRow = (gid: string, label: string, cur: number | null, extra: Partial<Row2120> = {}) => {
+    const g = groups.find((x) => x.id === gid);
+    if (!g || !label.trim()) return;
+    const row: Row2120 = { key: `new|${gid}|${label.trim()}`, label: label.trim(), fsli: '', pl: g.pl, prev: null, cur, note: '', src: '손', sec: g.sec, group: value.rows.find((r) => `${r.pl ? 'PL' : 'BS'}|${r.group}` === gid)?.group, added: true, ...extra };
+    const last = value.rows.map((r, i) => ({ r, i })).filter(({ r }) => `${r.pl ? 'PL' : 'BS'}|${r.group}` === gid).pop()?.i ?? value.rows.length - 1;
+    onChange({ ...value, rows: [...value.rows.slice(0, last + 1), row, ...value.rows.slice(last + 1)] });
+  };
   const set = (key: string, p: Partial<Row2120>) => onChange({ ...value, rows: value.rows.map((r) => (r.key === key ? { ...r, ...p } : r)) });
   const big = (r: Row2120) => {
     if (r.prev == null || r.cur == null) return false;
@@ -77,6 +95,17 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
                     onChange({ ...value, rows: value.rows.map((r) => (r.key === k ? { ...r, cur: (r.cur ?? 0) + u.cur, src: '손', note: r.note || `${u.label} 포함`, absorbs: [...(r.absorbs ?? []), u.label] } : r)) });
                     setPlaced(new Set(placed).add(u.label));
                   }}>이 줄에 더하기</button>
+                  {groups.length > 0 && (
+                    <>
+                      <span style={{ color: 'var(--ink-3)' }}>또는</span>
+                      <select className="btn-sm" disabled={readOnly} value={grp[u.label] ?? ''} onChange={(e) => setGrp({ ...grp, [u.label]: e.target.value })}>
+                        <option value="">분류 고르기</option>
+                        {groups.filter((g) => (g.pl ? /손익/ : /재무상태|대차대조/).test(u.statement)).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                      <button className="btn-sm" disabled={readOnly || !grp[u.label]} title="그 분류 끝에 새 계정 줄로 — 반영할 때 엑셀에도 줄을 끼우고 합계 범위를 늘립니다"
+                        onClick={() => { addRow(grp[u.label], u.label, u.cur, { absorbs: [u.label], note: '' }); setPlaced(new Set(placed).add(u.label)); }}>새 줄로 넣기</button>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -98,7 +127,11 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
             return (
               <FragmentRows key={r.key} head={first ? (r.pl ? '손익' : '재무상태') : null}>
                 <tr style={{ background: big(r) ? 'var(--warn-bg)' : undefined }}>
-                  <td>{r.label}{r.src && <span style={{ fontSize: 'var(--fs-0)', color: SRC[r.src]?.c, marginLeft: 4 }}>{SRC[r.src]?.t}</span>}</td>
+                  <td>
+                    {r.label}{r.src && <span style={{ fontSize: 'var(--fs-0)', color: SRC[r.src]?.c, marginLeft: 4 }}>{SRC[r.src]?.t}</span>}
+                    {r.added && <span style={{ fontSize: 'var(--fs-0)', background: '#FFFF00', color: '#000', padding: '0 4px', marginLeft: 4 }}>새 줄</span>}
+                    {r.added && !readOnly && <button className="btn-sm" style={{ marginLeft: 4, padding: '0 6px' }} title="이 새 줄 빼기" onClick={() => onChange({ ...value, rows: value.rows.filter((x) => x.key !== r.key) })}>✕</button>}
+                  </td>
                   <td style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-0)' }}>{r.fsli}</td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                     {fmt(r.prev)}{r.prevDiff != null && <div style={{ fontSize: 'var(--fs-0)', color: 'var(--warn)' }}>DSD {fmt(r.prevDiff)}</div>}
@@ -114,6 +147,29 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
           })}
         </tbody>
       </table>
+      {!readOnly && groups.length > 0 && (
+        <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 8, background: 'var(--surface-2)' }}>
+          {!adding ? (
+            <button className="btn-sm" onClick={() => setAdding({ g: '', label: '', cur: '', fsli: '' })}>+ 계정 줄 추가</button>
+          ) : (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <b>새 계정</b>
+              <select className="btn-sm" value={adding.g} onChange={(e) => setAdding({ ...adding, g: e.target.value })}>
+                <option value="">분류 고르기</option>
+                {groups.map((g) => <option key={g.id} value={g.id}>{g.pl ? '손익 · ' : '재무상태 · '}{g.name}</option>)}
+              </select>
+              <input className="btn-sm" placeholder="계정명" value={adding.label} onChange={(e) => setAdding({ ...adding, label: e.target.value })} style={{ width: 150 }} />
+              <input className="btn-sm" placeholder="당기 금액" value={adding.cur} onChange={(e) => setAdding({ ...adding, cur: e.target.value })} style={{ width: 130, textAlign: 'right' }} />
+              <input className="btn-sm" placeholder="공시 계정(비우면 윗줄과 같게)" value={adding.fsli} onChange={(e) => setAdding({ ...adding, fsli: e.target.value })} style={{ width: 190 }} />
+              <button className="btn-sm btn-sm-navy" disabled={!adding.g || !adding.label.trim()} onClick={() => { addRow(adding.g, adding.label, parse(adding.cur), { fsli: adding.fsli.trim() }); setAdding(null); }}>넣기</button>
+              <button className="btn-sm" onClick={() => setAdding(null)}>취소</button>
+            </div>
+          )}
+          <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 4 }}>
+            새 줄은 고른 분류의 맨 끝에 들어갑니다 — 반영할 때 엑셀에도 그 자리에 줄을 끼우고, 분류 합계 범위와 증감·비율 수식을 이어 줍니다.
+          </div>
+        </div>
+      )}
       <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 6 }}>
         노란 줄은 증감이 1천만원 이상이면서 20% 이상인 줄입니다(비고 칸에 사유를 적어 두면 편합니다). 합계·비율 줄은 엑셀 수식이 계산합니다.
       </div>

@@ -180,3 +180,36 @@ test('2120A — 2026 양식 층 모양: 합계 줄은 빼고, 자산총계·부�
   assert.equal(e.get('E23')?.num, 250);
   assert.equal(e.has('E21'), false);
 });
+
+test('2120A 새 계정 줄 — 분류 끝에 끼우고 분류 합계 범위를 늘리고, 이웃 줄의 증감·판정 수식을 잇는다(평안정공 모양)', async () => {
+  const { applyWebPapers } = await import('./gwpApply');
+  const { emptyWorkbook } = await import('./gwpAssemble');
+  const { injectSheets } = await import('./xlsxInject');
+  const { readWorkbook } = await import('./xlsxRead');
+  const c = (row: number, col: number, v: { text?: string; num?: number; formula?: string }) => ({ row, col, ...v });
+  const cells = [
+    c(14, 2, { text: '계정과목 (FSLI)' }), c(14, 4, { text: '계정과목 (공시용)' }), c(14, 5, { text: 'BS: 2024_4Q' }), c(14, 6, { text: 'BS: 2025_4Q' }), c(14, 12, { text: '비고' }),
+    c(16, 2, { text: '자 산' }),
+    c(35, 2, { text: 'Ⅱ. 비 유 동 자 산' }), c(35, 5, { formula: 'E36' }), c(35, 6, { formula: 'F36' }),
+    c(36, 2, { text: '(1)  유  형  자  산' }), c(36, 5, { formula: 'SUM(E37:E38)' }), c(36, 6, { formula: 'SUM(F37:F38)' }),
+    c(37, 2, { text: '1.' }), c(37, 3, { text: '토지' }), c(37, 4, { text: '유형자산' }), c(37, 5, { num: 100 }), c(37, 6, { num: 100 }), c(37, 7, { formula: 'F37-E37' }), c(37, 9, { formula: 'IF(ABS(F37)>$D$7,"Material ","-")' }),
+    c(38, 2, { text: '2.' }), c(38, 3, { text: '건물' }), c(38, 4, { text: '유형자산' }), c(38, 5, { num: 50 }), c(38, 6, { num: 40 }), c(38, 7, { num: -10 }), c(38, 9, { text: '-' }),
+    c(39, 2, { text: '자 산 총 계' }), c(39, 5, { formula: 'E35' }), c(39, 6, { formula: 'F35' }),
+  ];
+  const bytes = injectSheets(emptyWorkbook(), [{ name: '2120A', cells, lastRow: 39 }]);
+  const d = PAPER_2120A.read(readWorkbook(bytes)[0]);
+  assert.deepEqual(d.rows.map((r) => r.group), ['(1)  유  형  자  산', '(1)  유  형  자  산']);
+  d.rows.push({ key: 'new|x', label: '사용권자산', fsli: '', pl: false, prev: null, cur: 7, note: '새 계정', sec: '자산', group: '(1) 유 형 자 산', added: true });
+  const r = applyWebPapers(bytes, [{ def: PAPER_2120A, data: d }]);
+  const s = readWorkbook(r.bytes)[0];
+  assert.equal(s.cells.get('C39')?.text, '사용권자산');
+  assert.equal(s.cells.get('D39')?.text, '유형자산');
+  assert.equal(s.cells.get('F39')?.num, 7);
+  assert.equal(s.cells.get('F36')?.formula, 'SUM(F37:F39)');
+  assert.equal(s.cells.get('G39')?.formula, 'F39-E39');
+  assert.equal(s.cells.get('I39')?.formula, 'IF(ABS(F39)>$D$7,"Material ","-")');
+  assert.equal(s.cells.get('B40')?.text, '자 산 총 계');
+  // 다시 반영해도 줄이 또 생기지 않는다
+  const again = applyWebPapers(r.bytes, [{ def: PAPER_2120A, data: d }]);
+  assert.equal(readWorkbook(again.bytes)[0].cells.get('B40')?.text, '자 산 총 계');
+});

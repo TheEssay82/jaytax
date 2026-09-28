@@ -83,3 +83,32 @@ export function insertRows(xml: string, at: number, count: number, cloneFrom: nu
   void colNum;
   return res;
 }
+
+/**
+ * after 줄 **바로 아래**에 줄을 끼우고, after 에서 끝나던 같은 시트 범위(「SUM(E37:E58)」)를 새 줄까지 늘린다.
+ * 엑셀은 범위 끝 줄 아래에 끼우면 범위를 늘리지 않는다 — 2120A 에 새 계정을 분류 맨 끝에 넣을 때 합계가 빠지지 않게
+ * (평안정공 2026-09-28 「2120A 새로운 계정 … 대분류·중분류를 고려하여 줄 추가」).
+ */
+export function insertRowsAfter(xml: string, after: number, count: number): string {
+  if (count <= 0) return xml;
+  let res = insertRows(xml, after + 1, count, after);
+  const grow = (s: string) => s.replace(/(\$?[A-Z]{1,3}\$?)(\d+):(\$?[A-Z]{1,3}\$?)(\d+)(?![A-Za-z0-9_(])/g,
+    (m, c1: string, r1: string, c2: string, r2: string) => (Number(r2) === after && Number(r1) <= after ? `${c1}${r1}:${c2}${after + count}` : m));
+  const growFormula = (f: string) => f.split(/("[^"]*")/).map((part, i) => (i % 2 ? part : part.replace(
+    /((?:'[^']*'|[A-Za-z0-9_가-힣.]+)!)?(\$?[A-Z]{1,3}\$?\d+:\$?[A-Z]{1,3}\$?\d+)(?![A-Za-z0-9_(])/g,
+    (m, sheet: string | undefined, range: string) => (sheet ? m : grow(range)),
+  ))).join('');
+  res = res
+    .replace(/(<f\b[^>]*>)([\s\S]*?)(<\/f>)/g, (_m, a: string, f: string, z: string) => `${a}${growFormula(f)}${z}`)
+    .replace(/(<conditionalFormatting\b[^>]*\bsqref=")([^"]+)(")/g, (_m, a, s: string, z) => `${a}${s.split(/\s+/).map(grow).join(' ')}${z}`)
+    .replace(/(<dataValidation\b[^>]*\bsqref=")([^"]+)(")/g, (_m, a, s: string, z) => `${a}${s.split(/\s+/).map(grow).join(' ')}${z}`);
+  return res;
+}
+
+/** 수식을 다른 줄로 옮겨 쓴다(엑셀 「복사」) — $ 가 없는 줄 번호를 delta 만큼. 글자("…")는 건드리지 않는다. */
+export function moveFormula(f: string, delta: number): string {
+  return f.split(/("[^"]*")/).map((part, i) => (i % 2 ? part : part.replace(
+    /(?<![A-Za-z0-9_])(\$?[A-Z]{1,3})(\$?)(\d+)(?![A-Za-z0-9_(])/g,
+    (_m, c: string, d: string, r: string) => `${c}${d}${d ? r : Number(r) + delta}`,
+  ))).join('');
+}
