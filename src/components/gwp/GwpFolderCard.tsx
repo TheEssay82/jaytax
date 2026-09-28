@@ -160,7 +160,7 @@ export default function GwpFolderCard({ eng, canWrite, canRoll, hasBook, onRoll,
                   {row('전기 일반조서', 'gwp', prior.found.일반조서, (c) => (
                     <button className="btn-sm btn-sm-navy" disabled={!canWrite || !canRoll || !!busy} title={canRoll ? '' : '당기 세팅·표준양식이 먼저 필요합니다'}
                       onClick={() => { if (!hasBook || confirm('올해 판이 이미 있습니다. 이 파일로 이월본을 다시 만들까요? (새 판이 생깁니다)')) void roll(c); }}>
-                      {busy === 'roll' ? '만드는 중…' : hasBook ? '이 파일로 이월본 다시 만들기' : '이 파일로 이월본 만들기'}
+                      {busy === 'roll' ? '만드는 중…' : !canRoll ? '이월본은 당기 세팅 저장 뒤에' : hasBook ? '이 파일로 이월본 다시 만들기' : '이 파일로 이월본 만들기'}
                     </button>
                   ))}
                   {row('전기 DSD', 'dsd', prior.found.감사보고서, (c) => already(c.name, '전기DSD')

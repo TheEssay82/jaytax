@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.37.2',
+    date: '2026-09-28',
+    title: '업무 폴더 카드 — 당기 세팅 전에도 보이게',
+    highlights: [
+      '「업무 폴더에서 가져오기」 카드가 <b>당기 세팅 전에도</b> 보입니다(내 담당 건). 회사를 고르면 회사 이름·진행 순서 칸 바로 아래에 있습니다. 폴더 연결·파일 찾기·전기 DSD 올리기는 세팅 전에도 되고, 이월본 만들기만 세팅 뒤에 됩니다.',
+    ],
+  },
+  {
     version: '3.37.1',
     date: '2026-09-28',
     title: '업무 폴더 — 글자 순서만 다른 폴더·지정감사·「별도WTB」',
