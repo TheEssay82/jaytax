@@ -12,7 +12,8 @@
 import { strFromU8, strToU8 } from 'fflate';
 import { readWorkbook, type SheetData } from './xlsxRead';
 import { setCells } from './xlsxCells';
-import { sheetEntries, setSheetHidden, zip, transplantSheet, moveSheetAfter } from './xlsxTransplant';
+import { sheetEntries, setSheetHidden, zip, transplantSheet } from './xlsxTransplant';
+import { sortSheetsByCode } from './gwpOrder';
 import { setTabColor, highlightCells, blackenSheet, TAB } from './xlsxMark';
 import { buildCatalog, codeOf } from './gwpCatalog';
 import { headLinker, migrateInputs, renameSheetRefs } from './gwpRoll';
@@ -72,6 +73,7 @@ export function applySmall(files: Record<string, Uint8Array>, plan: SmallPlan, r
     out.done.push({ code: p.code, small: p.small, plain: p.plain, moved: mig.moved.length, left: mig.left.length });
   }
   for (const n of plan.hide) if (setSheetHidden(files, n, true)) out.hidden.push(n);
+  sortSheetsByCode(files);
   return out;
 }
 
@@ -86,21 +88,19 @@ export function applySmall(files: Record<string, Uint8Array>, plan: SmallPlan, r
 // 다른 시트의 수식이 소규모 시트를 가리키면 새 시트를 가리키게 바꾼다. 지우는 시트는 없다(숨길 뿐).
 export interface LargeStep { code: string; small: string; to: string; how: '보이기' | '양식에서' | '숨기기만' }
 export interface LargePlan { steps: LargeStep[]; tidy?: Tidy }
-/** 이미 바꾼 판 다듬기 — 숨긴 「번호(소규모)」의 일반 짝이 숨어 있으면 보이고, 멀리(맨 뒤) 있으면 소규모 바로 뒤로. */
-export interface Tidy { show: string[]; move: { name: string; after: string }[] }
+/** 이미 바꾼 판 다듬기 — 숨긴 「번호(소규모)」의 일반 짝이 숨어 있으면 보인다. 시트 차례는 조서 번호 순서(gwpOrder). */
+export interface Tidy { show: string[] }
 
 /** 차례대로의 시트 목록 → 다듬을 것. 조서 기준이 일반·K-IFRS 일 때만 부른다. */
 export function planTidy(sheets: Sh[]): Tidy {
-  const out: Tidy = { show: [], move: [] };
-  sheets.forEach((s, i) => {
+  const out: Tidy = { show: [] };
+  sheets.forEach((s) => {
     if (!s.hidden || !SMALL.test(s.name)) return;
     const code = baseCode(s.name);
     const twins = sheets.filter((x) => !SMALL.test(x.name) && baseCode(x.name) === code && (plainOnly(x.name) || /\((감사|적용)/.test(x.name)));
     if (!twins.length || sheets.some((x) => !x.hidden && SMALL.test(x.name) && baseCode(x.name) === code)) return;
     const t = twins.find((x) => !x.hidden) ?? twins[0];
     if (t.hidden) out.show.push(t.name);
-    const j = sheets.indexOf(t);
-    if (j !== i + 1 && Math.abs(j - i) > 2) out.move.push({ name: t.name, after: s.name });
   });
   return out;
 }
@@ -108,7 +108,7 @@ export function planTidy(sheets: Sh[]): Tidy {
 /** 다듬기를 워크북에 — files 는 제자리에서. */
 export function applyTidy(files: Record<string, Uint8Array>, t: Tidy): void {
   for (const n of t.show) setSheetHidden(files, n, false);
-  for (const m of t.move) moveSheetAfter(files, m.name, m.after);
+  sortSheetsByCode(files);                                         // 조서 번호 순서(사용자 2026-09-28)
 }
 type TplSheet = { file: string; name: string; code: string | null; hidden: boolean };
 
@@ -196,13 +196,7 @@ export function applyLarge(
   }
   // 다른 시트의 수식이 소규모 시트를 가리키면 새 시트로(2700A → 2700A-2(소규모) 등).
   if (rename.size) for (const e of sheetEntries(files)) files[e.part] = strToU8(renameSheetRefs(strFromU8(files[e.part]), rename));
-  // 새로 넣은 일반 시트는 맨 뒤에 붙는다 — 숨긴 소규모 시트 바로 뒤로(사용자 2026-09-28 「소규모 시트가 숨김으로만 들어가 있다」).
+  // 새로 넣은 일반 시트는 맨 뒤에 붙는다 — 조서 번호 순서로(사용자 2026-09-28 「조서시트의 번호별로 순서가 이어져야」).
   applyTidy(files, planTidy(sheetEntries(files).map((e) => ({ name: e.name, hidden: !!e.state && e.state !== 'visible' }))));
-  // 짝 없이 넣은 시트(2700A-4) — 같은 무리의 바로 앞 번호 뒤로(2700A-3(감사수행단계) 뒤).
-  for (const st of plan.steps.filter((x) => !x.small && x.how === '양식에서')) {
-    const es = sheetEntries(files);
-    const prev = es.filter((e) => e.name !== st.to && (!e.state || e.state === 'visible') && baseCode(e.name).startsWith(st.code.slice(0, 5)) && baseCode(e.name) < st.code).pop();
-    if (prev) moveSheetAfter(files, st.to, prev.name);
-  }
   return out;
 }

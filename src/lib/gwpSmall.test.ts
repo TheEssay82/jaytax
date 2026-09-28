@@ -44,11 +44,10 @@ test('소규모 → 일반 — 보이는 「번호(소규모)」만, 일반 시�
   ]);
 });
 
-test('다듬기 — 숨긴 소규모의 일반 짝이 숨어 있으면 보이고, 맨 뒤에 있으면 소규모 바로 뒤로', () => {
+test('다듬기 — 숨긴 소규모의 일반 짝이 숨어 있으면 보인다(차례는 조서 번호 순서가 맡는다)', () => {
   const t = planTidy([
     { name: '1200(소규모)', hidden: true }, { name: '2100(소규모)', hidden: true }, { name: '2100A' }, { name: '2700A (소규모)', hidden: true },
     { name: '8100' }, { name: '8700' }, { name: '1200' }, { name: '2100' }, { name: '2700A', hidden: true },
   ]);
   assert.deepEqual(t.show, ['2700A']);
-  assert.deepEqual(t.move, [{ name: '1200', after: '1200(소규모)' }, { name: '2100', after: '2100(소규모)' }, { name: '2700A', after: '2700A (소규모)' }]);
 });

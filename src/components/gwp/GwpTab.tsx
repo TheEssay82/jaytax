@@ -25,6 +25,7 @@ import {
 } from '../../lib/gwpApi';
 import { readBundle, templateCodes, findTemplateSheet } from '../../lib/gwpTemplate';
 import { planSmall, applySmall, planLarge, applyLarge, planTidy } from '../../lib/gwpSmall';
+import { isCodeOrdered, sortSheetsByCode } from '../../lib/gwpOrder';
 import { unzip, zip } from '../../lib/xlsxTransplant';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { buildCatalog, sectionOf, type Catalog, type CatalogSheet } from '../../lib/gwpCatalog';
@@ -161,8 +162,11 @@ export default function GwpTab() {
     const list = latest.catalog.sheets.map((s) => ({ name: s.name, hidden: s.hidden }));
     const p = planLarge(list, (c) => findTemplateSheet(tpl.catalog, c), tpl.catalog.sheets);
     const t = planTidy(list);
-    return p.steps.length || t.show.length || t.move.length ? { ...p, tidy: t } : null;
+    const unsorted = !isCodeOrdered(list.map((x) => x.name));
+    return p.steps.length || t.show.length ? { ...p, tidy: t, unsorted } : null;
   }, [latest, year, tpl]);
+  // 시트 차례 — 조서 번호 순서가 아니면(사용자 2026-09-28 「조서시트의 번호별로 순서가 이어져야」). 다른 정리 카드가 없을 때만 따로 띄운다.
+  const needSort = useMemo(() => !!latest && !isCodeOrdered(latest.catalog.sheets.map((s) => s.name)), [latest]);
   // 회사를 바꾸면 — 올해 파일이 있으면 ② 단계 진행부터, 없으면 ① 올해 파일부터.
   const hasBook = !!latest;
   // 방금 이월·새로 만들었으면(report·assembled) ① 에 머물러 요약을 보인다.
@@ -265,6 +269,11 @@ export default function GwpTab() {
           smallNote = ` · 소규모 → ${year.auditBasis} 정리 ${lr.done.map((d) => d.to).join(',')}`;
         }
       }
+      // 조서 번호 순서로(양식에서 넣은 시트는 맨 뒤에 붙는다) — 사용자 2026-09-28.
+      {
+        const uf = unzip(outBytes);
+        if (sortSheetsByCode(uf)) { outBytes = zip(uf); outCat = buildCatalog(readWorkbook(outBytes)); }
+      }
       const name = `일반조서_${safeName(picked.entityName)}_FY${picked.fy}_이월본.xlsx`;
       const book = await addBook(picked.id, '이월본', { name, bytes: outBytes }, outCat,
         `${source} + ${tpl.fy} ${tpl.basis} 양식${pick.replace?.length ? ` · 갈아끼움 ${pick.replace.join(',')}` : ''}${pick.addCodes?.length ? ` · 넣음 ${pick.addCodes.join(',')}` : ''}${smallNote}`);
@@ -336,6 +345,21 @@ export default function GwpTab() {
       download(bytes, book.fileName, XLSX);
       setBooks(await listBooks(picked.id));
       setMsg(`v${book.version}을 만들고 내려받았습니다 — 소규모 시트 ${lr.done.filter((d) => d.small).length}장을 ${year.auditBasis} 양식 시트로 바꾸고 소규모 시트는 숨겼습니다(지우지 않음). 1차 확정을 다시 하면 웹 조서 값이 새 시트에 들어갑니다.`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '정리하지 못했습니다.'); } finally { setBusy(''); }
+  }
+
+  /** 시트 차례만 조서 번호 순서로 — 새 판(사용자 2026-09-28). */
+  async function fixOrder() {
+    if (!picked || !latest) return;
+    setBusy('order'); setErr(null);
+    try {
+      const uf = unzip(await fileBytes(latest.storagePath));
+      if (!sortSheetsByCode(uf)) { setMsg('이미 조서 번호 순서입니다.'); return; }
+      const bytes = zip(uf);
+      const book = await addBook(picked.id, '작업중', { name: latest.fileName, bytes }, buildCatalog(readWorkbook(bytes)), '시트 차례를 조서 번호 순서로');
+      download(bytes, book.fileName, XLSX);
+      setBooks(await listBooks(picked.id));
+      setMsg(`v${book.version}을 만들고 내려받았습니다 — 시트를 조서 번호 순서로 늘어놓았습니다(내용은 그대로).`);
     } catch (e) { setErr(e instanceof Error ? e.message : '정리하지 못했습니다.'); } finally { setBusy(''); }
   }
 
@@ -744,7 +768,7 @@ export default function GwpTab() {
                         <thead><tr style={{ background: 'var(--surface-2)' }}><th>번호</th><th>숨길 시트</th><th>쓸 시트(보이게)</th></tr></thead>
                         <tbody>
                           {largePlan.tidy?.show.map((n) => <tr key={`s:${n}`}><td>—</td><td>—</td><td><b>{n}</b> <span style={{ color: 'var(--ink-3)' }}>(숨어 있음 → 보이게)</span></td></tr>)}
-                          {largePlan.tidy?.move.map((m) => <tr key={`m:${m.name}`}><td>—</td><td>{m.after}</td><td><b>{m.name}</b> <span style={{ color: 'var(--ink-3)' }}>(맨 뒤 → {m.after} 바로 뒤로)</span></td></tr>)}
+                          {largePlan.unsorted && <tr><td>—</td><td>—</td><td><b>시트 차례를 조서 번호 순서로</b> <span style={{ color: 'var(--ink-3)' }}>(맨 뒤에 붙은 시트 포함)</span></td></tr>}
                           {largePlan.steps.map((p) => (
                             <tr key={p.to}><td>{p.code}</td><td>{p.small || '—'}</td><td><b>{p.to}</b> <span style={{ color: 'var(--ink-3)' }}>{p.how === '양식에서' ? (p.small ? '(올해 양식에서 새로)' : '(2700A 요약이 쓰는 짝 — 올해 양식에서 새로)') : p.how === '보이기' ? '(숨겨 둔 일반 시트)' : ''}</span></td></tr>
                           ))}
@@ -757,6 +781,15 @@ export default function GwpTab() {
                       <button className="btn-p" style={{ marginTop: 8 }} disabled={!canWrite || !!busy} onClick={() => void fixLarge()}>
                         {busy === 'large' ? '정리하는 중…' : `정리해서 v${(latest?.version ?? 0) + 1} 만들기`}
                       </button>
+                    </div>
+                  )}
+
+                  {needSort && !largePlan && !smallPlan && (
+                    <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--warn)', fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
+                      <b>시트 차례가 조서 번호 순서가 아닙니다</b> — 양식에서 새로 넣은 시트가 맨 뒤에 붙어 있습니다. 조서 번호 순서로 늘어놓겠습니다(내용은 그대로, 딸림 시트는 제 조서 뒤를 따라감).
+                      <div><button className="btn-p" style={{ marginTop: 8 }} disabled={!canWrite || !!busy} onClick={() => void fixOrder()}>
+                        {busy === 'order' ? '정리하는 중…' : `정리해서 v${(latest?.version ?? 0) + 1} 만들기`}
+                      </button></div>
                     </div>
                   )}
 

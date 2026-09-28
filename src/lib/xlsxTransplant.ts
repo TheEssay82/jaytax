@@ -410,25 +410,34 @@ export const MINIMAL_STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="
   + '</styleSheet>';
 
 /**
- * 시트 차례 옮기기 — name 을 after 바로 뒤로. 시트 번호로 걸린 것(정의된 이름의 localSheetId, 열 때 탭 activeTab·firstSheet)도
- * 새 차례로 바꾼다(평안정공: 이름 1만8천 개가 localSheetId 로 묶여 있다). 소규모 → 일반 정리에서 새 일반 시트를 숨긴 소규모 옆에 둔다.
+ * 시트 차례 바꾸기 — names 차례로(빠진 이름은 원래 자리 뒤에 그대로). 시트 번호로 걸린 것(정의된 이름의 localSheetId,
+ * 열 때 탭 activeTab·firstSheet)도 새 차례로 바꾼다(평안정공: 이름 1만8천 개가 localSheetId 로 묶여 있다).
  */
-export function moveSheetAfter(files: Record<string, Uint8Array>, name: string, after: string): boolean {
+export function reorderSheets(files: Record<string, Uint8Array>, names: string[]): boolean {
   let wb = strFromU8(files['xl/workbook.xml']);
   const block = /<sheets>([\s\S]*?)<\/sheets>/.exec(wb);
   if (!block) return false;
   const els = [...block[1].matchAll(/<sheet\b[^>]*?\/>/g)].map((m) => m[0]);
   const nameOf = (el: string) => unesc(/\bname="([^"]*)"/.exec(el)?.[1] ?? '');
-  const i = els.findIndex((el) => nameOf(el) === name), j = els.findIndex((el) => nameOf(el) === after);
-  if (i < 0 || j < 0 || i === j + 1) return false;
-  const order = els.map((_, k) => k).filter((k) => k !== i);
-  order.splice(order.indexOf(j) + 1, 0, i);                         // order[새 자리] = 옛 자리
-  const newOf = new Map(order.map((old, nw) => [old, nw]));
+  const idx = new Map(els.map((el, k) => [nameOf(el), k]));
+  const order = [...names.map((n) => idx.get(n)).filter((k): k is number => k != null)];
+  for (let k = 0; k < els.length; k++) if (!order.includes(k)) order.push(k);
+  if (order.every((old, nw) => old === nw)) return false;
+  const newOf = new Map(order.map((old, nw) => [old, nw]));           // order[새 자리] = 옛 자리
   wb = wb.replace(block[0], `<sheets>${order.map((k) => els[k]).join('')}</sheets>`);
   wb = wb.replace(/\blocalSheetId="(\d+)"/g, (_m, n: string) => `localSheetId="${newOf.get(Number(n)) ?? n}"`);
   wb = wb.replace(/<workbookView\b[^>]*?\/?>/, (v) => v
     .replace(/\bactiveTab="(\d+)"/, (_m, n: string) => `activeTab="${newOf.get(Number(n)) ?? n}"`)
-    .replace(/\bfirstSheet="(\d+)"/, (_m, n: string) => `firstSheet="${Math.min(Number(n), newOf.get(Number(n)) ?? Number(n))}"`));
+    .replace(/\bfirstSheet="(\d+)"/, 'firstSheet="0"'));
   files['xl/workbook.xml'] = strToU8(wb);
   return true;
+}
+
+/** name 을 after 바로 뒤로. */
+export function moveSheetAfter(files: Record<string, Uint8Array>, name: string, after: string): boolean {
+  const names = sheetEntries(files).map((e) => e.name).filter((n) => n !== name);
+  const j = names.indexOf(after);
+  if (j < 0 || !sheetEntries(files).some((e) => e.name === name)) return false;
+  names.splice(j + 1, 0, name);
+  return reorderSheets(files, names);
 }
