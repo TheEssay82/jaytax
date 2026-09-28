@@ -32,6 +32,7 @@ import { withDraft, QA_DRAFTS, fsFacts, blanksLeft, BLANK, type PaperQA, type Fs
 import { readLibrary, type Paper2301, type LibCase } from '../../lib/gwpPaper2301';
 import { PAPER_2301G, readExamples, type Paper2301G, type FsRisk } from '../../lib/gwpPaper2301G';
 import Form2301G from './Form2301G';
+import type { AuditBasis } from '../../lib/gwpSetup';
 import { fillFromWtb, type Paper8110, type WtbReport } from '../../lib/gwpPaper8110';
 import { fillFromFs, balance, PAPER_2120A, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
 import type { Paper2110 } from '../../lib/gwpPaper2110';
@@ -342,7 +343,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
             ) : QA_DRAFTS[def.code] ? (
               <FormQA value={data as PaperQA} onChange={change} readOnly={readOnly} draft={QA_DRAFTS[def.code]} fs={qaFs} author={author} />
             ) : def === PAPER_2301G ? (
-              <Form2301G value={data as Paper2301G} onChange={change} readOnly={readOnly} examples={ex2301} big={big2120} />
+              <Form2301G value={data as Paper2301G} onChange={change} readOnly={readOnly} examples={ex2301} big={big2120} basis={eng.basis as AuditBasis} />
             ) : def.code === '2301' ? (
               <Form2301 value={data as Paper2301} onChange={change} readOnly={readOnly} big={big2120} lib={lib2301} />
             ) : def.code === '8110ARP' ? (
