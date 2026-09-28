@@ -164,7 +164,9 @@ export default function GwpFolderCard({ eng, canWrite, canRoll, hasBook, onRoll,
               <div style={{ fontWeight: 700, marginTop: 6 }}>전기 FY{eng.fy - 1} — {prior.year ?? <span style={{ color: 'var(--warn)', fontWeight: 400 }}>{eng.fy - 1}_회계감사 폴더가 없습니다</span>}</div>
               {prior.found && (
                 <>
-                  {row('전기 일반조서', 'gwp', prior.found.일반조서, (c) => (
+                  {row('전기 일반조서', 'gwp', prior.found.일반조서, (c) => !canRoll ? (
+                    <span style={{ color: 'var(--ink-3)' }}>↑ 위의 <b>당기 세팅</b>을 먼저 저장하세요 — 그러면 이월본 버튼이 생깁니다</span>
+                  ) : (
                     <button className="btn-sm btn-sm-navy" disabled={!canWrite || !canRoll || !!busy} title={canRoll ? '' : '당기 세팅·표준양식이 먼저 필요합니다'}
                       onClick={() => { if (!hasBook || confirm('올해 판이 이미 있습니다. 이 파일로 이월본을 다시 만들까요? (새 판이 생깁니다)')) void roll(c); }}>
                       {busy === 'roll' ? '만드는 중…' : !canRoll ? '이월본은 당기 세팅 저장 뒤에' : hasBook ? '이 파일로 이월본 다시 만들기' : '이 파일로 이월본 만들기'}

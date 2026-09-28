@@ -18,6 +18,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.37.4',
+    date: '2026-09-28',
+    title: '업무 폴더 카드 — 세팅 전 안내',
+    highlights: ['당기 세팅 전에는 이월본 자리에 버튼 대신 「↑ 위의 당기 세팅을 먼저 저장하세요」를 보입니다(눌리는 버튼처럼 보여 헷갈렸음).'],
+  },
+  {
     version: '3.37.3',
     date: '2026-09-28',
     title: '업무 폴더 카드 — 폴더 바꾸기',
