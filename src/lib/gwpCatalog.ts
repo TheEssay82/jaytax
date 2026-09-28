@@ -48,7 +48,13 @@ export interface Catalog {
   reportDate: string;
   sheets: CatalogSheet[];
   index: IndexRow[];
+  /** 조서목록의 열 — 머리글로 찾는다. 없으면(옛 목록) 명진 모양 B·C·D·E. */ indexCols?: IndexCols;
 }
+
+/** 조서목록 열 — 명진 B 조서명·C 수행여부·D 작성자·E 작성일, 알티스트 A·C·E·G, 윤성 A·D·F·H. */
+export interface IndexCols { title: string; performed: string; author: string; date: string }
+export const INDEX_COLS: IndexCols = { title: 'B', performed: 'C', author: 'D', date: 'E' };
+export const indexColsOf = (cat: Pick<Catalog, 'indexCols'>): IndexCols => cat.indexCols ?? INDEX_COLS;
 
 const norm = (s: string | undefined) => (s ?? '').replace(/\s/g, '');
 
@@ -162,16 +168,41 @@ export function readHead(sheet: SheetData): PaperHead {
   return head;
 }
 
-/** 「조서목록」 시트를 줄로. B 조서명 · C 수행여부 · D 작성자 · E 작성일(명진 실물 2026-09-15). */
-export function readIndex(sheet: SheetData): IndexRow[] {
+/**
+ * 조서목록의 열 — 「작성자」·「작성일」 머리글이 있는 첫 줄에서. 조서명 열은 그 줄의 맨 왼쪽 글자(「감사계약(1000)」).
+ * 머리글이 없으면 null(명진 모양으로 읽는다).
+ */
+export function findIndexCols(sheet: SheetData): (IndexCols & { headRow: number }) | null {
+  const byRow = new Map<number, { col: string; t: string }[]>();
+  for (const [ref, v] of sheet.cells) {
+    const m = /^([A-Z]+)(\d+)$/.exec(ref);
+    const t = norm(textOf(v));
+    if (!m || !t) continue;
+    const row = Number(m[2]);
+    if (!byRow.has(row)) byRow.set(row, []);
+    byRow.get(row)!.push({ col: m[1], t });
+  }
+  const colNo = (c: string) => [...c].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+  for (const row of [...byRow.keys()].sort((a, b) => a - b)) {
+    const xs = byRow.get(row)!.sort((a, b) => colNo(a.col) - colNo(b.col));
+    const at = (re: RegExp) => xs.find((x) => re.test(x.t))?.col;
+    const author = at(/^작성자$/), date = at(/^작성일(자)?$/);
+    if (!author || !date) continue;
+    return { headRow: row, title: xs[0].col, performed: at(/^수행여부$/) ?? INDEX_COLS.performed, author, date };
+  }
+  return null;
+}
+
+/** 「조서목록」 시트를 줄로. 열은 머리글로(findIndexCols) — 명진 B·C·D·E(2026-09-15), 알티스트·윤성은 조서명이 A열. */
+export function readIndex(sheet: SheetData, cols: IndexCols = findIndexCols(sheet) ?? INDEX_COLS): IndexRow[] {
   const out: IndexRow[] = [];
   const rows = new Set<number>();
   for (const ref of sheet.cells.keys()) {
-    const m = /^B(\d+)$/.exec(ref);
-    if (m) rows.add(Number(m[1]));
+    const m = /^([A-Z]+)(\d+)$/.exec(ref);
+    if (m && m[1] === cols.title) rows.add(Number(m[2]));
   }
   for (const row of [...rows].sort((a, b) => a - b)) {
-    const title = textOf(sheet.cells.get(`B${row}`));
+    const title = textOf(sheet.cells.get(`${cols.title}${row}`));
     // 「2700A-1(적용지침) 중요성 적용지침」처럼 꼬리가 붙은 코드도 한 줄이다.
     const m = /^(\d{4}[A-Z]?(?:-\d+)?[A-Z]?(?:\([^)]*\))?)\s+(.*)$/.exec(title.trim());
     if (!m) continue;
@@ -179,9 +210,9 @@ export function readIndex(sheet: SheetData): IndexRow[] {
       row,
       code: m[1],
       title: m[2].trim(),
-      performed: /^[OoVv○●✓]/.test(textOf(sheet.cells.get(`C${row}`))),
-      author: textOf(sheet.cells.get(`D${row}`)),
-      date: isoDate(sheet.cells.get(`E${row}`)),
+      performed: /^[OoVv○●✓]/.test(textOf(sheet.cells.get(`${cols.performed}${row}`))),
+      author: textOf(sheet.cells.get(`${cols.author}${row}`)),
+      date: isoDate(sheet.cells.get(`${cols.date}${row}`)),
     });
   }
   return out;
@@ -208,7 +239,11 @@ export function buildCatalog(sheets: SheetData[]): Catalog {
   const cat: Catalog = { company: '', closing: '', period: '', reportDate: '', sheets: [], index: [] };
   for (const s of sheets) {
     const kind = kindOf(s.name);
-    if (kind === 'index') cat.index = readIndex(s);
+    if (kind === 'index') {
+      const cols = findIndexCols(s);
+      if (cols) cat.indexCols = { title: cols.title, performed: cols.performed, author: cols.author, date: cols.date };
+      cat.index = readIndex(s, cat.indexCols);
+    }
     if (kind === 'cover' && norm(s.name).includes('조서표지')) Object.assign(cat, readCover(s));
     let formulas = 0;
     for (const v of s.cells.values()) if (v.formula != null) formulas += 1;

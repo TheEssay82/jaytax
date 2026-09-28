@@ -18,7 +18,7 @@
 // 값을 지어내지 않는다. 옮긴 것·못 옮긴 것·새로 생긴 조서·양식에서 사라진 조서를 전부 보고한다.
 import { strFromU8, strToU8 } from 'fflate';
 import { readWorkbook, type SheetData, type CellValue } from './xlsxRead';
-import { buildCatalog, codeOf, kindOf, isoDate, type Catalog } from './gwpCatalog';
+import { buildCatalog, codeOf, kindOf, isoDate, indexColsOf, INDEX_COLS, type Catalog, type IndexCols } from './gwpCatalog';
 import { findTemplateSheet, type TemplateCatalog } from './gwpTemplate';
 import {
   transplantSheet, sheetEntries, dropCalcChain, forceRecalc, unzip, zip,
@@ -250,16 +250,17 @@ function sheetRef(name: string): string {
 /** 머리를 사무소 관행대로 링크한다. 조서목록 줄이 없으면 작성자·일자는 비운다. */
 export function headEdits(
   refs: ReturnType<typeof headRefs>, coverName: string, indexName: string, indexRow: number | null, reviewer: string,
+  /** 조서목록 열 — 명진 D·E, 알티스트 E·G, 윤성 F·H */ cols: IndexCols = INDEX_COLS,
 ): CellEdit[] {
   const edits: CellEdit[] = [];
   if (refs.company) edits.push({ ref: refs.company, formula: `${sheetRef(coverName)}!B14` });
   if (refs.closing) edits.push({ ref: refs.closing, formula: `${sheetRef(coverName)}!B15` });
   // 목록 칸이 비어 있으면 0 이 아니라 빈 글자가 보이게 — 날짜꼴 칸에 0 이 오면 「######」로 보인다.
-  const link = (col: 'D' | 'E') => `IF(${sheetRef(indexName)}!${col}${indexRow}="","",${sheetRef(indexName)}!${col}${indexRow})`;
-  if (refs.author) edits.push(indexRow ? { ref: refs.author, formula: link('D') } : { ref: refs.author, clear: true });
+  const link = (col: string) => `IF(${sheetRef(indexName)}!${col}${indexRow}="","",${sheetRef(indexName)}!${col}${indexRow})`;
+  if (refs.author) edits.push(indexRow ? { ref: refs.author, formula: link(cols.author) } : { ref: refs.author, clear: true });
   if (refs.reviewer) edits.push(reviewer ? { ref: refs.reviewer, text: reviewer } : { ref: refs.reviewer, clear: true });
   refs.dates.forEach((ref, i) => {
-    if (i === 0) edits.push(indexRow ? { ref, formula: link('E') } : { ref, clear: true });
+    if (i === 0) edits.push(indexRow ? { ref, formula: link(cols.date) } : { ref, clear: true });
     else edits.push({ ref, formula: `IF(${refs.dates[0]}="","",${refs.dates[0]})` });
   });
   return edits;
@@ -363,7 +364,7 @@ export function headLinker(sheets: SheetData[], cat: Catalog) {
   const indexName = sheets.find((s) => kindOf(s.name) === 'index')?.name ?? '조서목록';
   const indexRowFor = indexRowResolver(cat);
   return (sheet: SheetData, code: string, reviewer: string): CellEdit[] =>
-    headEdits(headRefs(sheet), coverName, indexName, indexRowFor(code), reviewer);
+    headEdits(headRefs(sheet), coverName, indexName, indexRowFor(code), reviewer, indexColsOf(cat));
 }
 
 /**
@@ -419,7 +420,7 @@ export function rollWorkbook(
   function keepSheet(sheetName: string, sheet: SheetData, code: string, reviewer: string, withHead = true): { dates: number; carried?: number; note?: string } {
     const e = sheetEntries(files).find((x) => x.name === sheetName);
     if (!e) return { dates: 0 };
-    const head = withHead ? headEdits(headRefs(sheet), coverName, indexName, indexRowFor(code), reviewer) : [];
+    const head = withHead ? headEdits(headRefs(sheet), coverName, indexName, indexRowFor(code), reviewer, indexColsOf(cat)) : [];
     const skip = new Set(head.map((x) => x.ref));
     const body: CellEdit[] = []; const refs: string[] = [];
     let carried: number | undefined; let note: string | undefined;
@@ -511,7 +512,7 @@ export function rollWorkbook(
     const mig = migrateInputs(priorSheet, tplData);
     const refs = headRefs(tplData);
     const moved = rules ? mig.edits.map((x) => bumpEdit(x, rules)) : mig.edits;
-    const edits: CellEdit[] = [...moved, ...headEdits(refs, coverName, indexName, indexRowFor(cs.code), reviewer)];
+    const edits: CellEdit[] = [...moved, ...headEdits(refs, coverName, indexName, indexRowFor(cs.code), reviewer, indexColsOf(cat))];
     let xml = strFromU8(files[r.part]);
     xml = renameSheetRefs(xml, tplNameMap);
     if (edits.length) xml = setCells(xml, edits);
@@ -542,7 +543,7 @@ export function rollWorkbook(
       existing.add(name);
       let xml = strFromU8(files[r.part]);
       xml = renameSheetRefs(xml, tplNameMap);
-      const edits = headEdits(headRefs(tplData), coverName, indexName, indexRowFor(t.code), opts.reviewer ?? '');
+      const edits = headEdits(headRefs(tplData), coverName, indexName, indexRowFor(t.code), opts.reviewer ?? '', indexColsOf(cat));
       if (edits.length) xml = setCells(xml, edits);
       files[r.part] = strToU8(xml);
       blackenSheet(files, r.part);
@@ -580,7 +581,7 @@ export function rollWorkbook(
   // 조서목록 — 작성일 비움.
   if (indexSheet) {
     const e = sheetEntries(files).find((x) => x.name === indexSheet.name)!;
-    const edits: CellEdit[] = cat.index.filter((r) => r.date).map((r) => ({ ref: `E${r.row}`, clear: true }));
+    const edits: CellEdit[] = cat.index.filter((r) => r.date).map((r) => ({ ref: `${indexColsOf(cat).date}${r.row}`, clear: true }));
     report.index.datesCleared = edits.length;
     if (edits.length) files[e.part] = strToU8(setCells(strFromU8(files[e.part]), edits));
     mark(e.part, edits.map((x) => x.ref));

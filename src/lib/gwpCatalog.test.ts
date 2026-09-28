@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { codeOf, kindOf, isoDate, readHead, readIndex, buildCatalog, sectionOf } from './gwpCatalog.ts';
+import { codeOf, kindOf, isoDate, readHead, readIndex, findIndexCols, buildCatalog, sectionOf } from './gwpCatalog.ts';
 import type { SheetData, CellValue } from './xlsxRead.ts';
 
 function sheet(name: string, cells: Record<string, CellValue>, hidden = false): SheetData {
@@ -83,6 +83,29 @@ test('조서목록 — 코드·제목·수행여부·작성자·작성일', () =
   assert.deepEqual(rows[0], { row: 8, code: '1100', title: '계약전 위험평가 및 업무조건의 합의', performed: true, author: '정우철', date: '2025-04-14' });
   assert.equal(rows[2].performed, false);
   assert.equal(rows[2].author, '');
+});
+
+test('조서목록 — 열은 머리글로(알티스트 A·C·E·G, 윤성 A·D·F·H), 위쪽 영구조서 목록(3자리)은 뺀다', () => {
+  const alt = sheet('감사조서목록', {
+    A4: { text: '조서명' }, B4: { text: 'Reference' }, C4: { text: '징구또는 기록여부' }, E4: { text: '작성연도' },
+    A8: { text: '110 회사의 연혁, 영업에 관한 소개' },
+    A37: { text: '감사계약(1000)' }, C37: { text: '수행여부' }, E37: { text: '작성자' }, G37: { text: '작성일' },
+    A38: { text: '1100 계약전 위험평가에 대한 검토' }, B38: { text: '1100' }, C38: { text: 'O' }, E38: { text: '정우철' }, G38: { num: 45775 },
+    A49: { text: '2120A  위험평가 분석적절차' }, B49: { text: '2100A' }, C49: { text: 'O' }, E49: { text: '정우철' },
+  });
+  assert.deepEqual(findIndexCols(alt), { headRow: 37, title: 'A', performed: 'C', author: 'E', date: 'G' });
+  const rows = readIndex(alt);
+  assert.deepEqual(rows.map((r) => r.code), ['1100', '2120A']);
+  assert.deepEqual(rows[0], { row: 38, code: '1100', title: '계약전 위험평가에 대한 검토', performed: true, author: '정우철', date: '2025-04-28' });
+  const ys = sheet('감사조서목록', {
+    A37: { text: '감사계약(1000)' }, B37: { text: '반기검토 조서화' }, D37: { text: '수행여부' }, F37: { text: '작성자' }, H37: { text: '작성일' },
+    A38: { text: '1100 계약전 위험평가' }, D38: { text: 'ERP' }, F38: { text: '조현규' },
+  });
+  const cat = buildCatalog([ys]);
+  assert.deepEqual(cat.indexCols, { title: 'A', performed: 'D', author: 'F', date: 'H' });
+  assert.equal(cat.index[0].author, '조현규');
+  // 명진 모양(머리글 없음) — B·C·D·E
+  assert.equal(findIndexCols(sheet('조서목록', { B8: { text: '1100 x' } })), null);
 });
 
 test('워크북 목록 — 표지에서 회사·결산일, 시트마다 종류·코드·숨김', () => {

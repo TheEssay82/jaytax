@@ -10,7 +10,7 @@ import { readWorkbook } from './xlsxRead';
 import { setCells, excelSerial, type CellEdit } from './xlsxCells';
 import { sheetEntries, unzip, zip } from './xlsxTransplant';
 import { setTabColor, highlightCells, tabColorOf, tabStateOf, TAB } from './xlsxMark';
-import { buildCatalog, kindOf, type Catalog, type CatalogSheet } from './gwpCatalog';
+import { buildCatalog, kindOf, indexColsOf, type Catalog, type CatalogSheet } from './gwpCatalog';
 import { indexRowResolver } from './gwpRoll';
 import type { StageNo } from './gwpStage';
 
@@ -48,6 +48,7 @@ export function closeStage(bytes: Uint8Array, no: StageNo, o: CloseOptions): Clo
 
   // 조서목록 — 작성자 D · 작성일 E(명진 모양). 비어 있을 때만.
   if (index && serial != null) {
+    const cols = indexColsOf(cat);
     const edits: CellEdit[] = [];
     const seen = new Set<number>();
     for (const p of papers) {
@@ -57,8 +58,8 @@ export function closeStage(bytes: Uint8Array, no: StageNo, o: CloseOptions): Clo
       seen.add(row);
       const ix = cat.index.find((r) => r.row === row);
       let did = false;
-      if (!ix?.author && o.author.trim()) { edits.push({ ref: `D${row}`, text: o.author.trim() }); did = true; }
-      if (!ix?.date) { edits.push({ ref: `E${row}`, num: serial }); did = true; }
+      if (!ix?.author && o.author.trim()) { edits.push({ ref: `${cols.author}${row}`, text: o.author.trim() }); did = true; }
+      if (!ix?.date) { edits.push({ ref: `${cols.date}${row}`, num: serial }); did = true; }
       if (did) out.dated.push(ix?.code ?? p.code!);
     }
     const e = sheetEntries(files).find((x) => x.name === index.name);
