@@ -23,8 +23,8 @@ import {
   listTemplates, listBooks, addBook, setBookKind, pickBase, fileBytes, fileUrl, fmtKb,
   type GwpTemplate, type GwpBook, type BookKind,
 } from '../../lib/gwpApi';
-import { readBundle, templateCodes } from '../../lib/gwpTemplate';
-import { planSmall, applySmall } from '../../lib/gwpSmall';
+import { readBundle, templateCodes, findTemplateSheet } from '../../lib/gwpTemplate';
+import { planSmall, applySmall, planLarge, applyLarge } from '../../lib/gwpSmall';
 import { unzip, zip } from '../../lib/xlsxTransplant';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { buildCatalog, sectionOf, type Catalog, type CatalogSheet } from '../../lib/gwpCatalog';
@@ -155,6 +155,12 @@ export default function GwpTab() {
     const p = planSmall(latest.catalog.sheets.map((s) => ({ name: s.name, hidden: s.hidden })), tc);
     return p.pairs.length || p.hide.length ? p : null;
   }, [latest, year?.auditBasis, tpl]);
+  // 반대 — 일반·K-IFRS 감사인데 「번호(소규모)」 시트를 쓰고 있다(평안정공: 작년 소규모 → 올해 일반, 2026-09-28).
+  const largePlan = useMemo(() => {
+    if (!latest || !tpl || !year || year.auditBasis === '소규모감사기준') return null;
+    const p = planLarge(latest.catalog.sheets.map((s) => ({ name: s.name, hidden: s.hidden })), (c) => findTemplateSheet(tpl.catalog, c), tpl.catalog.sheets);
+    return p.steps.length ? p : null;
+  }, [latest, year, tpl]);
   // 회사를 바꾸면 — 올해 파일이 있으면 ② 단계 진행부터, 없으면 ① 올해 파일부터.
   const hasBook = !!latest;
   // 방금 이월·새로 만들었으면(report·assembled) ① 에 머물러 요약을 보인다.
@@ -246,6 +252,16 @@ export default function GwpTab() {
           outCat = buildCatalog(readWorkbook(outBytes));
           smallNote = ` · 소규모 짝 정리 ${sr.done.map((d) => d.small).join(',')}${sr.hidden.length ? ` · 숨김 ${sr.hidden.join(',')}` : ''}`;
         }
+      } else {
+        // 일반·K-IFRS 감사인데 작년 조서가 「번호(소규모)」 시트였다 — 올해 기준 양식 시트로(평안정공).
+        const plan = planLarge(readWorkbook(r.bytes).map((s) => ({ name: s.name, hidden: s.hidden })), (c) => findTemplateSheet(catalog, c), catalog.sheets);
+        if (plan.steps.length) {
+          const uf = unzip(r.bytes);
+          const lr = applyLarge(uf, plan, { catalog, files }, year.partner, unzip);
+          outBytes = zip(uf);
+          outCat = buildCatalog(readWorkbook(outBytes));
+          smallNote = ` · 소규모 → ${year.auditBasis} 정리 ${lr.done.map((d) => d.to).join(',')}`;
+        }
       }
       const name = `일반조서_${safeName(picked.entityName)}_FY${picked.fy}_이월본.xlsx`;
       const book = await addBook(picked.id, '이월본', { name, bytes: outBytes }, outCat,
@@ -301,6 +317,23 @@ export default function GwpTab() {
       download(bytes, book.fileName, XLSX);
       setBooks(await listBooks(picked.id));
       setMsg(`소규모 짝을 정리해 v${book.version}을 만들고 내려받았습니다 — ${sr.done.map((d) => d.small).join(', ')} 을 쓰고 일반 양식 ${[...sr.done.map((d) => d.plain), ...sr.hidden].join(', ')} 은 숨겼습니다(지우지 않음).`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '정리하지 못했습니다.'); } finally { setBusy(''); }
+  }
+
+  /** 소규모 → 일반 정리 — 이미 만든 판에서 「번호(소규모)」를 올해 기준 양식 시트로 바꾼 새 판(사용자 2026-09-28 평안정공). */
+  async function fixLarge() {
+    if (!picked || !year || !latest || !tpl || !largePlan) return;
+    setBusy('large'); setErr(null);
+    try {
+      const t = readBundle(await fileBytes(tpl.storagePath));
+      const uf = unzip(await fileBytes(latest.storagePath));
+      const lr = applyLarge(uf, largePlan, t, year.partner, unzip);
+      const bytes = zip(uf);
+      const book = await addBook(picked.id, '작업중', { name: latest.fileName, bytes }, buildCatalog(readWorkbook(bytes)),
+        `소규모 → ${year.auditBasis} 정리 — ${lr.done.map((d) => `${d.to}${d.small ? `(←${d.small}, 작년 값 ${d.moved}칸)` : '(새로)'}`).join(' · ')}`);
+      download(bytes, book.fileName, XLSX);
+      setBooks(await listBooks(picked.id));
+      setMsg(`v${book.version}을 만들고 내려받았습니다 — 소규모 시트 ${lr.done.filter((d) => d.small).length}장을 ${year.auditBasis} 양식 시트로 바꾸고 소규모 시트는 숨겼습니다(지우지 않음). 1차 확정을 다시 하면 웹 조서 값이 새 시트에 들어갑니다.`);
     } catch (e) { setErr(e instanceof Error ? e.message : '정리하지 못했습니다.'); } finally { setBusy(''); }
   }
 
@@ -697,6 +730,28 @@ export default function GwpTab() {
                       <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)', marginTop: 4 }}>작년 일반 양식과 올해 소규모 양식은 모양이 달라 옮겨지지 않는 칸이 많습니다 — 숨긴 일반 시트를 보면서 소규모 시트에 적으세요.</div>
                       <button className="btn-p" style={{ marginTop: 8 }} disabled={!canWrite || !!busy} onClick={() => void fixSmall()}>
                         {busy === 'small' ? '정리하는 중…' : `정리해서 v${(latest?.version ?? 0) + 1} 만들기`}
+                      </button>
+                    </div>
+                  )}
+
+                  {largePlan && (
+                    <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--warn)', fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
+                      <b>소규모 → {AUDIT_BASIS_LABEL[year!.auditBasis]} 정리가 필요합니다</b> — 조서 기준은 {AUDIT_BASIS_LABEL[year!.auditBasis]}인데 작년 조서가 「번호(소규모)」 시트를 쓰고 있습니다.
+                      올해 {year!.auditBasis} 양식 시트로 바꾸고, 작년 값은 줄 이름이 같은 칸만 옮기고, 소규모 시트는 숨기겠습니다(지우지 않음).
+                      <table className="tbl" style={{ marginTop: 6 }}>
+                        <thead><tr style={{ background: 'var(--surface-2)' }}><th>번호</th><th>숨길 시트</th><th>쓸 시트(보이게)</th></tr></thead>
+                        <tbody>
+                          {largePlan.steps.map((p) => (
+                            <tr key={p.to}><td>{p.code}</td><td>{p.small || '—'}</td><td><b>{p.to}</b> <span style={{ color: 'var(--ink-3)' }}>{p.how === '양식에서' ? (p.small ? '(올해 양식에서 새로)' : '(2700A 요약이 쓰는 짝 — 올해 양식에서 새로)') : p.how === '보이기' ? '(숨겨 둔 일반 시트)' : ''}</span></td></tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)', marginTop: 4 }}>
+                        소규모와 일반 양식은 모양이 달라 옮겨지지 않는 칸이 많습니다(2100 · 1200 등) — 숨긴 소규모 시트를 보면서 적으세요. 웹 조서(2110A · 2110 · 2700A)는 1차 확정을 다시 하면 새 시트에 들어갑니다.
+                        1차 확정이 되어 있으면 ② 에서 [1차 확정 취소] → 여기서 정리 → [1차 확정] 순서로 하세요.
+                      </div>
+                      <button className="btn-p" style={{ marginTop: 8 }} disabled={!canWrite || !!busy} onClick={() => void fixLarge()}>
+                        {busy === 'large' ? '정리하는 중…' : `정리해서 v${(latest?.version ?? 0) + 1} 만들기`}
                       </button>
                     </div>
                   )}

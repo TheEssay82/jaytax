@@ -1,7 +1,7 @@
 // 소규모 짝 정리 — 「번호(소규모)」 숨김 + 일반 「번호」 보임이면 소규모 쪽을 쓴다(명진 FY25 모양).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { planSmall } from './gwpSmall';
+import { planSmall, planLarge } from './gwpSmall';
 
 const MJ = [
   { name: '2301' }, { name: '2302', hidden: true },
@@ -25,4 +25,21 @@ test('꼬리 붙은 시트(2700A-1(적용지침))는 일반 짝으로 보지 않
 test('올해 양식에 있는 번호는 딸림으로 숨기지 않는다', () => {
   const p = planSmall(MJ, new Set(['2512']));
   assert.deepEqual(p.hide, ['2513']);
+});
+
+test('소규모 → 일반 — 보이는 「번호(소규모)」만, 일반 시트가 있으면 보이기, 없으면 양식에서, 양식에 없으면 그대로, 2700A 짝(2700A-4)도', () => {
+  const tpl = [
+    { file: 'a', name: '2110A', code: '2110A', hidden: false }, { file: 'a', name: '2700A', code: '2700A', hidden: false },
+    { file: 'a', name: '2700A-1(적용지침)', code: '2700A-1(적용지침)', hidden: false },
+    { file: 'a', name: '2700A-2(감사계획단계)', code: '2700A-2(감사계획단계)', hidden: false },
+    { file: 'a', name: '2700A-4(감사완결단계)', code: '2700A-4(감사완결단계)', hidden: false },
+  ];
+  const find = (c: string) => tpl.find((t) => t.code === c) ?? tpl.find((t) => t.code.replace(/\(.*$/, '') === c) ?? null;
+  const plan = planLarge([
+    { name: '1100(소규모)' }, { name: '2110A(소규모)' }, { name: '2110A', hidden: true },
+    { name: '2700A (소규모)' }, { name: '2700A-1(적용지침)' }, { name: '2700A-1(소규모)', hidden: true }, { name: '2700A-2(소규모)' },
+  ], find, tpl);
+  assert.deepEqual(plan.steps.map((s) => `${s.small}>${s.to}:${s.how}`), [
+    '2110A(소규모)>2110A:보이기', '2700A (소규모)>2700A:양식에서', '2700A-2(소규모)>2700A-2(감사계획단계):양식에서', '>2700A-4(감사완결단계):양식에서',
+  ]);
 });

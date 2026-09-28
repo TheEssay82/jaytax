@@ -373,7 +373,21 @@ export function setSheetHidden(files: Record<string, Uint8Array>, name: string, 
   if (!e) return false;
   let raw = e.raw.replace(/\s+state="[^"]*"/, '');
   if (hidden) raw = raw.replace(/\/>$/, ' state="hidden"/>');
-  files['xl/workbook.xml'] = strToU8(strFromU8(files['xl/workbook.xml']).replace(e.raw, raw));
+  let wb = strFromU8(files['xl/workbook.xml']).replace(e.raw, raw);
+  // 열 때 고른 탭(activeTab)이 숨긴 시트면 엑셀이 그 시트를 도로 보인다(평안정공 2700A-1(소규모), 2026-09-28) — 보이는 첫 시트로.
+  if (hidden) {
+    const states = [...wb.matchAll(/<sheet\b[^>]*?\/>/g)].map((m) => /\bstate="(hidden|veryHidden)"/.test(m[0]));
+    const firstVisible = states.findIndex((h) => !h);
+    wb = wb.replace(/<workbookView\b[^>]*?\/?>/, (v) => {
+      const at = Number(/\bactiveTab="(\d+)"/.exec(v)?.[1] ?? 0);
+      if (!states[at] || firstVisible < 0) return v;
+      const fs = Number(/\bfirstSheet="(\d+)"/.exec(v)?.[1] ?? 0);
+      let out = /\bactiveTab="/.test(v) ? v.replace(/\bactiveTab="\d+"/, `activeTab="${firstVisible}"`) : v.replace(/<workbookView\b/, `<workbookView activeTab="${firstVisible}"`);
+      if (fs > firstVisible) out = out.replace(/\bfirstSheet="\d+"/, `firstSheet="${firstVisible}"`);
+      return out;
+    });
+  }
+  files['xl/workbook.xml'] = strToU8(wb);
   return true;
 }
 
