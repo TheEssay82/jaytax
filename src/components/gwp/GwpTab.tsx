@@ -507,7 +507,8 @@ export default function GwpTab() {
               </div>
 
               {/* 업무 폴더에서 가져오기 — 내가 담당회계사인 건만(사용자 2026-09-28). 다른 건은 직접 올리기. */}
-              {year && (view === 'file' || view === 'stage') && !!contractCpa && contractCpa === profileName && (
+              {/* 내 건 = 감사계약 담당회계사가 나, 또는 당기 세팅 작성자가 나(지정감사는 담당이 「법인(지정)」 — 윤성, 사용자 2026-09-28). */}
+              {year && (view === 'file' || view === 'stage') && !!profileName && (contractCpa === profileName || year.authorDefault === profileName) && (
                 <GwpFolderCard key={picked.id} eng={picked} canWrite={canWrite} canRoll={!!tpl && canWrite} hasBook={!!latest}
                   onRoll={(bytes, label) => rollFromBytes(bytes, label)} onMsg={(m) => setMsg(m)} />
               )}

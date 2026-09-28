@@ -32,7 +32,11 @@ export function matchCompany(folders: string[], entity: string, remembered?: str
   const exact = folders.filter((f) => norm(f) === e);
   if (exact.length === 1) return { pick: exact[0], options: exact };
   const part = folders.filter((f) => { const n = norm(f); return n.length >= 2 && (n.includes(e) || e.includes(n)); });
-  return { pick: part.length === 1 ? part[0] : null, options: part };
+  if (part.length) return { pick: part.length === 1 ? part[0] : null, options: part };
+  // 글자는 같고 순서만 다르다 — 「이니어스제1호블라인드」 ↔ 「이니어스블라인드제1호(사모투자합자회사)」(사용자 2026-09-28).
+  const sorted = (s: string) => [...s].sort().join('');
+  const ana = folders.filter((f) => norm(f).length >= 4 && sorted(norm(f)) === sorted(e));
+  return { pick: ana.length === 1 ? ana[0] : null, options: ana };
 }
 
 /** 이 해의 감사 폴더 — 「2025_회계감사」 > 「2025_기말감사」·「2025_개별감사」 > 「2025…감사」. 없으면 null. */
@@ -82,7 +86,7 @@ export function classify(paths: string[], fy: number): Found {
       if (/반기|분기|검토보고서/.test(name)) { score -= 3; why.push('반기·분기'); }
       if (/final/i.test(name)) { score += 1; }
       out.감사보고서.push({ path, name, score, why });
-    } else if (/\.xls[xm]?$/i.test(name) && /(^|[_\s])WTB|정산표/i.test(name)) {
+    } else if (/\.xls[xm]?$/i.test(name) && /WTB|정산표/i.test(name)) {
       if (/기말/.test(name)) { score += 2; why.push('기말'); }
       if (/중간|반기|분기|0930|0630|0331/.test(name)) { score -= 3; why.push('중간·분기'); }
       if (/연결/.test(name)) { score -= 1; why.push('연결'); }

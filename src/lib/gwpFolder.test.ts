@@ -9,7 +9,8 @@ test('회사 폴더 — 같은 이름, 꼬리(사모투자합자회사·유한�
   assert.equal(matchCompany(fs, '(주)알엑스씨').pick, '알엑스씨');
   assert.equal(matchCompany(fs, '오큘러스제1호').pick, '오큘러스제1호사모투자합자회사');
   assert.equal(matchCompany(fs, '마크베이스').pick, '마크베이스(구 인피니플럭스)');
-  assert.equal(matchCompany(fs, '이니어스제1호블라인드').pick, null);
+  assert.equal(matchCompany(fs, '이니어스제1호블라인드').pick, '이니어스블라인드제1호사모투자합자회사');   // 글자 순서만 다름
+  assert.equal(matchCompany(fs, '없는회사').pick, null);
   assert.equal(matchCompany(fs, '이니어스제1호블라인드', '이니어스블라인드제1호사모투자합자회사').pick, '이니어스블라인드제1호사모투자합자회사');
 });
 
@@ -49,4 +50,6 @@ test('애매하면 고르지 않는다 — 나눈 조서(1000·2000), 별도·�
     '400/별도감사보고서_윤성_25년기말_완_260323.dsd', '400/연결감사보고서_윤성_25년기말_완_260323.dsd'], 2025);
   assert.equal(sure(f.일반조서), null);
   assert.equal(sure(f.감사보고서)?.name, '별도감사보고서_윤성_25년기말_완_260323.dsd');
+  const w = classify(['2.기말감사/700_정산표/별도WTB_윤성에프앤씨_FY25Q4_v4_0313_세무조정반영.xlsx', '2.기말감사/510_연결조서및정산표/연결정산표_(주)윤성에프앤씨_FY2025_4분기_20260314.xlsx'], 2025);
+  assert.equal(sure(w.정산표)?.name, '별도WTB_윤성에프앤씨_FY25Q4_v4_0313_세무조정반영.xlsx');
 });
