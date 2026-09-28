@@ -18,6 +18,12 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.37.5',
+    date: '2026-09-28',
+    title: '업무 폴더 카드가 겹쳐 보이던 것',
+    highlights: ['② 단계 진행에서 창을 바꿀 때마다(alt-tab) 「업무 폴더에서 가져오기」 카드가 한 벌씩 더 붙던 것을 고쳤습니다(단계 보드와 같은 식별 키를 써서 생긴 일).', '이월 결과 문구 「2120A·8110ARP」 → 「2120A·8110(ARP·A)」.'],
+  },
+  {
     version: '3.37.4',
     date: '2026-09-28',
     title: '업무 폴더 카드 — 세팅 전 안내',

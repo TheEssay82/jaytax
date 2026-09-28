@@ -510,7 +510,7 @@ export default function GwpTab() {
               {/* 내 건 = 감사계약 담당회계사가 나, 또는 당기 세팅 작성자가 나(지정감사는 담당이 「법인(지정)」 — 윤성, 사용자 2026-09-28). */}
               {/* 세팅 전에도 보인다 — 폴더 연결·찾기는 세팅과 상관없다(사용자 2026-09-28 「어디인지 모르겠다」). 이월본만 세팅 뒤. */}
               {(view === 'file' || view === 'stage') && !!profileName && (contractCpa === profileName || year?.authorDefault === profileName) && (
-                <GwpFolderCard key={picked.id} eng={picked} canWrite={canWrite} canRoll={!!year && !!tpl && canWrite} hasBook={!!latest}
+                <GwpFolderCard key={`folder:${picked.id}`} eng={picked} canWrite={canWrite} canRoll={!!year && !!tpl && canWrite} hasBook={!!latest}
                   onRoll={(bytes, label) => rollFromBytes(bytes, label)} onMsg={(m) => setMsg(m)} />
               )}
 
@@ -563,7 +563,7 @@ export default function GwpTab() {
                       <b>✓ 이월본을 만들었습니다</b> — 작년 조서를 그대로 이었고, 이렇게 바꿨습니다:
                       <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
                         <li>결산일·대상기간 <b>{report.cover.closing ?? '-'}</b> · 본문 날짜 {report.sheets.reduce((n, s) => n + (s.dates ?? 0), 0)}칸을 한 해 올림</li>
-                        <li>2120A·8110ARP 는 당기 숫자를 전기 열로 옮김({report.sheets.reduce((n, s) => n + (s.carried ?? 0), 0)}줄)</li>
+                        <li>2120A·8110(ARP·A) 는 당기 숫자를 전기 열로 옮김({report.sheets.reduce((n, s) => n + (s.carried ?? 0), 0)}줄)</li>
                         <li>조서 머리는 표지·조서목록에 잇고 검토자는 <b>{year?.partner ?? '-'}</b>, 조서목록 작성일 {report.index.datesCleared}칸은 비움</li>
                         <li>바꾼 칸은 <span style={{ background: '#FFFF00', color: '#000', padding: '0 4px' }}>노랑</span>, 조서 탭은 모두 <b style={{ color: '#FF0000' }}>빨강</b>(올해 아직 손 안 댐)</li>
                       </ul>
