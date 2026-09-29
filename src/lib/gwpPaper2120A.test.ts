@@ -213,3 +213,62 @@ test('2120A 새 계정 줄 — 분류 끝에 끼우고 분류 합계 범위를 �
   const again = applyWebPapers(r.bytes, [{ def: PAPER_2120A, data: d }]);
   assert.equal(readWorkbook(again.bytes)[0].cells.get('B40')?.text, '자 산 총 계');
 });
+
+// ── 빌린 틀(사용자 2026-09-30 에이치앤아비즈 — 작년 2120A 가 빈 양식) ─────────
+import { fromBorrowed, placeUnplaced, isBlank2120, balance } from './gwpPaper2120A';
+import type { Paper2120A } from './gwpPaper2120A';
+
+const LB = (statement: string, label: string, level: number, pri?: number, cur?: number): FsLine => ({ statement, label, level, pri, cur, notes: [], at: 0 });
+const BSX = '재무상태표', PLX = '손익계산서';
+// 매출채권 · 단기대여금 · 대손충당금(단기대여금 것) — 매출채권 밑에 붙은 차감이 아니다.
+const DSD: FsLine[] = [
+  LB(BSX, '유동자산', 0, 300, 400),
+  LB(BSX, '매출채권', 1, 100, 150), LB(BSX, '단기대여금', 1, 50, 50), LB(BSX, '대손충당금', 1, -50, -50),
+  LB(BSX, '보증금', 1, 200, 250),
+  LB(BSX, '비유동자산', 0, 500, 600),
+  LB(BSX, '보증금', 1, 500, 600),
+  LB(BSX, '자산총계', 0, 800, 1000),
+  LB(BSX, '유동부채', 0, 300, 400), LB(BSX, '리스부채', 1, 300, 400),
+  LB(BSX, '비유동부채', 0, 100, 0), LB(BSX, '리스부채', 1, 100, undefined),
+  LB(BSX, '부채총계', 0, 400, 400),
+  LB(BSX, '자본금', 0, 400, 600), LB(BSX, '자본총계', 0, 400, 600),
+  LB(PLX, '매출액', 0, 1000, 1200),
+];
+// fromBorrowed 처럼 금액은 비운 틀(빌린 회사 금액·비고를 남기지 않는다).
+const row = (label: string, group: string, sec: '자산' | '부채' | '자본', prev: number | null = null, cur: number | null = null) =>
+  ({ key: `${label}|#0`, label, fsli: '', pl: false, sec, group, prev, cur, note: '' });
+const BORROWED: Paper2120A = {
+  prevLabel: '2024', curLabel: '2025',
+  rows: [
+    row('매출채권', 'Ⅰ. 유 동 자 산', '자산'), row('대손충당금-매출채권', 'Ⅰ. 유 동 자 산', '자산'),
+    row('보증금', '(4) 기타비유동자산', '자산'),
+    row('매입채무', 'Ⅰ. 유 동 부 채', '부채'), row('퇴직급여충당부채', 'Ⅱ. 비 유 동 부 채', '부채'),
+    row('자본금', 'Ⅰ. 자본금', '자본'),
+  ],
+};
+
+test('2120A 빌린 틀 — 금액·비고를 비우고 시작한다', () => {
+  const d = { ...BORROWED, rows: BORROWED.rows.map((r) => ({ ...r })) };
+  assert.equal(isBlank2120({ prevLabel: '', curLabel: '', rows: [] }), true);
+  // fromBorrowed 는 시트를 읽으니 여기서는 비우는 규칙만 — fillFromFs(both) 가 두 열을 모두 쓴다.
+  const r = fillFromFs({ ...d, borrow: { engagementId: 'x', entity: '다른회사', version: 1, sheet: '2120A' } }, DSD, { both: true, scale: 1 });
+  const by = new Map(r.data.rows.map((x) => [x.label, x]));
+  assert.deepEqual([by.get('매출채권')!.prev, by.get('매출채권')!.cur], [100, 150]);
+  // 매출채권 밑에 붙은 차감이 없다 — 단기대여금의 대손충당금을 가져가지 않는다.
+  assert.equal(by.get('대손충당금-매출채권')!.cur, null);
+  // 같은 이름 두 개 — 분류(기타비유동)가 맞는 보증금을 고른다.
+  assert.deepEqual([by.get('보증금')!.prev, by.get('보증금')!.cur], [500, 600]);
+  assert.equal(typeof fromBorrowed, 'function');
+});
+
+test('2120A 빌린 틀 — 틀에 없는 계정은 분류 끝에, 전기에만 있던 계정도 넣어 자산 = 부채 + 자본', () => {
+  const r = fillFromFs({ ...BORROWED, borrow: { engagementId: 'x', entity: 'y', version: 1, sheet: '2120A' } }, DSD, { both: true, scale: 1 });
+  const p = placeUnplaced(r.data, DSD, 1);
+  const names = p.placed.map((x) => `${x.label}@${x.group.replace(/\s/g, '')}`);
+  assert.ok(names.includes('대손충당금-단기대여금@Ⅰ.유동자산') || names.includes('단기대여금@Ⅰ.유동자산'));
+  assert.ok(names.filter((n) => n.startsWith('리스부채')).length === 2, names.join(','));
+  for (const w of ['prev', 'cur'] as const) {
+    const b = balance(p.data.rows, w)!;
+    assert.equal(b.diff, 0, `${w} ${JSON.stringify(b)}`);
+  }
+});

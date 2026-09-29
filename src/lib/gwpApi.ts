@@ -158,3 +158,16 @@ export async function setBookKind(id: string, kind: BookKind, memo?: string | nu
   const { error } = await supabase.from('gwp_book').update(row).eq('id', id);
   if (error) throw new Error(error.message);
 }
+
+/** 웹 조서가 빌려 쓰는 판(2120A) — applyWebPapers 의 borrowed 로 넘길 바이트. */
+export async function borrowedBooks(items: { def: { borrowOf?(d: unknown): { engagementId: string; version: number } | null }; data: unknown }[]): Promise<Map<string, Uint8Array>> {
+  const out = new Map<string, Uint8Array>();
+  for (const { def, data } of items) {
+    const b = def.borrowOf?.(data);
+    if (!b || out.has(`${b.engagementId}#${b.version}`)) continue;
+    const bk = (await listBooks(b.engagementId)).find((x) => x.version === b.version);
+    if (!bk) throw new Error(`빌린 판(v${b.version})을 찾지 못했습니다 — 그 회사 판이 지워졌는지 보세요.`);
+    out.set(`${b.engagementId}#${b.version}`, await fileBytes(bk.storagePath));
+  }
+  return out;
+}

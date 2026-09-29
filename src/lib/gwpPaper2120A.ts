@@ -30,7 +30,28 @@ export interface Row2120 {
   /** 웹에서 새로 넣은 계정 줄 — 반영할 때 그 분류의 끝에 줄을 끼운다(평안정공 2026-09-28) */ added?: boolean;
 }
 export type Sec = '자산' | '부채' | '자본' | '손익';
-export interface Paper2120A { rows: Row2120[]; prevLabel: string; curLabel: string }
+export interface Paper2120A {
+  rows: Row2120[]; prevLabel: string; curLabel: string;
+  /**
+   * 다른 회사 2120A 틀을 빌려 썼다(사용자 2026-09-30 에이치앤아비즈 — 작년 2120A 가 빈 양식이면 「기본 계정과목이 비슷한 타사 내용」).
+   * 반영할 때 그 판의 시트를 복사해 넣고, 전기·당기 두 열을 이 조서 값으로 쓴다(빌린 회사 금액·비고는 남기지 않는다).
+   */
+  borrow?: Borrow2120;
+}
+export interface Borrow2120 { engagementId: string; entity: string; version: number; sheet: string }
+
+/** 계정 줄에 금액이 거의 없다 — 작년 2120A 를 안 쓴 회사(빈 양식). */
+export const isBlank2120 = (d: Paper2120A | null | undefined) =>
+  !d?.borrow && (d?.rows ?? []).filter((r) => r.prev != null || r.cur != null).length < 3;
+
+/** 빌린 회사 2120A 시트 → 이 회사 조서의 시작 값: 줄·분류·공시계정만, 금액·비고는 비운다. */
+export function fromBorrowed(sheet: SheetData, b: Borrow2120): Paper2120A {
+  const d = PAPER_2120A.read(sheet);
+  return {
+    ...d, borrow: b,
+    rows: d.rows.map((r) => ({ ...r, prev: null, cur: null, note: '', src: '' as const, prevDiff: null, absorbs: undefined, added: false })),
+  };
+}
 
 type Hit = { row: number; col: string; text: string };
 function textsOf(sheet: SheetData): Hit[] {
@@ -159,6 +180,7 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
   code: '2120A', title: '위험평가 분석적절차', stage: 1, sheetCode: '2120A',
   note: '자료함의 전기 DSD 로 당기 열을 채운다(문구·차감 계정·전기 금액으로 짝짓기). 증감 큰 줄에 비고.',
   empty: () => ({ rows: [], prevLabel: '', curLabel: '' }),
+  borrowOf: (d) => d?.borrow ?? null,
   read(sheet) {
     const L = layout(sheet);
     if (!L) return { rows: [], prevLabel: '', curLabel: '' };
@@ -206,6 +228,8 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
       if (!row) continue;
       const ref = `${L.pc.curCol}${row}`;
       e.push(r.cur == null ? { ref, clear: true } : { ref, num: r.cur });
+      // 빌린 틀 — 전기 열도 이 회사 값(DSD 전기)으로. 빌린 회사 금액을 남기지 않는다.
+      if (d.borrow) { const pref = `${L.pc.prevCol}${row}`; e.push(r.prev == null ? { ref: pref, clear: true } : { ref: pref, num: r.prev }); }
       if (L.noteCol) { const nref = `${L.noteCol}${row}`; e.push(r.note.trim() ? { ref: nref, text: r.note.trim() } : { ref: nref, clear: true }); }
     }
     return e;
@@ -242,7 +266,7 @@ export interface FillReport {
 }
 
 /** 전기 DSD 재무제표(당기 = 전기 결산) → 2120A 당기 열. 손으로 고친 줄(src '손')은 건드리지 않는다. */
-export function fillFromFs(d: Paper2120A, lines: FsLine[]): { data: Paper2120A; report: FillReport } {
+export function fillFromFs(d: Paper2120A, lines: FsLine[], opts: { both?: boolean; scale?: number } = {}): { data: Paper2120A; report: FillReport } {
   const bs = lines.filter((l) => /재무상태|대차대조/.test(l.statement));
   const pl = lines.filter((l) => /손익/.test(l.statement));
   // 단위 — 전기 열(원 단위 시산표)과 DSD 전기 금액의 비율(1 또는 1000).
@@ -252,7 +276,7 @@ export function fillFromFs(d: Paper2120A, lines: FsLine[]): { data: Paper2120A; 
     if (l?.pri && r.prev) ratios.push(r.prev / l.pri);
   }
   const med = ratios.sort((a, b) => a - b)[Math.floor(ratios.length / 2)] ?? 1;
-  const scale = Math.abs(med - 1000) < Math.abs(med - 1) ? 1000 : 1;
+  const scale = opts.scale ?? (Math.abs(med - 1000) < Math.abs(med - 1) ? 1000 : 1);
   const rep: FillReport = { byLabel: 0, byContra: 0, byValue: 0, missing: [], prevDiff: [], scale, unplaced: [] };
   const val = (n: number | undefined) => (n == null ? 0 : n * scale);
   // 한 DSD 줄은 한 번만 쓴다 — 판관비·영업외에 같은 이름(지급수수료)이 있다.
@@ -264,6 +288,17 @@ export function fillFromFs(d: Paper2120A, lines: FsLine[]): { data: Paper2120A; 
     for (const x of pool) if (names.has(cleanFs(x.label))) used.add(x);
   }
   const handCur = new Set(d.rows.filter((x) => x.src === '손' && x.cur != null).map((x) => x.cur));
+  // DSD 줄의 부분(자산·부채·자본·손익)과 윗 과목들 — 같은 이름이 둘일 때(보증금 유동·비유동, 리스부채) 고르고, 두 해 모드에선 부분이 다르면 짝짓지 않는다.
+  const bsAt = (re: RegExp) => { const i = bs.findIndex((x) => re.test(cleanFs(x.label))); return i < 0 ? Infinity : i; };
+  const assetEnd = bsAt(/^자산총계$/), liabEnd = bsAt(/^부채총계$/);
+  const secOf = (x: FsLine): Sec => { if (!bs.includes(x)) return '손익'; const i = bs.indexOf(x); return i < assetEnd ? '자산' : i < liabEnd ? '부채' : '자본'; };
+  const parentsOf = (x: FsLine): string[] => {
+    const pool = bs.includes(x) ? bs : pl; const out: string[] = [];
+    for (let k = pool.indexOf(x) - 1, lv = x.level; k >= 0 && lv > 0; k--) if (pool[k].level < lv) { out.push(cleanFs(pool[k].label)); lv = pool[k].level; }
+    return out;
+  };
+  const sameSec = (r: Row2120, x: FsLine) => !opts.both || !r.sec || secOf(x) === r.sec;
+  const inGroup = (r: Row2120, x: FsLine) => { const g = cleanFs(r.group ?? ''); return !!g && parentsOf(x).some((p) => groupLike(g, p)); };
   const rows = d.rows.map((r): Row2120 => {
     if (r.src === '손') return r;
     const pool = (r.pl ? pl : bs).filter((x) => !used.has(x));
@@ -271,14 +306,23 @@ export function fillFromFs(d: Paper2120A, lines: FsLine[]): { data: Paper2120A; 
     let hit: FsLine | undefined; let src: Row2120['src'] = '';
     const c = CONTRA.exec(me);
     if (c) {
-      // 기준 계정(매출채권)은 이미 쓰였을 수 있다 — 전체 목록에서 찾고, 그 아래 안 쓴 차감 줄을 고른다.
+      // 기준 계정(매출채권)은 이미 쓰였을 수 있다 — 전체 목록에서 찾고, **바로 밑에 붙은** 차감 줄만 고른다.
+      // (아비즈: 매출채권 · 단기대여금 · 대손충당금 — 이 대손충당금은 단기대여금 것이다. 전에는 3줄 안이면 가져갔다.)
       const all = r.pl ? pl : bs;
-      const i = all.findIndex((x) => cleanFs(x.label) === c[2]);
-      if (i >= 0) hit = all.slice(i + 1, i + 4).find((x) => !used.has(x) && cleanFs(x.label).startsWith(c[1]));
+      all.forEach((x, i) => {
+        if (hit || cleanFs(x.label) !== c[2]) return;
+        for (let k = i + 1; k < all.length && CONTRA_NAME.test(cleanFs(all[k].label)); k++) {
+          if (!used.has(all[k]) && cleanFs(all[k].label).startsWith(c[1]) && sameSec(r, all[k])) { hit = all[k]; break; }
+        }
+      });
       if (hit) src = '차감';
     }
-    if (!hit) { hit = pool.find((x) => cleanFs(x.label) === me); if (hit) src = '문구'; }
-    if (!hit && r.prev) {
+    if (!hit) {
+      const cands = pool.filter((x) => cleanFs(x.label) === me && sameSec(r, x));
+      hit = cands.find((x) => inGroup(r, x)) ?? cands[0];
+      if (hit) src = '문구';
+    }
+    if (!hit && r.prev && !opts.both) {
       const same = pool.filter((x) => x.pri != null && val(x.pri) === r.prev);
       if (same.length === 1) { hit = same[0]; src = '금액'; }
     }
@@ -289,6 +333,8 @@ export function fillFromFs(d: Paper2120A, lines: FsLine[]): { data: Paper2120A; 
     let cur = val(hit.cur);
     if (src === '차감') cur = -Math.abs(cur);
     const pri = src === '차감' ? -Math.abs(val(hit.pri)) : val(hit.pri);
+    // 빌린 틀(both) — 전기 열도 DSD 전기 금액으로 채운다(작년 조서에 전기 값이 없다).
+    if (opts.both) return { ...r, cur, prev: hit.pri != null ? pri : null, src, prevDiff: null };
     const diff = r.prev != null && hit.pri != null && pri !== r.prev ? pri : null;
     if (diff != null) rep.prevDiff.push(r.label);
     return { ...r, cur, src, prevDiff: diff };
@@ -301,12 +347,71 @@ export function fillFromFs(d: Paper2120A, lines: FsLine[]): { data: Paper2120A; 
       if (used.has(x)) { cover = x.level; return; }
       if (cover >= 0 && x.level > cover) return;
       cover = -1;
-      if (nextDeeper || x.level === 0 || /총계|합계/.test(cleanFs(x.label)) || !x.cur) return;
+      // 두 해를 채울 때(빌린 틀)는 전기에만 있던 계정도 — 올해 0 이라고 빼면 전기 자산=부채+자본이 어긋난다(아비즈 리스부채 17.6억).
+      if (nextDeeper || x.level === 0 || /총계|합계/.test(cleanFs(x.label)) || !(x.cur || (opts.both && x.pri))) return;
       if (handCur.has(val(x.cur))) return;                       // 손으로 같은 금액을 넣어 둔 줄이 있다
       rep.unplaced.push({ statement: x.statement, label: x.label, cur: val(x.cur) });
     });
   }
   return { data: { ...d, rows }, report: rep };
+}
+
+const CONTRA_NAME = /^(대손충당금|감가상각누계액|손상차손누계액|정부보조금|현재가치할인차금)$/;
+/**
+ * 분류 이름이 같은가(번호·띄어쓰기 뗀 뒤) — 같거나 한쪽이 다른 쪽을 품되, 「유동」과 「비유동」은 섞지 않는다
+ * (「기타비유동자산」이 「유동자산」을 글자로 품어서 유동 보증금을 기타비유동 줄에 넣던 것).
+ */
+function groupLike(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (!(a.includes(b) || b.includes(a))) return false;
+  return a.includes('비유동') === b.includes('비유동');
+}
+
+/**
+ * 빌린 틀에 없는 DSD 계정 → 알맞은 분류 끝의 새 줄(사용자 2026-09-30 「나중에는 클로드 없이도」 — 빌린 틀은 손 안 대고 끝나야 한다).
+ * 분류는 DSD 표의 윗 과목(「유형자산」·「판매비와관리비」)과 틀의 분류 이름(번호·띄어쓰기 뗀 것)으로 찾고, 없으면 같은 부분(자산·부채·자본·손익)의 끝 분류.
+ * 차감 계정(감가상각누계액)은 바로 위 계정 이름을 붙이고(「감가상각누계액-리스자산」) 음수로.
+ */
+export function placeUnplaced(d: Paper2120A, lines: FsLine[], scale: number): { data: Paper2120A; placed: { label: string; group: string }[] } {
+  const rep = fillFromFs(d, lines, { both: true, scale }).report;
+  if (!rep.unplaced.length) return { data: d, placed: [] };
+  const groups: { name: string; pl: boolean; sec?: Sec }[] = [];
+  for (const r of d.rows) if (r.group && !groups.some((g) => g.name === r.group && g.pl === r.pl)) groups.push({ name: r.group, pl: r.pl, sec: r.sec });
+  const bs = lines.filter((l) => /재무상태|대차대조/.test(l.statement));
+  const pl = lines.filter((l) => /손익/.test(l.statement));
+  const idxOf = (pool: FsLine[], re: RegExp) => pool.findIndex((x) => re.test(cleanFs(x.label)));
+  const assetEnd = idxOf(bs, /^자산총계$/), liabEnd = idxOf(bs, /^부채총계$/);
+  const added: Row2120[] = []; const placed: { label: string; group: string }[] = [];
+  const taken = new Set<FsLine>();
+  for (const u of rep.unplaced) {
+    const isPl = /손익/.test(u.statement);
+    const pool = isPl ? pl : bs;
+    const i = pool.findIndex((x) => !taken.has(x) && x.label === u.label && (x.cur ?? 0) * scale === u.cur);
+    if (i < 0) continue;
+    const x = pool[i]; taken.add(x);
+    // 차감 계정 — 바로 위의 같은 깊이 계정이 기준.
+    let base = i;
+    let label = x.label.trim();
+    const contra = CONTRA_NAME.test(cleanFs(x.label));
+    if (contra) { for (let k = i - 1; k >= 0; k--) if (pool[k].level === x.level && !CONTRA_NAME.test(cleanFs(pool[k].label))) { base = k; break; } label = `${label}-${pool[base].label.trim()}`; }
+    const parents: FsLine[] = [];
+    for (let k = base - 1, lv = pool[base].level; k >= 0 && lv > 0; k--) if (pool[k].level < lv) { parents.push(pool[k]); lv = pool[k].level; }
+    const sec: Sec = isPl ? '손익' : i < assetEnd ? '자산' : i < liabEnd ? '부채' : '자본';
+    const cands = groups.filter((g) => g.pl === isPl);
+    const g = parents.map((p) => cands.find((c) => cleanFs(c.name) === cleanFs(p.label))).find(Boolean)
+      ?? parents.map((p) => cands.find((c) => groupLike(cleanFs(c.name), cleanFs(p.label)))).find(Boolean)
+      ?? [...cands].reverse().find((c) => isPl || c.sec === sec);
+    if (!g) continue;
+    const amt = (n: number | undefined) => (n == null ? null : contra ? -Math.abs(n * scale) : n * scale);
+    added.push({
+      // src 는 비워 둔다 — 다시 채울 때 일반 짝짓기(문구·차감 「감가상각누계액-리스자산」)로 같은 DSD 줄을 찾는다.
+      // 「손」+absorbs 로 두면 같은 이름(감가상각누계액)의 다른 줄까지 쓴 것으로 쳐서 틀의 차감 줄이 비었다.
+      key: `new|${g.name}|${label}|${added.length}`, label, fsli: '', pl: isPl, sec: isPl ? '손익' : g.sec ?? sec, group: g.name, added: true, src: '', note: '',
+      cur: amt(x.cur), prev: amt(x.pri),
+    });
+    placed.push({ label, group: g.name });
+  }
+  return { data: { ...d, rows: [...d.rows, ...added] }, placed };
 }
 
 /** 자산 = 부채 + 자본 — 전기·당기 각각. 차감 계정은 이미 음수다. */

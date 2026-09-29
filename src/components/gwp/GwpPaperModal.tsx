@@ -8,14 +8,14 @@ import { useEffect, useState } from 'react';
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 import { unzipSync, strFromU8 } from 'fflate';
 import type { Engagement } from '../../lib/dsdApi';
-import { listBooks, addBook, fileBytes, type GwpTemplate } from '../../lib/gwpApi';
+import { listBooks, addBook, fileBytes, borrowedBooks, type GwpTemplate } from '../../lib/gwpApi';
 import { readWorkbook, type SheetData } from '../../lib/xlsxRead';
 import { buildCatalog } from '../../lib/gwpCatalog';
 import { pickSheet } from '../../lib/gwpWeb';
 import { applyWebPapers } from '../../lib/gwpApply';
 import { readBundle } from '../../lib/gwpTemplate';
-import { parseStatements } from '../../lib/fsParse';
-import { savePaper, markApplied, markChecked, setPaperStatus, latestFile, type PaperRow, type EngFile } from '../../lib/gwpStageApi';
+import { parseStatements, statementsUnit } from '../../lib/fsParse';
+import { savePaper, markApplied, markChecked, setPaperStatus, latestFile, borrowCandidates, type PaperRow, type EngFile, type BorrowCandidate } from '../../lib/gwpStageApi';
 import { amountsFromWtb } from '../../lib/gwpFiles';
 import { download } from '../dsd/dsdUi';
 import { STAGES } from '../../lib/gwpStage';
@@ -34,7 +34,7 @@ import { PAPER_2301G, readExamples, type Paper2301G, type FsRisk } from '../../l
 import Form2301G from './Form2301G';
 import type { AuditBasis } from '../../lib/gwpSetup';
 import { fillFromWtb, type Paper8110, type WtbReport } from '../../lib/gwpPaper8110';
-import { fillFromFs, balance, PAPER_2120A, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
+import { fillFromFs, balance, PAPER_2120A, isBlank2120, fromBorrowed, placeUnplaced, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
 import type { Paper2110 } from '../../lib/gwpPaper2110';
 import Form2700A from './Form2700A';
 import Form2700A1 from './Form2700A1';
@@ -112,7 +112,8 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
             d = { ...withDraft(d as PaperQA, QA_DRAFTS[def.code]({ fs: fsl, keeper: pairKeeper }), author), keeper: pairKeeper };
             setNote(`빈 칸을 초안으로 채웠습니다${pairKeeper ? '' : ' — 맨 위에서 「회계처리는 누가?」를 고르면 문장이 맞춰집니다'}. 회사 사실과 맞는지 확인하고 [확인]을 누르세요.`);
           }
-          if (s.hidden) setErr(`${s.name} 시트가 숨겨져 있습니다 — ① 올해 파일의 「소규모 짝 정리」를 먼저 하세요.`);
+          // 2120A 가 숨긴 빈 양식뿐이면 「틀 빌리기」 안내가 대신 뜬다.
+          if (s.hidden && def.code !== '2120A') setErr(`${s.name} 시트가 숨겨져 있습니다 — ① 올해 파일의 「소규모 짝 정리」를 먼저 하세요.`);
         }
         else { d = def.empty(); setNote(`최신 판(v${books[0].version})에 ${def.sheetCode} 시트가 없습니다 — 반영할 때 올해 양식으로 새로 넣습니다.`); }
         // 회계기간은 올해 것으로(표지의 대상기간).
@@ -158,7 +159,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
     const base = (await listBooks(eng.id))[0];
     if (!base) throw new Error('조서 판이 없습니다.');
     const template = tpl ? { ...readBundle(await fileBytes(tpl.storagePath)), reviewer: partner } : undefined;
-    const r = applyWebPapers(await fileBytes(base.storagePath), [{ def, data }], template);
+    const r = applyWebPapers(await fileBytes(base.storagePath), [{ def, data }], template, await borrowedBooks([{ def, data }]));
     if (r.missing.length) throw new Error(`최신 판(v${base.version})에 ${def.sheetCode} 시트가 없고 표준양식에서도 찾지 못했습니다.`);
     return { base, r };
   }
@@ -243,19 +244,66 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
     const f = latestFile(files, '전기DSD', eng.fy)!;
     const z = unzipSync(await fileBytes(f.storagePath));
     if (!z['contents.xml']) throw new Error('DSD 안에 본문이 없습니다.');
-    return { f, lines: parseStatements(strFromU8(z['contents.xml'])) };
+    const xml = strFromU8(z['contents.xml']);
+    // 재무제표의 「(단위 : 원)」 — 작업 건 설정(천원)과 다를 수 있다(아비즈). 못 찾으면 원으로 본다.
+    return { f, lines: parseStatements(xml), unit: statementsUnit(xml) ?? 1 };
   }
 
-  /** 2120A 당기 열을 전기 DSD 로. 손으로 고친 줄은 둔다. */
+  /** 빌린 틀 — 전기 DSD 로 전기·당기 두 열을 채우고, 틀에 없는 계정은 알맞은 분류 끝에 새 줄로. */
+  async function fillBorrowed(d: Paper2120A): Promise<{ data: Paper2120A; report: FillReport; placed: number; fileName: string }> {
+    const { f, lines, unit } = await dsdLines();
+    const r = fillFromFs(d, lines, { both: true, scale: unit });
+    const p = placeUnplaced(r.data, lines, unit);
+    return { data: p.data, report: fillFromFs(p.data, lines, { both: true, scale: unit }).report, placed: p.placed.length, fileName: f.fileName };
+  }
+
+  /** 2120A 당기 열을 전기 DSD 로. 손으로 고친 줄은 둔다. 빌린 틀이면 두 열 모두. */
   async function fill2120() {
     setBusy('dsd'); setErr(null);
     try {
+      const d = data as Paper2120A;
+      if (d.borrow) {
+        const b = await fillBorrowed(d);
+        change(b.data); setFillRep(b.report);
+        setNote(`전기 DSD(${b.fileName})로 전기·당기 두 열을 채웠습니다${b.placed ? ` — 틀에 없던 계정 ${b.placed}개는 분류 끝에 새 줄로 넣었습니다` : ''}.`);
+        return;
+      }
       const { f, lines } = await dsdLines();
-      const r = fillFromFs(data as Paper2120A, lines);
+      const r = fillFromFs(d, lines);
       change(r.data);
       setFillRep(r.report);
       setNote(`전기 DSD(${f.fileName})로 당기 열을 채웠습니다.`);
     } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); } finally { setBusy(''); }
+  }
+
+  // 2120A 가 빈 양식이면(작년에 안 씀) — 다른 회사 틀 빌리기(사용자 2026-09-30).
+  const [cands, setCands] = useState<BorrowCandidate[] | null>(null);
+  const [candPick, setCandPick] = useState('');
+  const blank2120 = def.code === '2120A' && data != null && isBlank2120(data as Paper2120A);
+  useEffect(() => {
+    if (!blank2120 || cands) return;
+    void borrowCandidates('2120A', eng.id).then((c) => { setCands(c); setCandPick(c[0]?.engagementId ?? ''); }).catch(() => setCands([]));
+  }, [blank2120, cands, eng.id]);
+
+  async function borrow2120() {
+    const c = cands?.find((x) => x.engagementId === candPick);
+    if (!c) return;
+    setBusy('borrow'); setErr(null);
+    try {
+      const book = (await listBooks(c.engagementId))[0];
+      if (!book) throw new Error(`${c.entity} 에 조서 판이 없습니다.`);
+      const s = pickSheet(PAPER_2120A, readWorkbook(await fileBytes(book.storagePath)));
+      if (!s || s.hidden) throw new Error(`${c.entity} v${book.version} 에 보이는 2120A 시트가 없습니다.`);
+      let d = fromBorrowed(s, { engagementId: c.engagementId, entity: c.entity, version: book.version, sheet: s.name });
+      if (d.rows.length < 10) throw new Error(`${c.entity} 2120A 에 계정 줄이 ${d.rows.length}개뿐입니다 — 다른 회사를 고르세요.`);
+      let msg = `${c.entity}(FY${c.fy}) v${book.version} 의 2120A 틀을 빌렸습니다 — 그 회사 금액·비고는 비웠습니다.`;
+      if (dsd) {
+        const b = await fillBorrowed(d);
+        d = b.data; setFillRep(b.report);
+        msg += ` 전기 DSD 로 전기·당기 두 열을 채웠고${b.placed ? `, 틀에 없던 계정 ${b.placed}개는 분류 끝에 새 줄로 넣었습니다` : ''}. 자산 = 부채 + 자본을 확인하세요.`;
+      } else msg += ' 자료함에 전기 DSD 를 올리고 [전기 DSD 로 채우기]를 누르세요.';
+      change(d); setNote(msg);
+    } catch (e) { setErr(e instanceof Error ? e.message : '빌리지 못했습니다.'); } finally { setBusy(''); }
   }
 
   /** 8110ARP 당기(와 링크였던 전기)를 자료함의 확정 정산표로. */
@@ -335,11 +383,30 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
                 onReset={sheet ? () => change(def.read(sheet)) : undefined} />
             ) : def.code === '2110' ? (
               <Form2110 value={data as Paper2110} onChange={change} readOnly={readOnly} fy={eng.fy} author={author} />
+            ) : def.code === '2120A' && blank2120 && !readOnly ? (
+              <div style={{ padding: '12px 14px', border: '1.5px solid var(--warn)', borderRadius: 10, fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
+                <b>작년 2120A 가 비어 있습니다</b> — 작년 조서에 분석표가 없어(빈 양식) 채울 계정 줄이 없습니다.
+                같은 조서 기준의 다른 회사 2120A <b>틀(계정 줄·분류·수식)</b>을 빌려 오고, 금액은 이 회사 <b>전기 DSD</b> 로 전기·당기 두 열을 채웁니다.
+                빌린 회사의 금액·비고는 남기지 않습니다. 틀에 없는 계정은 분류 끝에 새 줄로 넣습니다.
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+                  {cands == null ? <span style={{ color: 'var(--ink-3)' }}>빌릴 수 있는 회사를 찾는 중…</span>
+                    : !cands.length ? <span style={{ color: 'var(--bad)' }}>2120A 를 [확인]까지 해 둔 같은 기준의 회사가 아직 없습니다.</span>
+                    : <>
+                      <select value={candPick} onChange={(e) => setCandPick(e.target.value)} disabled={!!busy}>
+                        {cands.map((c) => <option key={c.engagementId} value={c.engagementId}>{c.entity} (FY{c.fy} · {c.status})</option>)}
+                      </select>
+                      <button className="btn-p" disabled={!canWrite || !!busy || !candPick} onClick={() => void borrow2120()}>
+                        {busy === 'borrow' ? '빌리는 중…' : '이 회사 2120A 틀 빌리기'}
+                      </button>
+                    </>}
+                  {!dsd && <span style={{ color: 'var(--warn)' }}>자료함에 전기 DSD 가 없습니다 — 빌린 뒤 올리고 채우세요.</span>}
+                </div>
+              </div>
             ) : def.code === '2120A' ? (
               <Form2120A value={data as Paper2120A} onChange={change} readOnly={readOnly} report={fillRep}
                 fill={<button className="btn-sm btn-sm-navy" disabled={!dsd || !!busy} onClick={() => void fill2120()}
                   title={dsd ? dsd.fileName : '자료함에 전기 DSD 를 먼저 올리세요'}>
-                  {busy === 'dsd' ? '읽는 중…' : dsd ? '전기 DSD 로 당기 열 채우기' : '전기 DSD 없음(자료함에 올리세요)'}
+                  {busy === 'dsd' ? '읽는 중…' : !dsd ? '전기 DSD 없음(자료함에 올리세요)' : (data as Paper2120A).borrow ? '전기 DSD 로 전기·당기 채우기' : '전기 DSD 로 당기 열 채우기'}
                 </button>} />
             ) : QA_DRAFTS[def.code] ? (
               <FormQA value={data as PaperQA} onChange={change} readOnly={readOnly} draft={QA_DRAFTS[def.code]} fs={qaFs} author={author} />

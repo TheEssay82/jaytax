@@ -119,6 +119,17 @@ function readRow(tr: string, base: number): Cell[] {
 }
 
 /** 재무제표를 줄 단위로 읽는다. */
+/**
+ * 재무제표 부분의 금액 단위 → 원으로 바꿀 배수(원 1 · 천원 1000 · 백만원 1000000). 못 찾으면 null.
+ * 작업 건의 「금액 단위」 설정은 믿지 않는다 — 에이치앤아비즈는 설정이 천원인데 DSD 재무제표는 원이었다(2026-09-30).
+ * 주석 표는 단위가 따로라(같은 파일에 「단위: 천원」도 있다) 재무제표 부분에서만 찾는다.
+ */
+export function statementsUnit(xml: string): number | null {
+  const sec = statementsSection(xml ?? '');
+  const m = sec ? /단위\s*[:：]?\s*(백만원|천원|원)/.exec(sec.text.replace(/<[^>]+>/g, ' ')) : null;
+  return m ? ({ 원: 1, 천원: 1000, 백만원: 1_000_000 } as const)[m[1] as '원' | '천원' | '백만원'] : null;
+}
+
 export function parseStatements(xml: string): FsLine[] {
   const sec = statementsSection(xml ?? '');
   if (!sec) return [];

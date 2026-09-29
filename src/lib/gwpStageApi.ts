@@ -160,3 +160,25 @@ export async function addStageEvent(
   });
   if (error) throw new Error(error.message);
 }
+
+// ── 틀 빌리기(2120A — 작년 것이 빈 양식, 사용자 2026-09-30) ─────────────
+export interface BorrowCandidate { engagementId: string; entity: string; fy: number; status: PaperStatus }
+
+/**
+ * 이 조서를 [확인]까지 해 둔 다른 회사 — 같은 조서 기준(일반·소규모·K-IFRS)만. 가까운 해 먼저.
+ * 판은 그 회사의 최신 판을 쓴다(빌릴 때 판 번호를 적어 두어 반영 때 같은 판을 받는다).
+ */
+export async function borrowCandidates(code: string, engagementId: string): Promise<BorrowCandidate[]> {
+  const [{ data: ps, error }, { data: ys, error: e2 }] = await Promise.all([
+    supabase.from('gwp_paper').select('engagement_id, status, dsd_engagement(fy, biz_entity(name))').eq('code', code).neq('status', '작성중'),
+    supabase.from('gwp_year').select('engagement_id, audit_basis'),
+  ]);
+  if (error || e2) throw new Error((error ?? e2)!.message);
+  const basis = new Map((ys ?? []).map((y: { engagement_id: string; audit_basis: string }) => [y.engagement_id, y.audit_basis]));
+  const mine = basis.get(engagementId);
+  type Row = { engagement_id: string; status: PaperStatus; dsd_engagement: { fy: number; biz_entity: { name: string } | null } | null };
+  return ((ps ?? []) as unknown as Row[])
+    .filter((r) => r.engagement_id !== engagementId && (!mine || basis.get(r.engagement_id) === mine))
+    .map((r) => ({ engagementId: r.engagement_id, entity: r.dsd_engagement?.biz_entity?.name ?? '(이름 없음)', fy: r.dsd_engagement?.fy ?? 0, status: r.status }))
+    .sort((a, b) => b.fy - a.fy || a.entity.localeCompare(b.entity, 'ko'));
+}

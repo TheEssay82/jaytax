@@ -110,10 +110,120 @@ const bCell = (ref: string, v: string): CellEdit => {
 };
 const copiesOf = (s: string) => s.replace(/\s*부$/, '').trim();
 
+// ── 소규모 → 일반(사용자 2026-09-30 에이치앤아비즈 「2110(소규모)가 있는데 왜 자동복사되지 않았을까」)
+// 소규모는 값이 A열 글자 안(①), 일반은 B·G·H 열(②)이라 칸 짝짓기로는 두 칸만 옮겨졌고, 나머지는 양식 **예시 문구**(유가증권상장·
+// 2020년 9월·서초구 XXX·김품감)가 남았다. 보이는 일반 2110 이 아직 양식 그대로면 숨긴 「2110(소규모)」에서 값을 가져온다.
+const EXAMPLE_MARK = /XXX|20X1|김품감/;
+const teamKey = (label: string) => {
+  const t = normLabel(label);
+  return /적격성|역량/.test(t) ? 'comp' : /품질관리검토자/.test(t) ? 'eqr' : /업무수행이사/.test(t) ? 'lead' : /전문가/.test(t) ? 'expert' : /내부감사인|서비스조직/.test(t) ? 'internal' : t;
+};
+const nextYear = (s: string) => s.replace(/20(\d\d)/g, (_m, y: string) => `20${String(Number(y) + 1).padStart(2, '0')}`);
+/** 결산연도에 하는 일정(계획·중간·실사) — 나머지(조회·기말·연결·보고서)는 이듬해. */
+const IN_FY = new Set(['감사계획', '중간감사', '재고 실사입회']);
+
+/** 표지의 결산일(B15 날짜 칸, 없으면 B16 대상기간 끝) → 결산연도. */
+export function closingYear(sheets: SheetData[]): number | null {
+  const c = sheets.find((s) => normLabel(s.name).includes('조서표지'));
+  const b15 = c?.cells.get('B15');
+  if (b15?.num != null) return new Date(Date.UTC(1899, 11, 30) + b15.num * 86400000).getUTCFullYear();
+  const m = /(20\d\d)\D*$/.exec(textOf(c?.cells.get('B16')));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * 일반 2110(양식 그대로) + 작년 소규모 2110 → 일반 모양의 올해 값.
+ * 날짜는 결산연도(fy)에 맞춘다 — 한 해 올리기로 하면 이월 때 이미 올라간 결산일(2025.12.31 → 2026.12.31)이 또 올라갔다(아비즈).
+ */
+export function from2110Small(small: Paper2110, general: Paper2110, fy: number | null = null): Paper2110 {
+  const setYear = (v: string, y: number) => (fy == null ? nextYear(v) : v.replace(/20\d\d/g, String(y)));
+  return {
+    ...general,
+    team: general.team.map((g) => {
+      const s = small.team.find((x) => teamKey(x.label) === teamKey(g.label));
+      // 조서번호 칸에 숫자가 없으면(칸 자리로 옮겨 들어간 수행자 이름 「정우철」) 버린다.
+      const ref = /\d/.test(g.ref) ? g.ref : '';
+      return s ? { ...g, ref, performer: s.performer, text: s.text } : { ...g, ref, performer: '', text: '' };
+    }),
+    contractPerformer: small.contractPerformer || '',
+    scope: small.scope,
+    scopeText: small.scope === '임의' ? '임의감사' : '일반외감',
+    consolidated: '부',
+    schedule: general.schedule.map((g) => ({
+      label: g.label,
+      value: g.label === '연결감사' ? 'N/A' : setYear(small.schedule.find((x) => x.label === g.label)?.value ?? '', (fy ?? 0) + (IN_FY.has(g.label) ? 0 : 1)),
+    })),
+    sites: general.sites.map((g) => ({ label: g.label, value: small.sites.find((x) => x.label === g.label)?.value ?? '' })),
+    reportDue: setYear(small.reportDue, (fy ?? 0) + 1),
+    copiesKo: small.copiesKo, copiesEn: small.copiesEn,
+  };
+}
+
+/**
+ * 올해 양식 2110 의 **예시 문구** — 칸 열 + 글자. 회사 시트에서 같은 열에 글자 그대로 남은 칸만 지운다(사용자 2026-09-30 「(가)」).
+ *   · 비고(H) 열의 예시 · 계약 확인 묶음의 B열 예시 값(유가증권상장·2020년 9월·서초구 XXX)
+ *   · 「2 회사에 대한 이해 및 감사위험에 대한 예비적 평가」 ~ 「3 통제테스트 계획」 사이의 예시 줄(「- …」·「1) …」·(사례n)과 그 다음 줄)
+ */
+export function examples2110(tpl: SheetData): { col: string; text: string }[] {
+  const lines = linesA(tpl);
+  const out: { col: string; text: string }[] = [];
+  const hx = findHeader(tpl, ['항 목', '조서번호', '수행자', '비고']);
+  if (hx?.cols['비고']) {
+    const nc = hx.cols['비고'];
+    for (const [ref, v] of tpl.cells) if (colOf(ref) === nc && rowOf(ref) > hx.row && v.formula == null && textOf(v) && normLabel(textOf(v)) !== '비고') out.push({ col: nc, text: textOf(v) });
+  }
+  const from = has(lines, '감사목적과범위'), to = has(lines, '감사보고서제출예정일');
+  if (from && to) {
+    for (const [ref, v] of tpl.cells) {
+      const r = rowOf(ref);
+      if (colOf(ref) === 'B' && r >= from.row && r <= to.row + 3 && v.formula == null && textOf(v)) out.push({ col: 'B', text: textOf(v) });
+    }
+  }
+  const s = lines.find((l) => /^2\s*회사에\s*대한\s*이해/.test(l.text.trim()));
+  const e = lines.find((l) => s && l.row > s.row && /^3\s*통제테스트/.test(l.text.trim()));
+  if (s && e) {
+    // 양식의 예시 줄 일부는 다른 양식 파일로 걸린 수식(「- 경기 회복에 따라…」 = '[13]2100A'!A144)이다 — 옮겨 심을 때 글자로 바뀌므로 수식 칸의 글자도 본다.
+    const withF: Line[] = [];
+    for (const [ref, v] of tpl.cells) if (colOf(ref) === 'A' && textOf(v)) withF.push({ row: rowOf(ref), ref, text: textOf(v) });
+    withF.sort((a, b) => a.row - b.row);
+    let afterCase = false;
+    for (const l of withF.filter((x) => x.row > s.row && x.row < e.row)) {
+      const t = l.text.trim();
+      if (/^\(사례\s*\d+\)/.test(t)) { out.push({ col: 'A', text: l.text }); afterCase = true; continue; }
+      if (/^-\s*\S/.test(t) || /^\d+\)\s*\S/.test(t) || afterCase) out.push({ col: 'A', text: l.text });
+      afterCase = false;
+    }
+  }
+  return out;
+}
+
 export const PAPER_2110: WebPaperDef<Paper2110> = {
   code: '2110', title: '감사계획의 수립', stage: 1, sheetCode: '2110',
   note: '감사팀 구성·감사일정·실사장소·보고서 예정일. 일정은 단계 보드에도 보인다.',
   empty: () => ({ team: [], contractPerformer: '', scope: '일반', schedule: SCHEDULE.slice(0, 5).map((label) => ({ label, value: '' })), sites: SITES.map((label) => ({ label, value: '' })), reportDue: '', copiesKo: '', copiesEn: '' }),
+  readBook(sheets) {
+    const mine = sheets.filter((s) => /^2110(\(소규모\))?$/.test(s.name.replace(/\s/g, '')));
+    const general = mine.find((s) => !s.hidden && !/소규모/.test(s.name)) ?? mine.find((s) => !s.hidden) ?? mine[0];
+    if (!general) return PAPER_2110.empty();
+    const g = PAPER_2110.read(general);
+    const small = mine.find((s) => s !== general && /소규모/.test(s.name));
+    const stillTemplate = [...general.cells.values()].some((v) => EXAMPLE_MARK.test(textOf(v)));
+    return small && stillTemplate ? from2110Small(PAPER_2110.read(small), g, closingYear(sheets)) : g;
+  },
+  scrub(sheet, tpl) {
+    // 아직 양식 예시가 남은 시트만 — 회사가 손본 시트의 짧은 값(「10부」·「여」)이 우연히 예시와 같아도 지우지 않게.
+    if (![...sheet.cells.values()].some((v) => EXAMPLE_MARK.test(textOf(v)))) return [];
+    const ex = examples2110(tpl);
+    if (!ex.length) return [];
+    const key = new Set(ex.map((x) => `${x.col}|${x.text.trim()}`));
+    const e: CellEdit[] = [];
+    for (const [ref, v] of sheet.cells) if (v.formula == null && key.has(`${colOf(ref)}|${textOf(v)}`)) e.push({ ref, clear: true });
+    // 조서번호 열의 숫자 없는 글자 — 소규모의 수행자 열(F)이 칸 자리로 들어와 남은 이름(「정우철」).
+    const hx = findHeader(sheet, ['항 목', '조서번호', '수행자', '비고']);
+    const rc = hx?.cols['조서번호'];
+    if (rc) for (const [ref, v] of sheet.cells) if (colOf(ref) === rc && rowOf(ref) > hx!.row && v.formula == null && textOf(v) && !/\d/.test(textOf(v)) && normLabel(textOf(v)) !== '조서번호') e.push({ ref, clear: true });
+    return e;
+  },
   read(sheet) {
     const L = layout(sheet);
     const at = (col: string | null, row: number) => (col ? textOf(sheet.cells.get(`${col}${row}`)) : '');

@@ -8,7 +8,7 @@
 //   · FY2026 건에 FY2025 정산표를 올린 실수 — 파일마다 몇 년 것인지 크게 보이고, 해가 다르면 막고 쓰지 않는다.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Engagement } from '../../lib/dsdApi';
-import { fileBytes, fileUrl, fmtKb, listBooks, addBook, type GwpBook, type GwpTemplate } from '../../lib/gwpApi';
+import { fileBytes, fileUrl, fmtKb, listBooks, addBook, borrowedBooks, type GwpBook, type GwpTemplate } from '../../lib/gwpApi';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { buildCatalog } from '../../lib/gwpCatalog';
 import { readBundle } from '../../lib/gwpTemplate';
@@ -148,7 +148,8 @@ export default function GwpStageBoard({ eng, latest, tpl, basis, canWrite, partn
         let bytes = await fileBytes(base.storagePath);
         if (items.length) {
           const template = tpl ? { ...readBundle(await fileBytes(tpl.storagePath)), reviewer: partner } : undefined;
-          const r = applyWebPapers(bytes, items.map((w) => ({ def: w.def!, data: papers.get(w.code)!.data })), template);
+          const list = items.map((w) => ({ def: w.def!, data: papers.get(w.code)!.data }));
+          const r = applyWebPapers(bytes, list, template, await borrowedBooks(list));
           if (r.missing.length) throw new Error(`최신 판(v${base.version})에 ${r.missing.join(', ')} 시트가 없습니다 — 표준양식이 등록돼 있는지 보세요.`);
           changed = r.done.reduce((n, d) => n + d.changed, 0);
           bytes = r.bytes;

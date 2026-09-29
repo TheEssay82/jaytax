@@ -109,7 +109,13 @@ export function prepareTemplateSheets(files: Record<string, Uint8Array>, codes: 
   return out;
 }
 
-export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[], template?: TemplateSource): ApplyResult {
+/** 빌린 판의 열쇠 — borrowed 맵에 이 열쇠로 판 바이트를 넣어 준다. */
+export const borrowKey = (b: { engagementId: string; version: number }) => `${b.engagementId}#${b.version}`;
+
+export function applyWebPapers(
+  bookBytes: Uint8Array, items: ApplyItem[], template?: TemplateSource,
+  /** 빌린 판(borrowKey → 바이트) — borrowOf 가 있는 조서(2120A)가 쓴다 */ borrowed?: Map<string, Uint8Array>,
+): ApplyResult {
   const files = unzip(bookBytes);
   const prepared: Prepared = template
     ? prepareTemplateSheets(files, [...new Set(items.filter(({ def }) => def.useTemplate).flatMap(({ def }) => [def.sheetCode, ...(def.companions ?? [])]))], template)
@@ -120,6 +126,25 @@ export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[], templa
     for (const s of readWorkbook(zip(files))) {
       if (!s.hidden && retire.has(baseOf(s.name))) { setSheetHidden(files, s.name, true); prepared.hidden.push(s.name); }
     }
+  }
+  // 빌린 시트(2120A — 작년 것이 빈 양식, 사용자 2026-09-30) — 이 판에 보이는 시트가 없으면 빌린 판에서 복사해 넣는다.
+  // 금액·비고는 조서의 write 가 이 회사 값으로 덮거나 지운다(빌린 회사 숫자를 남기지 않는다). 머리는 이 회사 표지·조서목록으로.
+  for (const { def, data } of items) {
+    const b = def.borrowOf?.(data);
+    if (!b) continue;
+    if (readWorkbook(zip(files)).some((s) => !s.hidden && baseOf(s.name) === def.sheetCode)) continue;
+    const bytes = borrowed?.get(borrowKey(b));
+    if (!bytes) throw new Error(`${def.code} — 빌린 판(v${b.version})을 받지 못했습니다.`);
+    const srcSheet = readWorkbook(bytes).find((s) => s.name === b.sheet);
+    if (!srcSheet) throw new Error(`빌린 판에 「${b.sheet}」 시트가 없습니다.`);
+    const r = transplantSheet(files, unzip(bytes), b.sheet, { as: def.sheetCode, hidden: false });
+    const after = readWorkbook(zip(files));
+    const head = headLinker(after, buildCatalog(after))(srcSheet, def.sheetCode, template?.reviewer ?? '');
+    let xml = strFromU8(files[r.part]);
+    if (head.length) xml = setCells(xml, head);
+    files[r.part] = strToU8(setTabColor(xml, TAB.yellow));
+    blackenSheet(files, r.part);
+    prepared.added.push(r.name);
   }
   // 칸을 쓰기 전에 시트 XML 을 고칠 조서(줄 끼우기).
   for (const { def, data } of items) {
@@ -147,6 +172,15 @@ export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[], templa
     const sheet = pickSheet(def, sheets);
     if (!sheet) { missing.push(def.code); continue; }
     const plan = def.writeBook ? def.writeBook(sheets, data) : [{ sheet: sheet.name, edits: def.write(sheet, data) }];
+    // 양식 예시 문구가 그대로 남은 칸 — 지운다(쓰는 칸은 빼고).
+    if (def.scrub && template && !def.writeBook) {
+      const ts = findTemplateSheet(template.catalog, def.sheetCode);
+      const tplData = ts ? readWorkbook(template.files[ts.file]).find((x) => x.name === ts.name) : undefined;
+      if (tplData) {
+        const mine = new Set(plan[0].edits.map((e) => e.ref));
+        plan[0].edits.push(...def.scrub(sheet, tplData).filter((e) => !mine.has(e.ref)));
+      }
+    }
     let changed = 0;
     for (const p of plan) {
       const sd = sheets.find((x) => x.name === p.sheet);

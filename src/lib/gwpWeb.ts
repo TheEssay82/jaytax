@@ -26,6 +26,16 @@ export interface WebPaperDef<T = unknown> {
   /** 반영할 때 함께 올해 양식으로 맞출 조서(2700A 요약표처럼 수식으로 이 조서를 읽는 것) */ companions?: string[];
   /** 워크북 시트(작년 값·지금 판)에서 화면 값을 읽는다. 옛 모양 시트도 읽는다. */ read(sheet: SheetData): T;
   /** 여러 시트를 한 조서로 읽는다(8110ARP_BS·PL). 있으면 read 대신 쓴다. */ readBook?(sheets: SheetData[]): T;
+  /**
+   * 다른 회사 판에서 시트를 빌려 쓰는 조서(2120A — 작년 것이 빈 양식). 반영할 때 이 판에 보이는 시트가 없으면 빌린 판에서
+   * 그 시트를 복사해 넣고 쓴다. 부르는 쪽이 판 바이트를 받아 applyWebPapers 의 borrowed 로 넘긴다.
+   */
+  borrowOf?(data: T): { engagementId: string; version: number; sheet: string } | null;
+  /**
+   * 반영할 때 함께 지울 칸 — 올해 양식의 **예시 문구가 글자 그대로 남은 칸**(2110 소규모→일반, 사용자 2026-09-30 「(가) 지우기」).
+   * tpl 은 올해 양식의 같은 조서 시트. 회사가 쓴 글(양식과 한 글자라도 다름)은 건드리지 않는다.
+   */
+  scrub?(sheet: SheetData, tpl: SheetData): CellEdit[];
   /** 여러 시트에 쓴다. 있으면 write 대신 쓴다. */ writeBook?(sheets: SheetData[], data: T): { sheet: string; edits: CellEdit[] }[];
   /** 화면 값 → 이 시트에 쓸 칸. 같은 값이어도 돌려준다 — 바뀐 칸만 고르는 것은 반영(gwpApply)이 한다. */ write(sheet: SheetData, data: T): CellEdit[];
 }

@@ -26,6 +26,7 @@ import {
 import { readBundle, templateCodes, findTemplateSheet } from '../../lib/gwpTemplate';
 import { planSmall, applySmall, planLarge, applyLarge, planTidy } from '../../lib/gwpSmall';
 import { isCodeOrdered, sortSheetsByCode } from '../../lib/gwpOrder';
+import { missingPapers, addPapers } from '../../lib/gwpAddPapers';
 import { unzip, zip } from '../../lib/xlsxTransplant';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { buildCatalog, sectionOf, type Catalog, type CatalogSheet } from '../../lib/gwpCatalog';
@@ -167,6 +168,11 @@ export default function GwpTab() {
   }, [latest, year, tpl]);
   // 시트 차례 — 조서 번호 순서가 아니면(사용자 2026-09-28 「조서시트의 번호별로 순서가 이어져야」). 다른 정리 카드가 없을 때만 따로 띄운다.
   const needSort = useMemo(() => !!latest && !isCodeOrdered(latest.catalog.sheets.map((s) => s.name)), [latest]);
+  // 올해 양식에 있는데 파일에 없는 조서(아비즈 3000번대, 사용자 2026-09-30) — 3000번대만 미리 체크.
+  const missing = useMemo(() => (latest && tpl ? missingPapers(latest.catalog, tpl.catalog) : []), [latest, tpl]);
+  const [pickMissing, setPickMissing] = useState<Set<string>>(new Set());
+  const [showAllMissing, setShowAllMissing] = useState(false);
+  useEffect(() => { setPickMissing(new Set(missing.filter((m) => m.suggested).map((m) => m.code))); setShowAllMissing(false); }, [missing]);
   // 회사를 바꾸면 — 올해 파일이 있으면 ② 단계 진행부터, 없으면 ① 올해 파일부터.
   const hasBook = !!latest;
   // 방금 이월·새로 만들었으면(report·assembled) ① 에 머물러 요약을 보인다.
@@ -346,6 +352,23 @@ export default function GwpTab() {
       setBooks(await listBooks(picked.id));
       setMsg(`v${book.version}을 만들고 내려받았습니다 — 소규모 시트 ${lr.done.filter((d) => d.small).length}장을 ${year.auditBasis} 양식 시트로 바꾸고 소규모 시트는 숨겼습니다(지우지 않음). 1차 확정을 다시 하면 웹 조서 값이 새 시트에 들어갑니다.`);
     } catch (e) { setErr(e instanceof Error ? e.message : '정리하지 못했습니다.'); } finally { setBusy(''); }
+  }
+
+  /** 올해 양식에 있는데 파일에 없는 조서를 골라 넣은 새 판(사용자 2026-09-30). */
+  async function addMissing() {
+    if (!picked || !latest || !tpl || !year) return;
+    const pick = missing.filter((m) => pickMissing.has(m.code));
+    if (!pick.length) return;
+    setBusy('add'); setErr(null);
+    try {
+      const t = readBundle(await fileBytes(tpl.storagePath));
+      const r = addPapers(await fileBytes(latest.storagePath), pick, t.files, year.partner);
+      const book = await addBook(picked.id, '작업중', { name: latest.fileName, bytes: r.bytes }, buildCatalog(readWorkbook(r.bytes)),
+        `올해 양식에서 조서 넣음 — ${r.added.join(', ')}`);
+      download(r.bytes, book.fileName, XLSX);
+      setBooks(await listBooks(picked.id));
+      setMsg(`v${book.version}을 만들고 내려받았습니다 — ${r.added.length}개 조서(${r.added.join(', ')})를 올해 양식에서 넣었습니다(빨간 탭, 조서 번호 순서 자리).`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '넣지 못했습니다.'); } finally { setBusy(''); }
   }
 
   /** 시트 차례만 조서 번호 순서로 — 새 판(사용자 2026-09-28). */
@@ -790,6 +813,33 @@ export default function GwpTab() {
                       <div><button className="btn-p" style={{ marginTop: 8 }} disabled={!canWrite || !!busy} onClick={() => void fixOrder()}>
                         {busy === 'order' ? '정리하는 중…' : `정리해서 v${(latest?.version ?? 0) + 1} 만들기`}
                       </button></div>
+                    </div>
+                  )}
+
+                  {missing.length > 0 && !largePlan && !smallPlan && (
+                    <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${missing.some((m) => m.suggested) ? 'var(--warn)' : 'var(--line)'}`, fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
+                      <b>올해 양식에 있는데 이 파일에 없는 조서 {missing.length}개</b>
+                      {missing.some((m) => m.suggested)
+                        ? <> — 작년 파일에 시트가 없던 조서입니다. 체크한 것을 올해 양식에서 넣습니다(머리는 표지·조서목록으로, 탭은 빨강). 3000번대는 미리 체크해 두었습니다 — 일부러 숨긴 번호대(3150·3650)와 8000번대는 고를 때만.</>
+                        : <span style={{ color: 'var(--ink-3)' }}> — 필요한 것만 골라 넣으세요(대개 7000 그룹·9000 내부회계 등 이 회사에 안 쓰는 조서).</span>}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 6 }}>
+                        {missing.filter((m) => m.suggested || showAllMissing).map((m) => (
+                          <label key={m.code} style={{ whiteSpace: 'nowrap' }}>
+                            <input type="checkbox" checked={pickMissing.has(m.code)} disabled={!canWrite || !!busy}
+                              onChange={(e) => setPickMissing((s) => { const n = new Set(s); if (e.target.checked) n.add(m.code); else n.delete(m.code); return n; })} /> {m.name}
+                          </label>
+                        ))}
+                        {missing.some((m) => !m.suggested) && (
+                          <button className="btn-sm" onClick={() => setShowAllMissing((v) => !v)}>
+                            {showAllMissing ? '접기' : `그 밖의 조서 ${missing.filter((m) => !m.suggested).length}개 보기`}
+                          </button>
+                        )}
+                      </div>
+                      {pickMissing.size > 0 && (
+                        <div><button className="btn-p" style={{ marginTop: 8 }} disabled={!canWrite || !!busy} onClick={() => void addMissing()}>
+                          {busy === 'add' ? '넣는 중…' : `${pickMissing.size}개 넣어서 v${(latest?.version ?? 0) + 1} 만들기`}
+                        </button></div>
+                      )}
                     </div>
                   )}
 
