@@ -17,6 +17,16 @@ import { sortSheetsByCode } from './gwpOrder';
 import { setTabColor, highlightCells, blackenSheet, TAB } from './xlsxMark';
 import { buildCatalog, codeOf } from './gwpCatalog';
 import { headLinker, migrateInputs, renameSheetRefs } from './gwpRoll';
+import { PAPER_2110A, from2110ASmall } from './gwpPaper2110A';
+import type { CellEdit } from './xlsxCells';
+
+/** 2110A 소규모 → 일반: 열 이름으로 옮긴 칸(빈 칸 지우기는 빼고 — 노란 칠은 값 넣은 칸만). */
+function migrate2110A(small: SheetData, to: SheetData): { edits: CellEdit[] } {
+  const d = from2110ASmall(PAPER_2110A.read(small), PAPER_2110A.read(to));
+  const all = PAPER_2110A.write(to, d);
+  const clears = all.filter((e) => 'clear' in e && e.clear && to.cells.get(e.ref)?.text);   // 칸 자리로 잘못 들어간 옛 값 지우기
+  return { edits: [...all.filter((e) => !('clear' in e && e.clear)), ...clears] };
+}
 
 export interface SmallPair { code: string; plain: string; small: string }
 export interface SmallPlan { pairs: SmallPair[]; hide: string[] }
@@ -180,7 +190,8 @@ export function applyLarge(
     }
     let moved = 0;
     if (st.how !== '숨기기만') {
-      const mig = migrateInputs(small, to);
+      // 2110A 는 열 모양이 다르다(소규모 3열 ↔ 일반 7열) — 칸 자리가 아니라 열 이름으로(에이치앤아비즈 2026-09-30).
+      const mig = st.code === '2110A' ? migrate2110A(small, to) : migrateInputs(small, to);
       moved = mig.edits.length;
       const edits = [...mig.edits, ...link(to, st.code, reviewer)];
       let xml = strFromU8(files[e.part]);

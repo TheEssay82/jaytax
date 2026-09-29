@@ -48,6 +48,59 @@ function header(sheet: SheetData): { row: number; cols: { name: string; col: str
 
 /** 검토자(파트너) 열 — 「검토」·「1차검토」·「2차검토」. 분기·반기 검토(용역)는 아니다. */
 export const isReviewCol = (name: string) => /^(\d차)?검토$/.test(name);
+/** 분기·반기 검토 열(용역) — 대개 업무 영역이 아니다. */
+const isInterimCol = (name: string) => /^(\d분기|반기)검토$/.test(name);
+
+// ── 소규모 → 일반·K-IFRS(사용자 2026-09-30 에이치앤아비즈 「줄이 밀려 생긴 오류」)
+// 소규모 양식은 열이 「중간감사 · 기말감사 · 검토」 셋이고(D·E·F), 일반은 「1분기검토 · 반기검토 · 3분기검토 · 중간감사 · 기말감사 · 1차검토 · 2차검토」(C~I).
+// 칸 자리로 옮기면 중간감사 값이 반기검토에 들어간다 — 열 이름으로 짝짓는다. 검토 → 1차·2차검토 둘 다(알티스트 관행: 둘 다 파트너).
+// 줄 이름도 양식마다 조금 다르다 — 번호를 떼고 맞추고, 안 맞으면 아래 짝으로.
+const ROW_ALIAS: [RegExp, RegExp][] = [
+  [/^감사계획의수립$/, /^전반감사계획의수립$/],
+  [/^통제테스트$/, /^위험에대한대응$/],
+  [/^통제환경/, /^통제환경/],
+];
+const bare = (label: string) => normLabel(label).replace(/^(\(\d+\)|\d+\))/, '');
+const FROM_SMALL: Record<string, string[]> = { 중간감사: ['중간감사'], 기말감사: ['기말감사'], 검토: ['1차검토', '2차검토'] };
+
+/** 작년 소규모 2110A(읽은 값) → 올해 일반 2110A 시트의 줄·열 모양. */
+export function from2110ASmall(small: Paper2110A, general: Paper2110A): Paper2110A {
+  const src = small.rows.filter((r) => !r.heading && r.vals.some((v) => v));
+  const pick = (label: string) => {
+    const b = bare(label);
+    const hit = src.find((r) => bare(r.label) === b);
+    if (hit) return hit;
+    for (const [a, g] of ROW_ALIAS) if (g.test(b)) { const h = src.find((r) => a.test(bare(r.label))); if (h) return h; }
+    return undefined;
+  };
+  const rows = general.rows.map((r) => {
+    if (r.heading) return r;
+    const s = pick(r.label);
+    const vals = general.cols.map((name, k) => {
+      if (!s) return r.vals[k] ?? '';
+      const from = small.cols.findIndex((c) => (FROM_SMALL[c] ?? []).includes(name));
+      return from >= 0 ? s.vals[from] ?? '' : '';
+    });
+    return { ...r, vals };
+  });
+  return fillInterimNA({ cols: general.cols, rows });
+}
+
+/** 분기·반기 검토 열이 통째로 비었으면 N/A(사용자 2026-09-30 「대부분 업무영역이 아닙니다. N/A 로 띄우는 것이 맞습니다」). */
+export function fillInterimNA(d: Paper2110A): Paper2110A {
+  const idx = d.cols.map((c, k) => (isInterimCol(c) ? k : -1)).filter((k) => k >= 0);
+  const empty = idx.filter((k) => d.rows.every((r) => r.heading || !(r.vals[k] ?? '').trim()));
+  if (!empty.length) return d;
+  // 담당자가 적힌 줄만 — 소제목(「(3) 계정별 입증감사절차」)·빈 번호 줄(「7)」)은 그대로 비워 둔다.
+  const filled = (r: AssignRow) => r.vals.some((v, k) => !idx.includes(k) && v.trim());
+  return { ...d, rows: d.rows.map((r) => (r.heading || !filled(r) ? r : { ...r, vals: r.vals.map((v, k) => (empty.includes(k) ? 'N/A' : v)) })) };
+}
+
+/** 일반 2110A 가 소규모에서 칸 자리로 잘못 옮겨졌나 — 1차·2차검토가 다 비었고 소규모 짝이 있다. */
+function migratedWrong(general: Paper2110A): boolean {
+  const rev = general.cols.map((c, k) => (/^\d차검토$/.test(c) ? k : -1)).filter((k) => k >= 0);
+  return rev.length > 0 && general.rows.every((r) => rev.every((k) => !(r.vals[k] ?? '').trim()));
+}
 
 export const PAPER_2110A: WebPaperDef<Paper2110A> = {
   code: '2110A',
@@ -56,6 +109,16 @@ export const PAPER_2110A: WebPaperDef<Paper2110A> = {
   sheetCode: '2110A',
   note: '감사 절차마다 담당자(중간감사·기말감사·검토 …). 해마다 거의 같다 — 작년 값을 확인만 하면 된다.',
   empty: () => ({ cols: [], rows: [] }),
+  // 보이는 2110A 가 일반 양식인데 소규모에서 칸 자리로 옮겨진 판(에이치앤아비즈 v1)이면 숨긴 「2110A(소규모)」에서 열 이름으로 다시 짓는다.
+  readBook(sheets: SheetData[]): Paper2110A {
+    const mine = sheets.filter((s) => /^2110A/.test(s.name.replace(/\s/g, '')));
+    const general = mine.find((s) => !s.hidden && !/소규모/.test(s.name)) ?? mine.find((s) => !s.hidden) ?? mine[0];
+    if (!general) return { cols: [], rows: [] };
+    const g = PAPER_2110A.read(general);
+    const small = mine.find((s) => s !== general && /소규모/.test(s.name));
+    if (small && g.cols.includes('1차검토') && migratedWrong(g)) return from2110ASmall(PAPER_2110A.read(small), g);
+    return g.cols.includes('1차검토') ? fillInterimNA(g) : g;
+  },
   read(sheet: SheetData): Paper2110A {
     const h = header(sheet);
     if (!h) return { cols: [], rows: [] };
