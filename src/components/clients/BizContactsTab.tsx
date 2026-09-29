@@ -98,6 +98,7 @@ export default function BizContactsTab() {
     { key: 'phone', label: '연락처', val: (r) => r.c.phone, w: 120 },
     { key: 'fax', label: '팩스', val: (r) => r.c.fax, w: 110 },
     { key: 'email', label: '이메일', val: (r) => r.c.email, w: 150 },
+    { key: 'zip', label: '우편번호', val: (r) => r.c.zipCode, w: 70 },
     { key: 'address', label: '수령지', val: (r) => r.c.address, w: 190 },
     { key: 'note', label: '비고', val: (r) => r.c.note, w: 120 },
     {
@@ -271,7 +272,7 @@ export default function BizContactsTab() {
                   {c.fax && <span>📠 {c.fax}</span>}
                   {c.email && <span>✉ {c.email}</span>}
                   {c.placeId && entity && <span style={{ color: '#77a' }}>[{placeName(entity, c.placeId)}]</span>}
-                  {c.address && <span style={{ color: '#777' }}>📮 {c.address}</span>}
+                  {c.address && <span style={{ color: '#777' }}>📮 {c.zipCode ? `(${c.zipCode}) ` : ''}{c.address}</span>}
                   {c.note && <span style={{ color: 'var(--ink-3)' }}>· {c.note}</span>}
                   {canWrite && (
                     <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
@@ -309,6 +310,7 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
   const [fax, setFax] = useState(initial?.fax ?? '');
   const [email, setEmail] = useState(initial?.email ?? '');
   const [address, setAddress] = useState(initial?.address ?? '');
+  const [zipCode, setZipCode] = useState(initial?.zipCode ?? '');
   const [isPrimary, setIsPrimary] = useState(initial?.isPrimary ?? false);
   const [note, setNote] = useState(initial?.note ?? '');
   const entity = entities.find((e) => e.id === entityId);
@@ -355,7 +357,11 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
         <div className="frow"><span className="fl">이메일</span>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="(선택)" /></div>
         <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">수령지주소</span>
-          <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="(선택)" /></div>
+          <span style={{ display: 'flex', gap: 6, alignItems: 'center', width: '100%' }}>
+            <input value={zipCode} onChange={(e) => setZipCode(e.target.value.replace(/[^\d]/g, '').slice(0, 5))} placeholder="우편번호" style={{ width: 90 }}
+              title="5자리 — 우체국 우편 업로드 양식에 들어갑니다" />
+            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="(선택) 도로명주소, 층·호·건물명" style={{ flex: 1 }} />
+          </span></div>
         <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">비고 · 대표</span>
           <span style={{ display: 'flex', gap: 10, alignItems: 'center', width: '100%' }}>
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="(선택)" style={{ flex: 1 }} />
@@ -365,7 +371,7 @@ function ContactForm({ entities, initial, onSubmit, onCancel }: {
           </span></div>
       </div>
       <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-        <button className="btn-p" onClick={() => onSubmit({ entityId, placeId: placeId || null, contactName: name, honorific, position, phone, fax, email, address, isPrimary, note })}>{initial ? '저장' : '담당자 등록'}</button>
+        <button className="btn-p" onClick={() => onSubmit({ entityId, placeId: placeId || null, contactName: name, honorific, position, phone, fax, email, address, zipCode, isPrimary, note })}>{initial ? '저장' : '담당자 등록'}</button>
         <button className="btn-sm" onClick={onCancel}>취소</button>
       </div>
     </div>

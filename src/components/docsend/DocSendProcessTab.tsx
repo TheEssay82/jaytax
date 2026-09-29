@@ -18,6 +18,7 @@ import {
   type SendAttachment,
 } from '../../lib/docSendApi';
 import AttachmentsModal from './AttachmentsModal';
+import PostUploadModal from './PostUploadModal';
 import TrackingLink from './TrackingLink';
 import DateParts from '../common/DateParts';
 
@@ -107,6 +108,8 @@ export default function DocSendProcessTab() {
   // 한 문서를 여러 수신자에게 보낸 건(같은 batch_id)을 한 번에 처리하기 위한 다중선택.
   // 등기번호는 건마다 달라서 일괄 대상이 아니고, 발송일만 공통으로 찍는다.
   const [sel, setSel] = useState<Set<string>>(new Set());
+  /** 우체국 우편 업로드 양식 — 고른 건으로(사용자 2026-09-29) */
+  const [postOpen, setPostOpen] = useState(false);
   const [bulkDate, setBulkDate] = useState(todayYmd());
   const [bulkBusy, setBulkBusy] = useState(false);
 
@@ -381,6 +384,7 @@ export default function DocSendProcessTab() {
         </button>
       </div>
 
+      {postOpen && <PostUploadModal reqs={selected} onClose={() => setPostOpen(false)} />}
       {/* 일괄처리 바 — 선택이 있을 때만 나타난다 */}
       {canProcess && selected.length > 0 && (
         <div
@@ -393,6 +397,11 @@ export default function DocSendProcessTab() {
           <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>☑ {selected.length}건 선택</b>
           <button className="btn-sm" style={{ fontSize: 'var(--fs-1)' }} onClick={() => setSel(new Set())} disabled={bulkBusy}>
             선택해제
+          </button>
+          <button className="btn-sm" style={{ fontSize: 'var(--fs-1)' }} disabled={bulkBusy}
+            title="고른 건을 우체국 「우편 업로드 양식」(.xls)으로 내려받습니다 — 받는 분·우편번호·주소·상세주소·전화"
+            onClick={() => setPostOpen(true)}>
+            📮 우편 업로드 양식 ({selected.length})
           </button>
 
           <span style={{ width: 1, height: 18, background: '#BFD4F2' }} />

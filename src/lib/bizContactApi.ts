@@ -14,6 +14,7 @@ export interface BizContact {
   fax: string;
   email: string;
   address: string;
+  /** 우편번호(5자리) — 우체국 우편 업로드 양식(0155) */ zipCode: string;
   isPrimary: boolean;
   note: string;
   /** 유효한 담당자인가. false = 이직·퇴사 등으로 더 이상 쓰지 않는 연락처. */
@@ -29,7 +30,7 @@ export interface BizContact {
 const toContact = (r: any): BizContact => ({
   id: r.id, entityId: r.entity_id, placeId: r.place_id, contactName: r.contact_name || '',
   honorific: r.honorific || '님', position: r.position || '', phone: r.phone || '', fax: r.fax || '', email: r.email || '',
-  address: r.address || '', isPrimary: !!r.is_primary, note: r.note || '',
+  address: r.address || '', zipCode: r.zip_code || '', isPrimary: !!r.is_primary, note: r.note || '',
   active: r.active !== false, leftAt: r.left_at ?? null, leftNote: r.left_note || '',
   createdAt: r.created_at,
 });
@@ -43,7 +44,7 @@ export async function listBizContacts(): Promise<BizContact[]> {
 
 export interface ContactInput {
   entityId: string; placeId?: string | null; contactName: string; honorific?: string; position?: string;
-  phone?: string; fax?: string; email?: string; address?: string; isPrimary?: boolean; note?: string;
+  phone?: string; fax?: string; email?: string; address?: string; zipCode?: string; isPrimary?: boolean; note?: string;
   active?: boolean; leftAt?: string | null; leftNote?: string;
 }
 function toRow(c: Partial<ContactInput>): Record<string, unknown> {
@@ -55,6 +56,7 @@ function toRow(c: Partial<ContactInput>): Record<string, unknown> {
   s('contact_name', c.contactName === undefined ? undefined : stripHonorific(c.contactName));
   s('honorific', c.honorific); s('position', c.position); s('phone', c.phone); s('fax', c.fax); s('email', c.email);
   s('address', c.address); s('is_primary', c.isPrimary); s('note', c.note);
+  s('zip_code', c.zipCode === undefined ? undefined : (/^\d{5}$/.test(c.zipCode.trim()) ? c.zipCode.trim() : null));
   s('active', c.active); s('left_at', c.leftAt ?? undefined); s('left_note', c.leftNote);
   return r;
 }
