@@ -128,8 +128,9 @@ export function applyWebPapers(bookBytes: Uint8Array, items: ApplyItem[], templa
     const entry = s0 ? sheetEntries(files).find((x) => x.name === s0.name) : null;
     if (s0 && entry) files[entry.part] = strToU8(def.prepareXml(strFromU8(files[entry.part]), s0, data));
   }
-  // 양식에서 새로 넣은 시트(2700A-4 등)는 맨 뒤에 붙는다 — 조서 번호 순서로(사용자 2026-09-28).
-  if (prepared.added.length) sortSheetsByCode(files);
+  // 확정 판은 늘 조서 번호 순서로(사용자 2026-09-28) — 양식에서 새로 넣은 시트(2700A-4 등)뿐 아니라
+  // 순서 정리 전에 만든 판(평안정공 v6)도 재확정 한 번으로 바로잡힌다. 이미 순서대로면 아무것도 안 한다.
+  sortSheetsByCode(files);
   const sheets = readWorkbook(zip(files));
   // 올해 양식을 쓰는 조서(2301·2700A 묶음)는 반영할 때마다 글자를 검정으로 — 이미 갈아끼운 판(명진 v15)의 파란 글씨도 고친다.
   {

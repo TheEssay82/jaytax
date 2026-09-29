@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.42.1',
+    date: '2026-09-30',
+    title: '일반조서 — 단계 확정 판은 늘 조서 번호 순서로',
+    highlights: [
+      '<b>1·2·3차 확정</b>으로 만드는 판은 이제 언제나 시트를 <b>조서 번호 순서</b>로 늘어놓습니다(전에는 양식 시트를 새로 넣을 때만). 순서 정리 전에 확정한 판도 <b>[확정 취소] → [N차 확정]</b> 한 번이면 바로잡힙니다 — 따로 정리 카드를 누를 필요가 없습니다.',
+    ],
+  },
+  {
     version: '3.42.0',
     date: '2026-09-29',
     title: '문서발송 — 우체국 「우편 업로드 양식」 내려받기',
