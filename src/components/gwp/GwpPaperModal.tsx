@@ -175,7 +175,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
         if (b && Math.abs(b.diff) >= 1 && !confirm(`${w === 'prev' ? '전기' : '당기'} 자산이 부채+자본과 ${b.diff.toLocaleString('ko-KR')}원 다릅니다.\n그래도 확인할까요?`)) return;
       }
       // Material·Unexpected 가 떴는데 주요 감사절차가 빈 줄(사용자 2026-09-30).
-      const miss = missingProcs(data as Paper2120A, om2120);
+      const miss = missingProcs(data as Paper2120A, om2120, procStd);
       if (miss.length) { setErr(`판정(Material·Unexpected)이 났는데 주요 감사절차가 빈 줄 ${miss.length}개 — ${miss.slice(0, 6).join(', ')}${miss.length > 6 ? ' …' : ''}. 적거나 [표준 절차 넣기]를 누르세요.`); return; }
       if (om2120 == null && (data as Paper2120A).hasProc && !confirm('2700A-2 중요성이 아직 없어 Material·Unexpected 판정을 못 했습니다.\n그래도 확인할까요? (2700A-2 를 확인한 뒤 다시 보는 것을 권합니다)')) return;
     }

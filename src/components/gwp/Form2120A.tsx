@@ -1,7 +1,7 @@
 // 2120A 위험평가 분석적절차 입력 — 전기(이월 때 옮겨 둔 열)와 당기(전기 DSD 로 채움)를 나란히, 증감·비고.
 import { useState } from 'react';
 import { balance, unusedBorrowed, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
-import { flagsOf, suggestProc, coveredByGroup, INDUSTRIES, UNEXPECTED_FACTOR, type ProcStd } from '../../lib/gwpProcStd';
+import { flagsOf, coveredByGroup, bundlesOf, bundleProc, missingProcs, fillStdProcs, INDUSTRIES, UNEXPECTED_FACTOR, type ProcStd, type ProcBundle } from '../../lib/gwpProcStd';
 
 const fmt = (n: number | null | undefined) => (n == null ? '' : n.toLocaleString('ko-KR'));
 const parse = (s: string): number | null => { const t = s.replace(/[,\s]/g, ''); if (!t) return null; const n = Number(t.replace(/^\((.*)\)$/, '-$1')); return Number.isFinite(n) ? n : null; };
@@ -53,20 +53,17 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
   const todo = (r: Row2120) => (!!r.prev && r.cur == null) || r.prevDiff != null;
   // 주요 감사절차 — Material(잔액 > 중요성) · Unexpected(증감 > 중요성×90%)가 뜬 줄은 K 를 적어야 한다(사용자 2026-09-30).
   const flag = (r: Row2120) => flagsOf(r, om);
-  const needProc = (r: Row2120) => { const f = flag(r); return !!value.hasProc && (f.material || f.unexpected) && !r.proc?.trim() && !coveredByGroup(r, value.groupProc); };
-  const lacking = value.rows.filter(needProc).length;
+  // 재고·유형·무형자산은 묶음 — 계정마다가 아니라 분류 줄(또는 첫 줄)에 한 번(사용자 2026-10-01).
+  const units = bundlesOf(value.rows, std, om);
+  const unitOf = new Map<string, ProcBundle>(units.flatMap((u) => u.rows.map((r) => [r.key ?? r.label, u] as const)));
+  const unitNeed = (u: ProcBundle) => !!value.hasProc && (u.flags.material || u.flags.unexpected) && !bundleProc(u, value.groupProc);
+  const needProc = (r: Row2120) => { if (unitOf.has(r.key)) return unitNeed(unitOf.get(r.key)!); const f = flag(r); return !!value.hasProc && (f.material || f.unexpected) && !r.proc?.trim() && !coveredByGroup(r, value.groupProc); };
+  const lacking = missingProcs(value, om, std).length;
   /** 표준 절차 넣기 — 판정이 났는데 비었거나(분류 줄 절차도 없음) 「항상」 절차가 있는 계정의 빈 칸만. 이미 적힌 회사 문구는 건드리지 않는다. */
   const fillStd = () => {
-    let n = 0;
-    const rows2 = value.rows.map((r) => {
-      if (r.proc?.trim() || coveredByGroup(r, value.groupProc)) return r;
-      const t = suggestProc(r, flag(r), std, industry);
-      if (!t) return r;
-      n += 1;
-      return { ...r, proc: t, procStd: true };
-    });
-    onChange({ ...value, rows: rows2 });
-    return n;
+    const r = fillStdProcs(value, std, industry, om);
+    onChange(r.data);
+    return r.n;
   };
   const [filled, setFilled] = useState<number | null>(null);
   const unused = value.rows.filter((r) => unusedBorrowed(value, r)).length;
@@ -198,7 +195,30 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
                   <td style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{p == null ? '' : `${Math.round(p * 1000) / 10}%`}</td>
                   <td><input className="btn-sm" style={{ width: '100%' }} disabled={readOnly} value={r.note} onChange={(e) => set(r.key, { note: e.target.value })} /></td>
                 </tr>
-                {value.hasProc && (flag(r).material || flag(r).unexpected || !!r.proc) && (
+                {value.hasProc && unitOf.has(r.key) && unitOf.get(r.key)!.rows[0] === r && (() => {
+                  const u = unitOf.get(r.key)!;
+                  const text = bundleProc(u, value.groupProc);
+                  if (!u.flags.material && !u.flags.unexpected && !text) return null;
+                  const std1 = u.onGroup ? (value.groupStd ?? []).includes(u.group) : !!u.rows.find((x) => (x.key ?? x.label) === u.holder && (x as Row2120).procStd);
+                  const setText = (v: string) => (u.onGroup
+                    ? onChange({ ...value, groupProc: { ...(value.groupProc ?? {}), [u.group]: v }, groupStd: (value.groupStd ?? []).filter((g) => g !== u.group) })
+                    : set(u.holder, { proc: v, procStd: false }));
+                  return (
+                    <tr>
+                      <td colSpan={7} style={{ paddingTop: 0, background: unitNeed(u) ? 'var(--bad-bg)' : std1 ? '#FFFF0033' : undefined }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                          <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', whiteSpace: 'nowrap', paddingTop: 4 }} title={u.rows.map((x) => x.label).join(', ')}>
+                            {u.bundle} 묶음 절차<br />({u.rows.length}개 계정{u.onGroup ? ' · 분류 줄에 적음' : ''})
+                          </span>
+                          <textarea className="btn-sm" rows={Math.min(5, Math.max(2, Math.ceil(text.length / 90)))} style={{ flex: 1, resize: 'vertical' }} disabled={readOnly}
+                            placeholder={`${u.bundle} 계정 중 판정이 난 줄이 있습니다 — 묶어서 한 번 적거나 [표준 절차 넣기]`} value={text} onChange={(e) => setText(e.target.value)} />
+                          {std1 && <span style={{ fontSize: 'var(--fs-0)', background: '#FFFF00', color: '#000', padding: '0 4px', whiteSpace: 'nowrap' }}>표준</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })()}
+                {value.hasProc && !unitOf.has(r.key) && (flag(r).material || flag(r).unexpected || !!r.proc) && (
                   <tr>
                     <td colSpan={7} style={{ paddingTop: 0, background: needProc(r) ? 'var(--bad-bg)' : r.procStd ? '#FFFF0033' : undefined }}>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>

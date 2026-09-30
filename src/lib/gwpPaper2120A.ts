@@ -45,6 +45,7 @@ export interface Paper2120A {
   /** 분류 줄(「(1) 유 형 자 산」)에 적힌 절차 — 그 아래 계정 줄 전체에 적용된 것으로 본다(평안정공·알티스트 관행) */ groupProc?: Record<string, string>;
   /** 판정 기준 중요성(원) — 2700A-2 계획단계 중요성. 반영 때 시트의 Overall Materiality 칸에 쓴다(사용자 2026-09-30) */ om?: number | null;
   /** 수행중요성(원) — Planning Materiality 칸 */ pm?: number | null;
+  /** [표준 절차 넣기]로 채운 분류 줄 절차(재고·유형·무형자산 묶음) — 확인 전 노랑 */ groupStd?: string[];
 }
 export interface Borrow2120 { engagementId: string; entity: string; version: number; sheet: string }
 
@@ -292,8 +293,8 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
         if ((c === L.pc.prevCol || c === L.pc.curCol) && r > L.pc.headerRow && !acct.has(r) && v.formula == null && v.num != null) e.push({ ref, clear: true });
       }
     }
-    // 빌린 틀 — 분류 줄의 절차도 그 회사 것이다. 이 조서에 적은 분류 절차만 남긴다.
-    if (d.borrow && L.procCol) for (const h of L.heads ?? []) {
+    // 분류 줄의 절차 — 웹에서 적은 것(재고·유형·무형자산 묶음 절차, 사용자 2026-10-01). 빌린 틀이면 그 회사 분류 절차는 지운다.
+    if (L.procCol && d.groupProc) for (const h of L.heads ?? []) {
       const t = d.groupProc?.[h.name]?.trim(); const ref = `${L.procCol}${h.row}`;
       e.push(t ? { ref, text: t } : { ref, clear: true });
     }

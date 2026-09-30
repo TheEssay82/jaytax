@@ -22,10 +22,12 @@ export const UNEXPECTED_FACTOR = 0.9;
 
 export interface Flags { material: boolean; unexpected: boolean }
 export function flagsOf(r: { prev: number | null; cur: number | null }, om: number | null, factor = UNEXPECTED_FACTOR): Flags {
-  if (om == null || om <= 0) return { material: false, unexpected: false };
+  if (om == null || om <= 0 || (r.prev == null && r.cur == null)) return { material: false, unexpected: false };
+  // 빈칸은 0 — 엑셀 I·J열(「=IF(ABS(F18)>$D$7…)」·「ABS(G18)>$E$7」, G = F−E)과 같게. 전기에만 있던 계정(아비즈 비유동 리스부채
+  // 17.7억 → 0)도 Unexpected 다(사용자 2026-10-01 「I·J 열에 하나라도 떠 있으면 감사절차가 표시되어야」).
   return {
-    material: r.cur != null && Math.abs(r.cur) > om,
-    unexpected: r.cur != null && r.prev != null && Math.abs(r.cur - r.prev) > om * factor,
+    material: Math.abs(r.cur ?? 0) > om,
+    unexpected: Math.abs((r.cur ?? 0) - (r.prev ?? 0)) > om * factor,
   };
 }
 
@@ -104,27 +106,136 @@ export function suggestProc(
     if (own.length) picked.push(...own);
     else if (t !== '항상') picked.push(...live.filter((s) => s.account === '*' && s.trigger === t));
   }
+  return compose(picked, row.prev, row.cur);
+}
+
+/** 고른 표준 줄 → 「① … ② …」. {증감액}·{증감률}·{잔액} 은 주어진 금액으로(빈칸은 0). */
+function compose(picked: ProcStd[], prev: number | null, cur: number | null, rank: (s: ProcStd) => number = () => 0): string | null {
   if (!picked.length) return null;
-  const g = row.prev != null && row.cur != null ? row.cur - row.prev : null;
-  const pct = g != null && row.prev ? `${g > 0 ? '+' : ''}${Math.round((g / Math.abs(row.prev)) * 1000) / 10}%` : '신규';
+  const g = (cur ?? 0) - (prev ?? 0);
+  const pct = prev ? `${g > 0 ? '+' : ''}${Math.round((g / Math.abs(prev)) * 1000) / 10}%` : '신규';
   const fill = (b: string) => b
-    .replace(/\{증감액\}/g, g == null ? '-' : fmtWon(g))
-    .replace(/\{증감률\}/g, pct)
-    .replace(/\{잔액\}/g, row.cur == null ? '-' : fmtWon(row.cur, false));
+    .replace(/\{증감액\}/g, fmtWon(g))
+    .replace(/\{증감률\}/g, cur == null || cur === 0 ? (prev ? '-100%' : '-') : pct)
+    .replace(/\{잔액\}/g, fmtWon(cur ?? 0, false));
   const seen = new Set<string>();
-  const lines = [...picked].sort((a, b) => TRIGGERS.indexOf(a.trigger) - TRIGGERS.indexOf(b.trigger) || a.sort - b.sort)
+  const lines = [...picked].sort((a, b) => TRIGGERS.indexOf(a.trigger) - TRIGGERS.indexOf(b.trigger) || rank(a) - rank(b) || a.sort - b.sort)
     .map((s) => fill(s.body)).filter((t) => !seen.has(t) && seen.add(t));
   return lines.map((t, i) => `${CIRCLED[i] ?? `${i + 1})`} ${t}`).join(' ');
+}
+
+// ── 묶음 — 재고자산·유형자산·무형자산은 계정마다가 아니라 묶어서 한 번(사용자 2026-10-01) ─────────
+export type Bundle = '재고자산' | '유형자산' | '무형자산';
+export const BUNDLES: Bundle[] = ['재고자산', '유형자산', '무형자산'];
+/** 묶음 절차에 쓰는 표준 계정 — 유형자산은 건설중인자산 줄까지(감가상각누계액 줄은 「감가상각비 재계산」과 겹쳐 뺀다). */
+const BUNDLE_ACCTS: Record<Bundle, string[]> = { 재고자산: ['재고자산'], 유형자산: ['유형자산', '건설중인자산'], 무형자산: ['무형자산'] };
+/** 묶음에 드는 표준 계정 — 감가상각누계액 줄도 유형자산 묶음이다. */
+const BUNDLE_MEMBERS: Record<Bundle, string[]> = { ...BUNDLE_ACCTS, 유형자산: [...BUNDLE_ACCTS.유형자산, '감가상각누계액'] };
+
+type PRow = { key?: string; label: string; fsli?: string; group?: string; prev: number | null; cur: number | null; proc?: string };
+/** 이 줄이 드는 묶음 — 분류 이름(「(1) 유 형 자 산」)이 먼저, 아니면 표준 계정(원재료 → 재고자산, 감가상각누계액-기계장치 → 유형자산). */
+export function bundleOf(row: PRow, std: ProcStd[]): Bundle | null {
+  const g = norm(row.group ?? '');
+  const byGroup = BUNDLES.find((b) => g === b);
+  if (byGroup) return byGroup;
+  const a = stdAccountOf({ label: row.label, fsli: row.fsli }, std);
+  return BUNDLES.find((b) => a && BUNDLE_MEMBERS[b].includes(a)) ?? null;
+}
+
+export interface ProcBundle {
+  id: string; bundle: Bundle; group: string;
+  /** 절차를 분류 줄(K38 「(1) 유형자산」)에 — 아니면 묶음의 첫 줄(holder)에(평안정공 「재고자산」 한 줄) */ onGroup: boolean;
+  holder: string; rows: PRow[]; flags: Flags; prev: number; cur: number;
+}
+/** 금액이 있는 줄의 묶음들 — 같은 분류 안의 같은 묶음끼리. */
+export function bundlesOf(rows: PRow[], std: ProcStd[], om: number | null): ProcBundle[] {
+  const out = new Map<string, ProcBundle>();
+  for (const r of rows) {
+    if (r.prev == null && r.cur == null) continue;
+    const b = bundleOf(r, std);
+    if (!b) continue;
+    const group = r.group ?? '';
+    const id = `${group}|${b}`;
+    const u = out.get(id) ?? { id, bundle: b, group, onGroup: norm(group) === b, holder: r.key ?? r.label, rows: [], flags: { material: false, unexpected: false }, prev: 0, cur: 0 };
+    const f = flagsOf(r, om);
+    u.rows.push(r);
+    // 문구의 {증감액}·{잔액} 은 취득가(차감 계정 뺀) 합계 — 순액이면 취득·상각이 서로 지워 「0원 변동」이 된다.
+    if (!CONTRA_HEAD.test(norm(r.label)) && !/충당금$/.test(norm(r.label))) { u.prev += r.prev ?? 0; u.cur += r.cur ?? 0; }
+    u.flags = { material: u.flags.material || f.material, unexpected: u.flags.unexpected || f.unexpected };
+    out.set(id, u);
+  }
+  return [...out.values()];
+}
+/** 묶음에 적힌 절차 — 분류 줄 칸 또는 첫 줄 칸. */
+export const bundleProc = (u: ProcBundle, groupProc?: Record<string, string>) =>
+  (u.onGroup ? groupProc?.[u.group] : u.rows.find((r) => (r.key ?? r.label) === u.holder)?.proc)?.trim() ?? '';
+
+/** 묶음 표준 절차 — 묶음 계정들의 「항상」 + 한 줄이라도 뜬 판정. 금액은 묶음 합계. */
+export function suggestBundle(u: ProcBundle, std: ProcStd[], industry: string | null): string | null {
+  const live = std.filter((s) => s.active && (s.industry === '공통' || s.industry === industry));
+  const accts = BUNDLE_ACCTS[u.bundle];
+  const mine = live.filter((s) => accts.includes(s.account));
+  const want: Trigger[] = ['항상', ...(u.flags.material ? (['Material'] as const) : []), ...(u.flags.unexpected ? (['Unexpected'] as const) : [])];
+  const picked: ProcStd[] = [];
+  for (const t of want) {
+    // 건설중인자산 줄은 그 계정이 묶음에 있을 때만.
+    const own = mine.filter((s) => s.trigger === t && (s.account !== '건설중인자산' || u.rows.some((r) => norm(r.label).includes('건설중인자산'))));
+    if (own.length) picked.push(...own);
+    else if (t !== '항상') picked.push(...live.filter((s) => s.account === '*' && s.trigger === t));
+  }
+  if (!u.flags.material && !u.flags.unexpected && !picked.some((s) => s.trigger === '항상')) return null;
+  return compose(picked, u.prev, u.cur, (s) => accts.indexOf(s.account));
 }
 
 /** 분류 줄(「(1) 유형자산」)에 적힌 절차가 이 줄을 덮는가 — 평안정공·알티스트 관행. */
 export const coveredByGroup = (r: { group?: string }, groupProc?: Record<string, string>) => !!(r.group && groupProc?.[r.group]?.trim());
 
-/** Material·Unexpected 가 떴는데 절차가 없는 줄 — [확인]을 막는다(2520·2530 빈칸과 같은 규칙). */
+/**
+ * Material·Unexpected 가 떴는데 절차가 없는 줄 — [확인]을 막는다(2520·2530 빈칸과 같은 규칙).
+ * 재고·유형·무형자산은 묶음으로 — 한 줄이라도 떴으면 묶음 절차(분류 줄 또는 첫 줄)가 있어야 한다.
+ */
 export function missingProcs(
-  d: { rows: { label: string; group?: string; prev: number | null; cur: number | null; proc?: string }[]; hasProc?: boolean; groupProc?: Record<string, string> },
-  om: number | null,
+  d: { rows: PRow[]; hasProc?: boolean; groupProc?: Record<string, string> },
+  om: number | null, std: ProcStd[] = [],
 ): string[] {
   if (!d.hasProc || om == null) return [];
-  return d.rows.filter((r) => { const f = flagsOf(r, om); return (f.material || f.unexpected) && !r.proc?.trim() && !coveredByGroup(r, d.groupProc); }).map((r) => r.label);
+  const rows = d.rows.filter((r) => { if (bundleOf(r, std)) return false; const f = flagsOf(r, om); return (f.material || f.unexpected) && !r.proc?.trim() && !coveredByGroup(r, d.groupProc); }).map((r) => r.label);
+  const bundles = bundlesOf(d.rows, std, om).filter((u) => (u.flags.material || u.flags.unexpected) && !bundleProc(u, d.groupProc)).map((u) => `${u.bundle}(묶음)`);
+  return [...rows, ...bundles];
+}
+
+/**
+ * [표준 절차 넣기] — 판정이 났는데 빈 곳만 채운다. 이미 적힌 회사 문구는 건드리지 않는다.
+ *   재고·유형·무형자산 → 묶음 절차 하나(분류 줄 또는 첫 줄). 묶음 안 계정 줄에 전에 넣은 표준 문구(계정별)는 걷어낸다.
+ *   나머지 줄 → 계정별 표준(없으면 「*」 기본). 분류 줄 절차가 덮는 줄(평안정공 관행)은 둔다.
+ */
+export function fillStdProcs<R extends PRow & { key: string; procStd?: boolean }, D extends { rows: R[]; groupProc?: Record<string, string>; groupStd?: string[] }>(
+  d: D, std: ProcStd[], industry: string | null, om: number | null,
+): { data: D; n: number } {
+  let n = 0;
+  const units = bundlesOf(d.rows, std, om);
+  const unitOf = new Map(units.flatMap((u) => u.rows.map((r) => [(r as R).key, u] as const)));
+  const groupProc = { ...(d.groupProc ?? {}) };
+  const groupStd = new Set(d.groupStd ?? []);
+  const holderText = new Map<string, string>();
+  for (const u of units) {
+    if (bundleProc(u, d.groupProc)) continue;
+    const t = suggestBundle(u, std, industry);
+    if (!t) continue;
+    n += 1;
+    if (u.onGroup) { groupProc[u.group] = t; groupStd.add(u.group); } else holderText.set(u.holder, t);
+  }
+  const rows = d.rows.map((r) => {
+    const u = unitOf.get(r.key);
+    if (u) {
+      if (holderText.has(r.key)) return { ...r, proc: holderText.get(r.key)!, procStd: true };
+      return r.procStd && (u.onGroup || r.key !== u.holder) ? { ...r, proc: '', procStd: false } : r;
+    }
+    if (r.proc?.trim() || coveredByGroup(r, d.groupProc)) return r;
+    const t = suggestProc(r, flagsOf(r, om), std, industry);
+    if (!t) return r;
+    n += 1;
+    return { ...r, proc: t, procStd: true };
+  });
+  return { data: { ...d, rows, groupProc, groupStd: [...groupStd] }, n };
 }

@@ -69,3 +69,36 @@ test('표준 절차 — 두 해 빈 줄엔 없고, 분류로만 찾은 판관비
   assert.equal(suggestProc(g, none, [...STD, { id: 'z', account: '판매비와관리비', aliases: [], trigger: '항상', industry: '공통', body: '월별 분석(V)', sort: 1, active: true, note: null }], '제조업'), null);
   assert.equal(stdAccountOf({ label: '보증금(유동)' }, [...STD, { id: 'y', account: '보증금', aliases: [], trigger: 'Material', industry: '공통', body: 'x', sort: 1, active: true, note: null }]), '보증금');
 });
+
+import { bundlesOf, fillStdProcs } from './gwpProcStd';
+test('판정 — 빈칸은 0(엑셀 I·J 와 같게): 전기에만 있던 계정도 Unexpected, 두 해 빈 줄은 판정 없음', () => {
+  assert.deepEqual(flagsOf({ prev: 1770, cur: null }, 1000), { material: false, unexpected: true });
+  assert.deepEqual(flagsOf({ prev: null, cur: 1500 }, 1000), { material: true, unexpected: true });
+  assert.deepEqual(flagsOf({ prev: null, cur: null }, 1), { material: false, unexpected: false });
+});
+
+test('묶음 — 유형자산은 분류 줄에 한 번, 재고자산 한 줄은 그 줄에, 판정 줄이 모두 덮이면 빠진 곳 없음(사용자 2026-10-01)', () => {
+  const G = '(1)  유  형  자  산';
+  const R = (key: string, label: string, group: string, prev: number | null, cur: number | null) => ({ key, label, group, fsli: '', prev, cur, proc: '', procStd: false });
+  const d = {
+    hasProc: true, groupProc: {} as Record<string, string>,
+    rows: [
+      R('inv', '재고자산', 'Ⅰ. 유 동 자 산', 100, 5000),
+      R('m', '기계장치', G, 4000, 6000), R('ad', '감가상각누계액-기계장치', G, -1000, -3000), R('v', '차량운반구', G, 10, 10),
+      R('ar', '매출채권', 'Ⅰ. 유 동 자 산', 10, 20),
+      R('x', '잡손실', 'Ⅵ-2. 기타 영업외비용', 3600, 600),
+    ],
+  };
+  const std = [...STD, S('재고자산', 'Material', '공통', '재고실사 입회(E/O)', ['원재료'])];
+  const units = bundlesOf(d.rows, std, 1000);
+  assert.deepEqual(units.map((u) => [u.bundle, u.onGroup, u.rows.length]), [['재고자산', false, 1], ['유형자산', true, 3]]);
+  assert.ok(missingProcs(d, 1000, std).includes('유형자산(묶음)'));
+  assert.ok(!missingProcs(d, 1000, std).includes('기계장치'));          // 계정마다 적지 않는다
+  const r = fillStdProcs(d, std, '제조업', 1000);
+  assert.match(r.data.groupProc![G], /취득·처분 증빙테스트/);
+  assert.doesNotMatch(r.data.groupProc![G], /누계액 대사/);
+  assert.equal(r.data.rows.find((x) => x.key === 'm')!.proc, '');
+  assert.match(r.data.rows.find((x) => x.key === 'inv')!.proc!, /재고실사/);
+  assert.match(r.data.rows.find((x) => x.key === 'x')!.proc!, /변동 원인/);   // 예시 없는 계정은 「*」 기본
+  assert.deepEqual(missingProcs(r.data, 1000, std), []);
+});
