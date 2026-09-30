@@ -36,6 +36,7 @@ import { tabStateOf } from '../../lib/xlsxMark';
 import NewEngagementModal from '../dsd/NewEngagementModal';
 import { safeName, download } from '../dsd/dsdUi';
 import GwpTemplatesCard from './GwpTemplatesCard';
+import GwpProcStdCard from './GwpProcStdCard';
 import GwpStageBoard from './GwpStageBoard';
 import GwpFolderCard from './GwpFolderCard';
 
@@ -97,7 +98,7 @@ export default function GwpTab() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
   const [adding, setAdding] = useState(false);
-  const [sub, setSub] = useState<'work' | 'tpl'>('work');
+  const [sub, setSub] = useState<'work' | 'tpl' | 'proc'>('work');
   const [report, setReport] = useState<RollReport | null>(null);
   const [assembled, setAssembled] = useState<AssembleReport | null>(null);
   const [showLeft, setShowLeft] = useState(false);
@@ -464,6 +465,7 @@ export default function GwpTab() {
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             <button className={`btn-sm${sub === 'work' ? ' btn-sm-navy' : ''}`} onClick={() => setSub('work')}>① 작업 건·조서</button>
             <button className={`btn-sm${sub === 'tpl' ? ' btn-sm-navy' : ''}`} onClick={() => setSub('tpl')}>② 표준양식 ({templates.length})</button>
+            <button className={`btn-sm${sub === 'proc' ? ' btn-sm-navy' : ''}`} onClick={() => setSub('proc')} title="2120A 주요 감사절차(K열) 표준">③ 표준 절차</button>
             {canWrite && <button className="btn-sm" onClick={() => setAdding(true)}>+ 새 건 만들기</button>}
           </span>
         </div>
@@ -482,6 +484,7 @@ export default function GwpTab() {
       )}
 
       {sub === 'tpl' && <GwpTemplatesCard templates={templates} onChange={() => load(pickedId ?? undefined)} />}
+      {sub === 'proc' && <GwpProcStdCard canWrite={canWrite} />}
 
       {sub === 'work' && (
         <>

@@ -15,6 +15,7 @@ export interface GwpYear {
   authorDefault: string | null;
   stage: GwpStage;
   note: string | null;
+  /** 업종 — 2120A 주요 감사절차 표준 문구를 고를 때(사용자 2026-09-30). 없으면 재무제표로 추정해 보여 준다. */ industry: string | null;
   updatedAt: string;
 }
 
@@ -22,7 +23,7 @@ export interface GwpYear {
 const toYear = (r: any): GwpYear => ({
   id: r.id, engagementId: r.engagement_id, auditBasis: r.audit_basis,
   basisConfirmedAt: r.basis_confirmed_at ?? null, partner: r.partner ?? '',
-  authorDefault: r.author_default ?? null, stage: r.stage, note: r.note ?? null, updatedAt: r.updated_at,
+  authorDefault: r.author_default ?? null, stage: r.stage, note: r.note ?? null, industry: r.industry ?? null, updatedAt: r.updated_at,
 });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -62,4 +63,11 @@ export async function auditContractCpa(entityId: string, fy: number): Promise<st
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as { cpa: string | null; fiscal_year: number | null }[];
   return (rows.find((r) => r.fiscal_year === fy) ?? rows[0])?.cpa ?? null;
+}
+
+/** 업종만 적는다(2120A 화면에서 고름). 세팅이 없는 건은 적지 않는다 — 세팅부터. */
+export async function saveYearIndustry(engagementId: string, industry: string): Promise<void> {
+  const { data: u } = await supabase.auth.getUser();
+  const { error } = await supabase.from('gwp_year').update({ industry, updated_by: u.user?.id, updated_at: new Date().toISOString() }).eq('engagement_id', engagementId);
+  if (error) throw new Error(error.message);
 }

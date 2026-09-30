@@ -1,6 +1,7 @@
 // 2120A 위험평가 분석적절차 입력 — 전기(이월 때 옮겨 둔 열)와 당기(전기 DSD 로 채움)를 나란히, 증감·비고.
 import { useState } from 'react';
 import { balance, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
+import { flagsOf, suggestProc, coveredByGroup, INDUSTRIES, UNEXPECTED_FACTOR, type ProcStd } from '../../lib/gwpProcStd';
 
 const fmt = (n: number | null | undefined) => (n == null ? '' : n.toLocaleString('ko-KR'));
 const parse = (s: string): number | null => { const t = s.replace(/[,\s]/g, ''); if (!t) return null; const n = Number(t.replace(/^\((.*)\)$/, '-$1')); return Number.isFinite(n) ? n : null; };
@@ -9,14 +10,19 @@ const SRC: Record<string, { t: string; c: string }> = {
   문구: { t: 'DSD', c: 'var(--good)' }, 차감: { t: 'DSD 차감', c: 'var(--good)' }, 금액: { t: 'DSD(금액으로 짝)', c: 'var(--navy)' }, 손: { t: '손으로', c: 'var(--ink-2)' },
 };
 
-export default function Form2120A({ value, onChange, readOnly, fill, report }: {
+export default function Form2120A({ value, onChange, readOnly, fill, report, om, std, industry, industryGuessed, onIndustry }: {
   value: Paper2120A;
   onChange: (v: Paper2120A) => void;
   readOnly: boolean;
   /** 전기 DSD 로 채우기 버튼(없으면 자료함에 DSD 가 없는 것) */ fill?: React.ReactNode;
   report: FillReport | null;
+  /** 판정 기준 중요성(원) — 2700A-2 계획단계. 없으면 판정을 못 한다. */ om: number | null;
+  /** 주요 감사절차 표준(gwp_proc_std) */ std: ProcStd[];
+  /** 이 회사 업종 — 표준 문구를 고를 때 */ industry: string | null;
+  /** 업종이 저장값이 아니라 추정값이다 */ industryGuessed: boolean;
+  onIndustry: (v: string) => void;
 }) {
-  const [only, setOnly] = useState<'all' | 'big' | 'todo'>('all');
+  const [only, setOnly] = useState<'all' | 'big' | 'todo' | 'proc'>('all');
   /** 받을 줄 없는 계정을 더할 줄(계정 → 줄 key) · 이미 더한 계정 */
   const [pick, setPick] = useState<Record<string, string>>({});
   const [placed, setPlaced] = useState<Set<string>>(new Set());
@@ -45,7 +51,25 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
     return Math.abs(g) >= 10_000_000 && (r.prev === 0 || Math.abs(g / r.prev) >= 0.2);
   };
   const todo = (r: Row2120) => (!!r.prev && r.cur == null) || r.prevDiff != null;
-  const rows = value.rows.filter((r) => (only === 'big' ? big(r) : only === 'todo' ? todo(r) : true));
+  // 주요 감사절차 — Material(잔액 > 중요성) · Unexpected(증감 > 중요성×90%)가 뜬 줄은 K 를 적어야 한다(사용자 2026-09-30).
+  const flag = (r: Row2120) => flagsOf(r, om);
+  const needProc = (r: Row2120) => { const f = flag(r); return !!value.hasProc && (f.material || f.unexpected) && !r.proc?.trim() && !coveredByGroup(r, value.groupProc); };
+  const lacking = value.rows.filter(needProc).length;
+  /** 표준 절차 넣기 — 판정이 났는데 비었거나(분류 줄 절차도 없음) 「항상」 절차가 있는 계정의 빈 칸만. 이미 적힌 회사 문구는 건드리지 않는다. */
+  const fillStd = () => {
+    let n = 0;
+    const rows2 = value.rows.map((r) => {
+      if (r.proc?.trim() || coveredByGroup(r, value.groupProc)) return r;
+      const t = suggestProc(r, flag(r), std, industry);
+      if (!t) return r;
+      n += 1;
+      return { ...r, proc: t, procStd: true };
+    });
+    onChange({ ...value, rows: rows2 });
+    return n;
+  };
+  const [filled, setFilled] = useState<number | null>(null);
+  const rows = value.rows.filter((r) => (only === 'big' ? big(r) : only === 'todo' ? todo(r) : only === 'proc' ? needProc(r) || !!r.procStd : true));
   if (!value.rows.length) return <div style={{ color: 'var(--warn)' }}>2120A 에서 전기·당기 열(「BS: 2024_4Q」 같은 머리)을 찾지 못했습니다.</div>;
 
   return (
@@ -53,11 +77,34 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
         {!readOnly && fill}
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-          {([['all', '모두'], ['big', '증감 큰 줄'], ['todo', '확인할 줄']] as const).map(([k, l]) => (
+          {([['all', '모두'], ['big', '증감 큰 줄'], ['todo', '확인할 줄'], ['proc', `절차 확인할 줄${lacking ? ` ${lacking}` : ''}`]] as const).map(([k, l]) => (
             <button key={k} className={`btn-sm${only === k ? ' btn-sm-navy' : ''}`} onClick={() => setOnly(k)}>{l}</button>
           ))}
         </span>
       </div>
+      {value.hasProc && (
+        <div style={{ padding: '6px 10px', borderRadius: 8, marginBottom: 6, background: 'var(--surface-2)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', lineHeight: 1.6 }}>
+          <span>
+            <b>판정 기준</b> — 2700A-2 계획단계 중요성{' '}
+            {om == null ? <b style={{ color: 'var(--bad)' }}>없음(2700A-2 를 먼저 확인하세요)</b>
+              : <><b>{fmt(Math.round(om))}</b>원 · Unexpected 는 증감 {'>'} {fmt(Math.round(om * UNEXPECTED_FACTOR))}원</>}
+          </span>
+          <span>
+            <b>업종</b>{' '}
+            <select className="btn-sm" disabled={readOnly} value={industry ?? ''} onChange={(e) => onIndustry(e.target.value)}>
+              {INDUSTRIES.map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+            {industryGuessed && <span style={{ color: 'var(--warn)', fontSize: 'var(--fs-0)', marginLeft: 4 }}>재무제표로 추정 — 맞으면 그대로, 아니면 고르세요</span>}
+          </span>
+          {!readOnly && om != null && (
+            <button className="btn-sm btn-sm-navy" onClick={() => setFilled(fillStd())}
+              title="판정이 났는데 절차가 빈 줄(분류 줄 절차도 없는 줄)만 표준 문구로 채웁니다 — 이미 적힌 문구는 그대로">표준 절차 넣기</button>
+          )}
+          {lacking > 0 ? <b style={{ color: 'var(--bad)' }}>절차가 빈 판정 줄 {lacking}개 — 채워야 [확인]됩니다</b>
+            : om != null && <span style={{ color: 'var(--good)' }}>판정 줄 모두 절차 있음 ✓</span>}
+          {filled != null && <span style={{ color: 'var(--ink-2)' }}>{filled}줄에 표준 절차를 넣었습니다(노란 표시 — 회사 사실에 맞게 고치세요).</span>}
+        </div>
+      )}
       {/* 자산 = 부채 + 자본 — 사용자 2026-09-27 「2120A 는 자산=부채+자본 검증이 필요」 */}
       {(['prev', 'cur'] as const).map((w) => {
         const b = balance(value.rows, w);
@@ -131,6 +178,8 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
                     {r.label}{r.src && <span style={{ fontSize: 'var(--fs-0)', color: SRC[r.src]?.c, marginLeft: 4 }}>{SRC[r.src]?.t}</span>}
                     {r.added && <span style={{ fontSize: 'var(--fs-0)', background: '#FFFF00', color: '#000', padding: '0 4px', marginLeft: 4 }}>새 줄</span>}
                     {r.added && !readOnly && <button className="btn-sm" style={{ marginLeft: 4, padding: '0 6px' }} title="이 새 줄 빼기" onClick={() => onChange({ ...value, rows: value.rows.filter((x) => x.key !== r.key) })}>✕</button>}
+                    {flag(r).material && <span style={{ fontSize: 'var(--fs-0)', background: 'var(--bad-bg)', color: 'var(--bad)', padding: '0 4px', marginLeft: 4, borderRadius: 4 }}>Material</span>}
+                    {flag(r).unexpected && <span style={{ fontSize: 'var(--fs-0)', background: 'var(--warn-bg)', color: 'var(--warn)', padding: '0 4px', marginLeft: 4, borderRadius: 4 }}>Unexpected</span>}
                   </td>
                   <td style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-0)' }}>{r.fsli}</td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
@@ -142,6 +191,21 @@ export default function Form2120A({ value, onChange, readOnly, fill, report }: {
                   <td style={{ textAlign: 'right', color: 'var(--ink-3)' }}>{p == null ? '' : `${Math.round(p * 1000) / 10}%`}</td>
                   <td><input className="btn-sm" style={{ width: '100%' }} disabled={readOnly} value={r.note} onChange={(e) => set(r.key, { note: e.target.value })} /></td>
                 </tr>
+                {value.hasProc && (flag(r).material || flag(r).unexpected || !!r.proc) && (
+                  <tr>
+                    <td colSpan={7} style={{ paddingTop: 0, background: needProc(r) ? 'var(--bad-bg)' : r.procStd ? '#FFFF0033' : undefined }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', whiteSpace: 'nowrap', paddingTop: 4 }}>주요 감사절차</span>
+                        {coveredByGroup(r, value.groupProc) && !r.proc?.trim()
+                          ? <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', paddingTop: 3 }}>상위 분류 「{r.group?.replace(/\s+/g, ' ')}」의 절차 적용 — {value.groupProc![r.group!].slice(0, 90)}{value.groupProc![r.group!].length > 90 ? '…' : ''}</span>
+                          : <textarea className="btn-sm" rows={Math.min(4, Math.max(1, Math.ceil((r.proc ?? '').length / 90)))} style={{ flex: 1, resize: 'vertical' }} disabled={readOnly}
+                              placeholder="판정이 났습니다 — 주요 감사절차를 적거나 [표준 절차 넣기]" value={r.proc ?? ''}
+                              onChange={(e) => set(r.key, { proc: e.target.value, procStd: false })} />}
+                        {r.procStd && <span style={{ fontSize: 'var(--fs-0)', background: '#FFFF00', color: '#000', padding: '0 4px', whiteSpace: 'nowrap' }}>표준</span>}
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </FragmentRows>
             );
           })}

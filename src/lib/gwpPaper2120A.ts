@@ -28,6 +28,8 @@ export interface Row2120 {
   /** 「이 줄에 더하기」로 받은 DSD 계정 — 다시 채울 때 그 계정을 이미 받은 것으로 친다 */ absorbs?: string[];
   /** 분류(「Ⅰ. 유 동 자 산」·「(1) 유 형 자 산」·「Ⅳ. 판매비와관리비」) — 새 줄을 어디에 끼울지 */ group?: string;
   /** 웹에서 새로 넣은 계정 줄 — 반영할 때 그 분류의 끝에 줄을 끼운다(평안정공 2026-09-28) */ added?: boolean;
+  /** K열 주요 감사절차(ToD) — Material·Unexpected 가 뜬 줄은 적어야 한다(사용자 2026-09-30) */ proc?: string;
+  /** 표준 절차 표에서 넣은 추천 문구 — 확인 전 노랑 */ procStd?: boolean;
 }
 export type Sec = '자산' | '부채' | '자본' | '손익';
 export interface Paper2120A {
@@ -37,6 +39,10 @@ export interface Paper2120A {
    * 반영할 때 그 판의 시트를 복사해 넣고, 전기·당기 두 열을 이 조서 값으로 쓴다(빌린 회사 금액·비고는 남기지 않는다).
    */
   borrow?: Borrow2120;
+  /** 시트에 주요 감사절차 열(「주요 ToD 절차」)이 있다 */ hasProc?: boolean;
+  /** 분류 줄(「(1) 유 형 자 산」)에 적힌 절차 — 그 아래 계정 줄 전체에 적용된 것으로 본다(평안정공·알티스트 관행) */ groupProc?: Record<string, string>;
+  /** 판정 기준 중요성(원) — 2700A-2 계획단계 중요성. 반영 때 시트의 Overall Materiality 칸에 쓴다(사용자 2026-09-30) */ om?: number | null;
+  /** 수행중요성(원) — Planning Materiality 칸 */ pm?: number | null;
 }
 export interface Borrow2120 { engagementId: string; entity: string; version: number; sheet: string }
 
@@ -63,7 +69,10 @@ function colNum(c: string): number { let n = 0; for (const ch of c) n = n * 26 +
 function colName(n: number): string { let s = ''; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; }
 
 type LRow = { row: number; label: string; fsli: string; pl: boolean; sec: Sec; group: string; col: string };
-type Layout = { pc: NonNullable<ReturnType<typeof findPeriodColumns>>; rows: LRow[]; noteCol: string | null; fsliCol: string | null };
+type Layout = {
+  pc: NonNullable<ReturnType<typeof findPeriodColumns>>; rows: LRow[]; noteCol: string | null; fsliCol: string | null;
+  /** 주요 감사절차 열 · 분류 줄(이름 → 행) · 중요성 칸 */ procCol?: string | null; heads?: { name: string; row: number }[]; omRef?: string | null; pmRef?: string | null;
+};
 function layout(sheet: SheetData): Layout | null {
   const pc = findPeriodColumns(sheet);
   if (!pc) return null;
@@ -72,6 +81,7 @@ function layout(sheet: SheetData): Layout | null {
   const fsliHead = head.find((h) => normLabel(h.text).includes('IFRS공시'));
   const acctHead = head.find((h) => normLabel(h.text).startsWith('계정과목') && h !== fsliHead);
   const noteHead = head.find((h) => normLabel(h.text) === '비고');
+  const procHead = head.find((h) => /tod|감사절차/i.test(normLabel(h.text)));
   if (!acctHead) return layered(sheet, pc, hits);
   const labelCol = acctHead ? colName(colNum(acctHead.col) + 1) : 'C';
   const plStart = hits.find((h) => h.row > pc.headerRow && /^(Ⅰ|I)\.?매출액$/.test(normLabel(h.text)))?.row ?? Infinity;
@@ -93,7 +103,18 @@ function layout(sheet: SheetData): Layout | null {
   }
   // 공시 계정 열 — 짝 키에는 「IFRS 공시」 머리만 쓴다(키가 바뀌면 저장한 입력과 어긋난다). 새 줄 쓰기에는 「계정과목 (공시용)」(평안정공)도.
   const fsliAny = fsliHead ?? head.find((h) => h !== acctHead && normLabel(h.text).includes('공시'));
-  return { pc, rows, noteCol: noteHead?.col ?? null, fsliCol: fsliAny?.col ?? null };
+  // 중요성 칸 — 「Overall Materiality」·「Planning Materiality」 줄의 첫 숫자·수식 칸(평안정공 D7·D8).
+  const refRight = (re: RegExp) => {
+    const h = hits.find((x) => x.row < pc.headerRow && re.test(normLabel(x.text)));
+    if (!h) return null;
+    for (let c = colNum(h.col) + 1; c <= colNum(h.col) + 4; c++) { const ref = `${colName(c)}${h.row}`; const v = sheet.cells.get(ref); if (v && (v.formula != null || v.num != null)) return ref; }
+    return null;
+  };
+  return {
+    pc, rows, noteCol: noteHead?.col ?? null, fsliCol: fsliAny?.col ?? null, procCol: procHead?.col ?? null,
+    heads: heads.map((x) => ({ name: x.text.trim(), row: x.row })),
+    omRef: refRight(/^overallmateriality$/i), pmRef: refRight(/^planningmateriality$/i),
+  };
 }
 
 /**
@@ -190,7 +211,12 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
         key: r.key, label: r.label, fsli: r.fsli, pl: r.pl, sec: r.sec, group: r.group,
         prev: numOf(sheet, `${L.pc.prevCol}${r.row}`), cur: numOf(sheet, `${L.pc.curCol}${r.row}`),
         note: L.noteCol ? textOf(sheet.cells.get(`${L.noteCol}${r.row}`)) : '',
+        ...(L.procCol ? { proc: textOf(sheet.cells.get(`${L.procCol}${r.row}`)) } : {}),
       })),
+      ...(L.procCol ? {
+        hasProc: true,
+        groupProc: Object.fromEntries((L.heads ?? []).map((h) => [h.name, textOf(sheet.cells.get(`${L.procCol}${h.row}`))]).filter(([, t]) => t)),
+      } : {}),
     };
   },
   // 새 계정 줄 — 분류 끝줄 아래에 끼우고 그 분류의 합계 범위를 늘린다(아래 분류부터 — 위 줄 번호가 밀리지 않게).
@@ -220,6 +246,7 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
         if (x.prev != null) e.push({ ref: `${L.pc.prevCol}${r}`, num: x.prev });
         if (x.cur != null) e.push({ ref: `${L.pc.curCol}${r}`, num: x.cur });
         if (L.noteCol && x.note.trim()) e.push({ ref: `${L.noteCol}${r}`, text: x.note.trim() });
+        if (L.procCol && x.proc?.trim()) e.push({ ref: `${L.procCol}${r}`, text: x.proc.trim() });
         for (const [c, f] of fcols) e.push({ ref: `${c}${r}`, formula: moveFormula(f.formula, r - f.row) });
       });
     }
@@ -231,7 +258,12 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
       // 빌린 틀 — 전기 열도 이 회사 값(DSD 전기)으로. 빌린 회사 금액을 남기지 않는다.
       if (d.borrow) { const pref = `${L.pc.prevCol}${row}`; e.push(r.prev == null ? { ref: pref, clear: true } : { ref: pref, num: r.prev }); }
       if (L.noteCol) { const nref = `${L.noteCol}${row}`; e.push(r.note.trim() ? { ref: nref, text: r.note.trim() } : { ref: nref, clear: true }); }
+      // 주요 감사절차(K) — 웹에서 적거나 표준으로 넣은 문구.
+      if (L.procCol && r.proc !== undefined) { const kref = `${L.procCol}${row}`; e.push(r.proc.trim() ? { ref: kref, text: r.proc.trim() } : { ref: kref, clear: true }); }
     }
+    // 판정 기준 = 2700A-2 계획단계 중요성(사용자 2026-09-30) — 시트 자체 계산(=F85*0.01)을 덮는다. Unexpected 기준(E7=D7*0.9)은 수식 그대로 따라온다.
+    if (d.om != null && L.omRef) e.push({ ref: L.omRef, num: Math.round(d.om) });
+    if (d.pm != null && L.pmRef) e.push({ ref: L.pmRef, num: Math.round(d.pm) });
     return e;
   },
 };

@@ -36,6 +36,9 @@ import type { AuditBasis } from '../../lib/gwpSetup';
 import { fillFromWtb, type Paper8110, type WtbReport } from '../../lib/gwpPaper8110';
 import { fillFromFs, balance, PAPER_2120A, isBlank2120, fromBorrowed, placeUnplaced, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
 import type { Paper2110 } from '../../lib/gwpPaper2110';
+import { guessIndustry, missingProcs, type ProcStd } from '../../lib/gwpProcStd';
+import { listProcStd } from '../../lib/gwpProcStdApi';
+import { listYears, saveYearIndustry } from '../../lib/gwpYearApi';
 import Form2700A from './Form2700A';
 import Form2700A1 from './Form2700A1';
 
@@ -148,7 +151,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
   async function save() {
     setBusy('save'); setErr(null);
     try {
-      await savePaper(eng.id, def.code, data);
+      await savePaper(eng.id, def.code, with2120(data));
       setDirty(false);
       await onChanged(`${def.code} ${def.title}을 저장했습니다 — 아직 엑셀에는 반영하지 않았습니다.`);
     } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } finally { setBusy(''); }
@@ -171,11 +174,15 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
         const b = balance((data as Paper2120A).rows, w);
         if (b && Math.abs(b.diff) >= 1 && !confirm(`${w === 'prev' ? '전기' : '당기'} 자산이 부채+자본과 ${b.diff.toLocaleString('ko-KR')}원 다릅니다.\n그래도 확인할까요?`)) return;
       }
+      // Material·Unexpected 가 떴는데 주요 감사절차가 빈 줄(사용자 2026-09-30).
+      const miss = missingProcs(data as Paper2120A, om2120);
+      if (miss.length) { setErr(`판정(Material·Unexpected)이 났는데 주요 감사절차가 빈 줄 ${miss.length}개 — ${miss.slice(0, 6).join(', ')}${miss.length > 6 ? ' …' : ''}. 적거나 [표준 절차 넣기]를 누르세요.`); return; }
+      if (om2120 == null && (data as Paper2120A).hasProc && !confirm('2700A-2 중요성이 아직 없어 Material·Unexpected 판정을 못 했습니다.\n그래도 확인할까요? (2700A-2 를 확인한 뒤 다시 보는 것을 권합니다)')) return;
     }
     if (QA_DRAFTS[def.code] && blanksLeft(data as PaperQA)) { setErr(`${BLANK} 자리가 ${blanksLeft(data as PaperQA)}곳 남았습니다 — 채우고 [확인]하세요(빨간 칸).`); return; }
     setBusy('check'); setErr(null);
     try {
-      await markChecked(eng.id, def.code, data);
+      await markChecked(eng.id, def.code, with2120(data));
       setDirty(false);
       await onChanged(`${def.code} ${def.title}을 확인했습니다 — [${stage.label}] 때 다른 조서와 함께 엑셀에 반영됩니다.`);
       onClose();
@@ -276,6 +283,38 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
     } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); } finally { setBusy(''); }
   }
 
+  // 2120A 주요 감사절차 — 판정 기준 = 2700A-2 계획단계 중요성(원), 표준 절차 표, 업종(사용자 2026-09-30).
+  const mat2700 = papers.get('2700A-2')?.data as Paper2700 | undefined;
+  const omM = mat2700 ? decidedMateriality(mat2700) : null;           // 백만원
+  const om2120 = omM != null ? omM * 1e6 : null;
+  const pm2120 = om2120 != null ? om2120 * (mat2700?.pmRate ?? 0.75) : null;
+  const [procStd, setProcStd] = useState<ProcStd[]>([]);
+  const [industry, setIndustry] = useState<string | null>(null);
+  const [industryGuessed, setIndustryGuessed] = useState(false);
+  useEffect(() => {
+    if (def.code !== '2120A') return;
+    let off = false;
+    void (async () => {
+      const [std, years] = await Promise.all([listProcStd(), listYears()]);
+      if (off) return;
+      setProcStd(std);
+      const saved = years.get(eng.id)?.industry ?? null;
+      if (saved) { setIndustry(saved); setIndustryGuessed(false); return; }
+      // 추정 — 2120A 계정 + 전기 DSD 재무제표 과목(2120A 에는 「재고자산」 한 줄뿐인 회사가 많다).
+      let labels = ((data as Paper2120A | null)?.rows ?? []).map((r) => r.label);
+      if (latestFile(files, '전기DSD', eng.fy)) { try { labels = [...labels, ...(await dsdLines()).lines.map((l) => l.label)]; } catch { /* DSD 못 읽으면 2120A 만 */ } }
+      if (!off) { setIndustry(guessIndustry(labels, eng.entityName)); setIndustryGuessed(true); }
+    })().catch(() => undefined);
+    return () => { off = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [def.code, eng.id, files]);
+  async function pickIndustry(v: string) {
+    setIndustry(v); setIndustryGuessed(false);
+    try { await saveYearIndustry(eng.id, v); } catch (e) { setErr(e instanceof Error ? e.message : '업종을 저장하지 못했습니다.'); }
+  }
+  /** 저장·확인할 2120A — 판정 기준 중요성을 함께 담는다(반영 때 시트의 Overall·Planning Materiality 칸에 쓴다). */
+  const with2120 = (d: unknown) => (def.code === '2120A' && d ? { ...(d as Paper2120A), om: om2120, pm: pm2120 } : d);
+
   // 2120A 가 빈 양식이면(작년에 안 씀) — 다른 회사 틀 빌리기(사용자 2026-09-30).
   const [cands, setCands] = useState<BorrowCandidate[] | null>(null);
   const [candPick, setCandPick] = useState('');
@@ -330,7 +369,10 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
     try {
       const z = unzipSync(await fileBytes(f.storagePath));
       if (!z['contents.xml']) throw new Error('DSD 안에 본문이 없습니다.');
-      const got = amountsFromFs(parseStatements(strFromU8(z['contents.xml'])), eng.moneyUnit);
+      const xml = strFromU8(z['contents.xml']);
+      // 단위는 DSD 재무제표 표기로(작업 건 설정은 틀릴 수 있다 — 아비즈 설정 천원·DSD 원, 2026-09-30).
+      const u = statementsUnit(xml);
+      const got = amountsFromFs(parseStatements(xml), u === 1 ? '원' : u === 1000 ? '천원' : eng.moneyUnit);
       const n = Object.keys(got).length;
       if (!n) throw new Error('전기 DSD 재무제표에서 자산총계·자본총계·매출액·세전이익을 찾지 못했습니다.');
       const d = data as Paper2700;
@@ -404,6 +446,7 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
               </div>
             ) : def.code === '2120A' ? (
               <Form2120A value={data as Paper2120A} onChange={change} readOnly={readOnly} report={fillRep}
+                om={om2120} std={procStd} industry={industry} industryGuessed={industryGuessed} onIndustry={(v) => void pickIndustry(v)}
                 fill={<button className="btn-sm btn-sm-navy" disabled={!dsd || !!busy} onClick={() => void fill2120()}
                   title={dsd ? dsd.fileName : '자료함에 전기 DSD 를 먼저 올리세요'}>
                   {busy === 'dsd' ? '읽는 중…' : !dsd ? '전기 DSD 없음(자료함에 올리세요)' : (data as Paper2120A).borrow ? '전기 DSD 로 전기·당기 채우기' : '전기 DSD 로 당기 열 채우기'}
