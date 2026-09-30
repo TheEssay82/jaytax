@@ -41,3 +41,16 @@ test('2110 소규모 → 일반 — 일정은 결산연도에 맞추고(이월 �
   assert.equal(d.team[1].text, '');           // 김품감(예시)은 남기지 않는다
   assert.equal(d.scopeText, '일반외감'); assert.equal(d.sites[0].value, '경기도 용인시'); assert.equal(d.copiesKo, '10');
 });
+
+import { unscaledFormat } from './xlsxMark';
+test('천 단위 표시 풀기 — 끝 쉼표만 떼고, 「백만원」 글자 서식은 둔다', () => {
+  assert.equal(unscaledFormat('#,##0,'), '#,##0');
+  assert.equal(unscaledFormat('#,##0,;[Red]\(#,##0,\);"-"'), '#,##0;[Red]\(#,##0\);"-"');
+  assert.equal(unscaledFormat('_-* #,##0,_-;\-* #,##0,_-;_-* "-"_-;_-@_-'), '_-* #,##0_-;\-* #,##0_-;_-* "-"_-;_-@_-');
+  assert.equal(unscaledFormat('#,##0'), null);
+  assert.equal(unscaledFormat('#,##0,, "백만원"'), null);
+  assert.equal(unscaledFormat(String.raw`#,##0,,\ \백\만\원`), null);
+  assert.equal(unscaledFormat(String.raw`#,##0,,_""백""만""원";[Red]\(#,##0,,\);\-\ `), null);   // 평안정공 실물
+  assert.equal(unscaledFormat(String.raw`#,##0,_);[Red]\(#,##0,\);\-\ \ `), String.raw`#,##0_);[Red]\(#,##0\);\-\ \ `);
+  assert.equal(unscaledFormat('0.00%'), null);
+});

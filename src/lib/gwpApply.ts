@@ -10,7 +10,7 @@ import { strFromU8, strToU8 } from 'fflate';
 import { readWorkbook, type CellValue, type SheetData } from './xlsxRead';
 import { setCells, type CellEdit } from './xlsxCells';
 import { sheetEntries, dropCalcChain, forceRecalc, unzip, zip, transplantSheet, setSheetHidden } from './xlsxTransplant';
-import { setTabColor, highlightCells, blackenSheet, tabColorOf, tabStateOf, TAB } from './xlsxMark';
+import { setTabColor, highlightCells, blackenSheet, tabColorOf, tabStateOf, unscaleThousands, TAB } from './xlsxMark';
 import { findPaperSheet, pickSheet, textOf, type WebPaperDef } from './gwpWeb';
 import { findTemplateSheet, type TemplateCatalog } from './gwpTemplate';
 import { buildCatalog, codeOf } from './gwpCatalog';
@@ -145,6 +145,13 @@ export function applyWebPapers(
     files[r.part] = strToU8(setTabColor(xml, TAB.yellow));
     blackenSheet(files, r.part);
     prepared.added.push(r.name);
+  }
+  // 빌린 시트는 금액을 원 단위로 보이게 — 빌려 온 회사 서식이 「#,##0,」(천 단위 표시)여도(사용자 2026-09-30). 이미 넣은 판도 재확정 때 고쳐진다.
+  for (const { def, data } of items) {
+    if (!def.borrowOf?.(data)) continue;
+    const s = readWorkbook(zip(files)).find((x) => !x.hidden && baseOf(x.name) === def.sheetCode);
+    const e = s ? sheetEntries(files).find((x) => x.name === s.name) : null;
+    if (e) unscaleThousands(files, e.part);
   }
   // 칸을 쓰기 전에 시트 XML 을 고칠 조서(줄 끼우기).
   for (const { def, data } of items) {

@@ -216,3 +216,73 @@ function insertEmptyCell(xml: string, ref: string): string {
   const open = sd[0].startsWith('<sheetData') && sd[1] != null ? /<sheetData\b[^>]*>/.exec(sd[0])![0] : '<sheetData>';
   return xml.slice(0, sd.index) + open + body + '</sheetData>' + xml.slice(sd.index + sd[0].length);
 }
+
+// ── 천 단위 표시 풀기 ─────────────────────────────────────
+// 사용자 2026-09-30: 「2120A 의 단위를 원으로」 — 빌려 온 평안정공 2120A 는 금액 칸 서식이 「#,##0,」(끝 쉼표 = 1000 으로 나눠 보임)라
+// 원으로 넣은 값이 천 단위로 보였다. 그 시트의 칸만, 쓰던 서식을 복제해 끝 쉼표를 뗀 서식으로 바꾼다(다른 시트가 같은 서식을 써도 그대로).
+// 「백만원」「천원」 같은 글자가 붙은 서식(중요성 머리 「194 백만원」)은 일부러 그렇게 보이는 것이라 둔다.
+
+/** 서식 코드에서 나눗셈 쉼표(자리 표시 0·# 바로 뒤, 다음이 자리 표시가 아닌 쉼표)를 뗀다. 따옴표 안 글자는 그대로. 바뀐 게 없으면 null. */
+export function unscaledFormat(code: string): string | null {
+  // 글자는 「"백만원"」으로도, 한 글자씩 「\백\만\원」·「"백""만""원"」으로도 적힌다(평안정공 2120A 중요성 머리).
+  if (/백만|천|million|thousand/i.test(code.replace(/[\\"]/g, ''))) return null;
+  let changed = false;
+  const out = code.split(/("[^"]*")/).map((part, i) => {
+    if (i % 2) return part;                                       // 따옴표 안
+    return part.replace(/([0#?]),+(?=[^0#?,]|$)/g, (_m, d: string) => { changed = true; return d; });
+  }).join('');
+  return changed ? out : null;
+}
+
+export function unscaleThousands(files: Record<string, Uint8Array>, sheetPart: string): number {
+  const path = 'xl/styles.xml';
+  if (!files[path] || !files[sheetPart]) return 0;
+  let styles = strFromU8(files[path]);
+  const fmtRe = /<numFmt\b[^>]*\bnumFmtId="(\d+)"[^>]*\bformatCode="([^"]*)"[^>]*\/>/g;
+  const unesc = (s: string) => s.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const fmts = new Map([...styles.matchAll(fmtRe)].map((m) => [Number(m[1]), unesc(m[2])]));
+  const cx = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(styles);
+  if (!cx) return 0;
+  const xfs = [...cx[1].matchAll(XF_RE)].map((m) => m[0]);
+  const newXf = new Map<number, number>();                        // 옛 xf → 새 xf(바꿀 게 없으면 옛 것)
+  const newFmt = new Map<string, number>();                       // 새 서식 코드 → numFmtId
+  let nextFmt = Math.max(163, ...fmts.keys()) + 1;
+  const addFmts: string[] = []; const addXfs: string[] = [];
+  const mapXf = (k: number): number => {
+    if (newXf.has(k)) return newXf.get(k)!;
+    const base = xfs[k];
+    const id = Number(/\bnumFmtId="(\d+)"/.exec(base ?? '')?.[1] ?? '0');
+    const code = fmts.get(id);
+    const un = code != null ? unscaledFormat(code) : null;
+    if (!base || un == null) { newXf.set(k, k); return k; }
+    let fid = newFmt.get(un) ?? [...fmts].find(([, c]) => c === un)?.[0];
+    if (fid == null) { fid = nextFmt++; addFmts.push(`<numFmt numFmtId="${fid}" formatCode="${esc(un)}"/>`); fmts.set(fid, un); }
+    newFmt.set(un, fid);
+    const open = /^<xf\b([^>]*?)(\/?)>/.exec(base)!;
+    const attrs = open[1].replace(/\s*\bnumFmtId="[^"]*"/, '').replace(/\s*\bapplyNumberFormat="[^"]*"/, '') + ` numFmtId="${fid}" applyNumberFormat="1"`;
+    const nid = xfs.length + addXfs.length;
+    addXfs.push(base.replace(open[0], `<xf${attrs}${open[2]}>`));
+    newXf.set(k, nid);
+    return nid;
+  };
+  let n = 0;
+  const sheet = strFromU8(files[sheetPart]).replace(/<c\b([^>]*?)\bs="(\d+)"/g, (whole, pre: string, s: string) => {
+    const ns = mapXf(Number(s));
+    if (ns === Number(s)) return whole;
+    n += 1;
+    return `<c${pre}s="${ns}"`;
+  });
+  if (!n) return 0;
+  if (addFmts.length) {
+    const nf = /<numFmts\b[^>]*>([\s\S]*?)<\/numFmts>/.exec(styles);
+    styles = nf
+      ? styles.replace(nf[0], () => `<numFmts count="${fmts.size}">${nf[1]}${addFmts.join('')}</numFmts>`)
+      : styles.replace(/<styleSheet\b[^>]*>/, (m) => `${m}<numFmts count="${addFmts.length}">${addFmts.join('')}</numFmts>`);
+  }
+  const cx2 = /<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/.exec(styles)!;
+  styles = styles.replace(cx2[0], () => `<cellXfs count="${xfs.length + addXfs.length}">${cx2[1]}${addXfs.join('')}</cellXfs>`);
+  files[path] = strToU8(styles);
+  files[sheetPart] = strToU8(sheet);
+  return n;
+}
