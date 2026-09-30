@@ -272,3 +272,59 @@ test('2120A 빌린 틀 — 틀에 없는 계정은 분류 끝에, 전기에만 �
     assert.equal(b.diff, 0, `${w} ${JSON.stringify(b)}`);
   }
 });
+
+test('2120A 빌린 틀 — 공시 계정은 이 회사 DSD 과목(차감은 기준 계정), 새 줄은 DSD 에서 바로 위 계정 아래(아비즈 2026-09-30)', () => {
+  const r = fillFromFs({ ...BORROWED, borrow: { engagementId: 'x', entity: 'y', version: 1, sheet: '2120A' } }, DSD, { both: true, scale: 1 });
+  const p = placeUnplaced(r.data, DSD, 1);
+  const labels = p.data.rows.map((x) => x.label);
+  assert.equal(p.data.rows.find((x) => x.label === '매출채권')!.fsli, '매출채권');
+  const loan = p.data.rows.find((x) => x.label === '단기대여금')!;
+  assert.equal(loan.after, '매출채권|#0');
+  assert.equal(labels.indexOf('단기대여금'), labels.indexOf('매출채권') + 1);
+  const contra = p.data.rows.find((x) => x.label === '대손충당금-단기대여금')!;
+  assert.equal(contra.fsli, '단기대여금');
+  assert.equal(labels.indexOf('대손충당금-단기대여금'), labels.indexOf('단기대여금') + 1);
+});
+
+test('2120A 빌린 틀 반영 — 안 쓰는 계정 줄은 숨기고, 새 줄은 자리 줄 아래, 칸 하나 합계(SUM(E40))도 늘리고, 그 회사 공시 계정·절차·숫자는 지운다', async () => {
+  const { applyWebPapers } = await import('./gwpApply');
+  const { emptyWorkbook } = await import('./gwpAssemble');
+  const { injectSheets } = await import('./xlsxInject');
+  const { readWorkbook } = await import('./xlsxRead');
+  const { unzipSync, strFromU8 } = await import('fflate');
+  const c = (row: number, col: number, v: { text?: string; num?: number; formula?: string }) => ({ row, col, ...v });
+  const cells = [
+    c(14, 2, { text: '계정과목 (FSLI)' }), c(14, 4, { text: '계정과목 (공시용)' }), c(14, 5, { text: 'BS: 2024_4Q' }), c(14, 6, { text: 'BS: 2025_4Q' }), c(14, 11, { text: '주요 ToD 절차' }),
+    c(16, 2, { text: '자 산' }),
+    c(17, 2, { text: 'Ⅰ. 유 동 자 산' }), c(17, 5, { formula: 'SUM(E18:E20)' }), c(17, 6, { formula: 'SUM(F18:F20)' }), c(17, 11, { text: '빌린 회사 분류 절차' }),
+    c(18, 2, { text: '1.' }), c(18, 3, { text: '현금' }), c(18, 4, { text: '현금및현금성자산' }), c(18, 5, { num: 1 }), c(18, 6, { num: 2 }), c(18, 11, { text: '빌린 회사 절차' }),
+    c(19, 2, { text: '2.' }), c(19, 3, { text: '토지' }), c(19, 4, { text: '유형자산' }), c(19, 5, { num: 9 }), c(19, 6, { num: 9 }),
+    c(20, 2, { text: '매출총이익율' }), c(20, 5, { num: 0.0238 }), c(20, 6, { formula: 'F18/F17' }),
+    c(39, 2, { text: 'Ⅱ. 자 본 잉 여 금' }), c(39, 5, { formula: 'SUM(E40)' }), c(39, 6, { formula: 'SUM(F40)' }),
+    c(40, 2, { text: '1.' }), c(40, 3, { text: '주식발행초과금' }), c(40, 4, { text: '자본잉여금' }),
+  ];
+  const bytes = injectSheets(emptyWorkbook(), [{ name: '2120A', cells, lastRow: 40 }]);
+  const d = fromBorrowed(readWorkbook(bytes)[0], { engagementId: 'x', entity: '평안', version: 1, sheet: '2120A' });
+  assert.equal(d.rows.find((r) => r.label === '현금')!.proc, '');
+  assert.deepEqual(d.groupProc, {});
+  const cash = d.rows.find((r) => r.label === '현금')!;
+  Object.assign(cash, { prev: 10, cur: 20, fsli: '현금및현금성자산', fs: 'BS#1' });
+  d.rows.splice(1, 0, { key: 'new|a', label: '단기금융상품', fsli: '단기금융상품', pl: false, sec: '자산', group: 'Ⅰ. 유 동 자 산', prev: 3, cur: 4, note: '', added: true, after: cash.key });
+  d.rows.push({ key: 'new|b', label: '기타자본잉여금', fsli: '기타자본잉여금', pl: false, sec: '자본', group: 'Ⅱ. 자 본 잉 여 금', prev: 5, cur: 5, note: '', added: true });
+  const out = applyWebPapers(bytes, [{ def: PAPER_2120A, data: d }]).bytes;
+  const s = readWorkbook(out)[0];
+  assert.equal(s.cells.get('C19')?.text, '단기금융상품');          // 현금 바로 아래
+  assert.equal(s.cells.get('F17')?.formula, 'SUM(F18:F21)');
+  assert.equal(s.cells.get('C20')?.text, '토지');
+  assert.equal(s.cells.get('F20')?.num, undefined);              // 빌린 회사 금액 없음
+  assert.equal(s.cells.get('K18')?.text, undefined);             // 빌린 회사 절차 없음
+  assert.equal(s.cells.get('K17')?.text, undefined);
+  assert.equal(s.cells.get('E21')?.num, undefined);              // 매출총이익율 손 숫자 지움
+  assert.equal(s.cells.get('C42')?.text, '기타자본잉여금');
+  assert.equal(s.cells.get('F40')?.formula, 'SUM(F41:F42)');       // 칸 하나 합계도 늘림
+  const z = unzipSync(out);
+  const xml = strFromU8(z[Object.keys(z).find((k) => /worksheets\/.*\.xml$/.test(k))!]);
+  assert.match(xml, /<row hidden="1" r="20"/);                     // 토지(이 회사에 없음) 숨김
+  assert.doesNotMatch(xml, /<row hidden="1" r="42"/);              // 숨긴 줄 아래 끼운 새 줄은 보임
+  assert.match(xml, /<row hidden="1" r="41"/);                     // 주식발행초과금 숨김
+});

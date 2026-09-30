@@ -30,6 +30,8 @@ export interface Row2120 {
   /** 웹에서 새로 넣은 계정 줄 — 반영할 때 그 분류의 끝에 줄을 끼운다(평안정공 2026-09-28) */ added?: boolean;
   /** K열 주요 감사절차(ToD) — Material·Unexpected 가 뜬 줄은 적어야 한다(사용자 2026-09-30) */ proc?: string;
   /** 표준 절차 표에서 넣은 추천 문구 — 확인 전 노랑 */ procStd?: boolean;
+  /** 이 줄이 받은 DSD 줄(「BS#12」) — 빌린 틀에 새 줄을 DSD 순서대로 끼울 때 쓴다 */ fs?: string;
+  /** 새 줄을 이 줄 바로 아래에 끼운다(없으면 분류 끝) — DSD 에서 바로 위 계정이 받은 줄(아비즈 단기금융상품 → 현금 아래) */ after?: string;
 }
 export type Sec = '자산' | '부채' | '자본' | '손익';
 export interface Paper2120A {
@@ -50,14 +52,32 @@ export interface Borrow2120 { engagementId: string; entity: string; version: num
 export const isBlank2120 = (d: Paper2120A | null | undefined) =>
   !d?.borrow && (d?.rows ?? []).filter((r) => r.prev != null || r.cur != null).length < 3;
 
-/** 빌린 회사 2120A 시트 → 이 회사 조서의 시작 값: 줄·분류·공시계정만, 금액·비고는 비운다. */
+/**
+ * 빌린 회사 2120A 시트 → 이 회사 조서의 시작 값: 줄·분류만. 금액·비고·공시 계정·주요 감사절차는 비운다 —
+ * 모두 그 회사 것이다(사용자 2026-09-30 아비즈: 평안정공의 「매출채권 및 기타채권」 공시 계정과 「미정산 운송건」 절차가 남았다).
+ * 공시 계정은 전기 DSD 로 채울 때 이 회사 재무제표 과목으로, 절차는 [표준 절차 넣기]로.
+ */
 export function fromBorrowed(sheet: SheetData, b: Borrow2120): Paper2120A {
   const d = PAPER_2120A.read(sheet);
   return {
-    ...d, borrow: b,
-    rows: d.rows.map((r) => ({ ...r, prev: null, cur: null, note: '', src: '' as const, prevDiff: null, absorbs: undefined, added: false })),
+    ...d, borrow: b, groupProc: d.hasProc ? {} : d.groupProc,
+    rows: d.rows.map((r) => ({
+      ...r, prev: null, cur: null, note: '', src: '' as const, prevDiff: null, absorbs: undefined, added: false, fsli: '',
+      // 계정이 아닌 절차 줄(「부외부채 테스트」 — 우발채무·후속사건)은 어느 회사나 같다 — 문구를 남긴다.
+      ...(d.hasProc && !procRow(r.label) ? { proc: '', procStd: false } : {}),
+    })),
   };
 }
+
+/** 계정이 아니라 절차를 적는 줄(평안정공 「부외부채 테스트」). */
+const procRow = (label: string) => /테스트|test/i.test(label);
+
+/** 빌린 틀에만 있고 이 회사엔 없는 계정 줄(두 해 모두 빈칸) — 화면·시트에서 숨긴다(평안정공의 토지·건물·금형을 아비즈에 남기지 않는다). */
+export const unusedBorrowed = (d: Paper2120A, r: Row2120) => !!d.borrow && !r.added && r.prev == null && r.cur == null && !procRow(r.label);
+
+/** DSD 과목 → 공시 계정 칸 글자(번호·띄어쓰기 뗌): 「Ⅰ. 현금및현금성자산」 → 「현금및현금성자산」. */
+const caption = (s: string) => normLabel(s).replace(/^([ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+|[IVX]+|\d+)\./, '').replace(/^\(\d+\)/, '');
+const fsId = (x: FsLine, bs: FsLine[], pl: FsLine[]) => (bs.includes(x) ? `BS#${bs.indexOf(x)}` : `PL#${pl.indexOf(x)}`);
 
 type Hit = { row: number; col: string; text: string };
 function textsOf(sheet: SheetData): Hit[] {
@@ -71,6 +91,7 @@ function colName(n: number): string { let s = ''; while (n > 0) { const r = (n -
 type LRow = { row: number; label: string; fsli: string; pl: boolean; sec: Sec; group: string; col: string };
 type Layout = {
   pc: NonNullable<ReturnType<typeof findPeriodColumns>>; rows: LRow[]; noteCol: string | null; fsliCol: string | null;
+  /** 공시 계정 열이 줄 키에 들어간다(「IFRS 공시」 머리) — 그 열은 기존 줄에 다시 쓰지 않는다(키가 바뀐다) */ fsliKeyed?: boolean;
   /** 주요 감사절차 열 · 분류 줄(이름 → 행) · 중요성 칸 */ procCol?: string | null; heads?: { name: string; row: number }[]; omRef?: string | null; pmRef?: string | null;
 };
 function layout(sheet: SheetData): Layout | null {
@@ -111,7 +132,7 @@ function layout(sheet: SheetData): Layout | null {
     return null;
   };
   return {
-    pc, rows, noteCol: noteHead?.col ?? null, fsliCol: fsliAny?.col ?? null, procCol: procHead?.col ?? null,
+    pc, rows, noteCol: noteHead?.col ?? null, fsliCol: fsliAny?.col ?? null, fsliKeyed: !!fsliHead, procCol: procHead?.col ?? null,
     heads: heads.map((x) => ({ name: x.text.trim(), row: x.row })),
     omRef: refRight(/^overallmateriality$/i), pmRef: refRight(/^planningmateriality$/i),
   };
@@ -154,19 +175,38 @@ function layered(sheet: SheetData, pc: NonNullable<ReturnType<typeof findPeriodC
   return { pc, rows, noteCol, fsliCol: null };
 }
 
-/** 아직 시트에 없는 새 계정 줄 — 분류별로, 그 분류의 끝줄. 분류를 못 찾으면 알린다. */
-function pendingAdds(L: Layout, d: Paper2120A): Map<string, { last: number; rows: Row2120[] }> {
-  const out = new Map<string, { last: number; rows: Row2120[] }>();
+/**
+ * 아직 시트에 없는 새 계정 줄 — 끼울 자리(그 줄 바로 아래)별로. 자리는 `after` 가 가리키는 줄(새 줄끼리 이어지면 첫 기존 줄),
+ * 없거나 다른 분류면 그 분류의 끝줄. 분류를 못 찾으면 알린다.
+ */
+function pendingAdds(L: Layout, d: Paper2120A): Map<number, { last: number; rows: Row2120[] }> {
+  const out = new Map<number, { last: number; rows: Row2120[] }>();
+  const rowOfKey = new Map(keyed(L.rows).map((r) => [r.key, r]));
+  const byKey = new Map(d.rows.map((r) => [r.key, r]));
   for (const x of d.rows.filter((r) => r.added && r.label.trim())) {
     const g = x.group ?? '';
     const inGroup = L.rows.filter((r) => normLabel(r.group) === normLabel(g) && r.pl === x.pl);
     if (!inGroup.length) throw new Error(`2120A 에서 분류 「${g}」를 찾지 못했습니다 — 새 계정 「${x.label}」을 넣을 곳이 없습니다.`);
     if (inGroup.some((r) => normLabel(r.label) === normLabel(x.label))) continue;   // 이미 넣었다(다시 반영)
-    const cur = out.get(g) ?? { last: Math.max(...inGroup.map((r) => r.row)), rows: [] };
+    let a = x.after; const seen = new Set<string>();
+    while (a && byKey.get(a)?.added && !seen.has(a)) { seen.add(a); a = byKey.get(a)!.after; }
+    const anchor = a ? rowOfKey.get(a) : undefined;
+    const last = anchor && inGroup.some((r) => r.row === anchor.row) ? anchor.row : Math.max(...inGroup.map((r) => r.row));
+    const cur = out.get(last) ?? { last, rows: [] };
     cur.rows.push(x);
-    out.set(g, cur);
+    out.set(last, cur);
   }
   return out;
+}
+
+/** 시트 XML 의 줄 숨김 — 빌린 틀에만 있는 계정 줄. 값이 생긴 줄은 다시 보이게. */
+function setRowsHidden(xml: string, hide: Set<number>, show: Set<number>): string {
+  return xml.replace(/<row\b[^>]*?\br="(\d+)"[^>]*?>/g, (m: string, n: string) => {
+    const r = Number(n);
+    if (hide.has(r) && !/\bhidden="(1|true)"/.test(m)) return m.replace(/^<row\b/, '<row hidden="1"');
+    if (show.has(r)) return m.replace(/\s+hidden="(1|true)"/, '');
+    return m;
+  });
 }
 
 /** 계정 줄마다 수식이 있는 열(증감·비율·Material 판정) — 열마다 수식이 적힌 가장 가까운 계정 줄. 공유 수식은 첫 줄에만 글자가 있다. */
@@ -223,6 +263,18 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
   prepareXml(xml, sheet, d) {
     const L = layout(sheet);
     if (!L) return xml;
+    if (d.borrow) {
+      const byKey = new Map(d.rows.map((r) => [r.key, r]));
+      const hide = new Set<number>(), show = new Set<number>();
+      for (const r of keyed(L.rows)) { const x = byKey.get(r.key); if (x) (unusedBorrowed(d, x) ? hide : show).add(r.row); }
+      // 계정이 모두 숨은 분류(평안정공 「(3) 투자부동산」)는 머리 줄도.
+      for (const h of L.heads ?? []) {
+        const mine = L.rows.filter((r) => r.group === h.name);
+        const added = d.rows.some((r) => r.added && r.group === h.name);
+        if (mine.length && !added) (mine.every((r) => hide.has(r.row)) ? hide : show).add(h.row);
+      }
+      xml = setRowsHidden(xml, hide, show);
+    }
     const plan = [...pendingAdds(L, d).values()].sort((a, b) => b.last - a.last);
     for (const p of plan) xml = insertRowsAfter(xml, p.last, p.rows.length);
     return xml;
@@ -232,6 +284,19 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
     if (!L) throw new Error('2120A 에서 전기·당기 기간 열(머리 줄)을 찾지 못했습니다.');
     const at = new Map(keyed(L.rows).map((r) => [r.key, r.row]));
     const e: CellEdit[] = [];
+    // 빌린 틀 — 계정 줄이 아닌 곳에 손으로 넣은 그 회사 숫자(평안정공 「매출총이익율」 전기 2.38%)도 지운다. 수식은 둔다.
+    if (d.borrow) {
+      const acct = new Set(L.rows.map((r) => r.row));
+      for (const [ref, v] of sheet.cells) {
+        const c = colOf(ref), r = rowOf(ref);
+        if ((c === L.pc.prevCol || c === L.pc.curCol) && r > L.pc.headerRow && !acct.has(r) && v.formula == null && v.num != null) e.push({ ref, clear: true });
+      }
+    }
+    // 빌린 틀 — 분류 줄의 절차도 그 회사 것이다. 이 조서에 적은 분류 절차만 남긴다.
+    if (d.borrow && L.procCol) for (const h of L.heads ?? []) {
+      const t = d.groupProc?.[h.name]?.trim(); const ref = `${L.procCol}${h.row}`;
+      e.push(t ? { ref, text: t } : { ref, clear: true });
+    }
     // 새 계정 줄 — 끼워 둔 빈 줄(분류 끝줄 바로 아래)에 이름·금액·비고와 이웃 줄의 수식(증감·비율·판정)을 쓴다.
     for (const p of pendingAdds(L, d).values()) {
       const tpl = L.rows.find((r) => r.row === p.last)!;
@@ -257,6 +322,8 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
       e.push(r.cur == null ? { ref, clear: true } : { ref, num: r.cur });
       // 빌린 틀 — 전기 열도 이 회사 값(DSD 전기)으로. 빌린 회사 금액을 남기지 않는다.
       if (d.borrow) { const pref = `${L.pc.prevCol}${row}`; e.push(r.prev == null ? { ref: pref, clear: true } : { ref: pref, num: r.prev }); }
+      // 빌린 틀 — 공시 계정도 이 회사 재무제표 과목으로(빌린 회사 분류를 남기지 않는다).
+      if (d.borrow && L.fsliCol && !L.fsliKeyed) { const fref = `${L.fsliCol}${row}`; e.push(r.fsli.trim() ? { ref: fref, text: r.fsli.trim() } : { ref: fref, clear: true }); }
       if (L.noteCol) { const nref = `${L.noteCol}${row}`; e.push(r.note.trim() ? { ref: nref, text: r.note.trim() } : { ref: nref, clear: true }); }
       // 주요 감사절차(K) — 웹에서 적거나 표준으로 넣은 문구.
       if (L.procCol && r.proc !== undefined) { const kref = `${L.procCol}${row}`; e.push(r.proc.trim() ? { ref: kref, text: r.proc.trim() } : { ref: kref, clear: true }); }
@@ -366,7 +433,13 @@ export function fillFromFs(d: Paper2120A, lines: FsLine[], opts: { both?: boolea
     if (src === '차감') cur = -Math.abs(cur);
     const pri = src === '차감' ? -Math.abs(val(hit.pri)) : val(hit.pri);
     // 빌린 틀(both) — 전기 열도 DSD 전기 금액으로 채운다(작년 조서에 전기 값이 없다).
-    if (opts.both) return { ...r, cur, prev: hit.pri != null ? pri : null, src, prevDiff: null };
+    if (opts.both) {
+      // 공시 계정 = 이 회사 재무제표 과목. 차감 계정은 기준 계정(대손충당금 → 단기대여금)으로.
+      const all = r.pl ? pl : bs;
+      let cap = caption(hit.label);
+      if (src === '차감') for (let k = all.indexOf(hit) - 1; k >= 0; k--) if (!CONTRA_NAME.test(cleanFs(all[k].label))) { cap = caption(all[k].label); break; }
+      return { ...r, cur, prev: hit.pri != null ? pri : null, src, prevDiff: null, fs: fsId(hit, bs, pl), fsli: cap };
+    }
     const diff = r.prev != null && hit.pri != null && pri !== r.prev ? pri : null;
     if (diff != null) rep.prevDiff.push(r.label);
     return { ...r, cur, src, prevDiff: diff };
@@ -435,15 +508,27 @@ export function placeUnplaced(d: Paper2120A, lines: FsLine[], scale: number): { 
       ?? [...cands].reverse().find((c) => isPl || c.sec === sec);
     if (!g) continue;
     const amt = (n: number | undefined) => (n == null ? null : contra ? -Math.abs(n * scale) : n * scale);
+    // 끼울 자리 — DSD 에서 바로 위 과목들 중 같은 분류의 줄이 받은 것(새 줄 포함) 바로 아래. 못 찾으면 분류 끝.
+    const id = (k: number) => (isPl ? `PL#${k}` : `BS#${k}`);
+    let after: string | undefined;
+    for (let k = i - 1; k >= 0 && !after; k--) after = [...added, ...d.rows].find((r) => r.fs === id(k) && r.group === g.name && r.pl === isPl)?.key;
     added.push({
       // src 는 비워 둔다 — 다시 채울 때 일반 짝짓기(문구·차감 「감가상각누계액-리스자산」)로 같은 DSD 줄을 찾는다.
       // 「손」+absorbs 로 두면 같은 이름(감가상각누계액)의 다른 줄까지 쓴 것으로 쳐서 틀의 차감 줄이 비었다.
-      key: `new|${g.name}|${label}|${added.length}`, label, fsli: '', pl: isPl, sec: isPl ? '손익' : g.sec ?? sec, group: g.name, added: true, src: '', note: '',
-      cur: amt(x.cur), prev: amt(x.pri),
+      key: `new|${g.name}|${label}|${added.length}`, label, fsli: caption(pool[base].label), pl: isPl, sec: isPl ? '손익' : g.sec ?? sec, group: g.name, added: true, src: '', note: '',
+      cur: amt(x.cur), prev: amt(x.pri), fs: id(i), after,
     });
     placed.push({ label, group: g.name });
   }
-  return { data: { ...d, rows: [...d.rows, ...added] }, placed };
+  // 화면 순서도 시트와 같게 — 새 줄을 자리 줄 바로 아래(없으면 분류 끝줄 아래)에.
+  const rows = [...d.rows];
+  for (const x of added) {
+    let at = x.after ? rows.findIndex((r) => r.key === x.after) : -1;
+    if (at < 0) at = rows.map((r, k) => ({ r, k })).filter(({ r }) => r.group === x.group && r.pl === x.pl).pop()?.k ?? rows.length - 1;
+    while (at + 1 < rows.length && rows[at + 1].added && rows[at + 1].after === x.after && x.after) at += 1;
+    rows.splice(at + 1, 0, x);
+  }
+  return { data: { ...d, rows }, placed };
 }
 
 /** 자산 = 부채 + 자본 — 전기·당기 각각. 차감 계정은 이미 음수다. */

@@ -61,3 +61,11 @@ test('업종 추정 · 금액 표기 · 빈 절차 찾기(분류 줄 절차가 �
   assert.deepEqual(missingProcs(d, 100), ['선급금']);
   assert.deepEqual(missingProcs(d, null), []);
 });
+
+test('표준 절차 — 두 해 빈 줄엔 없고, 분류로만 찾은 판관비 줄엔 「항상」을 붙이지 않는다(아비즈)', () => {
+  const none = { material: false, unexpected: false };
+  assert.equal(suggestProc({ label: '미수수익', prev: null, cur: null }, none, STD, '제조업'), null);
+  const g = { label: '여비교통비', group: 'Ⅳ. 판매비와관리비', prev: 1, cur: 1 };
+  assert.equal(suggestProc(g, none, [...STD, { id: 'z', account: '판매비와관리비', aliases: [], trigger: '항상', industry: '공통', body: '월별 분석(V)', sort: 1, active: true, note: null }], '제조업'), null);
+  assert.equal(stdAccountOf({ label: '보증금(유동)' }, [...STD, { id: 'y', account: '보증금', aliases: [], trigger: 'Material', industry: '공통', body: 'x', sort: 1, active: true, note: null }]), '보증금');
+});

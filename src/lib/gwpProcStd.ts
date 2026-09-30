@@ -50,6 +50,11 @@ const norm = (s: string) => cleanFs(s ?? '');
 
 /** 이 줄의 표준 계정 — 계정 이름 → 공시 계정 → 분류 순. 차감 계정은 앞머리(감가상각누계액). */
 export function stdAccountOf(row: { label: string; fsli?: string; group?: string }, std: ProcStd[]): string | null {
+  return stdMatchOf(row, std)?.account ?? null;
+}
+
+/** stdAccountOf + 분류 이름으로만 찾았는가(「복리후생비」 → 판매비와관리비) — 그런 줄엔 「항상」 절차를 붙이지 않는다. */
+function stdMatchOf(row: { label: string; fsli?: string; group?: string }, std: ProcStd[]): { account: string; byGroup: boolean } | null {
   const names = new Map<string, string>();
   for (const s of std) {
     if (s.account === '*') continue;
@@ -58,10 +63,13 @@ export function stdAccountOf(row: { label: string; fsli?: string; group?: string
   }
   const lab = norm(row.label);
   const contra = CONTRA_HEAD.exec(lab);
-  for (const k of [contra ? contra[1] : null, lab, norm(row.fsli ?? ''), norm(row.group ?? '')]) {
-    if (k && names.has(k)) return names.get(k)!;
-  }
-  return null;
+  // 「보증금(유동)」「리스부채(비유동)」 → 보증금·리스부채, 「재고자산평가충당금」 → 재고자산(아비즈 DSD 과목).
+  const bare = lab.replace(/\((유동|비유동|유동성)\)$/, '');
+  const base = bare.replace(/(평가)?충당금$/, '');
+  const keys = [contra ? contra[1] : null, lab, bare, norm(row.fsli ?? ''), base !== bare ? base : null];
+  for (const k of keys) if (k && names.has(k)) return { account: names.get(k)!, byGroup: false };
+  const g = norm(row.group ?? '');
+  return g && names.has(g) ? { account: names.get(g)!, byGroup: true } : null;
 }
 
 /** 금액 → 「+12.3억원」·「-450백만원」·「+8,000천원」 — 문장에 넣을 만큼만. */
@@ -83,10 +91,13 @@ export function suggestProc(
   row: { label: string; fsli?: string; group?: string; prev: number | null; cur: number | null },
   flags: Flags, std: ProcStd[], industry: string | null,
 ): string | null {
+  // 두 해 모두 빈 줄(양식에만 있는 계정)엔 절차가 없다 — 판관비 「사무용품비」 빈 줄에 「월별 분석」이 붙던 것(아비즈).
+  if (row.prev == null && row.cur == null) return null;
   const live = std.filter((s) => s.active && (s.industry === '공통' || s.industry === industry));
-  const acct = stdAccountOf(row, live);
-  const mine = acct ? live.filter((s) => s.account === acct) : [];
-  const want: Trigger[] = ['항상', ...(flags.material ? (['Material'] as const) : []), ...(flags.unexpected ? (['Unexpected'] as const) : [])];
+  const m = stdMatchOf(row, live);
+  const mine = m ? live.filter((s) => s.account === m.account) : [];
+  // 「항상」은 그 계정 자체의 절차(미수수익·선급비용 재계산) — 분류로만 찾은 줄(판관비 각 계정)은 판정이 날 때만.
+  const want: Trigger[] = [...(m && !m.byGroup ? (['항상'] as const) : []), ...(flags.material ? (['Material'] as const) : []), ...(flags.unexpected ? (['Unexpected'] as const) : [])];
   const picked: ProcStd[] = [];
   for (const t of want) {
     const own = mine.filter((s) => s.trigger === t);

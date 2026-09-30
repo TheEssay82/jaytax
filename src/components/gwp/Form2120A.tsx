@@ -1,6 +1,6 @@
 // 2120A 위험평가 분석적절차 입력 — 전기(이월 때 옮겨 둔 열)와 당기(전기 DSD 로 채움)를 나란히, 증감·비고.
 import { useState } from 'react';
-import { balance, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
+import { balance, unusedBorrowed, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
 import { flagsOf, suggestProc, coveredByGroup, INDUSTRIES, UNEXPECTED_FACTOR, type ProcStd } from '../../lib/gwpProcStd';
 
 const fmt = (n: number | null | undefined) => (n == null ? '' : n.toLocaleString('ko-KR'));
@@ -69,7 +69,8 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
     return n;
   };
   const [filled, setFilled] = useState<number | null>(null);
-  const rows = value.rows.filter((r) => (only === 'big' ? big(r) : only === 'todo' ? todo(r) : only === 'proc' ? needProc(r) || !!r.procStd : true));
+  const unused = value.rows.filter((r) => unusedBorrowed(value, r)).length;
+  const rows = value.rows.filter((r) => !unusedBorrowed(value, r) && (only === 'big' ? big(r) : only === 'todo' ? todo(r) : only === 'proc' ? needProc(r) || !!r.procStd : true));
   if (!value.rows.length) return <div style={{ color: 'var(--warn)' }}>2120A 에서 전기·당기 열(「BS: 2024_4Q」 같은 머리)을 찾지 못했습니다.</div>;
 
   return (
@@ -157,6 +158,12 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
               ))}
             </div>
           )}
+        </div>
+      )}
+      {unused > 0 && (
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 4 }}>
+          빌린 틀({value.borrow?.entity})에만 있고 이 회사 재무제표엔 없는 계정 {unused}줄은 숨겼습니다 — 시트에서도 숨긴 줄로 반영됩니다.
+          공시 계정은 이 회사 전기 DSD 재무제표 과목입니다.
         </div>
       )}
       <table className="tbl">

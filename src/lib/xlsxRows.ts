@@ -46,7 +46,8 @@ export function insertRows(xml: string, at: number, count: number, cloneFrom: nu
       const attrs = c[1].replace(/\s+t="[^"]*"/, '').replace(/\br="([A-Z]+)\d+"/, `r="$1${n}"`);
       return `<c${attrs}/>`;
     });
-    const o = open.replace(/\br="\d+"/, `r="${n}"`).replace(/\s+spans="[^"]*"/, '');
+    // 숨긴 줄(빌린 2120A 의 안 쓰는 계정)을 본떠도 새 줄은 보이게.
+    const o = open.replace(/\br="\d+"/, `r="${n}"`).replace(/\s+spans="[^"]*"/, '').replace(/\s+hidden="(1|true)"/, '');
     return /\/>$/.test(o) ? o : `${o}${cells.join('')}</row>`;
   };
 
@@ -97,6 +98,9 @@ export function insertRowsAfter(xml: string, after: number, count: number): stri
   const growFormula = (f: string) => f.split(/("[^"]*")/).map((part, i) => (i % 2 ? part : part.replace(
     /((?:'[^']*'|[A-Za-z0-9_가-힣.]+)!)?(\$?[A-Z]{1,3}\$?\d+:\$?[A-Z]{1,3}\$?\d+)(?![A-Za-z0-9_(])/g,
     (m, sheet: string | undefined, range: string) => (sheet ? m : grow(range)),
+  // 칸 하나짜리 합계 「SUM(E117)」(평안정공 자본잉여금)도 범위로 — 아래에 끼운 줄이 합계에서 빠지지 않게(아비즈 기타자본잉여금 3.9억).
+  ).replace(/(SUM\()(\$?[A-Z]{1,3})(\$?)(\d+)\)/gi,
+    (m, a: string, c: string, d: string, r: string) => (Number(r) === after ? `${a}${c}${d}${r}:${c}${d}${after + count})` : m),
   ))).join('');
   res = res
     .replace(/(<f\b[^>]*>)([\s\S]*?)(<\/f>)/g, (_m, a: string, f: string, z: string) => `${a}${growFormula(f)}${z}`)
