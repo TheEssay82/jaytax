@@ -102,3 +102,26 @@ test('묶음 — 유형자산은 분류 줄에 한 번, 재고자산 한 줄은 
   assert.match(r.data.rows.find((x) => x.key === 'x')!.proc!, /변동 원인/);   // 예시 없는 계정은 「*」 기본
   assert.deepEqual(missingProcs(r.data, 1000, std), []);
 });
+
+import { offIndustry, coveredByGroup } from './gwpProcStd';
+test('다른 업종 이월 문구 — 운송 문구는 운송·물류업이 아니면 표준으로 바꾸고, 판관비 분류 줄 절차는 판정 난 계정을 덮지 않는다(더그림·휴식 2026-10-01)', () => {
+  const t = '① 결산일 현재 미정산 상태인 운송건에 대항하는 매출에 대한 테스트(CO)';
+  assert.equal(offIndustry(t, '콘텐츠·엔터'), true);
+  assert.equal(offIndustry(t, '운송·물류업'), false);
+  assert.equal(offIndustry('① 금융기관조회서의 발송 및 확인(E/O, A)', '서비스업'), false);
+  const d = {
+    rows: [
+      { key: 's', label: '매출액', fsli: '매출액', group: 'Ⅰ. 매 출 액', prev: 100, cur: 5000, proc: t, procStd: false },
+      { key: 'w', label: '직원급여', fsli: '판 매 비 와 관 리 비', group: 'Ⅳ. 판매비와관리비', prev: 100, cur: 5000, proc: '', procStd: false },
+      { key: 'q', label: '여비교통비', fsli: '판 매 비 와 관 리 비', group: 'Ⅳ. 판매비와관리비', prev: 1, cur: 2, proc: '', procStd: false },
+    ],
+    groupProc: { 'Ⅳ. 판매비와관리비': '① 월별 판매비와 관리비 변동 증감 분석 확인(V)' } as Record<string, string>,
+  };
+  const std = [...STD, S('판매비와관리비', '항상', '공통', '월별 판매비와관리비 변동 분석(V)')];
+  assert.equal(coveredByGroup(d.rows[1], d.groupProc), false);
+  const r = fillStdProcs(d, std, '콘텐츠·엔터', 1000);
+  const by = new Map(r.data.rows.map((x) => [x.key, x]));
+  assert.doesNotMatch(by.get('s')!.proc!, /운송/);
+  assert.match(by.get('w')!.proc!, /증빙테스트/);                 // 판정 난 판관비 계정은 제 절차
+  assert.equal(by.get('q')!.proc, '');                            // 판정 없는 판관비엔 「항상」 안 붙음(공시 계정이 판매비와관리비여도)
+});

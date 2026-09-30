@@ -1,7 +1,7 @@
 // 2120A 위험평가 분석적절차 입력 — 전기(이월 때 옮겨 둔 열)와 당기(전기 DSD 로 채움)를 나란히, 증감·비고.
 import { useState } from 'react';
 import { balance, unusedBorrowed, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
-import { flagsOf, coveredByGroup, bundlesOf, bundleProc, missingProcs, fillStdProcs, INDUSTRIES, UNEXPECTED_FACTOR, type ProcStd, type ProcBundle } from '../../lib/gwpProcStd';
+import { flagsOf, coveredByGroup, bundlesOf, bundleProc, missingProcs, fillStdProcs, offIndustry, INDUSTRIES, UNEXPECTED_FACTOR, type ProcStd, type ProcBundle } from '../../lib/gwpProcStd';
 
 const fmt = (n: number | null | undefined) => (n == null ? '' : n.toLocaleString('ko-KR'));
 const parse = (s: string): number | null => { const t = s.replace(/[,\s]/g, ''); if (!t) return null; const n = Number(t.replace(/^\((.*)\)$/, '-$1')); return Number.isFinite(n) ? n : null; };
@@ -229,6 +229,7 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
                               placeholder="판정이 났습니다 — 주요 감사절차를 적거나 [표준 절차 넣기]" value={r.proc ?? ''}
                               onChange={(e) => set(r.key, { proc: e.target.value, procStd: false })} />}
                         {r.procStd && <span style={{ fontSize: 'var(--fs-0)', background: '#FFFF00', color: '#000', padding: '0 4px', whiteSpace: 'nowrap' }}>표준</span>}
+                        {!!r.proc?.trim() && offIndustry(r.proc, industry) && <span style={{ fontSize: 'var(--fs-0)', background: 'var(--bad-bg)', color: 'var(--bad)', padding: '0 4px', whiteSpace: 'nowrap' }} title="틀에서 딸려 온 다른 업종(운송) 문구 — [표준 절차 넣기]가 이 회사 업종 문구로 바꿉니다">다른 업종 문구</span>}
                       </div>
                     </td>
                   </tr>

@@ -66,12 +66,13 @@ function stdMatchOf(row: { label: string; fsli?: string; group?: string }, std: 
   const lab = norm(row.label);
   const contra = CONTRA_HEAD.exec(lab);
   // 「보증금(유동)」「리스부채(비유동)」 → 보증금·리스부채, 「재고자산평가충당금」 → 재고자산(아비즈 DSD 과목).
-  const bare = lab.replace(/\((유동|비유동|유동성)\)$/, '');
+  const bare = lab.replace(/\((유동|비유동|유동성)\)$|-(유동|비유동)$/, '');   // 「임대보증금-유동」(휴식)
   const base = bare.replace(/(평가)?충당금$/, '');
-  const keys = [contra ? contra[1] : null, lab, bare, norm(row.fsli ?? ''), base !== bare ? base : null];
+  const keys = [contra ? contra[1] : null, lab, bare, base !== bare ? base : null];
   for (const k of keys) if (k && names.has(k)) return { account: names.get(k)!, byGroup: false };
-  const g = norm(row.group ?? '');
-  return g && names.has(g) ? { account: names.get(g)!, byGroup: true } : null;
+  // 공시 계정·분류로 찾은 것은 느슨한 짝 — 「항상」을 붙이지 않는다(더그림 판관비 줄의 공시 계정이 「판매비와관리비」).
+  for (const k of [norm(row.fsli ?? ''), norm(row.group ?? '')]) if (k && names.has(k)) return { account: names.get(k)!, byGroup: true };
+  return null;
 }
 
 /** 금액 → 「+12.3억원」·「-450백만원」·「+8,000천원」 — 문장에 넣을 만큼만. */
@@ -125,10 +126,11 @@ function compose(picked: ProcStd[], prev: number | null, cur: number | null, ran
 }
 
 // ── 묶음 — 재고자산·유형자산·무형자산은 계정마다가 아니라 묶어서 한 번(사용자 2026-10-01) ─────────
-export type Bundle = '재고자산' | '유형자산' | '무형자산';
-export const BUNDLES: Bundle[] = ['재고자산', '유형자산', '무형자산'];
+export type Bundle = '재고자산' | '유형자산' | '무형자산' | '투자부동산';
+// 투자부동산 — 사용자가 든 셋은 아니지만 세 회사(더그림·휴식·제이스튜디오) 틀 모두 유형·무형과 같이 분류 줄에 적는다.
+export const BUNDLES: Bundle[] = ['재고자산', '유형자산', '무형자산', '투자부동산'];
 /** 묶음 절차에 쓰는 표준 계정 — 유형자산은 건설중인자산 줄까지(감가상각누계액 줄은 「감가상각비 재계산」과 겹쳐 뺀다). */
-const BUNDLE_ACCTS: Record<Bundle, string[]> = { 재고자산: ['재고자산'], 유형자산: ['유형자산', '건설중인자산'], 무형자산: ['무형자산'] };
+const BUNDLE_ACCTS: Record<Bundle, string[]> = { 재고자산: ['재고자산'], 유형자산: ['유형자산', '건설중인자산'], 무형자산: ['무형자산'], 투자부동산: ['투자부동산'] };
 /** 묶음에 드는 표준 계정 — 감가상각누계액 줄도 유형자산 묶음이다. */
 const BUNDLE_MEMBERS: Record<Bundle, string[]> = { ...BUNDLE_ACCTS, 유형자산: [...BUNDLE_ACCTS.유형자산, '감가상각누계액'] };
 
@@ -187,8 +189,12 @@ export function suggestBundle(u: ProcBundle, std: ProcStd[], industry: string | 
   return compose(picked, u.prev, u.cur, (s) => accts.indexOf(s.account));
 }
 
-/** 분류 줄(「(1) 유형자산」)에 적힌 절차가 이 줄을 덮는가 — 평안정공·알티스트 관행. */
-export const coveredByGroup = (r: { group?: string }, groupProc?: Record<string, string>) => !!(r.group && groupProc?.[r.group]?.trim());
+/**
+ * 분류 줄(「(1) 유형자산」)에 적힌 절차가 이 줄을 덮는가 — 묶음 분류(재고·유형·무형자산·투자부동산)만.
+ * 판관비 분류 줄의 「월별 변동 분석」은 판정 난 계정(급여 등)을 덮지 않는다(사용자 2026-10-01 「I·J 에 하나라도 뜨면 절차」).
+ */
+export const coveredByGroup = (r: { group?: string }, groupProc?: Record<string, string>) =>
+  !!(r.group && groupProc?.[r.group]?.trim() && (BUNDLES as string[]).includes(norm(r.group)));
 
 /**
  * Material·Unexpected 가 떴는데 절차가 없는 줄 — [확인]을 막는다(2520·2530 빈칸과 같은 규칙).
@@ -205,9 +211,19 @@ export function missingProcs(
 }
 
 /**
+ * 다른 업종 문구 — 틀을 이어받으며 딸려 온 것(평안정공 계열 「미정산 운송건」「기중 운송비가 많은 거래처」가
+ * 콘텐츠 회사 더그림엔터테인먼트·서비스 회사 휴식 2120A 에도 그대로, 사용자 2026-10-01 제공 파일).
+ * [표준 절차 넣기]가 이런 줄은 회사 문구로 보지 않고 표준으로 바꾼다.
+ */
+export const OFF_INDUSTRY: { industry: Industry; re: RegExp }[] = [
+  { industry: '운송·물류업', re: /운송건|미확정\s*운송비|기중\s*운송비|운반비\s*미지급|운반비와\s*월말|월운송비|물류비에\s*대한/ },
+];
+export const offIndustry = (text: string, industry: string | null) => OFF_INDUSTRY.some((o) => o.industry !== industry && o.re.test(text));
+
+/**
  * [표준 절차 넣기] — 판정이 났는데 빈 곳만 채운다. 이미 적힌 회사 문구는 건드리지 않는다.
  *   재고·유형·무형자산 → 묶음 절차 하나(분류 줄 또는 첫 줄). 묶음 안 계정 줄에 전에 넣은 표준 문구(계정별)는 걷어낸다.
- *   나머지 줄 → 계정별 표준(없으면 「*」 기본). 분류 줄 절차가 덮는 줄(평안정공 관행)은 둔다.
+ *   나머지 줄 → 계정별 표준(없으면 「*」 기본). 분류 줄 절차가 덮는 줄(평안정공 관행)은 둔다. 다른 업종 문구(offIndustry)는 바꾼다.
  */
 export function fillStdProcs<R extends PRow & { key: string; procStd?: boolean }, D extends { rows: R[]; groupProc?: Record<string, string>; groupStd?: string[] }>(
   d: D, std: ProcStd[], industry: string | null, om: number | null,
@@ -231,9 +247,11 @@ export function fillStdProcs<R extends PRow & { key: string; procStd?: boolean }
       if (holderText.has(r.key)) return { ...r, proc: holderText.get(r.key)!, procStd: true };
       return r.procStd && (u.onGroup || r.key !== u.holder) ? { ...r, proc: '', procStd: false } : r;
     }
-    if (r.proc?.trim() || coveredByGroup(r, d.groupProc)) return r;
+    const off = !!r.proc?.trim() && offIndustry(r.proc, industry);
+    if ((r.proc?.trim() && !off) || coveredByGroup(r, d.groupProc)) return r;
     const t = suggestProc(r, flagsOf(r, om), std, industry);
-    if (!t) return r;
+    // 업종에 안 맞는 이월 문구는 판정이 안 났으면 비운다.
+    if (!t) return off ? { ...r, proc: '', procStd: false } : r;
     n += 1;
     return { ...r, proc: t, procStd: true };
   });
