@@ -19,6 +19,7 @@ import { savePaper, markApplied, markChecked, setPaperStatus, latestFile, borrow
 import { amountsFromWtb } from '../../lib/gwpFiles';
 import { download } from '../dsd/dsdUi';
 import { STAGES } from '../../lib/gwpStage';
+import { closeStage, planDate } from '../../lib/gwpStageClose';
 import type { WebPaperEntry } from '../../lib/gwpWebPapers';
 import type { Paper2110A } from '../../lib/gwpPaper2110A';
 import { amountsFromFs, decidedMateriality, type Paper2700, type Paper2700A1 } from '../../lib/gwpPaper2700A';
@@ -34,10 +35,10 @@ import { PAPER_2301G, readExamples, type Paper2301G, type FsRisk } from '../../l
 import Form2301G from './Form2301G';
 import type { AuditBasis } from '../../lib/gwpSetup';
 import { fillFromWtb, type Paper8110, type WtbReport } from '../../lib/gwpPaper8110';
-import { fillFromFs, balance, PAPER_2120A, isBlank2120, fromBorrowed, placeUnplaced, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
+import { fillFromFs, balance, cleanFs, PAPER_2120A, isBlank2120, fromBorrowed, placeUnplaced, type Paper2120A, type FillReport } from '../../lib/gwpPaper2120A';
 import type { Paper2110 } from '../../lib/gwpPaper2110';
 import { guessIndustry, missingProcs, type ProcStd } from '../../lib/gwpProcStd';
-import { listProcStd } from '../../lib/gwpProcStdApi';
+import { listProcStd, saveProcStd } from '../../lib/gwpProcStdApi';
 import { listYears, saveYearIndustry } from '../../lib/gwpYearApi';
 import Form2700A from './Form2700A';
 import Form2700A1 from './Form2700A1';
@@ -162,7 +163,9 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
     const base = (await listBooks(eng.id))[0];
     if (!base) throw new Error('조서 판이 없습니다.');
     const template = tpl ? { ...readBundle(await fileBytes(tpl.storagePath)), reviewer: partner } : undefined;
-    const r = applyWebPapers(await fileBytes(base.storagePath), [{ def, data }], template, await borrowedBooks([{ def, data }]));
+    // 2120A 는 판정 기준 중요성(2700A-2)을 담아 — 확인·확정과 같은 엑셀(전에는 미리보기만 시트 자체 D7 「=총자산×1%」로 판정했다, 아비즈 2026-10-01).
+    const d = with2120(data);
+    const r = applyWebPapers(await fileBytes(base.storagePath), [{ def, data: d }], template, await borrowedBooks([{ def, data: d }]));
     if (r.missing.length) throw new Error(`최신 판(v${base.version})에 ${def.sheetCode} 시트가 없고 표준양식에서도 찾지 못했습니다.`);
     return { base, r };
   }
@@ -194,7 +197,12 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
     setBusy('preview'); setErr(null);
     try {
       const { base, r } = await build();
-      download(r.bytes, `미리보기_${def.code}_v${base.version}.xlsx`, XLSX);
+      // 확정 때처럼 조서목록 작성자·작성일(1차 = 2110 감사계획일)을 채워 — 조서 머리 날짜(2120A J1·J3)가 미리보기에도 보이게.
+      const plan = papers.get('2110')?.data as Paper2110 | undefined;
+      const today = new Date().toISOString().slice(0, 10);
+      const date = (entry.stage === 1 ? planDate(plan?.schedule.find((x) => x.label === '감사계획')?.value) : null) ?? today;
+      const shown = closeStage(r.bytes, entry.stage, { date, author: author ?? '' }).bytes;
+      download(shown, `미리보기_${def.code}_v${base.version}.xlsx`, XLSX);
       setNote(`미리보기를 내려받았습니다 — 판은 만들지 않았습니다(바뀐 칸 ${r.done[0]?.changed ?? 0}개 노랑).`);
     } catch (e) { setErr(e instanceof Error ? e.message : '미리보기를 만들지 못했습니다.'); } finally { setBusy(''); }
   }
@@ -288,6 +296,21 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
   const omM = mat2700 ? decidedMateriality(mat2700) : null;           // 백만원
   const om2120 = omM != null ? omM * 1e6 : null;
   const pm2120 = om2120 != null ? om2120 * (mat2700?.pmRate ?? 0.75) : null;
+  // 2700A-2 가 미덥지 않으면 판정이 틀린다 — 아비즈 2700A-2 에 다른 회사 금액(매출 2,110억)이 남아 중요성이 23.7억, 현금·미수금 절차가 빠졌다(2026-10-01).
+  const omWarn = (() => {
+    if (def.code !== '2120A' || !mat2700) return null;
+    const out: string[] = [];
+    if (papers.get('2700A-2')?.status !== '확인') out.push('2700A-2 가 아직 [확인] 전입니다');
+    const rows = (data as Paper2120A | null)?.rows ?? [];
+    const sales = rows.find((r) => r.pl && cleanFs(r.label) === '매출액')?.cur ?? null;
+    const assets = balance(rows, 'cur')?.asset ?? null;
+    const off = (m: number | null | undefined, won: number | null) => m != null && won != null && won !== 0 && Math.abs(m * 1e6 - won) / Math.abs(won) > 0.05;
+    const mil = (n: number) => Math.round(n / 1e6).toLocaleString('ko-KR');
+    if (off(mat2700.amounts.매출액, sales) || off(mat2700.amounts.총자산, assets)) {
+      out.push(`2700A-2 기준 금액(매출액 ${mil((mat2700.amounts.매출액 ?? 0) * 1e6)}·총자산 ${mil((mat2700.amounts.총자산 ?? 0) * 1e6)}백만)이 이 조서 당기 금액(매출액 ${sales != null ? mil(sales) : '-'}·총자산 ${assets != null ? mil(assets) : '-'}백만)과 다릅니다 — 2700A-2 를 열어 DSD 로 다시 채우고 [확인]하세요`);
+    }
+    return out.length ? `${out.join('. ')}. 판정(Material·Unexpected)이 틀릴 수 있습니다.` : null;
+  })();
   const [procStd, setProcStd] = useState<ProcStd[]>([]);
   const [industry, setIndustry] = useState<string | null>(null);
   const [industryGuessed, setIndustryGuessed] = useState(false);
@@ -446,7 +469,8 @@ export default function GwpPaperModal({ entry, eng, saved, papers, files, tpl, l
               </div>
             ) : def.code === '2120A' ? (
               <Form2120A value={data as Paper2120A} onChange={change} readOnly={readOnly} report={fillRep}
-                om={om2120} std={procStd} industry={industry} industryGuessed={industryGuessed} onIndustry={(v) => void pickIndustry(v)}
+                om={om2120} omWarn={omWarn} std={procStd}
+                onSaveStd={readOnly ? undefined : async (rows) => { for (const x of rows) await saveProcStd(x); setProcStd(await listProcStd()); }} industry={industry} industryGuessed={industryGuessed} onIndustry={(v) => void pickIndustry(v)}
                 fill={<button className="btn-sm btn-sm-navy" disabled={!dsd || !!busy} onClick={() => void fill2120()}
                   title={dsd ? dsd.fileName : '자료함에 전기 DSD 를 먼저 올리세요'}>
                   {busy === 'dsd' ? '읽는 중…' : !dsd ? '전기 DSD 없음(자료함에 올리세요)' : (data as Paper2120A).borrow ? '전기 DSD 로 전기·당기 채우기' : '전기 DSD 로 당기 열 채우기'}

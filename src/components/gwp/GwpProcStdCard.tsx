@@ -5,7 +5,12 @@
 // 문구의 {증감액}·{증감률}·{잔액} 은 그 줄 금액으로 채워진다.
 import { useEffect, useMemo, useState } from 'react';
 import { listProcStd, saveProcStd, deleteProcStd } from '../../lib/gwpProcStdApi';
-import { INDUSTRIES, TRIGGERS, suggestProc, type ProcStd, type Trigger } from '../../lib/gwpProcStd';
+import { INDUSTRIES, TRIGGERS, suggestProc, harvestProcs, type ProcStd, type Trigger, type Harvest } from '../../lib/gwpProcStd';
+import { readWorkbook } from '../../lib/xlsxRead';
+import { pickSheet } from '../../lib/gwpWeb';
+import { PAPER_2120A, cleanFs } from '../../lib/gwpPaper2120A';
+
+type Pick = Harvest & { pick: boolean; industry: string };
 
 type Draft = Omit<ProcStd, 'id'> & { id?: string; aliasText: string };
 const blank = (account = ''): Draft => ({ account, aliases: [], aliasText: '', trigger: 'Material', industry: '공통', body: '', sort: 100, active: true, note: null });
@@ -20,6 +25,32 @@ export default function GwpProcStdCard({ canWrite }: { canWrite: boolean }) {
   const [trig, setTrig] = useState<string>('전체');
   const [edit, setEdit] = useState<Draft | null>(null);
   const [preview, setPreview] = useState<string>('제조업');
+  // 다른 회사 2120A 에서 가져오기(사용자 2026-10-01 「샘플 회사 것을 계정별로 합쳐서」) — 계정별 절차를 ①② 로 나눠 표준에 없는 줄만 고른다.
+  const [harvest, setHarvest] = useState<{ file: string; items: Pick[] } | null>(null);
+  async function readSample(f: File) {
+    setErr(null);
+    try {
+      const s = pickSheet(PAPER_2120A, readWorkbook(new Uint8Array(await f.arrayBuffer())));
+      if (!s) throw new Error(`${f.name} 에서 2120A 시트를 찾지 못했습니다.`);
+      const d = PAPER_2120A.read(s);
+      if (!d.hasProc) throw new Error(`${f.name} 2120A 에 「주요 ToD 절차」 열이 없습니다.`);
+      const items = harvestProcs(d, list, null).map((h) => ({ ...h, pick: !h.exists && !h.off, industry: h.off ? '운송·물류업' : '공통' }));
+      if (!items.length) throw new Error(`${f.name} 2120A 에 적힌 절차가 없습니다.`);
+      setHarvest({ file: f.name, items });
+    } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); }
+  }
+  async function saveHarvest() {
+    if (!harvest) return;
+    const picked = harvest.items.filter((x) => x.pick);
+    setBusy('harvest'); setErr(null);
+    try {
+      for (const [i, x] of picked.entries()) {
+        await saveProcStd({ account: x.account, aliases: cleanFs(x.label) !== cleanFs(x.account) ? [x.label] : [], trigger: x.trigger, industry: x.industry, body: x.body, sort: 60 + i, active: true, note: `${harvest.file} 에서 가져옴` });
+      }
+      setHarvest(null); await load();
+    } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } finally { setBusy(''); }
+  }
+  const setItem = (i: number, p: Partial<Pick>) => harvest && setHarvest({ ...harvest, items: harvest.items.map((x, k) => (k === i ? { ...x, ...p } : x)) });
 
   const load = () => listProcStd().then(setList).catch((e) => setErr(e instanceof Error ? e.message : '읽지 못했습니다.'));
   useEffect(() => { void load(); }, []);
@@ -70,8 +101,53 @@ export default function GwpProcStdCard({ canWrite }: { canWrite: boolean }) {
           미리보기 업종 <select className="btn-sm" value={preview} onChange={(e) => setPreview(e.target.value)}>{INDUSTRIES.map((x) => <option key={x}>{x}</option>)}</select>
         </span>
         {canWrite && <button className="btn-sm btn-sm-navy" onClick={() => setEdit(blank())}>+ 줄 추가</button>}
+        {canWrite && (
+          <label className="btn-sm" style={{ cursor: 'pointer' }} title="다른 회사 일반조서(2120A 가 든 엑셀)를 올리면 계정별 절차를 뽑아 표준에 없는 줄만 보여 줍니다">
+            다른 회사 2120A 에서 가져오기
+            <input type="file" accept=".xlsx,.xlsm" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void readSample(f); }} />
+          </label>
+        )}
       </div>
       {err && <div style={{ color: 'var(--bad)', marginBottom: 6 }}>{err}</div>}
+
+      {harvest && (
+        <div style={{ padding: 10, border: '1.5px solid var(--navy)', borderRadius: 10, marginBottom: 10, fontSize: 'var(--fs-2)' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+            <b>{harvest.file}</b>
+            <span style={{ color: 'var(--ink-3)' }}>
+              절차 {harvest.items.length}줄 — 표준에 이미 있는 {harvest.items.filter((x) => x.exists).length}줄·다른 업종(운송) 문구 {harvest.items.filter((x) => x.off).length}줄은 처음에 뺐습니다.
+              업종과 관계없는 절차(보증금 등)는 「공통」으로 두면 모든 회사에 붙습니다.
+            </span>
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              <button className="btn-p" disabled={!!busy || !harvest.items.some((x) => x.pick)} onClick={() => void saveHarvest()}>
+                {busy === 'harvest' ? '넣는 중…' : `고른 ${harvest.items.filter((x) => x.pick).length}줄 표준에 넣기`}
+              </button>
+              <button className="btn-sm" onClick={() => setHarvest(null)}>닫기</button>
+            </span>
+          </div>
+          <div className="tbl-wide">
+            <table className="tbl">
+              <thead><tr style={{ background: 'var(--surface-2)' }}><th style={{ width: 30 }}></th><th style={{ width: 130 }}>계정</th><th style={{ width: 110 }}>판정</th><th style={{ width: 120 }}>업종</th><th>절차 문구</th></tr></thead>
+              <tbody>
+                {harvest.items.map((x, i) => (
+                  <tr key={i} style={{ opacity: x.pick ? 1 : 0.55 }}>
+                    <td><input type="checkbox" checked={x.pick} onChange={(e) => setItem(i, { pick: e.target.checked })} /></td>
+                    <td><input className="btn-sm" value={x.account} onChange={(e) => setItem(i, { account: e.target.value })} style={{ width: 120 }} />
+                      {cleanFs(x.label) !== cleanFs(x.account) && <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>원래 줄: {x.label}</div>}</td>
+                    <td><select className="btn-sm" value={x.trigger} onChange={(e) => setItem(i, { trigger: e.target.value as Trigger })}>{TRIGGERS.map((t) => <option key={t}>{t}</option>)}</select></td>
+                    <td><select className="btn-sm" value={x.industry} onChange={(e) => setItem(i, { industry: e.target.value })}>{['공통', ...INDUSTRIES].map((t) => <option key={t}>{t}</option>)}</select></td>
+                    <td>
+                      <input className="btn-sm" value={x.body} onChange={(e) => setItem(i, { body: e.target.value })} style={{ width: '100%' }} />
+                      {x.exists && <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>표준에 이미 있음</span>}
+                      {x.off && <span style={{ fontSize: 'var(--fs-0)', color: 'var(--bad)' }}>운송 문구 — 넣는다면 업종을 운송·물류업으로</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {edit && (
         <div style={{ padding: 10, border: '1.5px solid var(--navy)', borderRadius: 10, marginBottom: 10, display: 'grid', gridTemplateColumns: '90px 1fr', gap: '6px 10px', fontSize: 'var(--fs-2)', alignItems: 'center' }}>

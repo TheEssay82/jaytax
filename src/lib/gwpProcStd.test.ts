@@ -125,3 +125,23 @@ test('다른 업종 이월 문구 — 운송 문구는 운송·물류업이 아�
   assert.match(by.get('w')!.proc!, /증빙테스트/);                 // 판정 난 판관비 계정은 제 절차
   assert.equal(by.get('q')!.proc, '');                            // 판정 없는 판관비엔 「항상」 안 붙음(공시 계정이 판매비와관리비여도)
 });
+
+import { splitProc, generalizeProc, harvestProcs, stdHas } from './gwpProcStd';
+test('표준 쌓기 — 문구 나누기·금액 일반화·이미 있는 줄 거르기·다른 회사 2120A 에서 뽑기', () => {
+  assert.deepEqual(splitProc('① 금융기관조회서의 발송 및 확인(E/O, A) / ② 사용제한예금 검토'), ['금융기관조회서의 발송 및 확인(E/O, A)', '사용제한예금 검토']);
+  assert.deepEqual(splitProc('① 계약사항 확인\n② 우발약정사항검토'), ['계약사항 확인', '우발약정사항검토']);
+  assert.equal(generalizeProc('전기 대비 +6.9억원(+1499.7%) 변동 원인 파악'), '전기 대비 {증감액}({증감률}) 변동 원인 파악');
+  assert.equal(stdHas(STD, '미수수익', '미수수익 재계산 (A)'), true);
+  const h = harvestProcs({
+    rows: [
+      { label: '보증금', prev: 1, cur: 2, proc: '① 주요 항목(보증금)에 대한 조회확인(E/O, A) / ② 보증금 현재가치평가 수행' },
+      { label: '미수수익', prev: 1, cur: 2, proc: '① 미수수익 재계산(A)' },
+      { label: '매출액', prev: 1, cur: 2, proc: '① 결산일 현재 미정산 상태인 운송건에 대항하는 매출에 대한 테스트(CO)' },
+      { label: '부외부채 테스트', prev: null, cur: null, proc: '① 우발채무' },
+    ],
+    groupProc: { '(1)  유  형  자  산': '① 취득/처분 내역에 대한 증빙테스트 / ② 감가상각에 대한 검증(A, V)', 'Ⅳ. 판매비와관리비': '① 월별 분석' },
+  }, STD, null);
+  assert.deepEqual(h.map((x) => x.account), ['유형자산', '유형자산', '보증금', '보증금', '미수수익', '매출액']);
+  assert.equal(h.find((x) => x.account === '미수수익')!.exists, true);
+  assert.equal(h.find((x) => x.account === '매출액')!.off, true);
+});

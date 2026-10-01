@@ -216,7 +216,7 @@ export function missingProcs(
  * [표준 절차 넣기]가 이런 줄은 회사 문구로 보지 않고 표준으로 바꾼다.
  */
 export const OFF_INDUSTRY: { industry: Industry; re: RegExp }[] = [
-  { industry: '운송·물류업', re: /운송건|미확정\s*운송비|기중\s*운송비|운반비\s*미지급|운반비와\s*월말|월운송비|물류비에\s*대한/ },
+  { industry: '운송·물류업', re: /운송건|미확정\s*운송비|기중\s*운송비|운반비\s*미지급|운반비와\s*월말|월운송비|물류비에\s*대한|운반비에\s*대한/ },
 ];
 export const offIndustry = (text: string, industry: string | null) => OFF_INDUSTRY.some((o) => o.industry !== industry && o.re.test(text));
 
@@ -256,4 +256,76 @@ export function fillStdProcs<R extends PRow & { key: string; procStd?: boolean }
     return { ...r, proc: t, procStd: true };
   });
   return { data: { ...d, rows, groupProc, groupStd: [...groupStd] }, n };
+}
+
+// ── 표준 쌓기 — 화면에서 적은 절차·다른 회사 2120A 를 표준 줄로(사용자 2026-10-01 「WEB 창에서 표준절차를 직접」·「샘플 회사 것을 합쳐서」) ──
+
+/** 「① A / ② B」·줄바꿈 → [A, B]. 번호·불릿·빈 줄은 뗀다. */
+export function splitProc(text: string): string[] {
+  return text
+    .split(/(?=[①-⑳])|\n|\s\/\s/)
+    .map((t) => t.replace(/^[\s①-⑳\-·•]+/, '').replace(/^\d+[).]\s*/, '').trim())
+    .filter((t) => t.length >= 4);
+}
+
+/** 그 회사 금액을 자리표시로 — 「전기 대비 +6.9억원(+1499.7%)」 → 「전기 대비 {증감액}({증감률})」. */
+export function generalizeProc(t: string): string {
+  return t
+    .replace(/[+-]?\d[\d,.]*\s*(억원|백만원|천원|원)\s*\(\s*([+-]?\d[\d,.]*%|신규|-)\s*\)/g, '{증감액}({증감률})')
+    .replace(/[+-]\d[\d,.]*\s*(억원|백만원|천원)/g, '{증감액}');
+}
+
+/** 같은 문구인가 — 띄어쓰기·문장부호·괄호 속 주장(E/O, A) 무시. */
+export const procKey = (t: string) => generalizeProc(t).replace(/\([^)]*\)\s*$/, '').replace(/[\s.,·:;'"()（）\-—–/]/g, '').toLowerCase();
+
+/** 이 문구가 표준에 이미 있나 — 같은 계정(또는 기본 「*」)의 줄과 견준다. */
+export function stdHas(std: ProcStd[], account: string, body: string): boolean {
+  const k = procKey(body);
+  return std.some((s) => (s.account === account || s.account === '*') && procKey(s.body) === k);
+}
+
+/** 이 문구의 판정 — 변동·증감 이야기면 Unexpected, 아니면 그 줄의 판정(Material 우선). */
+export function triggerOf(body: string, flags?: Flags): Trigger {
+  if (/\{증감액\}|변동|증감/.test(body)) return 'Unexpected';
+  if (flags && !flags.material && flags.unexpected) return 'Unexpected';
+  return 'Material';
+}
+
+export interface Harvest {
+  /** 표준 계정(이미 있는 계정이면 그 이름, 없으면 줄 이름) */ account: string;
+  /** 원래 줄 이름(동의어 후보) */ label: string;
+  trigger: Trigger; body: string;
+  /** 표준에 이미 있다 */ exists: boolean;
+  /** 다른 업종 문구(운송) — 기본으로 고르지 않는다 */ off: boolean;
+}
+
+/**
+ * 2120A 한 장의 절차 → 표준 후보 줄. 계정 줄은 표준 계정으로(없으면 줄 이름), 재고·유형·무형·투자부동산 분류 줄 절차는 묶음 계정으로.
+ * 같은 (계정·문구)는 한 번만.
+ */
+export function harvestProcs(
+  d: { rows: PRow[]; groupProc?: Record<string, string> }, std: ProcStd[], om: number | null,
+): Harvest[] {
+  const out: Harvest[] = [];
+  const seen = new Set<string>();
+  const add = (account: string, label: string, text: string, flags?: Flags) => {
+    for (const raw of splitProc(text)) {
+      const body = generalizeProc(raw);
+      const k = `${account}|${procKey(body)}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ account, label, trigger: triggerOf(body, flags), body, exists: stdHas(std, account, body), off: OFF_INDUSTRY.some((o) => o.re.test(body)) });
+    }
+  };
+  for (const [g, text] of Object.entries(d.groupProc ?? {})) {
+    const b = BUNDLES.find((x) => x === norm(g));
+    if (b && text.trim()) add(b, b, text);
+  }
+  for (const r of d.rows) {
+    if (!r.proc?.trim() || /테스트|test/i.test(r.label)) continue;
+    const label = norm(r.label).replace(/^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+\./, '');
+    const account = bundleOf(r, std) ?? stdAccountOf({ label: r.label }, std) ?? label;
+    add(account, label, r.proc, om ? flagsOf(r, om) : undefined);
+  }
+  return out;
 }

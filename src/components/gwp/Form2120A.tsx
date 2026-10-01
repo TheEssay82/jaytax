@@ -1,7 +1,7 @@
 // 2120A 위험평가 분석적절차 입력 — 전기(이월 때 옮겨 둔 열)와 당기(전기 DSD 로 채움)를 나란히, 증감·비고.
 import { useState } from 'react';
-import { balance, unusedBorrowed, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
-import { flagsOf, coveredByGroup, bundlesOf, bundleProc, missingProcs, fillStdProcs, offIndustry, INDUSTRIES, UNEXPECTED_FACTOR, type ProcStd, type ProcBundle } from '../../lib/gwpProcStd';
+import { balance, cleanFs, unusedBorrowed, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
+import { flagsOf, coveredByGroup, bundlesOf, bundleProc, missingProcs, fillStdProcs, offIndustry, splitProc, generalizeProc, stdHas, triggerOf, stdAccountOf, INDUSTRIES, UNEXPECTED_FACTOR, type ProcStd, type ProcBundle } from '../../lib/gwpProcStd';
 
 const fmt = (n: number | null | undefined) => (n == null ? '' : n.toLocaleString('ko-KR'));
 const parse = (s: string): number | null => { const t = s.replace(/[,\s]/g, ''); if (!t) return null; const n = Number(t.replace(/^\((.*)\)$/, '-$1')); return Number.isFinite(n) ? n : null; };
@@ -10,17 +10,19 @@ const SRC: Record<string, { t: string; c: string }> = {
   문구: { t: 'DSD', c: 'var(--good)' }, 차감: { t: 'DSD 차감', c: 'var(--good)' }, 금액: { t: 'DSD(금액으로 짝)', c: 'var(--navy)' }, 손: { t: '손으로', c: 'var(--ink-2)' },
 };
 
-export default function Form2120A({ value, onChange, readOnly, fill, report, om, std, industry, industryGuessed, onIndustry }: {
+export default function Form2120A({ value, onChange, readOnly, fill, report, om, omWarn, std, industry, industryGuessed, onIndustry, onSaveStd }: {
   value: Paper2120A;
   onChange: (v: Paper2120A) => void;
   readOnly: boolean;
   /** 전기 DSD 로 채우기 버튼(없으면 자료함에 DSD 가 없는 것) */ fill?: React.ReactNode;
   report: FillReport | null;
   /** 판정 기준 중요성(원) — 2700A-2 계획단계. 없으면 판정을 못 한다. */ om: number | null;
+  /** 2700A-2 가 미덥지 않다(확인 전·금액이 이 회사 재무제표와 다름) — 판정이 틀릴 수 있다 */ omWarn?: string | null;
   /** 주요 감사절차 표준(gwp_proc_std) */ std: ProcStd[];
   /** 이 회사 업종 — 표준 문구를 고를 때 */ industry: string | null;
   /** 업종이 저장값이 아니라 추정값이다 */ industryGuessed: boolean;
   onIndustry: (v: string) => void;
+  /** 적은 절차를 표준 줄로(사용자 2026-10-01 「WEB 창에서 표준절차를 직접」) — 없으면 버튼을 숨긴다 */ onSaveStd?: (rows: Omit<ProcStd, 'id'>[]) => Promise<void>;
 }) {
   const [only, setOnly] = useState<'all' | 'big' | 'todo' | 'proc'>('all');
   /** 받을 줄 없는 계정을 더할 줄(계정 → 줄 key) · 이미 더한 계정 */
@@ -59,6 +61,23 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
   const unitNeed = (u: ProcBundle) => !!value.hasProc && (u.flags.material || u.flags.unexpected) && !bundleProc(u, value.groupProc);
   const needProc = (r: Row2120) => { if (unitOf.has(r.key)) return unitNeed(unitOf.get(r.key)!); const f = flag(r); return !!value.hasProc && (f.material || f.unexpected) && !r.proc?.trim() && !coveredByGroup(r, value.groupProc); };
   const lacking = missingProcs(value, om, std).length;
+  /** [표준에 저장] — 적은 문구를 ①② 로 나눠, 표준에 없는 줄만 이 계정의 공통 표준으로. 금액은 {증감액} 자리표시로. */
+  const [savingStd, setSavingStd] = useState('');
+  const saveStd = async (key: string, account: string, label: string, text: string, flags?: { material: boolean; unexpected: boolean }) => {
+    if (!onSaveStd) return;
+    const lines = splitProc(text).map(generalizeProc).filter((b) => !stdHas(std, account, b));
+    if (!lines.length) { alert(`「${account}」 표준에 이미 같은 문구가 있습니다.`); return; }
+    const aliases = label && cleanFs(label) !== cleanFs(account) ? [label] : [];
+    const rows = lines.map((body, i) => ({ account, aliases, trigger: triggerOf(body, flags), industry: '공통', body, sort: 50 + i, active: true, note: '2120A 화면에서 저장' }));
+    const list = rows.map((r) => `· [${r.trigger}] ${r.body}`).join('\n');
+    if (!confirm(`「${account}」 표준(공통)에 ${rows.length}줄을 더합니다 — 다음 회사부터 [표준 절차 넣기]에 들어갑니다.\n\n${list}\n\n업종 한정·판정은 ③ 표준 절차 탭에서 고칠 수 있습니다.`)) return;
+    setSavingStd(key);
+    try { await onSaveStd(rows); } catch (e) { alert(e instanceof Error ? e.message : '저장하지 못했습니다.'); } finally { setSavingStd(''); }
+  };
+  const stdBtn = (key: string, account: string, label: string, text: string, flags?: { material: boolean; unexpected: boolean }) => (onSaveStd && text.trim() ? (
+    <button className="btn-sm" style={{ whiteSpace: 'nowrap', padding: '0 6px' }} disabled={!!savingStd} title="이 문구를 이 계정의 표준 절차로 저장 — 다음 회사부터 자동으로 들어갑니다"
+      onClick={() => void saveStd(key, account, label, text, flags)}>{savingStd === key ? '저장 중…' : '표준에 저장'}</button>
+  ) : null);
   /** 표준 절차 넣기 — 판정이 났는데 비었거나(분류 줄 절차도 없음) 「항상」 절차가 있는 계정의 빈 칸만. 이미 적힌 회사 문구는 건드리지 않는다. */
   const fillStd = () => {
     const r = fillStdProcs(value, std, industry, om);
@@ -86,6 +105,7 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
             <b>판정 기준</b> — 2700A-2 계획단계 중요성{' '}
             {om == null ? <b style={{ color: 'var(--bad)' }}>없음(2700A-2 를 먼저 확인하세요)</b>
               : <><b>{fmt(Math.round(om))}</b>원 · Unexpected 는 증감 {'>'} {fmt(Math.round(om * UNEXPECTED_FACTOR))}원</>}
+            {omWarn && <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-1)' }}>⚠ {omWarn}</div>}
           </span>
           <span>
             <b>업종</b>{' '}
@@ -213,6 +233,7 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
                           <textarea className="btn-sm" rows={Math.min(5, Math.max(2, Math.ceil(text.length / 90)))} style={{ flex: 1, resize: 'vertical' }} disabled={readOnly}
                             placeholder={`${u.bundle} 계정 중 판정이 난 줄이 있습니다 — 묶어서 한 번 적거나 [표준 절차 넣기]`} value={text} onChange={(e) => setText(e.target.value)} />
                           {std1 && <span style={{ fontSize: 'var(--fs-0)', background: '#FFFF00', color: '#000', padding: '0 4px', whiteSpace: 'nowrap' }}>표준</span>}
+                          {!std1 && stdBtn(u.id, u.bundle, u.bundle, text, u.flags)}
                         </div>
                       </td>
                     </tr>
@@ -229,6 +250,7 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
                               placeholder="판정이 났습니다 — 주요 감사절차를 적거나 [표준 절차 넣기]" value={r.proc ?? ''}
                               onChange={(e) => set(r.key, { proc: e.target.value, procStd: false })} />}
                         {r.procStd && <span style={{ fontSize: 'var(--fs-0)', background: '#FFFF00', color: '#000', padding: '0 4px', whiteSpace: 'nowrap' }}>표준</span>}
+                        {!r.procStd && !coveredByGroup(r, value.groupProc) && stdBtn(r.key, stdAccountOf(r, std) ?? cleanFs(r.label).replace(/^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+\./, ''), r.label.trim(), r.proc ?? '', flag(r))}
                         {!!r.proc?.trim() && offIndustry(r.proc, industry) && <span style={{ fontSize: 'var(--fs-0)', background: 'var(--bad-bg)', color: 'var(--bad)', padding: '0 4px', whiteSpace: 'nowrap' }} title="틀에서 딸려 온 다른 업종(운송) 문구 — [표준 절차 넣기]가 이 회사 업종 문구로 바꿉니다">다른 업종 문구</span>}
                       </div>
                     </td>
