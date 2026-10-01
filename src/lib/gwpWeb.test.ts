@@ -147,3 +147,27 @@ test('양식 들이기 — 들인 요약표(2700A)가 가리키는 조서가 판
   assert.equal(sum.cells.get('D4')?.formula, "+'2700A-4(감사완결단계)'!K29");  // 없던 짝은 양식에서 넣어 살아 있게
   assert.ok(out.some((s) => s.name === '2700A-4(감사완결단계)'));
 });
+
+test('양식 들이기 — 이미 올해 양식 모양인 요약표(재확정)도 빠진 짝(2700A-4)을 넣는다(주원 v4 #REF! 2026-10-01)', async () => {
+  const { prepareTemplateSheets } = await import('./gwpApply');
+  const { zip, unzip } = await import('./xlsxTransplant');
+  const F = '2700_중요성.xlsx';
+  const sumCells = [{ row: 1, col: 1, text: '중요성 요약' }, { row: 2, col: 1, text: '2차' }, { row: 3, col: 4, formula: "+'2700A-2(감사계획단계)'!K10" }, { row: 4, col: 4, formula: "+'2700A-4(감사완결단계)'!K29" }];
+  const tpl = injectSheets(emptyWorkbook(), [
+    { name: '2700A', cells: sumCells, lastRow: 4 },
+    { name: '2700A-4(감사완결단계)', cells: [{ row: 1, col: 1, text: '감사완결단계' }], lastRow: 1 },
+  ]);
+  const src = { catalog: { files: [F], skipped: [], sheets: [
+    { file: F, name: '2700A', code: '2700A', hidden: false },
+    { file: F, name: '2700A-4(감사완결단계)', code: '2700A-4', hidden: false },
+  ] }, files: { [F]: tpl }, reviewer: '' };
+  // v3 처럼 요약표는 이미 양식 모양, 2700A-4 는 없음
+  const files = unzip(injectSheets(emptyWorkbook(), [
+    { name: '2700A (소규모)', cells: [sumCells[0], sumCells[1], { row: 3, col: 4, formula: "+'2700A-2(소규모)'!K10" }, sumCells[3]], lastRow: 4 },
+    { name: '2700A-2(소규모)', cells: [{ row: 1, col: 1, text: '계획' }], lastRow: 1 },
+  ]));
+  const r = prepareTemplateSheets(files, ['2700A'], src);
+  assert.deepEqual(r.replaced, []);
+  assert.ok(r.added.includes('2700A-4(감사완결단계)'), JSON.stringify(r));
+  assert.ok(readWorkbook(zip(files)).some((s) => s.name === '2700A-4(감사완결단계)'));
+});

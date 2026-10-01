@@ -68,6 +68,7 @@ export function prepareTemplateSheets(files: Record<string, Uint8Array>, codes: 
     return tplBooks.get(file)!;
   };
   const touched: { part: string; tplData: SheetData; code: string }[] = [];
+  const shaped: string[] = [];
   for (const code of codes) {
     const ts = findTemplateSheet(src.catalog, code);
     if (!ts) continue;
@@ -82,21 +83,22 @@ export function prepareTemplateSheets(files: Record<string, Uint8Array>, codes: 
       .sort((a, b) => a.c.missing.length / Math.max(1, a.c.total) - b.c.missing.length / Math.max(1, b.c.total));
     const best = scored[0]?.s;
     for (const o of scored.slice(1)) if (!o.s.hidden) { setSheetHidden(files, o.s.name, true); out.hidden.push(o.s.name); }
-    if (best && isTemplateShape(tplData, best)) continue;
+    // 이미 올해 양식 모양 — 갈아끼우지 않되, 가리키는 짝이 빠졌는지는 아래에서 본다(재확정 때도 #REF! 를 고치게, 주원 v4).
+    if (best && isTemplateShape(tplData, best)) { const e = sheetEntries(files).find((x) => x.name === best.name); if (e) shaped.push(e.part); continue; }
     const r = best
       ? transplantSheet(files, tb.files, ts.name, { as: best.name, replace: true, hidden: false })
       : transplantSheet(files, tb.files, ts.name, { hidden: false });
     (best ? out.replaced : out.added).push(r.name);
     touched.push({ part: r.part, tplData, code });
   }
-  if (!touched.length) return out;
+  if (!touched.length && !shaped.length) return out;
   // 들인 양식 시트가 가리키는 조서가 이 판에 없으면(요약 2700A → 2700A-4(감사완결단계)) 양식에서 함께 넣는다 — 없으면 #REF!.
   // 소규모 감사(주원이노베이션 2026-10-01)는 판에 2700A-3(소규모)까지만 있어 2700A 요약 D33~D35 가 #REF! 였다. 넣은 짝은 빨간 탭(아직 손 안 댐).
   const pairs: { part: string; tplData: SheetData; code: string }[] = [];
   {
     const have = readWorkbook(zip(files));
     const refs = new Set<string>();
-    for (const t of touched) for (const m of strFromU8(files[t.part]).matchAll(/<f\b[^>]*>([^<]*)<\/f>/g)) for (const r of m[1].matchAll(/'([^']+)'!|(?<![A-Za-z0-9_가-힣.'])([A-Za-z0-9_가-힣.()-]+)!/g)) refs.add((r[1] ?? r[2]).replace(/''/g, "'"));
+    for (const part of [...touched.map((t) => t.part), ...shaped]) for (const m of strFromU8(files[part]).matchAll(/<f\b[^>]*>([^<]*)<\/f>/g)) for (const r of m[1].matchAll(/'([^']+)'!|(?<![A-Za-z0-9_가-힣.'])([A-Za-z0-9_가-힣.()-]+)!/g)) refs.add((r[1] ?? r[2]).replace(/''/g, "'"));
     for (const name of refs) {
       const ts = src.catalog.sheets.find((x) => x.name === name && x.code);
       if (!ts || have.some((s) => s.name === name) || findPaperSheet(have, ts.code!.replace(/\(.*$/, ''))) continue;
