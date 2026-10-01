@@ -1,6 +1,6 @@
 // 2120A 위험평가 분석적절차 입력 — 전기(이월 때 옮겨 둔 열)와 당기(전기 DSD 로 채움)를 나란히, 증감·비고.
 import { useState } from 'react';
-import { balance, cleanFs, unusedBorrowed, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
+import { balance, cleanFs, groupLike, sameGroup, unusedBorrowed, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
 import { flagsOf, coveredByGroup, bundlesOf, bundleProc, missingProcs, fillStdProcs, offIndustry, splitProc, generalizeProc, stdHas, triggerOf, stdAccountOf, INDUSTRIES, UNEXPECTED_FACTOR, type ProcStd, type ProcBundle } from '../../lib/gwpProcStd';
 
 const fmt = (n: number | null | undefined) => (n == null ? '' : n.toLocaleString('ko-KR'));
@@ -146,33 +146,49 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
           {report.unplaced.filter((u) => !placed.has(u.label)).length > 0 && (
             <div style={{ color: 'var(--warn)' }}>
               DSD 에는 있는데 2120A 에 받을 줄이 없는 계정 — 합계가 이만큼 어긋납니다. 같은 계정인 줄을 골라 더하세요:
-              {report.unplaced.filter((u) => !placed.has(u.label)).map((u) => (
-                <div key={u.label} style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, color: 'var(--ink-1)' }}>
-                  <b>{u.label}</b> {fmt(u.cur)} →
-                  <select className="btn-sm" disabled={readOnly} value={pick[u.label] ?? ''} onChange={(e) => setPick({ ...pick, [u.label]: e.target.value })}>
-                    <option value="">줄 고르기</option>
-                    {value.rows.filter((r) => (r.pl ? /손익/ : /재무상태|대차대조/).test(u.statement)).map((r) => (
-                      <option key={r.key} value={r.key}>{r.label}{r.fsli ? ` (${r.fsli})` : ''}{r.cur ? ` · ${fmt(r.cur)}` : ''}</option>
-                    ))}
-                  </select>
-                  <button className="btn-sm" disabled={readOnly || !pick[u.label]} onClick={() => {
-                    const k = pick[u.label];
-                    onChange({ ...value, rows: value.rows.map((r) => (r.key === k ? { ...r, cur: (r.cur ?? 0) + u.cur, src: '손', note: r.note || `${u.label} 포함`, absorbs: [...(r.absorbs ?? []), u.label] } : r)) });
-                    setPlaced(new Set(placed).add(u.label));
-                  }}>이 줄에 더하기</button>
-                  {groups.length > 0 && (
-                    <>
-                      <span style={{ color: 'var(--ink-3)' }}>또는</span>
-                      <select className="btn-sm" disabled={readOnly} value={grp[u.label] ?? ''} onChange={(e) => setGrp({ ...grp, [u.label]: e.target.value })}>
-                        <option value="">분류 고르기</option>
-                        {groups.filter((g) => (g.pl ? /손익/ : /재무상태|대차대조/).test(u.statement)).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                      <button className="btn-sm" disabled={readOnly || !grp[u.label]} title="그 분류 끝에 새 계정 줄로 — 반영할 때 엑셀에도 줄을 끼우고 합계 범위를 늘립니다"
-                        onClick={() => { addRow(grp[u.label], u.label, u.cur, { absorbs: [u.label], note: '' }); setPlaced(new Set(placed).add(u.label)); }}>새 줄로 넣기</button>
-                    </>
-                  )}
-                </div>
-              ))}
+              {report.unplaced.filter((u) => !placed.has(u.label)).map((u) => {
+                const isPl = /손익/.test(u.statement);
+                const mineGroups = groups.filter((g) => g.pl === isPl);
+                // DSD 윗 과목이 2120A 에 없는 분류면(더그림 「투자자산」) 새 분류를 제안한다 — 엉뚱한 분류(투자부동산)에 넣지 않게.
+                const p = u.parents?.[0];
+                const fresh = p && !/총계|합계/.test(p) && !['자산', '부채', '자본'].includes(p) && !mineGroups.some((g) => groupLike(cleanFs(g.name), p)) ? p : null;
+                const chosen = grp[u.label] ?? (fresh ? `NEW:${fresh}` : '');
+                return (
+                  <div key={u.label} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 6, color: 'var(--ink-1)' }}>
+                    <span style={{ whiteSpace: 'nowrap', minWidth: 170 }}><b>{u.label}</b> {fmt(u.cur)} →</span>
+                    <select className="btn-sm" style={{ maxWidth: 260 }} disabled={readOnly} value={pick[u.label] ?? ''} onChange={(e) => setPick({ ...pick, [u.label]: e.target.value })}>
+                      <option value="">줄 고르기</option>
+                      {value.rows.filter((r) => r.pl === isPl).map((r) => (
+                        <option key={r.key} value={r.key}>{r.label}{r.fsli ? ` (${r.fsli})` : ''}{r.cur ? ` · ${fmt(r.cur)}` : ''}</option>
+                      ))}
+                    </select>
+                    <button className="btn-sm" style={{ whiteSpace: 'nowrap' }} disabled={readOnly || !pick[u.label]} onClick={() => {
+                      const k = pick[u.label];
+                      onChange({ ...value, rows: value.rows.map((r) => (r.key === k ? { ...r, cur: (r.cur ?? 0) + u.cur, src: '손', note: r.note || `${u.label} 포함`, absorbs: [...(r.absorbs ?? []), u.label] } : r)) });
+                      setPlaced(new Set(placed).add(u.label));
+                    }}>이 줄에 더하기</button>
+                    <span style={{ color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>또는</span>
+                    <select className="btn-sm" style={{ maxWidth: 240 }} disabled={readOnly} value={chosen} onChange={(e) => setGrp({ ...grp, [u.label]: e.target.value })}>
+                      <option value="">분류 고르기</option>
+                      {fresh && <option value={`NEW:${fresh}`}>＋ 새 분류: {fresh}</option>}
+                      {mineGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                    <button className="btn-sm" style={{ whiteSpace: 'nowrap' }} disabled={readOnly || !chosen}
+                      title={chosen.startsWith('NEW:') ? '반영할 때 그 구역 끝에 새 분류 머리 줄(합계)과 이 계정 줄을 끼우고, 구역 합계식에 더합니다' : '그 분류 끝에 새 계정 줄로 — 반영할 때 엑셀에도 줄을 끼우고 합계 범위를 늘립니다'}
+                      onClick={() => {
+                        if (chosen.startsWith('NEW:')) {
+                          const name = chosen.slice(4);
+                          const sec: Row2120['sec'] = isPl ? '손익' : u.sec ?? '자산';
+                          const row: Row2120 = { key: `new|${name}|${u.label}`, label: u.label, fsli: u.label, pl: isPl, prev: null, cur: u.cur, note: '', src: '손', sec, group: name, added: true, absorbs: [u.label] };
+                          const at = value.rows.map((r, i) => ({ r, i })).filter(({ r }) => r.pl === isPl && r.sec === sec).pop()?.i ?? value.rows.length - 1;
+                          const newGroups = [...(value.newGroups ?? []).filter((g) => !sameGroup(g.name, name)), { name, pl: isPl, parents: u.parents ?? [], sec }];
+                          onChange({ ...value, newGroups, rows: [...value.rows.slice(0, at + 1), row, ...value.rows.slice(at + 1)] });
+                        } else addRow(chosen, u.label, u.cur, { absorbs: [u.label], note: '' });
+                        setPlaced(new Set(placed).add(u.label));
+                      }}>새 줄로 넣기</button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

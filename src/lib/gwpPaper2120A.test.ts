@@ -440,3 +440,42 @@ test('2120A 빌린 틀 재확정 — 같은 이름 줄이 둘이고 공시 칸�
   assert.equal(s.cells.get('D21')?.text, '퇴직연금운용자산');
   assert.equal(s.cells.get('F18')?.num, undefined);
 });
+
+test('2120A 새 분류 — 시트에 없는 「투자자산」을 비유동자산 구역 끝에 머리(SUM)·계정 줄로 넣고 구역 합계에 더한다, 옆 분류 범위는 그대로(더그림 2026-10-01)', async () => {
+  const { applyWebPapers } = await import('./gwpApply');
+  const { emptyWorkbook } = await import('./gwpAssemble');
+  const { injectSheets } = await import('./xlsxInject');
+  const { readWorkbook } = await import('./xlsxRead');
+  const c = (row: number, col: number, v: { text?: string; num?: number; formula?: string }) => ({ row, col, ...v });
+  const cells = [
+    c(14, 2, { text: '계정과목 (FSLI)' }), c(14, 4, { text: '계정과목 (공시용)' }), c(14, 5, { text: 'BS: 2024_4Q' }), c(14, 6, { text: 'BS: 2025_4Q' }),
+    c(16, 2, { text: '자 산' }),
+    c(34, 2, { text: 'Ⅱ. 비 유 동 자 산' }), c(34, 5, { formula: '+E35+E38' }), c(34, 6, { formula: '+F35+F38' }),
+    c(35, 2, { text: '　(1)  유 형 자 산' }), c(35, 5, { formula: 'SUM(E36:E37)' }), c(35, 6, { formula: 'SUM(F36:F37)' }),
+    c(36, 2, { text: '1.' }), c(36, 3, { text: '토지' }), c(36, 5, { num: 10 }), c(36, 6, { num: 10 }), c(36, 7, { formula: 'F36-E36' }),
+    c(37, 2, { text: '2.' }), c(37, 3, { text: '건물' }), c(37, 5, { num: 20 }), c(37, 6, { num: 20 }), c(37, 7, { formula: 'F37-E37' }),
+    c(38, 2, { text: '　(4)  기타비유동자산' }), c(38, 5, { formula: 'SUM(E39:E39)' }), c(38, 6, { formula: 'SUM(F39:F39)' }),
+    c(39, 2, { text: '1.' }), c(39, 3, { text: '보증금' }), c(39, 5, { num: 5 }), c(39, 6, { num: 5 }), c(39, 7, { formula: 'F39-E39' }),
+    c(40, 2, { text: '자 산 총 계' }), c(40, 5, { formula: 'E34' }), c(40, 6, { formula: 'F34' }),
+  ];
+  const bytes = injectSheets(emptyWorkbook(), [{ name: '2120A', cells, lastRow: 40 }]);
+  const d = PAPER_2120A.read(readWorkbook(bytes)[0]);
+  d.newGroups = [{ name: '투자자산', pl: false, parents: ['투자자산', '비유동자산', '자산'] }];
+  d.rows.push({ key: 'new|투자자산|매도가능증권', label: '매도가능증권', fsli: '매도가능증권', pl: false, prev: null, cur: 888, note: '', sec: '자산', group: '투자자산', added: true });
+  const out = applyWebPapers(bytes, [{ def: PAPER_2120A, data: d }]).bytes;
+  const s = readWorkbook(out)[0];
+  assert.equal(s.cells.get('B40')?.text, '　(3)  투자자산');
+  assert.equal(s.cells.get('F40')?.formula, 'SUM(F41:F41)');
+  assert.equal(s.cells.get('C41')?.text, '매도가능증권');
+  assert.equal(s.cells.get('F41')?.num, 888);
+  assert.equal(s.cells.get('G41')?.formula, 'F41-E41');
+  assert.equal(s.cells.get('F34')?.formula, '+F35+F38+F40');
+  assert.equal(s.cells.get('F38')?.formula, 'SUM(F39:F39)');      // 옆 분류 범위는 그대로
+  assert.equal(s.cells.get('B42')?.text, '자 산 총 계');
+  // 재확정 — 두 번 넣지 않고 금액만 고친다
+  const d2 = { ...d, rows: d.rows.map((r) => (r.added ? { ...r, cur: 999 } : r)) };
+  const s2 = readWorkbook(applyWebPapers(out, [{ def: PAPER_2120A, data: d2 }]).bytes)[0];
+  assert.equal(s2.cells.get('F41')?.num, 999);
+  assert.equal(s2.cells.get('F34')?.formula, '+F35+F38+F40');
+  assert.equal(s2.cells.get('B42')?.text, '자 산 총 계');
+});

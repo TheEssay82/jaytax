@@ -12,7 +12,7 @@ import type { CellEdit } from './xlsxCells';
 import { normLabel, textOf, colOf, rowOf, type WebPaperDef } from './gwpWeb';
 import { findPeriodColumns } from './gwpCarry';
 import type { FsLine } from './fsParse';
-import { insertRowsAfter, moveFormula } from './xlsxRows';
+import { insertRows, insertRowsAfter, moveFormula } from './xlsxRows';
 
 export interface Row2120 {
   key: string;
@@ -46,7 +46,15 @@ export interface Paper2120A {
   /** 판정 기준 중요성(원) — 2700A-2 계획단계 중요성. 반영 때 시트의 Overall Materiality 칸에 쓴다(사용자 2026-09-30) */ om?: number | null;
   /** 수행중요성(원) — Planning Materiality 칸 */ pm?: number | null;
   /** [표준 절차 넣기]로 채운 분류 줄 절차(재고·유형·무형자산 묶음) — 확인 전 노랑 */ groupStd?: string[];
+  /**
+   * 시트에 없던 분류(더그림 「투자자산」 — 2120A 에 투자부동산·기타비유동자산뿐, 사용자 2026-10-01). 반영할 때 그 구역(DSD 윗 과목
+   * 「비유동자산」) 끝에 「(5) 투자자산」 머리 줄과 계정 줄을 끼우고 구역 합계식(=+E35+E46…)에 더한다. 계정 줄은 group = name 인 새 줄.
+   */
+  newGroups?: NewGroup[];
 }
+export interface NewGroup { name: string; pl: boolean; /** DSD 윗 과목(가까운 것부터, 번호 뗀 이름) — 투자자산 · 비유동자산 · 자산 */ parents: string[]; /** 재무상태표의 부분 — 윗 과목으로 구역을 못 찾으면 그 총계 줄(자본총계 =E87+E89…)에 */ sec?: Sec }
+/** 같은 분류인가 — 번호·띄어쓰기 무시(「투자자산」 = 「　(5)  투자자산」). */
+export const sameGroup = (a: string | undefined, b: string | undefined) => cleanFs(a ?? '') === cleanFs(b ?? '');
 export interface Borrow2120 { engagementId: string; entity: string; version: number; sheet: string }
 
 /** 계정 줄에 금액이 거의 없다 — 작년 2120A 를 안 쓴 회사(빈 양식). */
@@ -176,6 +184,41 @@ function layered(sheet: SheetData, pc: NonNullable<ReturnType<typeof findPeriodC
   return { pc, rows, noteCol, fsliCol: null };
 }
 
+type GroupPlan = { ng: NewGroup; section: { row: number; name: string }; refs: number[]; last: number; rows: Row2120[]; headText: string };
+/**
+ * 아직 시트에 없는 새 분류 — 그 구역(DSD 윗 과목과 이름이 같은 분류 줄, 합계식이 「=+E35+E46+E55」처럼 칸 더하기인 것)의 마지막 줄 아래.
+ * 구역 합계가 범위(SUM)면 머리 줄까지 두 번 더해지므로 만들지 않고 알린다.
+ */
+function newGroupPlan(L: Layout, sheet: SheetData, d: Paper2120A): GroupPlan[] {
+  const out: GroupPlan[] = [];
+  for (const ng of d.newGroups ?? []) {
+    if ((L.heads ?? []).some((h) => sameGroup(h.name, ng.name))) continue;            // 이미 넣었다(재확정)
+    const rows = d.rows.filter((r) => r.added && sameGroup(r.group, ng.name) && r.label.trim());
+    if (!rows.length) continue;
+    let section: { row: number; name: string } | undefined; let refs: number[] = [];
+    // DSD 에 윗 과목이 없는 것(기타포괄손익누계액 — 더그림)은 그 부분의 총계 줄로.
+    for (const p of [...ng.parents.slice(1), ...(ng.sec && ng.sec !== '손익' ? [`${ng.sec}총계`] : [])]) {
+      for (const h of L.heads ?? []) {
+        if (!groupLike(cleanFs(h.name), cleanFs(p))) continue;
+        const f = sheet.cells.get(`${L.pc.curCol}${h.row}`)?.formula?.replace(/^\+/, '') ?? '';
+        if (!/^\$?[A-Z]{1,3}\$?\d+(\+\$?[A-Z]{1,3}\$?\d+)*$/.test(f)) continue;
+        section = h; refs = [...f.matchAll(/\$?[A-Z]{1,3}\$?(\d+)/g)].map((m) => Number(m[1]));
+        break;
+      }
+      if (section) break;
+    }
+    if (!section) throw new Error(`2120A 에 새 분류 「${ng.name}」를 넣을 구역(${ng.parents.slice(1).join(' · ') || '윗 과목'})을 찾지 못했습니다 — 구역 합계가 「=+E35+E46」처럼 분류를 더하는 줄이어야 합니다. 가까운 분류를 골라 넣으세요.`);
+    const heads = (L.heads ?? []).filter((h) => refs.includes(h.row));
+    const member = L.rows.filter((r) => heads.some((h) => h.name === r.group)).map((r) => r.row);
+    const last = Math.max(...refs, ...member);
+    // 번호는 이웃 분류 모양대로 — 「(4) 기타비유동자산」 다음은 「(5)」, 「Ⅳ. 이익잉여금」 다음은 「Ⅴ.」.
+    const roman = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ';
+    const headText = heads.some((h) => /^\s*[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]/.test(h.name)) ? `${roman[refs.length] ?? refs.length + 1}. ${ng.name}` : `　(${refs.length + 1})  ${ng.name}`;
+    out.push({ ng, section, refs, last, rows, headText });
+  }
+  return out;
+}
+
 /**
  * 아직 시트에 없는 새 계정 줄 — 끼울 자리(그 줄 바로 아래)별로. 자리는 `after` 가 가리키는 줄(새 줄끼리 이어지면 첫 기존 줄),
  * 없거나 다른 분류면 그 분류의 끝줄. 분류를 못 찾으면 알린다.
@@ -186,7 +229,9 @@ function pendingAdds(L: Layout, d: Paper2120A): Map<number, { last: number; rows
   const byKey = new Map(d.rows.map((r) => [r.key, r]));
   for (const x of d.rows.filter((r) => r.added && r.label.trim())) {
     const g = x.group ?? '';
-    const inGroup = L.rows.filter((r) => normLabel(r.group) === normLabel(g) && r.pl === x.pl);
+    const inGroup = L.rows.filter((r) => sameGroup(r.group, g) && r.pl === x.pl);
+    // 새 분류의 첫 반영 — 머리 줄과 함께 newGroupPlan 이 넣는다.
+    if (!inGroup.length && d.newGroups?.some((n) => sameGroup(n.name, g))) continue;
     if (!inGroup.length) throw new Error(`2120A 에서 분류 「${g}」를 찾지 못했습니다 — 새 계정 「${x.label}」을 넣을 곳이 없습니다.`);
     if (inGroup.some((r) => normLabel(r.label) === normLabel(x.label))) continue;   // 이미 넣었다(다시 반영)
     let a = x.after; const seen = new Set<string>();
@@ -296,8 +341,13 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
       }
       xml = setRowsHidden(xml, hide, show);
     }
-    const plan = [...pendingAdds(L, d).values()].sort((a, b) => b.last - a.last);
-    for (const p of plan) xml = insertRowsAfter(xml, p.last, p.rows.length);
+    // 아래쪽부터 끼운다. 같은 줄 아래라면 새 분류를 먼저(그 위에 그 분류 끝 새 줄이 들어가 합계 범위가 맞게).
+    const ops = [
+      ...newGroupPlan(L, sheet, d).map((g) => ({ last: g.last, n: g.rows.length + 1, grow: false })),
+      ...[...pendingAdds(L, d).values()].map((p) => ({ last: p.last, n: p.rows.length, grow: true })),
+    ].sort((a, b) => b.last - a.last || Number(a.grow) - Number(b.grow));
+    // 새 분류는 범위를 늘리지 않는 끼우기 — 옆 분류(기타비유동자산 SUM(E56:E61))가 새 분류 줄까지 먹지 않게.
+    for (const o of ops) xml = o.grow ? insertRowsAfter(xml, o.last, o.n) : insertRows(xml, o.last + 1, o.n, o.last);
     return xml;
   },
   write(sheet, d) {
@@ -331,6 +381,34 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
       const t = d.groupProc?.[h.name]?.trim(); const ref = `${L.procCol}${h.row}`;
       e.push(t ? { ref, text: t } : { ref, clear: true });
     }
+    // 새 분류 — 끼워 둔 빈 줄에 머리(「(5) 투자자산」 =SUM)와 계정 줄, 구역 합계식에 + 머리 줄.
+    {
+      const adds = pendingAdds(L, d);
+      for (const g of newGroupPlan(L, sheet, d)) {
+        const hr = g.last + (adds.get(g.last)?.rows.length ?? 0) + 1;
+        const tpl = L.rows.find((r) => r.row === Math.max(...L.rows.filter((x) => x.row <= g.last).map((x) => x.row)))!;
+        const headCol = [...sheet.cells.entries()].find(([ref, v]) => rowOf(ref) === g.section.row && textOf(v) === g.section.name)?.[0].replace(/\d+$/, '') ?? 'B';
+        const k = g.rows.length;
+        e.push({ ref: `${headCol}${hr}`, text: g.headText });
+        for (const col of [L.pc.prevCol, L.pc.curCol]) {
+          e.push({ ref: `${col}${hr}`, formula: `SUM(${col}${hr + 1}:${col}${hr + k})` });
+          const f = sheet.cells.get(`${col}${g.section.row}`)?.formula ?? '';
+          if (f) e.push({ ref: `${col}${g.section.row}`, formula: `${f}+${col}${hr}` });
+        }
+        const keep = new Set([tpl.col, L.pc.prevCol, L.pc.curCol, L.noteCol, L.fsliCol].filter(Boolean) as string[]);
+        const fcols = formulaCols(sheet, L, keep, tpl);
+        g.rows.forEach((x, i) => {
+          const r = hr + 1 + i;
+          e.push({ ref: `${tpl.col}${r}`, text: x.label.trim() });
+          if (L.fsliCol && x.fsli.trim()) e.push({ ref: `${L.fsliCol}${r}`, text: x.fsli.trim() });
+          if (x.prev != null) e.push({ ref: `${L.pc.prevCol}${r}`, num: x.prev });
+          if (x.cur != null) e.push({ ref: `${L.pc.curCol}${r}`, num: x.cur });
+          if (L.noteCol && x.note.trim()) e.push({ ref: `${L.noteCol}${r}`, text: x.note.trim() });
+          if (L.procCol && x.proc?.trim()) e.push({ ref: `${L.procCol}${r}`, text: x.proc.trim() });
+          for (const [c, f] of fcols) e.push({ ref: `${c}${r}`, formula: moveFormula(f.formula, r - f.row) });
+        });
+      }
+    }
     // 새 계정 줄 — 끼워 둔 빈 줄(분류 끝줄 바로 아래)에 이름·금액·비고와 이웃 줄의 수식(증감·비율·판정)을 쓴다.
     for (const p of pendingAdds(L, d).values()) {
       const tpl = L.rows.find((r) => r.row === p.last)!;
@@ -352,7 +430,7 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
     for (const r of d.rows) {
       // 새 줄은 처음 반영 때 위에서 썼다(끼운 빈 줄이라 이름이 없다) — 재확정 때는 이름·분류로 찾아 금액·절차를 고친다.
       const row = r.added
-        ? L.rows.filter((x) => normLabel(x.label) === normLabel(r.label) && normLabel(x.group) === normLabel(r.group ?? '')).pop()?.row
+        ? L.rows.filter((x) => normLabel(x.label) === normLabel(r.label) && sameGroup(x.group, r.group)).pop()?.row
         : find(r.key)?.row;
       if (!row) continue;
       const ref = `${L.pc.curCol}${row}`;
@@ -398,7 +476,7 @@ export const cleanFs = (s: string) => {
 export interface FillReport {
   byLabel: number; byContra: number; byValue: number; missing: string[]; prevDiff: string[]; scale: number;
   /** DSD 에는 금액이 있는데 2120A 에 받을 줄이 없는 계정 — 합계가 안 맞는 까닭(명진 FY25 당기법인세자산 30,345) */
-  unplaced: { statement: string; label: string; cur: number }[];
+  unplaced: { statement: string; label: string; cur: number; /** DSD 윗 과목(가까운 것부터) */ parents?: string[]; /** 재무상태표의 부분 */ sec?: Sec }[];
 }
 
 /** 전기 DSD 재무제표(당기 = 전기 결산) → 2120A 당기 열. 손으로 고친 줄(src '손')은 건드리지 않는다. */
@@ -492,7 +570,7 @@ export function fillFromFs(d: Paper2120A, lines: FsLine[], opts: { both?: boolea
       // 두 해를 채울 때(빌린 틀)는 전기에만 있던 계정도 — 올해 0 이라고 빼면 전기 자산=부채+자본이 어긋난다(아비즈 리스부채 17.6억).
       if (nextDeeper || x.level === 0 || /총계|합계/.test(cleanFs(x.label)) || !(x.cur || (opts.both && x.pri))) return;
       if (handCur.has(val(x.cur))) return;                       // 손으로 같은 금액을 넣어 둔 줄이 있다
-      rep.unplaced.push({ statement: x.statement, label: x.label, cur: val(x.cur) });
+      rep.unplaced.push({ statement: x.statement, label: x.label, cur: val(x.cur), parents: parentsOf(x), sec: secOf(x) });
     });
   }
   return { data: { ...d, rows }, report: rep };
@@ -503,7 +581,7 @@ const CONTRA_NAME = /^(대손충당금|감가상각누계액|손상차손누계�
  * 분류 이름이 같은가(번호·띄어쓰기 뗀 뒤) — 같거나 한쪽이 다른 쪽을 품되, 「유동」과 「비유동」은 섞지 않는다
  * (「기타비유동자산」이 「유동자산」을 글자로 품어서 유동 보증금을 기타비유동 줄에 넣던 것).
  */
-function groupLike(a: string, b: string): boolean {
+export function groupLike(a: string, b: string): boolean {
   if (a === b) return true;
   if (!(a.includes(b) || b.includes(a))) return false;
   return a.includes('비유동') === b.includes('비유동');
