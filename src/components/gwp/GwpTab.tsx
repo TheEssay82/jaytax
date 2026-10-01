@@ -126,6 +126,8 @@ export default function GwpTab() {
   // 거래처 목록 — 진행 정도(세팅·판·확정 단계)와 접기(사용자 2026-10-01 「선택하면 나머지는 사라지고 접히게」).
   const [progressBy, setProgressBy] = useState<Map<string, { confirmed: StageNo[]; books: number }>>(new Map());
   const [listOpen, setListOpen] = useState(true);
+  /** 진행 정도로 거르기 — 범례 칩을 눌러(사용자 2026-10-01) */
+  const [progFilter, setProgFilter] = useState<keyof typeof PROGRESS | null>(null);
   const refreshProgress = () => listProgress().then(setProgressBy).catch(() => undefined);
 
   async function load(keep?: string) {
@@ -501,7 +503,7 @@ export default function GwpTab() {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 9 }}>
               <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', letterSpacing: '.04em' }}>사업연도</span>
               {years.map((y) => (
-                <button key={y} onClick={() => { setFyAt(y); setListOpen(true); }} style={{
+                <button key={y} onClick={() => { setFyAt(y); setListOpen(true); setProgFilter(null); }} style={{
                   cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--fs-1)',
                   border: `1px solid ${y === fy ? 'var(--navy)' : 'var(--rule)'}`, background: y === fy ? 'var(--navy)' : '#fff',
                   color: y === fy ? '#fff' : 'var(--ink-2)', fontWeight: y === fy ? 700 : 400, borderRadius: 999, padding: '3px 11px',
@@ -512,14 +514,21 @@ export default function GwpTab() {
             {inYear.length > 0 && (() => {
               const counts = new Map<string, number>();
               for (const e of inYear) { const k = progOf(e.id).key; counts.set(k, (counts.get(k) ?? 0) + 1); }
-              const shown = picked && !listOpen ? inYear.filter((e) => e.id === picked.id) : inYear;
+              const shown = picked && !listOpen ? inYear.filter((e) => e.id === picked.id) : inYear.filter((e) => !progFilter || progOf(e.id).key === progFilter);
+              const chip = (on: boolean, n: number) => ({
+                display: 'inline-flex', alignItems: 'center', gap: 5, cursor: n ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 'var(--fs-1)',
+                border: `1px solid ${on ? 'var(--navy)' : 'var(--rule)'}`, background: on ? 'var(--navy-bg)' : '#fff', color: 'var(--ink-2)',
+                fontWeight: on ? 700 : 400, borderRadius: 999, padding: '2px 10px', opacity: n ? 1 : 0.45,
+              } as const);
               return (
                 <>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginBottom: 6 }}>
+                    <button style={chip(!progFilter, inYear.length)} onClick={() => { setProgFilter(null); setListOpen(true); }}>전체 {inYear.length}</button>
                     {(Object.keys(PROGRESS) as (keyof typeof PROGRESS)[]).map((k) => (
-                      <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, opacity: counts.get(k) ? 1 : 0.45 }}>
+                      <button key={k} style={chip(progFilter === k, counts.get(k) ?? 0)} disabled={!counts.get(k)} title={`${PROGRESS[k].label}인 회사만 보기 — 다시 누르면 전체`}
+                        onClick={() => { setProgFilter(progFilter === k ? null : k); setListOpen(true); }}>
                         <span style={{ width: 10, height: 10, borderRadius: 3, background: PROGRESS[k].color }} />{PROGRESS[k].label} {counts.get(k) ?? 0}
-                      </span>
+                      </button>
                     ))}
                     {picked && (
                       <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setListOpen(!listOpen)}>

@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.48.1',
+    date: '2026-10-01',
+    title: '일반조서 — 거래처 목록을 진행 정도로 거르기',
+    highlights: [
+      '목록 위 진행 정도 칸(세팅 전 · 1차 확정 …)을 누르면 그 단계 회사만 보입니다. 다시 누르거나 「전체」를 누르면 모두. 사업연도를 바꾸면 거르기가 풀립니다.',
+    ],
+  },
+  {
     version: '3.48.0',
     date: '2026-10-01',
     title: '일반조서 — 거래처 목록을 가나다순 목록으로, 진행 정도 색, 고르면 접기',
