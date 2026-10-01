@@ -33,9 +33,10 @@ body{font-family:var(--font);font-size:var(--fs-3);background:var(--bg);color:va
 .h-iconbtn.on{background:rgba(200,150,60,.25);border-color:rgba(200,150,60,.45)}
 .h-logoimg{height:56px;display:block}
 
-/* 좁은 화면(≤1439px): 대분류 메뉴 명칭이 길어 한 줄에 안 들어가므로 헤더를 2줄로 접는다.
-   1줄 = 로고·버전 + 우측 계정영역, 2줄 = 대분류 메뉴(전체 폭). 1440px 이상은 기존 1줄 유지. */
-@media (max-width:1439px){
+/* 헤더를 2줄로 접는다(1줄 = 로고·버전·찾기 + 우측 계정영역, 2줄 = 대분류 메뉴 전체 폭).
+   한 줄에 다 그리면 약 1,900px 이 필요하다 — 전에는 1439px 이하에서만 접어 1536px 화면에서 페이지가 가로로 넘치고
+   클릭할 때마다 옆으로 밀렸다(사용자 2026-10-01). 2000px 이상만 1줄. */
+@media (max-width:1999px){
   #hdr{flex-wrap:wrap;height:auto;min-height:64px;padding:6px 14px;row-gap:4px}
   .h-logoimg{height:44px}
   .h-right{order:2}

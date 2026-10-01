@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.48.2',
+    date: '2026-10-01',
+    title: '화면 — 머리글이 넘쳐 페이지가 가로로 밀리던 것',
+    highlights: [
+      '머리글(메뉴 + 오른쪽 아이콘·계정·로그아웃)을 한 줄에 그리려면 약 1,900px 이 필요한데 1,440px 이상이면 한 줄로 그려, 1,536px 같은 화면에서 페이지가 가로로 넘치고 누를 때마다 옆으로 밀렸습니다. 이제 2,000px 보다 좁으면 메뉴를 둘째 줄로 내립니다.',
+    ],
+  },
+  {
     version: '3.48.1',
     date: '2026-10-01',
     title: '일반조서 — 거래처 목록을 진행 정도로 거르기',
