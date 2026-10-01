@@ -132,12 +132,20 @@ export function applyWebPapers(
   for (const { def, data } of items) {
     const b = def.borrowOf?.(data);
     if (!b) continue;
-    if (readWorkbook(zip(files)).some((s) => !s.hidden && baseOf(s.name) === def.sheetCode)) continue;
+    // 보이는 시트가 이미 빌린 틀 모양이면(전에 넣었다 — 재확정) 그대로. 빈 양식이면 그 자리에 갈아끼운다 —
+    // 소규모 감사는 빈 「2120A(소규모)」가 보이는 채로 있어, 전에는 옮겨 심지 않고 그 빈 시트에 쓰다 멈췄다(주원이노베이션 2026-10-01).
+    const shown = readWorkbook(zip(files)).filter((s) => !s.hidden && baseOf(s.name) === def.sheetCode);
+    const want = ((data as { rows?: { key: string; added?: boolean }[] }).rows ?? []).filter((x) => !x.added).map((x) => x.key);
+    const fits = (s: SheetData) => {
+      const have = new Set(((def.read(s) as { rows?: { key: string }[] }).rows ?? []).map((x) => x.key));
+      return want.length > 0 && want.filter((k) => have.has(k)).length >= want.length * 0.8;
+    };
+    if (shown.some(fits)) continue;
     const bytes = borrowed?.get(borrowKey(b));
     if (!bytes) throw new Error(`${def.code} — 빌린 판(v${b.version})을 받지 못했습니다.`);
     const srcSheet = readWorkbook(bytes).find((s) => s.name === b.sheet);
     if (!srcSheet) throw new Error(`빌린 판에 「${b.sheet}」 시트가 없습니다.`);
-    const r = transplantSheet(files, unzip(bytes), b.sheet, { as: def.sheetCode, hidden: false });
+    const r = transplantSheet(files, unzip(bytes), b.sheet, shown.length ? { as: shown[0].name, replace: true, hidden: false } : { as: def.sheetCode, hidden: false });
     const after = readWorkbook(zip(files));
     const head = headLinker(after, buildCatalog(after))(srcSheet, def.sheetCode, template?.reviewer ?? '');
     let xml = strFromU8(files[r.part]);

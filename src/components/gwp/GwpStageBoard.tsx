@@ -51,6 +51,8 @@ export default function GwpStageBoard({ eng, latest, tpl, basis, canWrite, partn
   const [reopen, setReopen] = useState<{ stage: StageNo; reason: string } | null>(null);
   /** 확정 창 — 1차는 계획조서(1000·2000번대) 마감을 함께 보여 준다 */
   const [closing, setClosing] = useState<{ no: StageNo; date: string; author: string } | null>(null);
+  /** 확정 실패 문구 — 확인 창 안에(탭 위 오류 칸은 창에 가려 안 보인다) */
+  const [closeErr, setCloseErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [p, e, f] = await Promise.all([listPapers(eng.id), listStageEvents(eng.id), listFiles(eng.id)]);
@@ -128,6 +130,7 @@ export default function GwpStageBoard({ eng, latest, tpl, basis, canWrite, partn
   /** [N차 확정] — 확인 창을 연다. 기본 작성일은 2110 의 감사계획일, 없으면 오늘. */
   function openConfirm(no: StageNo) {
     const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+    setCloseErr(null);
     setClosing({ no, date: (no === 1 ? planDate(when('감사계획')) : null) ?? today, author: author ?? '' });
   }
 
@@ -137,7 +140,7 @@ export default function GwpStageBoard({ eng, latest, tpl, basis, canWrite, partn
     const items = mineAll.filter((w) => w.def && w.stage === no && papers.get(w.code)?.status === '확인');
     const codes = items.map((w) => w.code).join(', ');
     const close = !!STAGE_SERIES[no];
-    setBusy(`stage:${no}`); setErr(null);
+    setBusy(`stage:${no}`); setErr(null); setCloseErr(null);
     try {
       const base = (await listBooks(eng.id))[0];
       if (!base) throw new Error('조서 판이 없습니다.');
@@ -172,7 +175,7 @@ export default function GwpStageBoard({ eng, latest, tpl, basis, canWrite, partn
       await load();
       await onBooks();
       setMsg(`${st.label} — v${version}을 ${st.when} 확정본으로 고정하고 내려받았습니다.${items.length ? ` 웹 조서 ${items.length}개 반영.` : ''}${close ? ` 계획조서 조서목록 작성일 ${closed.dated.length}줄을 채우고 빨간 탭 ${closed.tabbed.length}개를 노랑으로 바꿨습니다.` : ''}`);
-    } catch (e) { setErr(e instanceof Error ? e.message : '확정하지 못했습니다.'); } finally { setBusy(''); }
+    } catch (e) { const m = e instanceof Error ? e.message : '확정하지 못했습니다.'; setErr(m); setCloseErr(m); } finally { setBusy(''); }
   }
 
   async function cancelStage() {
@@ -362,6 +365,8 @@ export default function GwpStageBoard({ eng, latest, tpl, basis, canWrite, partn
                   )}
                 </div>
               )}
+              {/* 확정이 실패하면 문구를 창 안에도 — 전에는 창 뒤 카드에만 떠서 「눌러도 넘어가지 않는다」로 보였다(주원이노베이션 2026-10-01). */}
+              {closeErr && <div style={{ color: 'var(--bad)', marginTop: 10, padding: '6px 10px', borderRadius: 8, background: 'var(--bad-bg)', whiteSpace: 'pre-wrap' }}>확정하지 못했습니다 — {closeErr}</div>}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
                 <button className="btn-s" disabled={!!busy} onClick={() => setClosing(null)}>닫기</button>
                 <button className="btn-p" disabled={!!busy || (!!STAGE_SERIES[closing.no] && !closing.date)} onClick={() => void confirmStage(closing.no)}>

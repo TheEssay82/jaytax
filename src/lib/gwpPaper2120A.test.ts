@@ -328,3 +328,34 @@ test('2120A 빌린 틀 반영 — 안 쓰는 계정 줄은 숨기고, 새 줄은
   assert.doesNotMatch(xml, /<row hidden="1" r="42"/);              // 숨긴 줄 아래 끼운 새 줄은 보임
   assert.match(xml, /<row hidden="1" r="41"/);                     // 주식발행초과금 숨김
 });
+
+test('2120A 빌린 틀 반영 — 소규모 감사처럼 빈 「2120A(소규모)」가 보여도 그 자리에 빌린 시트로 갈아끼우고, 재확정 때는 다시 갈아끼우지 않는다(주원이노베이션 2026-10-01)', async () => {
+  const { applyWebPapers, borrowKey } = await import('./gwpApply');
+  const { emptyWorkbook } = await import('./gwpAssemble');
+  const { injectSheets } = await import('./xlsxInject');
+  const { readWorkbook } = await import('./xlsxRead');
+  const c = (row: number, col: number, v: { text?: string; num?: number; formula?: string }) => ({ row, col, ...v });
+  const head = [c(14, 2, { text: '계정과목 (FSLI)' }), c(14, 4, { text: '계정과목 (공시용)' }), c(14, 5, { text: 'BS: 2024_4Q' }), c(14, 6, { text: 'BS: 2025_4Q' }), c(16, 2, { text: '자 산' })];
+  // 주원의 빈 소규모 2120A — 계정 줄이 거의 없다
+  const mine = injectSheets(emptyWorkbook(), [{ name: '2120A(소규모)', cells: [...head, c(17, 2, { text: 'Ⅰ. 유 동 자 산' }), c(18, 2, { text: '1.' }), c(18, 3, { text: '기타' })], lastRow: 18 }]);
+  // 명진 2120A — 빌려 올 틀
+  const lenderBytes = injectSheets(emptyWorkbook(), [{ name: '2120A', cells: [
+    ...head, c(17, 2, { text: 'Ⅰ. 유 동 자 산' }), c(17, 5, { formula: 'SUM(E18:E19)' }), c(17, 6, { formula: 'SUM(F18:F19)' }),
+    c(18, 2, { text: '1.' }), c(18, 3, { text: '현금및현금성자산' }), c(18, 5, { num: 7 }), c(18, 6, { num: 8 }),
+    c(19, 2, { text: '2.' }), c(19, 3, { text: '매출채권' }), c(19, 5, { num: 7 }), c(19, 6, { num: 8 }),
+  ], lastRow: 19 }]);
+  const b = { engagementId: 'MJ', entity: '명진', version: 18, sheet: '2120A' };
+  const d = fromBorrowed(readWorkbook(lenderBytes)[0], b);
+  d.rows = d.rows.map((r) => ({ ...r, prev: r.label === '현금및현금성자산' ? 100 : 200, cur: r.label === '현금및현금성자산' ? 110 : 220 }));
+  const borrowed = new Map([[borrowKey(b), lenderBytes]]);
+  const out = applyWebPapers(mine, [{ def: PAPER_2120A, data: d }], undefined, borrowed).bytes;
+  const s = readWorkbook(out).find((x) => x.name === '2120A(소규모)')!;
+  assert.ok(!s.hidden);
+  assert.equal(s.cells.get('C18')?.text, '현금및현금성자산');
+  assert.equal(s.cells.get('F18')?.num, 110);
+  assert.equal(s.cells.get('E19')?.num, 200);
+  assert.equal(readWorkbook(out).filter((x) => x.name.startsWith('2120A')).length, 1);
+  // 재확정 — 이미 빌린 틀 모양이라 다시 갈아끼우지 않고 값만
+  const again = readWorkbook(applyWebPapers(out, [{ def: PAPER_2120A, data: d }], undefined, borrowed).bytes).find((x) => x.name === '2120A(소규모)')!;
+  assert.equal(again.cells.get('F19')?.num, 220);
+});
