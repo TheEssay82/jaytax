@@ -386,3 +386,30 @@ test('2120A 빌린 틀(명진형 「IFRS 공시」 머리) — 공시 칸을 이
   assert.equal(s4.cells.get('F18')?.num, 175);
   assert.equal(s4.cells.get('D18')?.text, '매출채권');
 });
+
+test('2120A 분류 합계가 칸 하나(「Ⅰ. 자본금」 =E101)여도 새 줄을 넣으면 분류 전체 합으로 — 재확정 판도 바로잡힘(주원 대차 3억 2026-10-01)', async () => {
+  const { applyWebPapers } = await import('./gwpApply');
+  const { emptyWorkbook } = await import('./gwpAssemble');
+  const { injectSheets } = await import('./xlsxInject');
+  const { readWorkbook } = await import('./xlsxRead');
+  const c = (row: number, col: number, v: { text?: string; num?: number; formula?: string }) => ({ row, col, ...v });
+  const cells = [
+    c(14, 2, { text: '계정과목 (FSLI)' }), c(14, 4, { text: '계정과목 (공시용)' }), c(14, 5, { text: 'BS: 2024_4Q' }), c(14, 6, { text: 'BS: 2025_4Q' }),
+    c(16, 2, { text: '자 본' }),
+    c(17, 2, { text: 'Ⅰ. 자 본 금' }), c(17, 5, { formula: 'E18' }), c(17, 6, { formula: 'F18' }),
+    c(18, 2, { text: '1.' }), c(18, 3, { text: '자본금' }), c(18, 5, { num: 700 }), c(18, 6, { num: 700 }),
+    c(19, 2, { text: '자 본 총 계' }), c(19, 5, { formula: 'E17' }), c(19, 6, { formula: 'F17' }),
+  ];
+  const bytes = injectSheets(emptyWorkbook(), [{ name: '2120A', cells, lastRow: 19 }]);
+  const d = PAPER_2120A.read(readWorkbook(bytes)[0]);
+  d.rows.push({ key: 'new|p', label: '우선주자본금', fsli: '', pl: false, prev: 300, cur: 300, note: '', sec: '자본', group: 'Ⅰ. 자 본 금', added: true });
+  const once = applyWebPapers(bytes, [{ def: PAPER_2120A, data: d }]).bytes;
+  const s = readWorkbook(once)[0];
+  assert.equal(s.cells.get('C19')?.text, '우선주자본금');
+  assert.equal(s.cells.get('F17')?.formula, 'SUM(F18:F19)');
+  assert.equal(s.cells.get('E17')?.formula, 'SUM(E18:E19)');
+  // 이미 넣은 판(합계가 =E18 로 남은 v3) — 재확정에서 바로잡는다
+  const broken = injectSheets(emptyWorkbook(), [{ name: '2120A', cells: [...cells.filter((x) => x.row !== 19), c(19, 3, { text: '우선주자본금' }), c(19, 5, { num: 300 }), c(19, 6, { num: 300 }), c(20, 2, { text: '자 본 총 계' })], lastRow: 20 }]);
+  const fixed = readWorkbook(applyWebPapers(broken, [{ def: PAPER_2120A, data: d }]).bytes)[0];
+  assert.equal(fixed.cells.get('F17')?.formula, 'SUM(F18:F19)');
+});

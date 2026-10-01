@@ -308,6 +308,19 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
         if ((c === L.pc.prevCol || c === L.pc.curCol) && r > L.pc.headerRow && !acct.has(r) && v.formula == null && v.num != null) e.push({ ref, clear: true });
       }
     }
+    // 분류 합계가 칸 하나(「Ⅰ. 자본금」 =E101)인데 그 분류에 계정 줄이 여럿이면(새로 넣은 우선주자본금) 분류 전체 합으로 —
+    // 전에는 새 줄이 합계에서 빠져 대차가 3억 어긋났다(주원이노베이션 v3, 명진 틀 2026-10-01). 재확정 때도 바로잡힌다.
+    for (const h of L.heads ?? []) {
+      const mine = L.rows.filter((r) => r.group === h.name).map((r) => r.row);
+      const extra = pendingAdds(L, d).get(Math.max(...mine))?.rows.length ?? 0;
+      if (mine.length + extra < 2) continue;
+      const lo = Math.min(...mine), hi = Math.max(...mine) + extra;
+      for (const col of [L.pc.prevCol, L.pc.curCol]) {
+        const f = sheet.cells.get(`${col}${h.row}`)?.formula?.replace(/^\+/, '');
+        const m = f ? /^(\$?[A-Z]{1,3})\$?(\d+)$/.exec(f) : null;
+        if (m && m[1].replace('$', '') === col && mine.includes(Number(m[2]))) e.push({ ref: `${col}${h.row}`, formula: `SUM(${col}${lo}:${col}${hi})` });
+      }
+    }
     // 분류 줄의 절차 — 웹에서 적은 것(재고·유형·무형자산 묶음 절차, 사용자 2026-10-01). 빌린 틀이면 그 회사 분류 절차는 지운다.
     if (L.procCol && d.groupProc) for (const h of L.heads ?? []) {
       const t = d.groupProc?.[h.name]?.trim(); const ref = `${L.procCol}${h.row}`;
