@@ -88,7 +88,8 @@ function kdate(iso: string | null): string {
 
 export default function GwpTab() {
   const { role, readonly, profileName } = useAuth();
-  const canWrite = !readonly && (role === 'superuser' || role === 'accountant');
+  // 감사팀 = 최고관리자·회계사·인당회계사(사용자 2026-10-02 — 조현규·김준성). 서버 is_audit_staff() 와 같은 선.
+  const canWrite = !readonly && (role === 'superuser' || role === 'accountant' || role === 'per_head_accountant');
   const [engs, setEngs] = useState<Engagement[]>([]);
   const [ents, setEnts] = useState<BizEntityFull[]>([]);
   const [auditIds, setAuditIds] = useState<Set<string>>(new Set());

@@ -3,6 +3,7 @@
 //   · 2026-08 거래처관리 조회 허용(biz_* SELECT 개방, 쓰기·PII복호는 차단)
 //   · 2026-09-03 기장등청구관리·세무조정수수료관리·회계및세무상담관리 **조회** 허용
 //     (마이그 0121 로 perhead_block_select RESTRICTIVE 정책 제거). 쓰기는 등급별 정책이 그대로 막는다.
+//   · 2026-10-02 일반조서 관리 보기·작성·확정 허용(is_audit_staff 에 포함, 마이그 0162).
 //   아직 숨기는 것: 발송요청 처리 · ERP 발행내역 대사 · 통계 · AI 사용량 · 기초 미수금 입력 · 설정 · 사용자 관리.
 export type Role = 'superuser' | 'accountant' | 'team_lead' | 'team_member' | 'per_head_accountant' | 'external';
 
@@ -65,7 +66,7 @@ export type Capability =
   | 'viewDispatch' // 문서발송 › 발송요청 처리 '조회' — 처리권한자 + 회계사(조회전용)
   | 'processDispatch' // 문서발송 › 발송요청 처리(상태변경·발송일·등기번호) — 최고관리자·기장팀장·기장팀원
   | 'viewDevNotes' // 📓 개발노트(버전별 개발내역) — 기장팀장·기장팀원은 볼 수 없다
-  | 'viewAuditPapers'; // 📘 일반조서 관리 — 감사팀(최고관리자·회계사)만. 서버도 is_audit_staff() 로 같은 선을 긋는다
+  | 'viewAuditPapers'; // 📘 일반조서 관리 — 감사팀(최고관리자·회계사·인당회계사). 서버도 is_audit_staff() 로 같은 선을 긋는다
 
 // 항목별 허용 역할 (매트릭스)
 const MATRIX: Record<Capability, Role[]> = {
@@ -97,7 +98,7 @@ const MATRIX: Record<Capability, Role[]> = {
    * 외부인도 볼 이유가 없다.
    */
   viewDevNotes: ['superuser', 'accountant', 'per_head_accountant'],
-  viewAuditPapers: ['superuser', 'accountant'],
+  viewAuditPapers: ['superuser', 'accountant', 'per_head_accountant'],   // 인당회계사도(2026-10-02, 마이그 0162)
 };
 
 export function can(role: Role, cap: Capability): boolean {

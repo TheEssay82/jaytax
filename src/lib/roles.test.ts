@@ -140,3 +140,9 @@ test('등급마다 한글 이름이 있다 — 화면에 코드값이 새어 나
     assert.ok(ROLE_LABELS[r].length > 0, `${r} 의 이름이 비어 있다`);
   }
 });
+
+test('일반조서 관리 — 인당회계사도 감사팀(2026-10-02, 마이그 0162)', () => {
+  assert.equal(can('per_head_accountant', 'viewAuditPapers'), true);
+  assert.equal(can('team_lead', 'viewAuditPapers'), false);
+  assert.equal(can('external', 'viewAuditPapers'), false);
+});
