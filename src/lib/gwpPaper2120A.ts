@@ -182,7 +182,7 @@ function layered(sheet: SheetData, pc: NonNullable<ReturnType<typeof findPeriodC
  */
 function pendingAdds(L: Layout, d: Paper2120A): Map<number, { last: number; rows: Row2120[] }> {
   const out = new Map<number, { last: number; rows: Row2120[] }>();
-  const find = locator(L, d.rows);
+  const find = locator(L, d.rows, !!d.borrow);
   const byKey = new Map(d.rows.map((r) => [r.key, r]));
   for (const x of d.rows.filter((r) => r.added && r.label.trim())) {
     const g = x.group ?? '';
@@ -240,15 +240,20 @@ function keyed<T extends { label: string; fsli: string }>(rows: T[]): (T & { key
  * 데이터 줄 → 시트 줄. 키(이름|공시#n)로 찾고, 못 찾으면 이름#n 으로 — 빌린 틀은 공시 칸을 이 회사 과목으로 바꿔 쓰므로
  * 「IFRS 공시」 머리 양식(명진)은 재확정 때 키의 공시 부분이 달라진다(주원이노베이션 2026-10-01).
  */
-function locator(L: Layout, rows: Row2120[]): (key: string) => LRow | undefined {
+function locator(L: Layout, rows: Row2120[], byLabelOnly = false): (key: string) => LRow | undefined {
   const labs = (xs: { label: string }[]) => { const seen = new Map<string, number>(); return xs.map((x) => { const b = normLabel(x.label); const n = seen.get(b) ?? 0; seen.set(b, n + 1); return `${b}#${n}`; }); };
   const byKey = new Map(keyed(L.rows).map((r, i) => [r.key, L.rows[i]]));
-  const sl = labs(L.rows);
-  const byLab = new Map(L.rows.map((r, i) => [sl[i], r]));
+  // 웹에서 새로 넣은 줄(이미 시트에 들어간 것)은 빼고 센다 — 데이터 쪽도 새 줄은 빼고 센다.
+  const addedAt = new Set(rows.filter((r) => r.added).map((r) => `${normLabel(r.label)}|${normLabel(r.group ?? '')}`));
+  const sheetRows = L.rows.filter((r) => !addedAt.has(`${normLabel(r.label)}|${normLabel(r.group)}`));
+  const sl = labs(sheetRows);
+  const byLab = new Map(sheetRows.map((r, i) => [sl[i], r]));
   const base = rows.filter((r) => !r.added);
   const dl = labs(base);
   const lab = new Map(base.map((r, i) => [r.key, dl[i]]));
-  return (key) => byKey.get(key) ?? (lab.has(key) ? byLab.get(lab.get(key)!) : undefined);
+  const viaLabel = (key: string) => (lab.has(key) ? byLab.get(lab.get(key)!) : undefined);
+  // 빌린 틀은 공시 칸을 이 회사 과목으로 바꿔 쓰므로 키가 다른 줄과 우연히 겹칠 수 있다 — 이름·순번으로만(주원 v5 퇴직연금운용자산이 지워진 것).
+  return byLabelOnly ? viaLabel : (key) => byKey.get(key) ?? viaLabel(key);
 }
 
 const numOf = (sheet: SheetData, ref: string) => { const v = sheet.cells.get(ref); return v?.num != null ? v.num : null; };
@@ -281,7 +286,7 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
     if (!L) return xml;
     if (d.borrow) {
       const hide = new Set<number>(), show = new Set<number>();
-      const find = locator(L, d.rows);
+      const find = locator(L, d.rows, !!d.borrow);
       for (const x of d.rows) { const r = x.added ? undefined : find(x.key); if (r) (unusedBorrowed(d, x) ? hide : show).add(r.row); }
       // 계정이 모두 숨은 분류(평안정공 「(3) 투자부동산」)는 머리 줄도.
       for (const h of L.heads ?? []) {
@@ -298,7 +303,7 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
   write(sheet, d) {
     const L = layout(sheet);
     if (!L) throw new Error('2120A 에서 전기·당기 기간 열(머리 줄)을 찾지 못했습니다.');
-    const find = locator(L, d.rows);
+    const find = locator(L, d.rows, !!d.borrow);
     const e: CellEdit[] = [];
     // 빌린 틀 — 계정 줄이 아닌 곳에 손으로 넣은 그 회사 숫자(평안정공 「매출총이익율」 전기 2.38%)도 지운다. 수식은 둔다.
     if (d.borrow) {

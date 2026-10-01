@@ -413,3 +413,30 @@ test('2120A 분류 합계가 칸 하나(「Ⅰ. 자본금」 =E101)여도 새 �
   const fixed = readWorkbook(applyWebPapers(broken, [{ def: PAPER_2120A, data: d }]).bytes)[0];
   assert.equal(fixed.cells.get('F17')?.formula, 'SUM(F18:F19)');
 });
+
+test('2120A 빌린 틀 재확정 — 같은 이름 줄이 둘이고 공시 칸을 바꿔 써서 키가 겹쳐도, 안 쓰는 줄이 실제 줄을 지우지 않는다(주원 v5 퇴직연금운용자산 2026-10-01)', async () => {
+  const { applyWebPapers, borrowKey } = await import('./gwpApply');
+  const { emptyWorkbook } = await import('./gwpAssemble');
+  const { injectSheets } = await import('./xlsxInject');
+  const { readWorkbook } = await import('./xlsxRead');
+  const c = (row: number, col: number, v: { text?: string; num?: number; formula?: string }) => ({ row, col, ...v });
+  const lender = injectSheets(emptyWorkbook(), [{ name: '2120A', cells: [
+    c(14, 2, { text: '계정과목' }), c(14, 4, { text: 'IFRS 공시' }), c(14, 5, { text: 'BS: 2024_4Q' }), c(14, 6, { text: 'BS: 2025_4Q' }),
+    c(16, 2, { text: '자 산' }), c(17, 2, { text: '(4) 기타비유동자산' }),
+    c(18, 2, { text: '1.' }), c(18, 3, { text: '퇴직연금운용자산' }), c(18, 4, { text: '퇴직연금운용자산' }), c(18, 5, { num: 1 }), c(18, 6, { num: 1 }),
+    c(19, 2, { text: '부 채' }), c(20, 2, { text: 'Ⅱ. 비 유 동 부 채' }),
+    c(21, 2, { text: '1.' }), c(21, 3, { text: '퇴직연금운용자산' }), c(21, 4, { text: '퇴직연금부채' }), c(21, 5, { num: 1 }), c(21, 6, { num: 1 }),
+  ], lastRow: 21 }]);
+  const mine = injectSheets(emptyWorkbook(), [{ name: '2120A(소규모)', cells: [c(1, 1, { text: '빈 양식' })], lastRow: 1 }]);
+  const b = { engagementId: 'MJ', entity: '명진', version: 18, sheet: '2120A' };
+  const d = fromBorrowed(readWorkbook(lender)[0], b);
+  // 자산 쪽은 이 회사에 없음(빈칸) · 부채 쪽 차감은 이 회사 값, 공시 칸 = 「퇴직연금운용자산」
+  d.rows = d.rows.map((r, i) => (i === 1 ? { ...r, fsli: '퇴직연금운용자산', prev: -353, cur: -482 } : r));
+  const borrowed = new Map([[borrowKey(b), lender]]);
+  let bytes = applyWebPapers(mine, [{ def: PAPER_2120A, data: d }], undefined, borrowed).bytes;
+  bytes = applyWebPapers(bytes, [{ def: PAPER_2120A, data: d }], undefined, borrowed).bytes;   // 재확정
+  const s = readWorkbook(bytes).find((x) => x.name === '2120A(소규모)')!;
+  assert.equal(s.cells.get('F21')?.num, -482);
+  assert.equal(s.cells.get('D21')?.text, '퇴직연금운용자산');
+  assert.equal(s.cells.get('F18')?.num, undefined);
+});
