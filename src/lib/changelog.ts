@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.48.3',
+    date: '2026-10-01',
+    title: '일반조서 — 2120A 받을 줄 없는 계정에 맞는 분류를 미리 골라 둠',
+    highlights: [
+      'DSD 윗 과목과 같은 분류가 2120A 에 있으면(우선주자본금 → 「Ⅰ. 자본금」, 기타자본잉여금 → 「Ⅱ. 자본잉여금」) 분류 칸에 미리 골라 둡니다 — [새 줄로 넣기]만 누르면 됩니다. 없으면 지금처럼 「＋ 새 분류」.',
+    ],
+  },
+  {
     version: '3.48.2',
     date: '2026-10-01',
     title: '화면 — 머리글이 넘쳐 페이지가 가로로 밀리던 것',

@@ -152,7 +152,9 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
                 // DSD 윗 과목이 2120A 에 없는 분류면(더그림 「투자자산」) 새 분류를 제안한다 — 엉뚱한 분류(투자부동산)에 넣지 않게.
                 const p = u.parents?.[0];
                 const fresh = p && !/총계|합계/.test(p) && !['자산', '부채', '자본'].includes(p) && !mineGroups.some((g) => groupLike(cleanFs(g.name), p)) ? p : null;
-                const chosen = grp[u.label] ?? (fresh ? `NEW:${fresh}` : '');
+                // 윗 과목과 같은 분류가 있으면 그것을 미리 골라 둔다(휴식 우선주자본금 → 자본금) — 누를 것만 누르게.
+                const same = p ? mineGroups.find((g) => groupLike(cleanFs(g.name), p)) : undefined;
+                const chosen = grp[u.label] ?? (fresh ? `NEW:${fresh}` : same?.id ?? '');
                 return (
                   <div key={u.label} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 6, color: 'var(--ink-1)' }}>
                     <span style={{ whiteSpace: 'nowrap', minWidth: 170 }}><b>{u.label}</b> {fmt(u.cur)} →</span>
