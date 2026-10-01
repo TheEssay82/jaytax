@@ -69,3 +69,21 @@ export function confirmBlockers(
 export function stageLocked(no: StageNo, states: StageState[]): boolean {
   return states.find((s) => s.no === no)?.confirmed ?? false;
 }
+
+// ── 거래처 목록의 진행 정도(사용자 2026-10-01 「세팅 전과 진행 정도에 따라 색깔 구분」) ─────────
+export interface Progress { key: 'none' | 'setup' | 'draft' | 'stage1' | 'stage2' | 'stage3'; label: string; color: string; rank: number }
+export const PROGRESS: Record<Progress['key'], Omit<Progress, 'key'>> = {
+  none: { label: '세팅 전', color: '#9AA0A6', rank: 0 },
+  setup: { label: '세팅 · 판 없음', color: '#E0A100', rank: 1 },
+  draft: { label: '작성 중 · 1차 전', color: '#2F7BD8', rank: 2 },
+  stage1: { label: '1차 확정', color: '#12A38A', rank: 3 },
+  stage2: { label: '2차 확정', color: '#2E8B3E', rank: 4 },
+  stage3: { label: '3차 확정 · 완료', color: '#1F3A68', rank: 5 },
+};
+/** 세팅 여부·판 수·확정된 단계 → 진행 정도. 확정은 1차부터 이어진 것만 센다(1차 취소 뒤 2차만 남는 일은 없지만). */
+export function progressOf(setup: boolean, books: number, confirmed: StageNo[]): Progress {
+  let top = 0;
+  while (confirmed.includes((top + 1) as StageNo)) top += 1;
+  const key: Progress['key'] = !setup ? 'none' : top >= 3 ? 'stage3' : top === 2 ? 'stage2' : top === 1 ? 'stage1' : books > 0 ? 'draft' : 'setup';
+  return { key, ...PROGRESS[key] };
+}

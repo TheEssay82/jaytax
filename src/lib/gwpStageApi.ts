@@ -3,7 +3,7 @@
 // 자료함: 사용자 2026-09-27 「DSD·정산표를 왜 저장하면 안 돼? 저장하는 게 더 편리해」 — 작업 건마다 두고
 // 2120A(전기 DSD)·8110ARP(확정 정산표)가 다시 고르지 않고 쓴다. 같은 종류를 다시 올리면 줄이 늘고 최신 것을 쓴다.
 import { supabase } from './supabase';
-import type { StageEvent, StageNo } from './gwpStage';
+import { stageStates, type StageEvent, type StageNo } from './gwpStage';
 import { expectedFy, type FileKind } from './gwpFiles';
 
 const BUCKET = 'gwp';
@@ -181,4 +181,31 @@ export async function borrowCandidates(code: string, engagementId: string): Prom
     .filter((r) => r.engagement_id !== engagementId && (!mine || basis.get(r.engagement_id) === mine))
     .map((r) => ({ engagementId: r.engagement_id, entity: r.dsd_engagement?.biz_entity?.name ?? '(이름 없음)', fy: r.dsd_engagement?.fy ?? 0, status: r.status }))
     .sort((a, b) => b.fy - a.fy || a.entity.localeCompare(b.entity, 'ko'));
+}
+
+/** 모든 작업 건의 확정된 단계와 판 수 — 거래처 목록의 진행 색(사용자 2026-10-01). */
+export async function listProgress(): Promise<Map<string, { confirmed: StageNo[]; books: number }>> {
+  const [{ data: ev, error: e1 }, { data: bk, error: e2 }] = await Promise.all([
+    supabase.from('gwp_stage_event').select('engagement_id, stage, action, book_version, reason, created_email, created_at').order('created_at'),
+    supabase.from('gwp_book').select('engagement_id, version'),
+  ]);
+  if (e1 || e2) throw new Error((e1 ?? e2)!.message);
+  const byEng = new Map<string, StageEvent[]>();
+  for (const r of (ev ?? []) as unknown as (ERow & { engagement_id: string })[]) {
+    (byEng.get(r.engagement_id) ?? byEng.set(r.engagement_id, []).get(r.engagement_id)!).push({
+      stage: r.stage, action: r.action, bookVersion: r.book_version, reason: r.reason, createdEmail: r.created_email, createdAt: r.created_at,
+    });
+  }
+  const out = new Map<string, { confirmed: StageNo[]; books: number }>();
+  for (const b of (bk ?? []) as { engagement_id: string; version: number }[]) {
+    const cur = out.get(b.engagement_id) ?? { confirmed: [], books: 0 };
+    cur.books = Math.max(cur.books, b.version);
+    out.set(b.engagement_id, cur);
+  }
+  for (const [id, evs] of byEng) {
+    const cur = out.get(id) ?? { confirmed: [], books: 0 };
+    cur.confirmed = stageStates(evs).filter((s) => s.confirmed).map((s) => s.no);
+    out.set(id, cur);
+  }
+  return out;
 }

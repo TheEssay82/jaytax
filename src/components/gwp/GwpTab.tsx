@@ -39,6 +39,8 @@ import GwpTemplatesCard from './GwpTemplatesCard';
 import GwpProcStdCard from './GwpProcStdCard';
 import GwpStageBoard from './GwpStageBoard';
 import GwpFolderCard from './GwpFolderCard';
+import { listProgress } from '../../lib/gwpStageApi';
+import { progressOf, PROGRESS, type StageNo } from '../../lib/gwpStage';
 
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -121,11 +123,16 @@ export default function GwpTab() {
   const [view, setView] = useState<'file' | 'stage' | 'status'>('file');
   const [rollDetail, setRollDetail] = useState(false);
   const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all');
+  // 거래처 목록 — 진행 정도(세팅·판·확정 단계)와 접기(사용자 2026-10-01 「선택하면 나머지는 사라지고 접히게」).
+  const [progressBy, setProgressBy] = useState<Map<string, { confirmed: StageNo[]; books: number }>>(new Map());
+  const [listOpen, setListOpen] = useState(true);
+  const refreshProgress = () => listProgress().then(setProgressBy).catch(() => undefined);
 
   async function load(keep?: string) {
     try {
       setErr(null);
-      const [list, es, aud, tpls, ys] = await Promise.all([listEngagements(), listBizEntities(), listAuditEntityIds(), listTemplates(), listYears()]);
+      const [list, es, aud, tpls, ys, pg] = await Promise.all([listEngagements(), listBizEntities(), listAuditEntityIds(), listTemplates(), listYears(), listProgress().catch(() => new Map())]);
+      setProgressBy(pg);
       const live = list.filter((e) => !e.isDemo);
       setEngs(live);
       setEnts(es); setAuditIds(aud); setTemplates(tpls); setYearsBy(ys);
@@ -145,7 +152,9 @@ export default function GwpTab() {
   const picked = useMemo(() => engs.find((e) => e.id === pickedId) ?? null, [engs, pickedId]);
   const years = useMemo(() => [...new Set(engs.map((e) => e.fy))].sort((a, b) => b - a), [engs]);
   const fy = fyAt ?? years[0] ?? defaultAuditFy();
-  const inYear = useMemo(() => engs.filter((e) => e.fy === fy), [engs, fy]);
+  // 가나다 순(사용자 2026-10-01).
+  const inYear = useMemo(() => engs.filter((e) => e.fy === fy).sort((a, b) => a.entityName.localeCompare(b.entityName, 'ko')), [engs, fy]);
+  const progOf = (id: string) => { const p = progressBy.get(id); return progressOf(yearsBy.has(id), p?.books ?? 0, p?.confirmed ?? []); };
   const year = picked ? yearsBy.get(picked.id) ?? null : null;
   // 표준양식은 **조서 양식 기준**으로 고른다(재무제표 회계기준이 아니다).
   const tpl = useMemo(() => (picked && year ? templates.find((t) => t.fy === picked.fy && t.basis === year.auditBasis) ?? null : null), [templates, picked, year]);
@@ -492,7 +501,7 @@ export default function GwpTab() {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 9 }}>
               <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', letterSpacing: '.04em' }}>사업연도</span>
               {years.map((y) => (
-                <button key={y} onClick={() => setFyAt(y)} style={{
+                <button key={y} onClick={() => { setFyAt(y); setListOpen(true); }} style={{
                   cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--fs-1)',
                   border: `1px solid ${y === fy ? 'var(--navy)' : 'var(--rule)'}`, background: y === fy ? 'var(--navy)' : '#fff',
                   color: y === fy ? '#fff' : 'var(--ink-2)', fontWeight: y === fy ? 700 : 400, borderRadius: 999, padding: '3px 11px',
@@ -500,20 +509,52 @@ export default function GwpTab() {
               ))}
             </div>
             {engs.length === 0 && <Empty text="아직 작업 건이 없습니다. 「새 건 만들기」로 시작하세요." />}
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {inYear.map((e) => (
-                <button key={e.id} onClick={() => void pick(e.id)} style={{
-                  textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', minWidth: 156,
-                  border: `1px solid ${e.id === pickedId ? 'var(--navy)' : 'var(--rule)'}`,
-                  background: e.id === pickedId ? 'var(--navy-bg)' : '#fff', borderRadius: 'var(--r-sm)', padding: '7px 11px',
-                }}>
-                  <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--navy)' }}>{e.entityName}</div>
-                  <div style={{ fontSize: 'var(--fs-1)', color: yearsBy.get(e.id) ? 'var(--ink-3)' : 'var(--warn)', marginTop: 2 }}>
-                    {e.scope} · {yearsBy.get(e.id) ? `조서 ${AUDIT_BASIS_LABEL[yearsBy.get(e.id)!.auditBasis]}` : '세팅 전'}
+            {inYear.length > 0 && (() => {
+              const counts = new Map<string, number>();
+              for (const e of inYear) { const k = progOf(e.id).key; counts.set(k, (counts.get(k) ?? 0) + 1); }
+              const shown = picked && !listOpen ? inYear.filter((e) => e.id === picked.id) : inYear;
+              return (
+                <>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginBottom: 6 }}>
+                    {(Object.keys(PROGRESS) as (keyof typeof PROGRESS)[]).map((k) => (
+                      <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, opacity: counts.get(k) ? 1 : 0.45 }}>
+                        <span style={{ width: 10, height: 10, borderRadius: 3, background: PROGRESS[k].color }} />{PROGRESS[k].label} {counts.get(k) ?? 0}
+                      </span>
+                    ))}
+                    {picked && (
+                      <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setListOpen(!listOpen)}>
+                        {listOpen ? '목록 접기 ▲' : `다른 회사 고르기 ▼ (${inYear.length - 1})`}
+                      </button>
+                    )}
                   </div>
-                </button>
-              ))}
-            </div>
+                  <div style={{ border: '1px solid var(--rule)', borderRadius: 'var(--r-sm)', overflow: 'hidden' }}>
+                    {shown.map((e, i) => {
+                      const pg = progOf(e.id);
+                      const y = yearsBy.get(e.id);
+                      const books = progressBy.get(e.id)?.books ?? 0;
+                      const on = e.id === pickedId;
+                      return (
+                        <button key={e.id} onClick={() => { void pick(e.id); setListOpen(false); }} style={{
+                          display: 'grid', gridTemplateColumns: '6px minmax(0, 1fr) auto auto', gap: 10, alignItems: 'center', width: '100%',
+                          textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', border: 0, borderTop: i ? '1px solid var(--rule)' : 0,
+                          background: on ? 'var(--navy-bg)' : '#fff', padding: '7px 10px 7px 0',
+                        }}>
+                          <span style={{ alignSelf: 'stretch', background: pg.color }} />
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--navy)' }}>{e.entityName}</span>
+                            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginLeft: 8 }}>
+                              {e.scope}{y ? ` · 조서 ${AUDIT_BASIS_LABEL[y.auditBasis]}` : ''}{books ? ` · 최신 판 v${books}` : ''}
+                            </span>
+                          </span>
+                          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#fff', background: pg.color, borderRadius: 999, padding: '1px 9px', whiteSpace: 'nowrap' }}>{pg.label}</span>
+                          <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>{on ? '●' : '›'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {!picked ? (
@@ -883,7 +924,7 @@ export default function GwpTab() {
               {view === 'stage' && year && latest && (
                 <GwpStageBoard key={picked.id} eng={picked} latest={latest} tpl={tpl} basis={year.auditBasis} canWrite={canWrite}
                   partner={year.partner} author={year.authorDefault}
-                  onBooks={async () => setBooks(await listBooks(picked.id))}
+                  onBooks={async () => { setBooks(await listBooks(picked.id)); void refreshProgress(); }}
                   setMsg={setMsg} setErr={setErr} />
               )}
 
