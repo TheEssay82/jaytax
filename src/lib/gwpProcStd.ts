@@ -100,12 +100,14 @@ export function suggestProc(
   const m = stdMatchOf(row, live);
   const mine = m ? live.filter((s) => s.account === m.account) : [];
   // 「항상」은 그 계정 자체의 절차(미수수익·선급비용 재계산) — 분류로만 찾은 줄(판관비 각 계정)은 판정이 날 때만.
-  const want: Trigger[] = [...(m && !m.byGroup ? (['항상'] as const) : []), ...(flags.material ? (['Material'] as const) : []), ...(flags.unexpected ? (['Unexpected'] as const) : [])];
+  // 판정이 하나라도 뜨면 그 계정의 핵심 절차(Material 줄)도 — Unexpected 만 뜬 현금에 금융기관조회가 빠지던 것(아비즈 2026-10-01).
+  // 계정별 Material 줄이 없을 때 「*」 기본 Material 은 실제 Material 일 때만.
+  const want: Trigger[] = [...(m && !m.byGroup ? (['항상'] as const) : []), ...(flags.material || flags.unexpected ? (['Material'] as const) : []), ...(flags.unexpected ? (['Unexpected'] as const) : [])];
   const picked: ProcStd[] = [];
   for (const t of want) {
     const own = mine.filter((s) => s.trigger === t);
     if (own.length) picked.push(...own);
-    else if (t !== '항상') picked.push(...live.filter((s) => s.account === '*' && s.trigger === t));
+    else if (t === 'Unexpected' || (t === 'Material' && flags.material)) picked.push(...live.filter((s) => s.account === '*' && s.trigger === t));
   }
   return compose(picked, row.prev, row.cur);
 }
@@ -177,13 +179,13 @@ export function suggestBundle(u: ProcBundle, std: ProcStd[], industry: string | 
   const live = std.filter((s) => s.active && (s.industry === '공통' || s.industry === industry));
   const accts = BUNDLE_ACCTS[u.bundle];
   const mine = live.filter((s) => accts.includes(s.account));
-  const want: Trigger[] = ['항상', ...(u.flags.material ? (['Material'] as const) : []), ...(u.flags.unexpected ? (['Unexpected'] as const) : [])];
+  const want: Trigger[] = ['항상', ...(u.flags.material || u.flags.unexpected ? (['Material'] as const) : []), ...(u.flags.unexpected ? (['Unexpected'] as const) : [])];
   const picked: ProcStd[] = [];
   for (const t of want) {
     // 건설중인자산 줄은 그 계정이 묶음에 있을 때만.
     const own = mine.filter((s) => s.trigger === t && (s.account !== '건설중인자산' || u.rows.some((r) => norm(r.label).includes('건설중인자산'))));
     if (own.length) picked.push(...own);
-    else if (t !== '항상') picked.push(...live.filter((s) => s.account === '*' && s.trigger === t));
+    else if (t === 'Unexpected' || (t === 'Material' && u.flags.material)) picked.push(...live.filter((s) => s.account === '*' && s.trigger === t));
   }
   if (!u.flags.material && !u.flags.unexpected && !picked.some((s) => s.trigger === '항상')) return null;
   return compose(picked, u.prev, u.cur, (s) => accts.indexOf(s.account));
@@ -234,10 +236,14 @@ export function fillStdProcs<R extends PRow & { key: string; procStd?: boolean }
   const groupProc = { ...(d.groupProc ?? {}) };
   const groupStd = new Set(d.groupStd ?? []);
   const holderText = new Map<string, string>();
+  // 「표준」 표시가 남은 칸(사람이 안 고친 것)은 다시 누르면 최신 표준으로 — 표준을 고친 뒤 이미 채운 회사에도 반영되게.
+  const autoGroup = new Set(d.groupStd ?? []);
+  const autoRow = new Set(d.rows.filter((r) => r.procStd).map((r) => r.key));
   for (const u of units) {
-    if (bundleProc(u, d.groupProc)) continue;
+    const auto = u.onGroup ? autoGroup.has(u.group) : autoRow.has(u.holder);
+    if (bundleProc(u, d.groupProc) && !auto) continue;
     const t = suggestBundle(u, std, industry);
-    if (!t) continue;
+    if (!t || t === bundleProc(u, d.groupProc)) continue;
     n += 1;
     if (u.onGroup) { groupProc[u.group] = t; groupStd.add(u.group); } else holderText.set(u.holder, t);
   }
@@ -248,10 +254,11 @@ export function fillStdProcs<R extends PRow & { key: string; procStd?: boolean }
       return r.procStd && (u.onGroup || r.key !== u.holder) ? { ...r, proc: '', procStd: false } : r;
     }
     const off = !!r.proc?.trim() && offIndustry(r.proc, industry);
-    if ((r.proc?.trim() && !off) || coveredByGroup(r, d.groupProc)) return r;
+    if ((r.proc?.trim() && !off && !r.procStd) || coveredByGroup(r, d.groupProc)) return r;
     const t = suggestProc(r, flagsOf(r, om), std, industry);
-    // 업종에 안 맞는 이월 문구는 판정이 안 났으면 비운다.
-    if (!t) return off ? { ...r, proc: '', procStd: false } : r;
+    // 업종에 안 맞는 이월 문구·판정이 사라진 표준 문구는 비운다.
+    if (!t) return off || r.procStd ? { ...r, proc: '', procStd: false } : r;
+    if (t === r.proc) return r;
     n += 1;
     return { ...r, proc: t, procStd: true };
   });

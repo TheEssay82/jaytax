@@ -145,3 +145,15 @@ test('표준 쌓기 — 문구 나누기·금액 일반화·이미 있는 줄 �
   assert.equal(h.find((x) => x.account === '미수수익')!.exists, true);
   assert.equal(h.find((x) => x.account === '매출액')!.off, true);
 });
+
+test('Unexpected 만 떠도 그 계정 핵심 절차(Material 줄)를 함께, 「표준」 칸은 다시 누르면 새로(아비즈 현금 2026-10-01)', () => {
+  const std = [...STD, S('현금및현금성자산', 'Material', '공통', '금융기관조회서의 발송 및 확인(E/O, A)', ['현금'])];
+  const t = suggestProc({ label: '현금및현금성자산', prev: 45, cur: 734 }, { material: false, unexpected: true }, std, '제조업')!;
+  assert.match(t, /① 금융기관조회서.*② 전기 대비/);
+  // 계정별 Material 줄이 없으면 Unexpected 만 뜬 줄에 「*」 Material 은 붙지 않는다
+  assert.doesNotMatch(suggestProc({ label: '잡손실', prev: 3600, cur: 600 }, { material: false, unexpected: true }, std, '제조업')!, /증빙테스트\(E\/O, A\)/);
+  const d = { rows: [{ key: 'c', label: '현금및현금성자산', prev: 45, cur: 734, proc: '① 전기 대비 +6.9억원 변동 원인 파악', procStd: true }] };
+  assert.match(fillStdProcs(d, std, '제조업', 747).data.rows[0].proc!, /금융기관조회서/);
+  const hand = { rows: [{ ...d.rows[0], procStd: false }] };
+  assert.equal(fillStdProcs(hand, std, '제조업', 747).data.rows[0].proc, d.rows[0].proc);   // 사람이 고친 칸은 그대로
+});
