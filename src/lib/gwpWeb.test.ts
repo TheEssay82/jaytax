@@ -116,3 +116,34 @@ test('바뀌는가 — 같은 글자·숫자는 안 바뀜, 수식 칸에 값을
   assert.equal(changes(undefined, { ref: 'A1', clear: true }), false);
   assert.equal(changes({ text: 'x' }, { ref: 'A1', clear: true }), true);
 });
+
+test('양식 들이기 — 들인 요약표(2700A)가 가리키는 조서가 판에 없으면(2700A-4) 양식에서 빨간 탭으로 함께 넣는다(주원이노베이션 소규모 #REF! 2026-10-01)', async () => {
+  const { prepareTemplateSheets } = await import('./gwpApply');
+  const { zip } = await import('./xlsxTransplant');
+  const F = '2700_중요성.xlsx';
+  const tpl = injectSheets(emptyWorkbook(), [
+    { name: '2700A', cells: [{ row: 1, col: 1, text: '중요성 요약' }, { row: 2, col: 1, text: '2차' }, { row: 3, col: 4, formula: "+'2700A-2(감사계획단계)'!K10" }, { row: 4, col: 4, formula: "+'2700A-4(감사완결단계)'!K29" }], lastRow: 4 },
+    { name: '2700A-2(감사계획단계)', cells: [{ row: 1, col: 1, text: '감사계획단계' }], lastRow: 1 },
+    { name: '2700A-4(감사완결단계)', cells: [{ row: 1, col: 1, text: '감사완결단계' }, { row: 29, col: 11, num: 0 }], lastRow: 29 },
+  ]);
+  const src = {
+    catalog: { files: [F], skipped: [], sheets: [
+      { file: F, name: '2700A', code: '2700A', hidden: false },
+      { file: F, name: '2700A-2(감사계획단계)', code: '2700A-2', hidden: false },
+      { file: F, name: '2700A-4(감사완결단계)', code: '2700A-4', hidden: false },
+    ] },
+    files: { [F]: tpl }, reviewer: '조현규',
+  };
+  const book = injectSheets(emptyWorkbook(), [
+    { name: '2700A (소규모)', cells: [{ row: 1, col: 1, text: '옛 요약' }], lastRow: 1 },
+    { name: '2700A-2(소규모)', cells: [{ row: 1, col: 1, text: '계획' }], lastRow: 1 },
+  ]);
+  const files = (await import('./xlsxTransplant')).unzip(book);
+  const r = prepareTemplateSheets(files, ['2700A'], src);
+  assert.ok(r.added.includes('2700A-4(감사완결단계)'), JSON.stringify(r));
+  const out = readWorkbook(zip(files));
+  const sum = out.find((s) => s.name === '2700A (소규모)')!;
+  assert.equal(sum.cells.get('D3')?.formula, "+'2700A-2(소규모)'!K10");       // 있는 짝은 회사 이름으로
+  assert.equal(sum.cells.get('D4')?.formula, "+'2700A-4(감사완결단계)'!K29");  // 없던 짝은 양식에서 넣어 살아 있게
+  assert.ok(out.some((s) => s.name === '2700A-4(감사완결단계)'));
+});

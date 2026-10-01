@@ -182,7 +182,7 @@ function layered(sheet: SheetData, pc: NonNullable<ReturnType<typeof findPeriodC
  */
 function pendingAdds(L: Layout, d: Paper2120A): Map<number, { last: number; rows: Row2120[] }> {
   const out = new Map<number, { last: number; rows: Row2120[] }>();
-  const rowOfKey = new Map(keyed(L.rows).map((r) => [r.key, r]));
+  const find = locator(L, d.rows);
   const byKey = new Map(d.rows.map((r) => [r.key, r]));
   for (const x of d.rows.filter((r) => r.added && r.label.trim())) {
     const g = x.group ?? '';
@@ -191,7 +191,7 @@ function pendingAdds(L: Layout, d: Paper2120A): Map<number, { last: number; rows
     if (inGroup.some((r) => normLabel(r.label) === normLabel(x.label))) continue;   // 이미 넣었다(다시 반영)
     let a = x.after; const seen = new Set<string>();
     while (a && byKey.get(a)?.added && !seen.has(a)) { seen.add(a); a = byKey.get(a)!.after; }
-    const anchor = a ? rowOfKey.get(a) : undefined;
+    const anchor = a ? find(a) : undefined;
     const last = anchor && inGroup.some((r) => r.row === anchor.row) ? anchor.row : Math.max(...inGroup.map((r) => r.row));
     const cur = out.get(last) ?? { last, rows: [] };
     cur.rows.push(x);
@@ -236,6 +236,21 @@ function keyed<T extends { label: string; fsli: string }>(rows: T[]): (T & { key
   });
 }
 
+/**
+ * 데이터 줄 → 시트 줄. 키(이름|공시#n)로 찾고, 못 찾으면 이름#n 으로 — 빌린 틀은 공시 칸을 이 회사 과목으로 바꿔 쓰므로
+ * 「IFRS 공시」 머리 양식(명진)은 재확정 때 키의 공시 부분이 달라진다(주원이노베이션 2026-10-01).
+ */
+function locator(L: Layout, rows: Row2120[]): (key: string) => LRow | undefined {
+  const labs = (xs: { label: string }[]) => { const seen = new Map<string, number>(); return xs.map((x) => { const b = normLabel(x.label); const n = seen.get(b) ?? 0; seen.set(b, n + 1); return `${b}#${n}`; }); };
+  const byKey = new Map(keyed(L.rows).map((r, i) => [r.key, L.rows[i]]));
+  const sl = labs(L.rows);
+  const byLab = new Map(L.rows.map((r, i) => [sl[i], r]));
+  const base = rows.filter((r) => !r.added);
+  const dl = labs(base);
+  const lab = new Map(base.map((r, i) => [r.key, dl[i]]));
+  return (key) => byKey.get(key) ?? (lab.has(key) ? byLab.get(lab.get(key)!) : undefined);
+}
+
 const numOf = (sheet: SheetData, ref: string) => { const v = sheet.cells.get(ref); return v?.num != null ? v.num : null; };
 
 export const PAPER_2120A: WebPaperDef<Paper2120A> = {
@@ -265,9 +280,9 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
     const L = layout(sheet);
     if (!L) return xml;
     if (d.borrow) {
-      const byKey = new Map(d.rows.map((r) => [r.key, r]));
       const hide = new Set<number>(), show = new Set<number>();
-      for (const r of keyed(L.rows)) { const x = byKey.get(r.key); if (x) (unusedBorrowed(d, x) ? hide : show).add(r.row); }
+      const find = locator(L, d.rows);
+      for (const x of d.rows) { const r = x.added ? undefined : find(x.key); if (r) (unusedBorrowed(d, x) ? hide : show).add(r.row); }
       // 계정이 모두 숨은 분류(평안정공 「(3) 투자부동산」)는 머리 줄도.
       for (const h of L.heads ?? []) {
         const mine = L.rows.filter((r) => r.group === h.name);
@@ -283,7 +298,7 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
   write(sheet, d) {
     const L = layout(sheet);
     if (!L) throw new Error('2120A 에서 전기·당기 기간 열(머리 줄)을 찾지 못했습니다.');
-    const at = new Map(keyed(L.rows).map((r) => [r.key, r.row]));
+    const find = locator(L, d.rows);
     const e: CellEdit[] = [];
     // 빌린 틀 — 계정 줄이 아닌 곳에 손으로 넣은 그 회사 숫자(평안정공 「매출총이익율」 전기 2.38%)도 지운다. 수식은 둔다.
     if (d.borrow) {
@@ -317,14 +332,17 @@ export const PAPER_2120A: WebPaperDef<Paper2120A> = {
       });
     }
     for (const r of d.rows) {
-      const row = at.get(r.key);
+      // 새 줄은 처음 반영 때 위에서 썼다(끼운 빈 줄이라 이름이 없다) — 재확정 때는 이름·분류로 찾아 금액·절차를 고친다.
+      const row = r.added
+        ? L.rows.filter((x) => normLabel(x.label) === normLabel(r.label) && normLabel(x.group) === normLabel(r.group ?? '')).pop()?.row
+        : find(r.key)?.row;
       if (!row) continue;
       const ref = `${L.pc.curCol}${row}`;
       e.push(r.cur == null ? { ref, clear: true } : { ref, num: r.cur });
       // 빌린 틀 — 전기 열도 이 회사 값(DSD 전기)으로. 빌린 회사 금액을 남기지 않는다.
       if (d.borrow) { const pref = `${L.pc.prevCol}${row}`; e.push(r.prev == null ? { ref: pref, clear: true } : { ref: pref, num: r.prev }); }
       // 빌린 틀 — 공시 계정도 이 회사 재무제표 과목으로(빌린 회사 분류를 남기지 않는다).
-      if (d.borrow && L.fsliCol && !L.fsliKeyed) { const fref = `${L.fsliCol}${row}`; e.push(r.fsli.trim() ? { ref: fref, text: r.fsli.trim() } : { ref: fref, clear: true }); }
+      if (d.borrow && L.fsliCol) { const fref = `${L.fsliCol}${row}`; e.push(r.fsli.trim() ? { ref: fref, text: r.fsli.trim() } : { ref: fref, clear: true }); }
       if (L.noteCol) { const nref = `${L.noteCol}${row}`; e.push(r.note.trim() ? { ref: nref, text: r.note.trim() } : { ref: nref, clear: true }); }
       // 주요 감사절차(K) — 웹에서 적거나 표준으로 넣은 문구.
       if (L.procCol && r.proc !== undefined) { const kref = `${L.procCol}${row}`; e.push(r.proc.trim() ? { ref: kref, text: r.proc.trim() } : { ref: kref, clear: true }); }

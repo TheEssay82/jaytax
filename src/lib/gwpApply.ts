@@ -90,6 +90,24 @@ export function prepareTemplateSheets(files: Record<string, Uint8Array>, codes: 
     touched.push({ part: r.part, tplData, code });
   }
   if (!touched.length) return out;
+  // 들인 양식 시트가 가리키는 조서가 이 판에 없으면(요약 2700A → 2700A-4(감사완결단계)) 양식에서 함께 넣는다 — 없으면 #REF!.
+  // 소규모 감사(주원이노베이션 2026-10-01)는 판에 2700A-3(소규모)까지만 있어 2700A 요약 D33~D35 가 #REF! 였다. 넣은 짝은 빨간 탭(아직 손 안 댐).
+  const pairs: { part: string; tplData: SheetData; code: string }[] = [];
+  {
+    const have = readWorkbook(zip(files));
+    const refs = new Set<string>();
+    for (const t of touched) for (const m of strFromU8(files[t.part]).matchAll(/<f\b[^>]*>([^<]*)<\/f>/g)) for (const r of m[1].matchAll(/'([^']+)'!|(?<![A-Za-z0-9_가-힣.'])([A-Za-z0-9_가-힣.()-]+)!/g)) refs.add((r[1] ?? r[2]).replace(/''/g, "'"));
+    for (const name of refs) {
+      const ts = src.catalog.sheets.find((x) => x.name === name && x.code);
+      if (!ts || have.some((s) => s.name === name) || findPaperSheet(have, ts.code!.replace(/\(.*$/, ''))) continue;
+      const tb = tplBook(ts.file);
+      const tplData = tb.sheets.find((s) => s.name === ts.name);
+      if (!tplData) continue;
+      const r = transplantSheet(files, tb.files, ts.name, { hidden: false });
+      out.added.push(r.name);
+      pairs.push({ part: r.part, tplData, code: ts.code!.replace(/\(.*$/, '') });
+    }
+  }
   // 양식 수식의 시트 이름(2700A-2(감사계획단계))을 회사 시트 이름(2700A-2(소규모))으로, 머리는 표지·조서목록으로.
   const sheets = readWorkbook(zip(files));
   const nameMap = new Map<string, string>();
@@ -105,6 +123,13 @@ export function prepareTemplateSheets(files: Record<string, Uint8Array>, codes: 
     if (head.length) xml = setCells(xml, head);
     files[t.part] = strToU8(setTabColor(xml, TAB.yellow));
     blackenSheet(files, t.part);                                  // 양식의 파란 글씨 → 검정(사용자 2026-09-28)
+  }
+  for (const t of pairs) {
+    let xml = renameSheetRefs(strFromU8(files[t.part]), nameMap);
+    const head = link(t.tplData, t.code, src.reviewer);
+    if (head.length) xml = setCells(xml, head);
+    files[t.part] = strToU8(setTabColor(xml, TAB.red));
+    blackenSheet(files, t.part);
   }
   return out;
 }
@@ -135,9 +160,11 @@ export function applyWebPapers(
     // 보이는 시트가 이미 빌린 틀 모양이면(전에 넣었다 — 재확정) 그대로. 빈 양식이면 그 자리에 갈아끼운다 —
     // 소규모 감사는 빈 「2120A(소규모)」가 보이는 채로 있어, 전에는 옮겨 심지 않고 그 빈 시트에 쓰다 멈췄다(주원이노베이션 2026-10-01).
     const shown = readWorkbook(zip(files)).filter((s) => !s.hidden && baseOf(s.name) === def.sheetCode);
-    const want = ((data as { rows?: { key: string; added?: boolean }[] }).rows ?? []).filter((x) => !x.added).map((x) => x.key);
+    // 계정 이름으로 견준다 — 공시 칸은 이 회사 과목으로 바꿔 쓰므로 키(이름|공시)는 재확정 때 달라질 수 있다.
+    const nm = (x: { label: string }) => x.label.replace(/\s/g, '');
+    const want = ((data as { rows?: { label: string; added?: boolean }[] }).rows ?? []).filter((x) => !x.added).map(nm);
     const fits = (s: SheetData) => {
-      const have = new Set(((def.read(s) as { rows?: { key: string }[] }).rows ?? []).map((x) => x.key));
+      const have = new Set(((def.read(s) as { rows?: { label: string }[] }).rows ?? []).map(nm));
       return want.length > 0 && want.filter((k) => have.has(k)).length >= want.length * 0.8;
     };
     if (shown.some(fits)) continue;

@@ -359,3 +359,30 @@ test('2120A 빌린 틀 반영 — 소규모 감사처럼 빈 「2120A(소규모)
   const again = readWorkbook(applyWebPapers(out, [{ def: PAPER_2120A, data: d }], undefined, borrowed).bytes).find((x) => x.name === '2120A(소규모)')!;
   assert.equal(again.cells.get('F19')?.num, 220);
 });
+
+test('2120A 빌린 틀(명진형 「IFRS 공시」 머리) — 공시 칸을 이 회사 과목으로 바꿔 쓰고, 재확정 때도 이름으로 줄을 찾아 금액을 쓴다(주원 2026-10-01)', async () => {
+  const { applyWebPapers, borrowKey } = await import('./gwpApply');
+  const { emptyWorkbook } = await import('./gwpAssemble');
+  const { injectSheets } = await import('./xlsxInject');
+  const { readWorkbook } = await import('./xlsxRead');
+  const c = (row: number, col: number, v: { text?: string; num?: number; formula?: string }) => ({ row, col, ...v });
+  const lender = injectSheets(emptyWorkbook(), [{ name: '2120A', cells: [
+    c(14, 2, { text: '계정과목' }), c(14, 4, { text: 'IFRS 공시' }), c(14, 5, { text: 'BS: 2024_4Q' }), c(14, 6, { text: 'BS: 2025_4Q' }), c(16, 2, { text: '자 산' }),
+    c(17, 2, { text: 'Ⅰ. 유 동 자 산' }),
+    c(18, 2, { text: '1.' }), c(18, 3, { text: '매출채권' }), c(18, 4, { text: '매출채권 및 기타채권' }), c(18, 5, { num: 1 }), c(18, 6, { num: 1 }),
+  ], lastRow: 18 }]);
+  const mine = injectSheets(emptyWorkbook(), [{ name: '2120A(소규모)', cells: [c(1, 1, { text: '빈 양식' })], lastRow: 1 }]);
+  const b = { engagementId: 'MJ', entity: '명진', version: 18, sheet: '2120A' };
+  const d = fromBorrowed(readWorkbook(lender)[0], b);
+  d.rows = d.rows.map((r) => ({ ...r, fsli: '매출채권', prev: 100, cur: 150 }));
+  const borrowed = new Map([[borrowKey(b), lender]]);
+  const v3 = applyWebPapers(mine, [{ def: PAPER_2120A, data: d }], undefined, borrowed).bytes;
+  const s3 = readWorkbook(v3).find((x) => x.name === '2120A(소규모)')!;
+  assert.equal(s3.cells.get('D18')?.text, '매출채권');
+  assert.equal(s3.cells.get('F18')?.num, 150);
+  // 재확정 — 키의 공시 부분이 시트와 달라도(매출채권 및 기타채권 → 매출채권) 이름으로 찾는다. 다시 갈아끼우지도 않는다.
+  const d2 = { ...d, rows: d.rows.map((r) => ({ ...r, cur: 175 })) };
+  const s4 = readWorkbook(applyWebPapers(v3, [{ def: PAPER_2120A, data: d2 }], undefined, borrowed).bytes).find((x) => x.name === '2120A(소규모)')!;
+  assert.equal(s4.cells.get('F18')?.num, 175);
+  assert.equal(s4.cells.get('D18')?.text, '매출채권');
+});
