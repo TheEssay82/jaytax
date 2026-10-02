@@ -1,6 +1,6 @@
 // 2120A 위험평가 분석적절차 입력 — 전기(이월 때 옮겨 둔 열)와 당기(전기 DSD 로 채움)를 나란히, 증감·비고.
 import { useState } from 'react';
-import { balance, cleanFs, sameGroup, suggestGroup, unusedBorrowed, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
+import { balance, cleanFs, sameGroup, similarRow, suggestGroup, unusedBorrowed, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
 import { flagsOf, coveredByGroup, bundlesOf, bundleProc, missingProcs, fillStdProcs, offIndustry, splitProc, generalizeProc, stdHas, triggerOf, stdAccountOf, INDUSTRIES, UNEXPECTED_FACTOR, type ProcStd, type ProcBundle } from '../../lib/gwpProcStd';
 
 const fmt = (n: number | null | undefined) => (n == null ? '' : n.toLocaleString('ko-KR'));
@@ -152,23 +152,27 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
                 // 어느 분류에 넣을지 미리 골라 둔다(suggestGroup) — 성격(매도가능증권 → 투자자산) > DSD 윗 과목과 같은 분류 > 새 분류.
                 // 엉뚱한 분류(투자부동산)에 넣지 않게, 누를 것만 누르게.
                 const sg = suggestGroup(u.label, u.parents ?? [], mineGroups.map((g) => g.name));
+                // 더할 만한 빈 줄(이름이 비슷하거나 전기 금액이 같은 줄)이 있으면 그것을 먼저 골라 둔다 — 새 줄을 늘리지 않게.
+                const sim = similarRow(u, value.rows, isPl);
+                const rowPick = pick[u.label] ?? sim?.key ?? '';
                 const fresh = sg.fresh?.name ?? null;
                 const same = sg.same ? mineGroups.find((g) => g.name === sg.same) : undefined;
                 const chosen = grp[u.label] ?? (sg.pickFresh && fresh ? `NEW:${fresh}` : same?.id ?? (fresh ? `NEW:${fresh}` : ''));
                 return (
                   <div key={u.label} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 6, color: 'var(--ink-1)' }}>
                     <span style={{ whiteSpace: 'nowrap', minWidth: 170 }}><b>{u.label}</b> {fmt(u.cur)} →</span>
-                    <select className="btn-sm" style={{ maxWidth: 260 }} disabled={readOnly} value={pick[u.label] ?? ''} onChange={(e) => setPick({ ...pick, [u.label]: e.target.value })}>
+                    <select className="btn-sm" style={{ maxWidth: 260 }} disabled={readOnly} value={rowPick} onChange={(e) => setPick({ ...pick, [u.label]: e.target.value })}>
                       <option value="">줄 고르기</option>
                       {value.rows.filter((r) => r.pl === isPl).map((r) => (
                         <option key={r.key} value={r.key}>{r.label}{r.fsli ? ` (${r.fsli})` : ''}{r.cur ? ` · ${fmt(r.cur)}` : ''}</option>
                       ))}
                     </select>
-                    <button className="btn-sm" style={{ whiteSpace: 'nowrap' }} disabled={readOnly || !pick[u.label]} onClick={() => {
-                      const k = pick[u.label];
+                    <button className="btn-sm" style={{ whiteSpace: 'nowrap' }} disabled={readOnly || !rowPick} onClick={() => {
+                      const k = rowPick;
                       onChange({ ...value, rows: value.rows.map((r) => (r.key === k ? { ...r, cur: (r.cur ?? 0) + u.cur, src: '손', note: r.note || `${u.label} 포함`, absorbs: [...(r.absorbs ?? []), u.label] } : r)) });
                       setPlaced(new Set(placed).add(u.label));
                     }}>이 줄에 더하기</button>
+                    {sim && rowPick === sim.key && <span style={{ color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>← {sim.why}</span>}
                     <span style={{ color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>또는</span>
                     <select className="btn-sm" style={{ maxWidth: 240 }} disabled={readOnly} value={chosen} onChange={(e) => setGrp({ ...grp, [u.label]: e.target.value })}>
                       <option value="">분류 고르기</option>

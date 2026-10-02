@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SheetData, CellValue } from './xlsxRead';
 import type { FsLine } from './fsParse';
+import type { Row2120 } from './gwpPaper2120A';
 import { PAPER_2110 } from './gwpPaper2110';
 import { PAPER_2120A, fillFromFs } from './gwpPaper2120A';
 
@@ -492,4 +493,20 @@ test('suggestGroup — 매도가능증권은 DSD 가 당좌자산에 두어도 �
   assert.equal(b.pickFresh, false);
   assert.equal(b.fresh?.name, '당좌자산');
   assert.equal(suggestGroup('장기금융상품', ['투자자산', '비유동자산', '자산'], groups).pickFresh, true);   // 더그림 — 기타비유동자산으로 새지 않게
+});
+
+test('similarRow — 이름이 비슷한 빈 줄, 과목명만 바뀐 줄(전기 금액 같음)을 먼저 고른다', async () => {
+  const { similarRow } = await import('./gwpPaper2120A');
+  const row = (key: string, label: string, pl: boolean, prev: number | null, cur: number | null, sec: Row2120['sec']): Row2120 =>
+    ({ key, label, fsli: label, pl, prev, cur, note: '', sec, group: 'g' } as Row2120);
+  const rows = [
+    row('a', '지분법평가이익', true, null, null, '손익'),
+    row('b', '지분법평가손실', true, 1315516547, null, '손익'),
+    row('c', '지분법자본조정', false, 8452791574, null, '자본'),
+    row('d', '자본금', false, 1000000000, 1000000000, '자본'),
+  ];
+  assert.equal(similarRow({ label: '지분법이익', cur: 2446482091 }, rows, true)?.key, 'a');      // 손실 줄로는 안 간다
+  assert.equal(similarRow({ label: '기타자본잉여금', cur: 8452791574, sec: '자본' }, rows, false)?.key, 'c');
+  assert.equal(similarRow({ label: '기타자본잉여금', cur: 8452791574, sec: '부채' }, rows, false), null);   // 다른 부분은 안 본다
+  assert.equal(similarRow({ label: '매도가능증권', cur: 1270000000, sec: '자산' }, rows, false), null);
 });

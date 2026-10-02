@@ -587,6 +587,28 @@ export function groupLike(a: string, b: string): boolean {
   return a.includes('비유동') === b.includes('비유동');
 }
 
+/**
+ * 2120A 에 받을 줄이 없는 DSD 계정 — 더할 만한 **빈 줄**(당기가 비었다)을 미리 고른다(사용자 2026-10-02, 제이스튜디오).
+ *   ① 이름이 거의 같다 — 「지분법이익」 ↔ 「지분법평가이익」(평가·적용 같은 말을 떼면 같다, 이익·손실은 같아야).
+ *   ② 과목명만 바뀌었다 — 전기 금액이 이 계정의 당기 금액과 같다(「기타자본잉여금」 84.5억 ↔ 전기 「지분법자본조정」 84.5억).
+ * 없으면 null — 새 줄로 넣는다.
+ */
+export function similarRow(u: { label: string; cur: number; sec?: Sec }, rows: Row2120[], isPl: boolean): { key: string; why: string } | null {
+  const core = (s: string) => cleanFs(s).replace(/평가|적용|\(.*?\)/g, '');
+  const tail = (s: string) => (/(이익|수익)$/.test(s) ? '+' : /(손실|비용)$/.test(s) ? '-' : '');
+  const a = core(u.label);
+  const empty = rows.filter((r) => r.pl === isPl && r.cur == null && !r.added && (isPl || !u.sec || !r.sec || r.sec === u.sec));
+  const byName = empty.find((r) => {
+    const b = core(r.label);
+    if (!a || !b || tail(a) !== tail(b)) return false;
+    return a === b || ((a.includes(b) || b.includes(a)) && Math.abs(a.length - b.length) <= 3 && Math.min(a.length, b.length) >= 3);
+  });
+  if (byName) return { key: byName.key, why: '이름이 비슷한 빈 줄' };
+  const byPrev = u.cur ? empty.filter((r) => r.prev != null && Math.abs(r.prev - u.cur) < 1) : [];
+  if (byPrev.length === 1) return { key: byPrev[0].key, why: '전기 금액이 같은 빈 줄(과목명 바뀜?)' };
+  return null;
+}
+
 /** 성격으로 분류가 정해진 계정 — DSD 가 어디에 두었든 2120A 에서는 이 분류(사용자 2026-10-02 「매도가능증권의 분류는 [투자자산]」 — 더그림·제이스튜디오). */
 const NATURE: [RegExp, string, string[]][] = [
   [/^(단기|장기)?(매도가능증권|만기보유증권|투자증권)$|^지분법적용투자주식$/, '투자자산', ['투자자산', '비유동자산', '자산']],
