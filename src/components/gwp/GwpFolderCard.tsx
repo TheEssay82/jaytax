@@ -30,6 +30,9 @@ export default function GwpFolderCard({ eng, canWrite, canRoll, hasBook, onRoll,
   const [prior, setPrior] = useState<Side>({ year: null, found: null });
   const [cur, setCur] = useState<Side>({ year: null, found: null });
   const [pick, setPick] = useState<Record<string, string>>({});
+  /** 회사 폴더 아래 폴더들 — 연도 폴더 이름이 「2025_회계감사」 꼴이 아니면 사람이 고른다(사용자 2026-10-02). */
+  const [years, setYears] = useState<string[]>([]);
+  const [yearPick, setYearPick] = useState<{ prior?: string; cur?: string }>({});
   const [uploaded, setUploaded] = useState<EngFile[]>([]);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -58,17 +61,26 @@ export default function GwpFolderCard({ eng, canWrite, canRoll, hasBook, onRoll,
     void (async () => {
       const cdir = await dirAt(root, [company]);
       const years = await subdirs(cdir);
-      const side = async (fy: number): Promise<Side> => {
-        const y = pickYearFolder(years, fy);
+      const side = async (fy: number, chosen?: string): Promise<Side> => {
+        const y = chosen && years.includes(chosen) ? chosen : pickYearFolder(years, fy);
         if (!y) return { year: null, found: null };
         return { year: y, found: classify(await listDirFiles(await dirAt(cdir, [y])), fy) };
       };
-      const [p, c] = await Promise.all([side(eng.fy - 1), side(eng.fy)]);
+      const [p, c] = await Promise.all([side(eng.fy - 1, yearPick.prior), side(eng.fy, yearPick.cur)]);
       if (off) return;
-      setPrior(p); setCur(c); setPick({});
+      setYears(years); setPrior(p); setCur(c); setPick({});
     })().catch((e) => setErr(e instanceof Error ? e.message : '폴더를 읽지 못했습니다.')).finally(() => { if (!off) setBusy(''); });
     return () => { off = true; };
-  }, [root, ok, company, eng.fy]);
+  }, [root, ok, company, eng.fy, yearPick]);
+
+  /** 연도 폴더 고르기 — 자동으로 찾았어도 바꿀 수 있다. */
+  const yearSel = (which: 'prior' | 'cur', now: string | null, hint: string) => (
+    <select className="btn-sm" value={now ?? ''} onChange={(e) => setYearPick({ ...yearPick, [which]: e.target.value || undefined })}
+      title="회사 폴더 아래에서 이 해의 감사 파일이 든 폴더를 고르세요">
+      <option value="">{now ? '— 자동으로 찾기 —' : `— ${hint} 폴더 고르기 —`}</option>
+      {years.map((y) => <option key={y} value={y}>{y}</option>)}
+    </select>
+  );
 
   /** again = 다른 폴더로 바꾸기(잘못 고른 폴더 — 사용자 2026-09-28 「다시 고르기가 없어요」). */
   const connect = useCallback(async (again = false) => {
@@ -150,7 +162,7 @@ export default function GwpFolderCard({ eng, canWrite, canRoll, hasBook, onRoll,
             <span style={{ color: 'var(--ink-3)' }}>연결한 폴더 <b>{root.name}</b></span>
             <button className="btn-sm" onClick={() => void connect(true)} title="회사 폴더들이 든 폴더(업무파일)를 다시 고릅니다">폴더 바꾸기</button>
             <span style={{ color: 'var(--ink-3)' }}>/</span>
-            <select className="btn-sm" value={company ?? ''} onChange={(e) => { setCompany(e.target.value || null); if (e.target.value) rememberFolder(eng.entityId, e.target.value); }}>
+            <select className="btn-sm" value={company ?? ''} onChange={(e) => { setCompany(e.target.value || null); setYearPick({}); if (e.target.value) rememberFolder(eng.entityId, e.target.value); }}>
               <option value="">— 회사 폴더 고르기 —</option>
               {companies.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -161,7 +173,8 @@ export default function GwpFolderCard({ eng, canWrite, canRoll, hasBook, onRoll,
           </div>
           {company && (
             <>
-              <div style={{ fontWeight: 700, marginTop: 6 }}>전기 FY{eng.fy - 1} — {prior.year ?? <span style={{ color: 'var(--warn)', fontWeight: 400 }}>{eng.fy - 1}_회계감사 폴더가 없습니다</span>}</div>
+              <div style={{ fontWeight: 700, marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>전기 FY{eng.fy - 1} — {yearSel('prior', prior.year, `FY${eng.fy - 1}`)}
+                {!prior.year && <span style={{ color: 'var(--warn)', fontWeight: 400 }}>「{eng.fy - 1}_회계감사」 꼴 폴더가 없습니다 — 전기 감사 파일이 든 폴더를 고르세요</span>}</div>
               {prior.found && (
                 <>
                   {row('전기 일반조서', 'gwp', prior.found.일반조서, (c) => !canRoll ? (
@@ -177,7 +190,8 @@ export default function GwpFolderCard({ eng, canWrite, canRoll, hasBook, onRoll,
                     : <button className="btn-sm btn-sm-navy" disabled={!canWrite || !!busy} onClick={() => void up('prior', c, '전기DSD', '전기 DSD')}>{busy === 'up:전기DSD' ? '올리는 중…' : '자료함에 올리기'}</button>)}
                 </>
               )}
-              <div style={{ fontWeight: 700, marginTop: 10 }}>당기 FY{eng.fy} — {cur.year ?? <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>아직 폴더가 없습니다(정산표는 기말감사 때)</span>}</div>
+              <div style={{ fontWeight: 700, marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>당기 FY{eng.fy} — {yearSel('cur', cur.year, `FY${eng.fy}`)}
+                {!cur.year && <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>아직 폴더가 없습니다(정산표는 기말감사 때)</span>}</div>
               {cur.found && row('정산표', 'wtb', cur.found.정산표, (c) => (
                 <>
                   {already(c.name, '수정전정산표') ? <span style={{ color: 'var(--good)' }}>수정전 ✓</span>

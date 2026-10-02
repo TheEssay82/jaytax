@@ -93,6 +93,19 @@ export function classify(paths: string[], fy: number): Found {
       out.정산표.push({ path, name, score, why });
     }
   }
+  // 이름으로 못 알아본 종류 — 같은 확장자 파일을 모두 후보로(사용자 2026-10-02 「폴더 이름 형식이 나와 달라 자동으로 못 가져온다」).
+  // 점수 0 이라 저절로 고르지 않는다 — 사람이 목록에서 고른다. 연도는 올릴 때 자료함 검사가 한 번 더 본다.
+  const fallback = (k: FolderKind, ext: RegExp) => {
+    if (out[k].length) return;
+    for (const path of paths) {
+      const parts = path.split('/');
+      if (parts.some((p) => SKIP.test(p)) || !ext.test(path)) continue;
+      out[k].push({ path, name: parts[parts.length - 1], score: 0, why: ['이름으로 못 알아봄'] });
+    }
+  };
+  fallback('일반조서', /\.xls[xm]?$/i);
+  fallback('감사보고서', /\.dsd$/i);
+  fallback('정산표', /\.xls[xm]?$/i);
   for (const k of Object.keys(out) as FolderKind[]) out[k].sort((a, b) => b.score - a.score || stamp(b.name) - stamp(a.name) || a.path.length - b.path.length);
   return out;
 }

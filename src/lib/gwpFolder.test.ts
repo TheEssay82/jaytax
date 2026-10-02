@@ -53,3 +53,11 @@ test('애매하면 고르지 않는다 — 나눈 조서(1000·2000), 별도·�
   const w = classify(['2.기말감사/700_정산표/별도WTB_윤성에프앤씨_FY25Q4_v4_0313_세무조정반영.xlsx', '2.기말감사/510_연결조서및정산표/연결정산표_(주)윤성에프앤씨_FY2025_4분기_20260314.xlsx'], 2025);
   assert.equal(sure(w.정산표)?.name, '별도WTB_윤성에프앤씨_FY25Q4_v4_0313_세무조정반영.xlsx');
 });
+
+test('이름으로 못 알아보면 같은 확장자 파일을 모두 후보로 — 고르지는 않는다', () => {
+  const f = classify(['감사/조서_최종.xlsx', '감사/보고서.dsd', '감사/결산.xlsx'], 2025);
+  assert.equal(f.감사보고서.length, 1);
+  assert.equal(sure(f.감사보고서), null);
+  assert.deepEqual(f.일반조서.map((c) => c.name).sort(), ['결산.xlsx', '조서_최종.xlsx']);
+  assert.equal(sure(f.일반조서), null);
+});
