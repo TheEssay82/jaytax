@@ -545,6 +545,7 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
     files['xl/workbook.xml'] = enc(wb);
     for (const e of entries()) files[e.part] = enc(renameSheetRefs(dec(files[e.part]), ren));
     report.renamed = [...ren];
+    report.notes = report.notes.map((n) => [...ren].reduce((x, [from, to]) => x.split(`${from}:`).join(`${to}:`), n));
   }
   dropCalcChain(files);
   forceRecalc(files);

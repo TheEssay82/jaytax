@@ -256,7 +256,7 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
       {saved.length > 0 && (
         <div style={{ marginTop: 10, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
           만든 정산표: {saved.slice(0, 5).map((f) => (
-            <button key={f.id} className="btn-sm" style={{ marginLeft: 6 }} onClick={() => void open(f)}>{f.fileName} · {f.createdAt.slice(0, 10)}</button>
+            <button key={f.id} className="btn-sm" style={{ marginLeft: 6 }} onClick={() => void open(f)}>{f.fileName} · {new Date(f.createdAt).toLocaleString('sv-SE').slice(0, 16)}</button>
           ))}
         </div>
       )}
