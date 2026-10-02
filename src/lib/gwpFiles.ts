@@ -10,7 +10,7 @@ import { documentPeriod } from './dsdParse';
 import { colOf, rowOf, normLabel } from './gwpWeb';
 import type { BenchKey } from './gwpPaper2700A';
 
-export type FileKind = '전기DSD' | '당기DSD' | '수정전정산표' | '정산표';
+export type FileKind = '전기DSD' | '당기DSD' | '수정전정산표' | '정산표' | '이월정산표';
 
 /** 이 작업 건(fy)에 맞는 파일의 해. 전기 DSD 는 한 해 앞. */
 export const expectedFy = (kind: FileKind, fy: number) => (kind === '전기DSD' ? fy - 1 : fy);
@@ -40,7 +40,7 @@ export interface FileMeta { periodEnd: string | null; fy: number | null; note: s
 
 /** 올리려는 파일을 읽어 해를 알아낸다. 못 알아내면 fy null. */
 export function inspectFile(kind: FileKind, bytes: Uint8Array): FileMeta & Record<string, unknown> {
-  if (kind === '정산표' || kind === '수정전정산표') {
+  if (kind === '정산표' || kind === '수정전정산표' || kind === '이월정산표') {
     const sheets = readWorkbook(bytes, (n) => /^W(BS|PL)$/i.test(n.replace(/\s/g, '')));
     if (!sheets.length) return { periodEnd: null, fy: null, note: '정산표에서 WBS·WPL 시트를 찾지 못했습니다.' };
     const end = wtbPeriodEnd(sheets);

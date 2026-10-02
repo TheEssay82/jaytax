@@ -39,6 +39,7 @@ import GwpTemplatesCard from './GwpTemplatesCard';
 import GwpProcStdCard from './GwpProcStdCard';
 import GwpStageBoard from './GwpStageBoard';
 import GwpFolderCard from './GwpFolderCard';
+import WtbRollCard from './WtbRollCard';
 import { listProgress } from '../../lib/gwpStageApi';
 import { progressOf, PROGRESS, type StageNo } from '../../lib/gwpStage';
 
@@ -121,7 +122,7 @@ export default function GwpTab() {
   /** 이월 결과에서 「다른 문구」를 펼친 시트 */
   const [openDiff, setOpenDiff] = useState<string | null>(null);
   // 화면 순서 — ① 올해 파일 → ② 단계 진행 → ③ 엑셀 조서 현황(사용자 2026-09-27 「순서와 UI 를 직관적으로」).
-  const [view, setView] = useState<'file' | 'stage' | 'status'>('file');
+  const [view, setView] = useState<'file' | 'stage' | 'status' | 'wtb'>('file');
   const [rollDetail, setRollDetail] = useState(false);
   const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all');
   // 거래처 목록 — 진행 정도(세팅·판·확정 단계)와 접기(사용자 2026-10-01 「선택하면 나머지는 사라지고 접히게」).
@@ -654,6 +655,15 @@ export default function GwpTab() {
                     <div style={{ fontWeight: 700, color: final ? 'var(--good)' : 'var(--ink-3)' }}>④ 최종본{final ? ` ✓ v${final.version}` : ''}</div>
                     <div style={{ marginTop: 2 }}>{final ? '내년 이월은 이 판에서' : '감사 끝나면 ①의 판 목록에서'}</div>
                   </div>
+                  {/* 정산표 이월 — 조서와 따로 가는 줄기(사용자 2026-10-03). 올해 파일이 없어도 연다. */}
+                  <button onClick={() => setView('wtb')} style={{
+                    flex: '0 1 170px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', marginLeft: 8,
+                    border: `1.5px solid ${view === 'wtb' ? 'var(--navy)' : 'var(--rule)'}`, background: view === 'wtb' ? 'var(--navy-bg)' : '#fff',
+                    borderRadius: 10, padding: '8px 12px',
+                  }}>
+                    <div style={{ fontWeight: 700, color: 'var(--navy)' }}>📒 정산표 이월</div>
+                    <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 2 }}>작년 정산표 + 회사 시산표</div>
+                  </button>
                 </div>
                 {latest && (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, fontSize: 'var(--fs-1)', flexWrap: 'wrap' }}>
@@ -680,6 +690,10 @@ export default function GwpTab() {
               {(view === 'file' || view === 'stage') && !!profileName && (contractCpa === profileName || year?.authorDefault === profileName) && (
                 <GwpFolderCard key={`folder:${picked.id}`} eng={picked} canWrite={canWrite} canRoll={!!year && !!tpl && canWrite} hasBook={!!latest}
                   onRoll={(bytes, label) => rollFromBytes(bytes, label)} onMsg={(m) => setMsg(m)} />
+              )}
+
+              {view === 'wtb' && (
+                <WtbRollCard key={`wtb:${picked.id}`} eng={picked} canWrite={canWrite} author={year?.authorDefault ?? null} reviewer={year?.partner ?? null} />
               )}
 
               {/* ① 올해 파일 ─────────────────────────────── */}

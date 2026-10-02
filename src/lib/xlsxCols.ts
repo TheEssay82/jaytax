@@ -157,3 +157,30 @@ export function insertColumns(files: Record<string, Uint8Array>, sheets: SheetPa
   files['xl/workbook.xml'] = enc(wbXml.replace(/(<definedName\b[^>]*>)([\s\S]*?)(<\/definedName>)/g,
     (_m, a: string, f: string, z: string) => `${a}${esc(mapRefs(unesc(f), (sh, ref) => (sh === target ? shiftColsInRef(ref, at, count) : ref)))}${z}`));
 }
+
+// ── 줄 끼우기(통합문서 전체) ─────────────────────────────
+// 정산표 이월의 새 계정(사용자 2026-10-03 「2120A 처럼 분류를 새로 넣기」): WBS 의 과목 무리 끝에 줄을 끼우면
+// 보고서BS 의 SUMIF(WBS!$B$11:$B$97 …)·WCF 의 참조도 따라 밀려야 한다. 대상 시트 안은 insertRowsAfter 가 하고,
+// 여기서는 **다른 시트의 그 시트 참조**를 민다 — after 에서 끝나는 범위는 새 줄까지 늘린다(엑셀은 안 늘리지만 합계가 빠지지 않게).
+export function shiftRowsInRef(ref: string, after: number, count: number): string {
+  const parts = ref.split(':');
+  const shifted = parts.map((p) => p.replace(/(\$?[A-Z]{0,3}\$?)(\d+)$/, (m, a: string, r: string) => (Number(r) > after ? `${a}${Number(r) + count}` : m)));
+  if (parts.length === 2) {
+    const r1 = Number(/(\d+)$/.exec(parts[0])?.[1] ?? NaN), r2 = Number(/(\d+)$/.exec(parts[1])?.[1] ?? NaN);
+    if (r2 === after && r1 <= after) shifted[1] = parts[1].replace(/(\d+)$/, String(after + count));
+  }
+  return shifted.join(':');
+}
+
+export function insertRowsBook(files: Record<string, Uint8Array>, sheets: SheetPart[], target: string, after: number, count: number,
+  dec: (b: Uint8Array) => string, enc: (s: string) => Uint8Array, insertRowsAfter: (xml: string, after: number, count: number) => string): void {
+  for (const s of sheets) {
+    let xml = dec(files[s.part]);
+    if (s.name === target) xml = insertRowsAfter(xml, after, count);
+    else xml = mapFormulas(xml, (f) => mapRefs(f, (sh, ref) => (sh === target && /\d/.test(ref) ? shiftRowsInRef(ref, after, count) : ref)));
+    files[s.part] = enc(xml);
+  }
+  const wbXml = dec(files['xl/workbook.xml']);
+  files['xl/workbook.xml'] = enc(wbXml.replace(/(<definedName\b[^>]*>)([\s\S]*?)(<\/definedName>)/g,
+    (_m, a: string, f: string, z: string) => `${a}${esc(mapRefs(unesc(f), (sh, ref) => (sh === target && /\d/.test(ref) ? shiftRowsInRef(ref, after, count) : ref)))}${z}`));
+}

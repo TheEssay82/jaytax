@@ -24,7 +24,8 @@ import { strFromU8, strToU8 } from 'fflate';
 import { readWorkbook, type SheetData } from './xlsxRead';
 import { setCells, excelSerial, type CellEdit } from './xlsxCells';
 import { sheetEntries, dropCalcChain, forceRecalc } from './xlsxTransplant';
-import { colName, colNum, insertColumns, mapFormulas, mapRefs, moveRelative, unshareFormulas } from './xlsxCols';
+import { colName, colNum, insertColumns, insertRowsBook, mapFormulas, mapRefs, moveRelative, unshareFormulas } from './xlsxCols';
+import { insertRowsAfter } from './xlsxRows';
 import { renameSheetRefs } from './gwpRoll';
 
 export interface TbLine {
@@ -42,6 +43,30 @@ export interface WtbRollOptions {
   author?: string; reviewer?: string;
   tb?: TbLine[];
   /** 보이게 둘 해 수(올해 포함) — 기본 4 */ years?: number;
+  /** 시산표에만 있는 계정을 어디에 — 이미 있는 줄에 더하기(label = C열 이름) 또는 과목(B열) 끝에 새 줄 */
+  place?: WtbPlace[];
+}
+
+export type WtbPlace =
+  | { name: string; sheet: 'WBS' | 'WPL'; to: 'row'; label: string }
+  | { name: string; sheet: 'WBS' | 'WPL'; to: 'new'; fsli: string };
+
+export interface WtbRow { sheet: 'WBS' | 'WPL'; row: number; fsli: string; label: string; section: TbLine['section'] }
+
+/** 화면용 — WBS·WPL 의 계정 줄(과목·회사제시계정·부분). 새 계정을 어디에 둘지 고를 목록. */
+export function wtbOutline(bytes: Uint8Array): { rows: WtbRow[]; term: number | null } {
+  const rows: WtbRow[] = [];
+  let term: number | null = null;
+  for (const sh of readWorkbook(bytes, (n) => n === 'WBS' || n === 'WPL')) {
+    const L = readLayout(sh);
+    if (!L) continue;
+    if (sh.name === 'WBS') term = L.curTerm;
+    const { sec } = rowSections(sh, L, sh.name === 'WPL');
+    for (const r of L.accounts) {
+      rows.push({ sheet: sh.name as 'WBS' | 'WPL', row: r, fsli: (sh.cells.get(`B${r}`)?.text ?? '').trim(), label: (sh.cells.get(`C${r}`)?.text ?? '').trim(), section: sh.name === 'WPL' ? '손익' : sec.get(r)?.section ?? '자산' });
+    }
+  }
+  return { rows, term };
 }
 
 export interface WtbRollReport {
@@ -144,11 +169,9 @@ function creditRows(sh: SheetData, L: TableLayout): Map<number, boolean> {
   return out;
 }
 
-/** 시산표 → 표 줄. 같은 줄로 가는 것은 더한다. */
-function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], isPl: boolean) {
-  const label = (r: number) => sh.cells.get(`C${r}`)?.text ?? '';
+/** 줄마다 부분(자산·부채·자본·손익)·유동·시산표 부호 — 머리글(「부채」「자본」「Ⅱ.비유동자산」「Ⅰ.영업수익」)로. */
+function rowSections(sh: SheetData, L: TableLayout, isPl: boolean) {
   const blabel = (r: number) => sh.cells.get(`B${r}`)?.text ?? '';
-  // 줄의 부분·유동 — 머리글로.
   const sec = new Map<number, { section: TbLine['section']; current: boolean }>();
   let s: TbLine['section'] = isPl ? '손익' : '자산'; let current = true;
   let plCredit = false;
@@ -163,6 +186,14 @@ function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], isPl: boolean) {
     // 시산표 금액의 부호 — 자산·비용은 차변−대변, 부채·자본·수익은 대변−차변(차감 계정은 음수로 남는다: 감가상각누계액·퇴직연금운용자산).
     sign.set(r, (isPl ? plCredit : s !== '자산') ? -1 : 1);
   }
+  return { sec, sign };
+}
+
+/** 시산표 → 표 줄. 같은 줄로 가는 것은 더한다. alias = 사람이 고른 짝(시산표 이름 → 정산표 C열 이름, 둘 다 norm). */
+function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], isPl: boolean, alias: Map<string, string> = new Map()) {
+  const label = (r: number) => sh.cells.get(`C${r}`)?.text ?? '';
+  const blabel = (r: number) => sh.cells.get(`B${r}`)?.text ?? '';
+  const { sec, sign } = rowSections(sh, L, isPl);
   const rows = L.accounts.filter((r) => (isPl ? true : sec.get(r)?.section !== '손익'));
   const sums = new Map<number, { value: number; from: string[] }>();
   const unmatched: TbLine[] = [];
@@ -176,7 +207,10 @@ function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], isPl: boolean) {
     const pool = rows.filter((r) => isPl || (sec.get(r)?.section === t.section));
     const byCurrent = (cands: number[]) => (cands.length > 1 && t.current != null ? (cands.filter((r) => sec.get(r)?.current === t.current).length ? cands.filter((r) => sec.get(r)?.current === t.current) : cands) : cands);
     let cands: number[] = [];
-    if (contra) {
+    if (alias.has(n)) {
+      cands = rows.filter((r) => norm(label(r)) === alias.get(n));
+      if (!cands.length) { if (t.bal) unmatched.push(t); continue; }
+    } else if (contra) {
       cands = pool.filter((r) => { const c = norm(label(r)); if (!c.startsWith(n)) return false; const suf = c.slice(n.length).replace(/^-/, ''); return !!suf && (prevName.includes(suf) || suf.includes(prevName)); });
     } else {
       const tries = [n, n.replace(/_.*$/, ''), n.replace(/\(.*?\)/g, ''),
@@ -308,10 +342,31 @@ export function hideCols(xml: string, from: number, to: number): string {
 export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8Array) => Record<string, Uint8Array>, zipFn: (f: Record<string, Uint8Array>) => Uint8Array): { bytes: Uint8Array; report: WtbRollReport } {
   const files = unzipFn(bytes);
   for (const e of sheetEntries(files)) files[e.part] = enc(unshareFormulas(dec(files[e.part])));   // 공유 수식을 풀고 읽는다
+  const report0: string[] = [];
+  // ⓪ 새 계정 줄 — 과목(B열) 무리 끝에 한 줄. 다른 시트의 SUMIF 범위도 따라 밀린다(insertRowsBook).
+  for (const p of (o.place ?? []).filter((x): x is Extract<WtbPlace, { to: 'new' }> => x.to === 'new')) {
+    const sh = readWorkbook(zipFn(files), (n) => n === p.sheet)[0];
+    const L = sh && readLayout(sh);
+    const mine = L ? L.accounts.filter((r) => norm(sh.cells.get(`B${r}`)?.text) === norm(p.fsli)) : [];
+    if (!L || !mine.length) { report0.push(`${p.sheet} 에 과목 「${p.fsli}」 줄이 없어 「${p.name}」 새 줄을 넣지 못했습니다.`); continue; }
+    const after = Math.max(...mine), n = after + 1;
+    insertRowsBook(files, sheetEntries(files).map((e) => ({ name: e.name, part: e.part })), p.sheet, after, 1, dec, enc, insertRowsAfter);
+    const edits: CellEdit[] = [
+      { ref: `B${n}`, text: sh.cells.get(`B${after}`)?.text ?? p.fsli }, { ref: `C${n}`, text: p.name },
+    ];
+    const a = sh.cells.get(`A${after}`)?.text; if (a) edits.push({ ref: `A${n}`, text: a });
+    for (const c of [L.adj, L.inc, L.ratio]) {
+      const f = c ? sh.cells.get(`${colName(c)}${after}`)?.formula : undefined;
+      if (c && f) edits.push({ ref: `${colName(c)}${n}`, formula: moveRelative(f, 1, 0) });
+    }
+    const part = sheetEntries(files).find((e) => e.name === p.sheet)!.part;
+    files[part] = enc(setCells(dec(files[part]), edits));
+    report0.push(`${p.sheet} ${n}행 — 과목 「${p.fsli}」 끝에 새 계정 「${p.name}」`);
+  }
   const before = readWorkbook(zipFn(files));
   const entries = () => sheetEntries(files);
   const partOf = (name: string) => entries().find((e) => e.name === name)!.part;
-  const report: WtbRollReport = { term: 0, tables: [], filled: [], unmatched: [], renamed: [], notes: [] };
+  const report: WtbRollReport = { term: 0, tables: [], filled: [], unmatched: [], renamed: [], notes: [...report0] };
   const closing = excelSerial(o.closing)!, prevEnd = excelSerial(o.prevEnd)!, yearEnd = excelSerial(o.yearEnd)!;
   const prevEndOld = excelSerial(`${Number(o.prevEnd.slice(0, 4)) - 1}${o.prevEnd.slice(4)}`)!;
 
@@ -363,7 +418,8 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
     const isPl = t.L.sheet === 'WPL';
     let fill: Map<number, { value: number; from: string[] }> | undefined;
     if (o.tb?.length) {
-      const m = matchTb(t.sh, t.L, o.tb, isPl);
+      const alias = new Map((o.place ?? []).filter((p) => p.sheet === t.L.sheet).map((p) => [norm(p.name), norm(p.to === 'row' ? p.label : p.name)] as [string, string]));
+      const m = matchTb(t.sh, t.L, o.tb, isPl, alias);
       fill = m.sums; report.unmatched.push(...m.unmatched);
       for (const [r, v] of m.sums) report.filled.push({ sheet: t.L.sheet, row: r, label: t.sh.cells.get(`C${r}`)?.text ?? '', value: Math.round(v.value), from: v.from });
     }
@@ -419,6 +475,14 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
   for (const e of entries()) {
     if (!/^보고서|^WCF|^SCF/.test(e.name)) continue;
     files[e.part] = enc(bumpHeads(dec(files[e.part]), sharedStrings(files), { [prevEnd]: closing, [prevEndOld]: prevEnd }));
+  }
+
+  // ⑥-2 보고서·WCF 전기 열의 값 칸 — 같은 줄 당기 열이 WBS·WPL 수정후 열을 가리키면, 전기 열은 새 전기 열을 가리키게(제이 보고서BS D19 「0」).
+  const adjToPrior = new Map(tables.map((t) => [t.L.sheet, [colName(t.L.adj + 1), colName(t.L.cur)] as [string, string]]));
+  for (const e of entries()) {
+    if (!/^보고서|^WCF/.test(e.name)) continue;
+    const r = fillPriorLinks(dec(files[e.part]), sharedStrings(files), adjToPrior);
+    if (r.n) { files[e.part] = enc(r.xml); report.notes.push(`${e.name}: 전기 열에 값으로 적힌 ${r.n}칸을 전기 링크로 바꿨습니다(${r.refs.slice(0, 6).join(', ')}${r.refs.length > 6 ? ' …' : ''}).`); }
   }
 
   // ⑦ 시트 이름 _FY25 → _FY26
@@ -550,4 +614,35 @@ export function tbFromSheet(sh: SheetData): TbLine[] {
     out.push({ name: raw.trim().replace(/\s+/g, ' '), section, current: section === '손익' ? undefined : current, bal: num(drBal, r) - num(crBal, r) });
   }
   return out;
+}
+
+/**
+ * 보고서·WCF — 머리(1~8행)의 「11기 | 10기」 또는 「당기 | 전기」 로 당기·전기 열 짝을 알고,
+ * 당기 칸이 WBS·WPL 수정후 열 수식인데 전기 칸이 값이면 → 당기 수식의 그 열을 새 전기 열로 바꿔 넣는다.
+ */
+function fillPriorLinks(xml: string, sstr: string[] | null, adjToPrior: Map<string, [string, string]>): { xml: string; n: number; refs: string[] } {
+  const sh = readSheetXml(xml);
+  let cur = 0, prior = 0;
+  for (let r = 1; r <= 8 && !prior; r++) {
+    const hits: number[] = [];
+    for (let c = 2; c <= 12; c++) if (/^\s*(\d+\s*기|당\s*기|전\s*기)\s*$/.test(cellText(xml, `${colName(c)}${r}`, sstr))) hits.push(c);
+    if (hits.length >= 2) { cur = hits[0]; prior = hits[1]; }
+  }
+  if (!cur) return { xml, n: 0, refs: [] };
+  const edits: CellEdit[] = [];
+  const maxRow = Math.max(0, ...[...sh.keys()].map(rowOf));
+  for (let r = 3; r <= maxRow; r++) {
+    const f = sh.get(`${colName(cur)}${r}`)?.formula;
+    const pv = sh.get(`${colName(prior)}${r}`);
+    if (!f || pv?.formula) continue;
+    let hit = false;
+    const g = mapRefs(f, (sname, ref) => {
+      const m = sname ? adjToPrior.get(sname) : undefined;
+      if (!m) return ref;
+      return ref.replace(/(\$?)([A-Z]{1,3})(?=\$?\d|:|$)/g, (x, d: string, c: string) => (c === m[0] ? (hit = true, `${d}${m[1]}`) : x));
+    });
+    if (!hit) continue;
+    edits.push({ ref: `${colName(prior)}${r}`, formula: g });
+  }
+  return { xml: edits.length ? setCells(xml, edits) : xml, n: edits.length, refs: edits.map((e) => e.ref) };
 }
