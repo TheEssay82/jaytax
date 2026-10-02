@@ -219,17 +219,17 @@ export function applyLarge(
 //   · 파일에 같은 번호의 (소규모) 시트가 이미 있으면 건너뛴다(짝 정리 planSmall 이 맡는다).
 //   · 보이는 일반 「번호」 시트가 있으면 — 양식에서 「번호(소규모)」를 넣고 작년 값을 줄 이름으로 옮긴다(노랑). 일반 시트는 숨긴다.
 //   · 바꾼 번호 무리(첫 세 자리)의 일반 딸림 시트로 소규모 양식에 없는 숫자 번호(2512·2513·2302 …)는 숨긴다. 2100A 같은 글자 딸림은 둔다.
-//   · 기본은 1000·2000번대만 — 작년부터 소규모인 휴식·주원도 3000·8000번대는 일반 시트를 쓴다(sections 로 넓힌다).
+//   · 모든 번호대(1000~8000) — 사용자 2026-10-02 「3000~8000번대까지 바꿔주세요」. sections 로 좁힐 수 있다.
 // 다른 시트의 수식이 일반 시트를 가리키면 소규모 시트를 가리키게 바꾼다. 지우는 시트는 없다(숨길 뿐).
 export interface ToSmallStep { code: string; plain: string; to: string }
 export interface ToSmallPlan { steps: ToSmallStep[]; hide: string[] }
 
-export function planToSmall(sheets: Sh[], tplSheets: TplSheet[], sections = ['1', '2']): ToSmallPlan {
+export function planToSmall(sheets: Sh[], tplSheets: TplSheet[], sections?: string[]): ToSmallPlan {
   const steps: ToSmallStep[] = [];
   for (const t of tplSheets) {
     if (t.hidden || !SMALL.test(t.name)) continue;
     const code = baseCode(t.name);
-    if (!code || !sections.includes(code[0]) || steps.some((x) => x.code === code)) continue;
+    if (!code || (sections && !sections.includes(code[0])) || steps.some((x) => x.code === code)) continue;
     if (sheets.some((s) => SMALL.test(s.name) && baseCode(s.name) === code)) continue;
     const plain = sheets.find((s) => !s.hidden && plainOnly(s.name) && baseCode(s.name) === code);
     if (plain) steps.push({ code, plain: plain.name, to: t.name });
