@@ -211,3 +211,76 @@ export function applyLarge(
   applyTidy(files, planTidy(sheetEntries(files).map((e) => ({ name: e.name, hidden: !!e.state && e.state !== 'visible' }))));
   return out;
 }
+
+// ── 일반 → 소규모 ────────────────────────
+//
+// 사용자 2026-10-02 알엑스씨: 「[소규모]로 계약했으나 일반조서는 [일반]으로 진행 … 이제는 변경이 필요」.
+// 작년 조서가 일반 양식(「2120A」·「3100」…)인데 올해 조서 기준이 소규모면 — 올해 소규모 양식의 「번호(소규모)」마다
+//   · 파일에 같은 번호의 (소규모) 시트가 이미 있으면 건너뛴다(짝 정리 planSmall 이 맡는다).
+//   · 보이는 일반 「번호」 시트가 있으면 — 양식에서 「번호(소규모)」를 넣고 작년 값을 줄 이름으로 옮긴다(노랑). 일반 시트는 숨긴다.
+//   · 바꾼 번호 무리(첫 세 자리)의 일반 딸림 시트로 소규모 양식에 없는 숫자 번호(2512·2513·2302 …)는 숨긴다. 2100A 같은 글자 딸림은 둔다.
+//   · 기본은 1000·2000번대만 — 작년부터 소규모인 휴식·주원도 3000·8000번대는 일반 시트를 쓴다(sections 로 넓힌다).
+// 다른 시트의 수식이 일반 시트를 가리키면 소규모 시트를 가리키게 바꾼다. 지우는 시트는 없다(숨길 뿐).
+export interface ToSmallStep { code: string; plain: string; to: string }
+export interface ToSmallPlan { steps: ToSmallStep[]; hide: string[] }
+
+export function planToSmall(sheets: Sh[], tplSheets: TplSheet[], sections = ['1', '2']): ToSmallPlan {
+  const steps: ToSmallStep[] = [];
+  for (const t of tplSheets) {
+    if (t.hidden || !SMALL.test(t.name)) continue;
+    const code = baseCode(t.name);
+    if (!code || !sections.includes(code[0]) || steps.some((x) => x.code === code)) continue;
+    if (sheets.some((s) => SMALL.test(s.name) && baseCode(s.name) === code)) continue;
+    const plain = sheets.find((s) => !s.hidden && plainOnly(s.name) && baseCode(s.name) === code);
+    if (plain) steps.push({ code, plain: plain.name, to: t.name });
+  }
+  const families = new Set(steps.map((x) => x.code.slice(0, 3)));
+  const used = new Set(steps.map((x) => x.plain));
+  const tc = new Set(tplSheets.map((t) => baseCode(t.name)).filter(Boolean));
+  const hide = sheets.filter((s) => !s.hidden && plainOnly(s.name) && !used.has(s.name) && /^\d+$/.test(baseCode(s.name))
+    && families.has(baseCode(s.name).slice(0, 3)) && !tc.has(baseCode(s.name))).map((s) => s.name);
+  return { steps, hide };
+}
+
+export interface ToSmallResult { done: (ToSmallStep & { moved: number })[]; hidden: string[] }
+
+/** 일반 → 소규모 정리. files 는 풀어 둔 워크북(제자리에서 고친다). tpl 은 올해 소규모 양식 묶음(readBundle). */
+export function applyToSmall(
+  files: Record<string, Uint8Array>, plan: ToSmallPlan,
+  tpl: { catalog: { sheets: TplSheet[] }; files: Record<string, Uint8Array> }, reviewer: string,
+  unzipBook: (b: Uint8Array) => Record<string, Uint8Array>,
+): ToSmallResult {
+  const out: ToSmallResult = { done: [], hidden: [] };
+  if (!plan.steps.length && !plan.hide.length) return out;
+  const books = new Map<string, Record<string, Uint8Array>>();
+  for (const st of plan.steps) {
+    const t = tpl.catalog.sheets.find((x) => x.name === st.to);
+    if (!t) continue;
+    if (!books.has(t.file)) books.set(t.file, unzipBook(tpl.files[t.file]));
+    transplantSheet(files, books.get(t.file)!, t.name, { hidden: false });
+  }
+  const sheets = readWorkbook(zip(files));
+  const link = headLinker(sheets, buildCatalog(sheets));
+  const byName = (n: string) => sheets.find((s) => s.name === n);
+  const rename = new Map<string, string>();
+  for (const st of plan.steps) {
+    const plain = byName(st.plain), to = byName(st.to);
+    const e = sheetEntries(files).find((x) => x.name === st.to);
+    if (!plain || !to || !e) continue;
+    const mig = migrateInputs(plain, to);
+    const edits = [...mig.edits, ...link(to, st.code, reviewer)];
+    let xml = strFromU8(files[e.part]);
+    if (edits.length) xml = setCells(xml, edits);
+    files[e.part] = strToU8(setTabColor(xml, TAB.red));            // 올해 아직 손 안 댐
+    blackenSheet(files, e.part);
+    if (mig.edits.length) highlightCells(files, e.part, mig.edits.map((x) => x.ref));
+    setSheetHidden(files, st.to, false);
+    setSheetHidden(files, st.plain, true);
+    rename.set(st.plain, st.to);
+    out.done.push({ ...st, moved: mig.moved.length });
+  }
+  for (const n of plan.hide) if (setSheetHidden(files, n, true)) out.hidden.push(n);
+  if (rename.size) for (const e of sheetEntries(files)) files[e.part] = strToU8(renameSheetRefs(strFromU8(files[e.part]), rename));
+  sortSheetsByCode(files);
+  return out;
+}

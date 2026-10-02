@@ -24,7 +24,7 @@ import {
   type GwpTemplate, type GwpBook, type BookKind,
 } from '../../lib/gwpApi';
 import { readBundle, templateCodes, findTemplateSheet } from '../../lib/gwpTemplate';
-import { planSmall, applySmall, planLarge, applyLarge, planTidy } from '../../lib/gwpSmall';
+import { planSmall, applySmall, planLarge, applyLarge, planTidy, planToSmall, applyToSmall } from '../../lib/gwpSmall';
 import { isCodeOrdered, sortSheetsByCode } from '../../lib/gwpOrder';
 import { missingPapers, addPapers } from '../../lib/gwpAddPapers';
 import { unzip, zip } from '../../lib/xlsxTransplant';
@@ -170,6 +170,12 @@ export default function GwpTab() {
     const p = planSmall(latest.catalog.sheets.map((s) => ({ name: s.name, hidden: s.hidden })), tc);
     return p.pairs.length || p.hide.length ? p : null;
   }, [latest, year?.auditBasis, tpl]);
+  // 소규모 감사인데 작년 조서가 일반 양식이었다(알엑스씨 — 소규모 계약, 조서는 일반으로 진행, 2026-10-02) → 「번호(소규모)」로.
+  const toSmallPlan = useMemo(() => {
+    if (!latest || !tpl || year?.auditBasis !== '소규모감사기준') return null;
+    const p = planToSmall(latest.catalog.sheets.map((s) => ({ name: s.name, hidden: s.hidden })), tpl.catalog.sheets);
+    return p.steps.length ? p : null;
+  }, [latest, year?.auditBasis, tpl]);
   // 반대 — 일반·K-IFRS 감사인데 「번호(소규모)」 시트를 쓰고 있다(평안정공: 작년 소규모 → 올해 일반, 2026-09-28).
   const largePlan = useMemo(() => {
     if (!latest || !tpl || !year || year.auditBasis === '소규모감사기준') return null;
@@ -277,6 +283,15 @@ export default function GwpTab() {
           outCat = buildCatalog(readWorkbook(outBytes));
           smallNote = ` · 소규모 짝 정리 ${sr.done.map((d) => d.small).join(',')}${sr.hidden.length ? ` · 숨김 ${sr.hidden.join(',')}` : ''}`;
         }
+        // 작년 조서가 일반 양식이었다 — 올해 소규모 양식의 「번호(소규모)」로(알엑스씨).
+        const tp = planToSmall(readWorkbook(outBytes).map((s) => ({ name: s.name, hidden: s.hidden })), catalog.sheets);
+        if (tp.steps.length) {
+          const uf = unzip(outBytes);
+          const tr = applyToSmall(uf, tp, { catalog, files }, year.partner, unzip);
+          outBytes = zip(uf);
+          outCat = buildCatalog(readWorkbook(outBytes));
+          smallNote += ` · 일반 → 소규모 ${tr.done.map((d) => d.to).join(',')}${tr.hidden.length ? ` · 숨김 ${tr.hidden.join(',')}` : ''}`;
+        }
       } else {
         // 일반·K-IFRS 감사인데 작년 조서가 「번호(소규모)」 시트였다 — 올해 기준 양식 시트로(평안정공).
         const plan = planLarge(readWorkbook(r.bytes).map((s) => ({ name: s.name, hidden: s.hidden })), (c) => findTemplateSheet(catalog, c), catalog.sheets);
@@ -347,6 +362,23 @@ export default function GwpTab() {
       download(bytes, book.fileName, XLSX);
       setBooks(await listBooks(picked.id));
       setMsg(`소규모 짝을 정리해 v${book.version}을 만들고 내려받았습니다 — ${sr.done.map((d) => d.small).join(', ')} 을 쓰고 일반 양식 ${[...sr.done.map((d) => d.plain), ...sr.hidden].join(', ')} 은 숨겼습니다(지우지 않음).`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '정리하지 못했습니다.'); } finally { setBusy(''); }
+  }
+
+  /** 일반 → 소규모 정리 — 이미 만든 판에서 일반 시트를 올해 소규모 양식 「번호(소규모)」로 바꾼 새 판(사용자 2026-10-02 알엑스씨). */
+  async function fixToSmall() {
+    if (!picked || !year || !latest || !tpl || !toSmallPlan) return;
+    setBusy('tosmall'); setErr(null);
+    try {
+      const t = readBundle(await fileBytes(tpl.storagePath));
+      const uf = unzip(await fileBytes(latest.storagePath));
+      const tr = applyToSmall(uf, toSmallPlan, t, year.partner, unzip);
+      const bytes = zip(uf);
+      const book = await addBook(picked.id, '작업중', { name: latest.fileName, bytes }, buildCatalog(readWorkbook(bytes)),
+        `일반 → 소규모 정리 — ${tr.done.map((d) => `${d.to}(←${d.plain}, 작년 값 ${d.moved}칸)`).join(' · ')}${tr.hidden.length ? ` · 숨김 ${tr.hidden.join(',')}` : ''}`);
+      download(bytes, book.fileName, XLSX);
+      setBooks(await listBooks(picked.id));
+      setMsg(`v${book.version}을 만들고 내려받았습니다 — 일반 시트 ${tr.done.length}장을 소규모 양식 시트로 바꾸고 일반 시트는 숨겼습니다(지우지 않음). 1차 확정을 하면 웹 조서 값이 소규모 시트에 들어갑니다.`);
     } catch (e) { setErr(e instanceof Error ? e.message : '정리하지 못했습니다.'); } finally { setBusy(''); }
   }
 
@@ -837,6 +869,28 @@ export default function GwpTab() {
                     </div>
                   )}
 
+                  {toSmallPlan && !smallPlan && (
+                    <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--warn)', fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
+                      <b>일반 → 소규모 정리가 필요합니다</b> — 조서 기준은 소규모인데 작년 조서가 일반 양식 시트를 쓰고 있습니다.
+                      올해 소규모 양식의 「번호(소규모)」 시트를 넣고, 작년 값은 줄 이름이 같은 칸만 옮기고(노랑), 일반 시트는 숨기겠습니다(지우지 않음).
+                      <table className="tbl" style={{ marginTop: 6 }}>
+                        <thead><tr style={{ background: 'var(--surface-2)' }}><th>번호</th><th>숨길 시트</th><th>쓸 시트(보이게)</th></tr></thead>
+                        <tbody>
+                          {toSmallPlan.steps.map((p) => <tr key={p.to}><td>{p.code}</td><td>{p.plain}</td><td><b>{p.to}</b> <span style={{ color: 'var(--ink-3)' }}>(올해 양식에서 새로)</span></td></tr>)}
+                          {toSmallPlan.hide.map((n) => <tr key={`h:${n}`}><td>{n}</td><td>{n}</td><td style={{ color: 'var(--ink-3)' }}>— 소규모 양식에 없는 일반 양식 딸림 시트</td></tr>)}
+                        </tbody>
+                      </table>
+                      <div style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)', marginTop: 4 }}>
+                        1000·2000번대만 바꿉니다 — 작년부터 소규모인 회사(휴식·주원)도 3000·8000번대는 일반 시트를 씁니다.
+                        일반과 소규모 양식은 모양이 달라 옮겨지지 않는 칸이 많습니다 — 숨긴 일반 시트를 보면서 적으세요. 웹 조서(2110A · 2110 · 2120A · 2301 · 2520 · 2530)는 1차 확정을 하면 소규모 시트에 들어갑니다.
+                        1차 확정이 되어 있으면 ② 에서 [1차 확정 취소] → 여기서 정리 → [1차 확정] 순서로 하세요.
+                      </div>
+                      <button className="btn-p" style={{ marginTop: 8 }} disabled={!canWrite || !!busy} onClick={() => void fixToSmall()}>
+                        {busy === 'tosmall' ? '정리하는 중…' : `정리해서 v${(latest?.version ?? 0) + 1} 만들기`}
+                      </button>
+                    </div>
+                  )}
+
                   {largePlan && (
                     <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--warn)', fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
                       <b>소규모 → {AUDIT_BASIS_LABEL[year!.auditBasis]} 정리가 필요합니다</b> — 조서 기준은 {AUDIT_BASIS_LABEL[year!.auditBasis]}인데 작년 조서가 「번호(소규모)」 시트를 쓰고 있습니다.
@@ -861,7 +915,7 @@ export default function GwpTab() {
                     </div>
                   )}
 
-                  {needSort && !largePlan && !smallPlan && (
+                  {needSort && !largePlan && !smallPlan && !toSmallPlan && (
                     <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--warn)', fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
                       <b>시트 차례가 조서 번호 순서가 아닙니다</b> — 양식에서 새로 넣은 시트가 맨 뒤에 붙어 있습니다. 조서 번호 순서로 늘어놓겠습니다(내용은 그대로, 딸림 시트는 제 조서 뒤를 따라감).
                       <div><button className="btn-p" style={{ marginTop: 8 }} disabled={!canWrite || !!busy} onClick={() => void fixOrder()}>
@@ -870,7 +924,7 @@ export default function GwpTab() {
                     </div>
                   )}
 
-                  {missing.length > 0 && !largePlan && !smallPlan && (
+                  {missing.length > 0 && !largePlan && !smallPlan && !toSmallPlan && (
                     <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${missing.some((m) => m.suggested) ? 'var(--warn)' : 'var(--line)'}`, fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
                       <b>올해 양식에 있는데 이 파일에 없는 조서 {missing.length}개</b>
                       {missing.some((m) => m.suggested)

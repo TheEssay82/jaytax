@@ -1,7 +1,7 @@
 // 소규모 짝 정리 — 「번호(소규모)」 숨김 + 일반 「번호」 보임이면 소규모 쪽을 쓴다(명진 FY25 모양).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { planSmall, planLarge, planTidy } from './gwpSmall';
+import { planSmall, planLarge, planTidy, planToSmall } from './gwpSmall';
 
 const MJ = [
   { name: '2301' }, { name: '2302', hidden: true },
@@ -50,4 +50,16 @@ test('다듬기 — 숨긴 소규모의 일반 짝이 숨어 있으면 보인다
     { name: '8100' }, { name: '8700' }, { name: '1200' }, { name: '2100' }, { name: '2700A', hidden: true },
   ]);
   assert.deepEqual(t.show, ['2700A']);
+});
+
+test('planToSmall — 작년 일반 양식 → 올해 「번호(소규모)」(알엑스씨), 1000·2000번대만, 숫자 딸림만 숨김', () => {
+  const tpl = ['2110A(소규모)', '2120A(소규모)', '2511(소규모)', '2700A-2(감사계획단계)', '3100(소규모)']
+    .map((name) => ({ file: 'f', name, code: name, hidden: false }));
+  const book = [{ name: '2100A' }, { name: '2110A' }, { name: '2120A' }, { name: '2511' }, { name: '2512' }, { name: '2513', hidden: true },
+    { name: '2700A-2(감사계획단계)' }, { name: '3100' }];
+  const p = planToSmall(book, tpl);
+  assert.deepEqual(p.steps.map((s) => `${s.plain}>${s.to}`), ['2110A>2110A(소규모)', '2120A>2120A(소규모)', '2511>2511(소규모)']);
+  assert.deepEqual(p.hide, ['2512']);                      // 2100A(글자 딸림)·3100(3000번대)은 둔다
+  assert.equal(planToSmall([...book, { name: '2120A(소규모)' }], tpl).steps.some((s) => s.code === '2120A'), false);   // 이미 있으면 짝 정리가 맡는다
+  assert.equal(planToSmall(book, tpl, ['1', '2', '3']).steps.length, 4);
 });
