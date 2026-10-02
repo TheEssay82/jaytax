@@ -1,6 +1,6 @@
 // 2120A 위험평가 분석적절차 입력 — 전기(이월 때 옮겨 둔 열)와 당기(전기 DSD 로 채움)를 나란히, 증감·비고.
 import { useState } from 'react';
-import { balance, cleanFs, groupLike, sameGroup, unusedBorrowed, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
+import { balance, cleanFs, sameGroup, suggestGroup, unusedBorrowed, type Paper2120A, type Row2120, type FillReport } from '../../lib/gwpPaper2120A';
 import { flagsOf, coveredByGroup, bundlesOf, bundleProc, missingProcs, fillStdProcs, offIndustry, splitProc, generalizeProc, stdHas, triggerOf, stdAccountOf, INDUSTRIES, UNEXPECTED_FACTOR, type ProcStd, type ProcBundle } from '../../lib/gwpProcStd';
 
 const fmt = (n: number | null | undefined) => (n == null ? '' : n.toLocaleString('ko-KR'));
@@ -149,12 +149,12 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
               {report.unplaced.filter((u) => !placed.has(u.label)).map((u) => {
                 const isPl = /손익/.test(u.statement);
                 const mineGroups = groups.filter((g) => g.pl === isPl);
-                // DSD 윗 과목이 2120A 에 없는 분류면(더그림 「투자자산」) 새 분류를 제안한다 — 엉뚱한 분류(투자부동산)에 넣지 않게.
-                const p = u.parents?.[0];
-                const fresh = p && !/총계|합계/.test(p) && !['자산', '부채', '자본'].includes(p) && !mineGroups.some((g) => groupLike(cleanFs(g.name), p)) ? p : null;
-                // 윗 과목과 같은 분류가 있으면 그것을 미리 골라 둔다(휴식 우선주자본금 → 자본금) — 누를 것만 누르게.
-                const same = p ? mineGroups.find((g) => groupLike(cleanFs(g.name), p)) : undefined;
-                const chosen = grp[u.label] ?? (fresh ? `NEW:${fresh}` : same?.id ?? '');
+                // 어느 분류에 넣을지 미리 골라 둔다(suggestGroup) — 성격(매도가능증권 → 투자자산) > DSD 윗 과목과 같은 분류 > 새 분류.
+                // 엉뚱한 분류(투자부동산)에 넣지 않게, 누를 것만 누르게.
+                const sg = suggestGroup(u.label, u.parents ?? [], mineGroups.map((g) => g.name));
+                const fresh = sg.fresh?.name ?? null;
+                const same = sg.same ? mineGroups.find((g) => g.name === sg.same) : undefined;
+                const chosen = grp[u.label] ?? (sg.pickFresh && fresh ? `NEW:${fresh}` : same?.id ?? (fresh ? `NEW:${fresh}` : ''));
                 return (
                   <div key={u.label} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 6, color: 'var(--ink-1)' }}>
                     <span style={{ whiteSpace: 'nowrap', minWidth: 170 }}><b>{u.label}</b> {fmt(u.cur)} →</span>
@@ -183,7 +183,7 @@ export default function Form2120A({ value, onChange, readOnly, fill, report, om,
                           const sec: Row2120['sec'] = isPl ? '손익' : u.sec ?? '자산';
                           const row: Row2120 = { key: `new|${name}|${u.label}`, label: u.label, fsli: u.label, pl: isPl, prev: null, cur: u.cur, note: '', src: '손', sec, group: name, added: true, absorbs: [u.label] };
                           const at = value.rows.map((r, i) => ({ r, i })).filter(({ r }) => r.pl === isPl && r.sec === sec).pop()?.i ?? value.rows.length - 1;
-                          const newGroups = [...(value.newGroups ?? []).filter((g) => !sameGroup(g.name, name)), { name, pl: isPl, parents: u.parents ?? [], sec }];
+                          const newGroups = [...(value.newGroups ?? []).filter((g) => !sameGroup(g.name, name)), { name, pl: isPl, parents: name === sg.fresh?.name ? sg.fresh.parents : u.parents ?? [], sec }];
                           onChange({ ...value, newGroups, rows: [...value.rows.slice(0, at + 1), row, ...value.rows.slice(at + 1)] });
                         } else addRow(chosen, u.label, u.cur, { absorbs: [u.label], note: '' });
                         setPlaced(new Set(placed).add(u.label));

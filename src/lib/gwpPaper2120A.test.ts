@@ -479,3 +479,17 @@ test('2120A 새 분류 — 시트에 없는 「투자자산」을 비유동자�
   assert.equal(s2.cells.get('F34')?.formula, '+F35+F38+F40');
   assert.equal(s2.cells.get('B42')?.text, '자 산 총 계');
 });
+
+test('suggestGroup — 매도가능증권은 DSD 가 당좌자산에 두어도 투자자산, 중간 과목은 윗 분류로', async () => {
+  const { suggestGroup } = await import('./gwpPaper2120A');
+  const groups = ['Ⅰ. 유  동  자  산', '(1)  유  형  자  산', '(3)  투자부동산', '(4)  기타비유동자산'];
+  const a = suggestGroup('매도가능증권', ['당좌자산', '유동자산', '자산'], groups);
+  assert.equal(a.pickFresh, true);
+  assert.deepEqual(a.fresh, { name: '투자자산', parents: ['투자자산', '비유동자산', '자산'] });
+  assert.equal(suggestGroup('매도가능증권', [], [...groups, '(5) 투자자산']).same, '(5) 투자자산');
+  const b = suggestGroup('단기금융상품', ['당좌자산', '유동자산', '자산'], groups);
+  assert.equal(b.same, 'Ⅰ. 유  동  자  산');
+  assert.equal(b.pickFresh, false);
+  assert.equal(b.fresh?.name, '당좌자산');
+  assert.equal(suggestGroup('장기금융상품', ['투자자산', '비유동자산', '자산'], groups).pickFresh, true);   // 더그림 — 기타비유동자산으로 새지 않게
+});

@@ -587,6 +587,36 @@ export function groupLike(a: string, b: string): boolean {
   return a.includes('비유동') === b.includes('비유동');
 }
 
+/** 성격으로 분류가 정해진 계정 — DSD 가 어디에 두었든 2120A 에서는 이 분류(사용자 2026-10-02 「매도가능증권의 분류는 [투자자산]」 — 더그림·제이스튜디오). */
+const NATURE: [RegExp, string, string[]][] = [
+  [/^(단기|장기)?(매도가능증권|만기보유증권|투자증권)$|^지분법적용투자주식$/, '투자자산', ['투자자산', '비유동자산', '자산']],
+];
+
+/**
+ * 2120A 에 받을 줄이 없는 DSD 계정 — 어느 분류에 넣을지 미리 고른다.
+ *   ① 성격으로 정해진 계정(매도가능증권 → 투자자산): 그 분류가 있으면 그것, 없으면 새 분류.
+ *   ② DSD 윗 과목과 같은 분류가 있으면 그것(우선주자본금 → 자본금).
+ *   ③ 윗 과목이 2120A 에 없는 중간 과목(「(1)당좌자산」)이고 그 위(「Ⅰ.유동자산」)가 분류로 있으면 그것 — 새 분류는 고를 수만 있게.
+ *   ④ 아니면 윗 과목으로 새 분류(더그림 「투자자산」).
+ * groups = 이 표(재무상태표·손익)의 분류 이름들.
+ */
+export function suggestGroup(label: string, parents: string[], groups: string[]): { same?: string; fresh?: { name: string; parents: string[] }; pickFresh: boolean } {
+  const ok = (p: string) => !!p && !/총계|합계/.test(p) && !['자산', '부채', '자본'].includes(p);
+  const like = (p: string) => groups.find((g) => groupLike(cleanFs(g), p));
+  const nat = NATURE.find(([re]) => re.test(cleanFs(label)));
+  if (nat) {
+    const same = like(nat[1]);
+    return same ? { same, pickFresh: false } : { fresh: { name: nat[1], parents: nat[2] }, pickFresh: true };
+  }
+  const p = parents[0];
+  if (!p || !ok(p)) return { pickFresh: false };
+  const same = like(p);
+  if (same) return { same, pickFresh: false };
+  const fresh = { name: p, parents };
+  const up = parents.slice(1).filter(ok).map((x) => groups.find((g) => cleanFs(g) === x)).find(Boolean);
+  return up ? { same: up, fresh, pickFresh: false } : { fresh, pickFresh: true };
+}
+
 /**
  * 빌린 틀에 없는 DSD 계정 → 알맞은 분류 끝의 새 줄(사용자 2026-09-30 「나중에는 클로드 없이도」 — 빌린 틀은 손 안 대고 끝나야 한다).
  * 분류는 DSD 표의 윗 과목(「유형자산」·「판매비와관리비」)과 틀의 분류 이름(번호·띄어쓰기 뗀 것)으로 찾고, 없으면 같은 부분(자산·부채·자본·손익)의 끝 분류.
