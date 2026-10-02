@@ -40,7 +40,8 @@ export interface WtbRollOptions {
   /** 올해 연말 「2026-12-31」 — A500 B2 */ yearEnd: string;
   /** 작년 결산일 「2025-12-31」 */ prevEnd: string;
   /** 올해 기수 — 없으면 WBS 머리 + 1 */ term?: number;
-  author?: string; reviewer?: string;
+  /** A500 작성자·검토자 — **회사 담당자**(사용자 2026-10-03 정정: 감사인이 아니다). 주면 바꾸고, 없으면 작년 그대로. */
+  companyAuthor?: string; companyReviewer?: string;
   tb?: TbLine[];
   /** 보이게 둘 해 수(올해 포함) — 기본 4 */ years?: number;
   /** 시산표에만 있는 계정을 어디에 — 이미 있는 줄에 더하기(label = C열 이름) 또는 과목(B열) 끝에 새 줄 */
@@ -460,8 +461,8 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
       if (headRow && sumRow && r > headRow + 1 && r < sumRow && (v.num != null || v.text != null || v.formula)) edits.push({ ref, clear: true });
       if (ref === 'B2') edits.push({ ref, num: yearEnd });
       const txt = txtOf.get(ref) ?? '';
-      if (o.author && /작성자\s*:/.test(txt)) edits.push({ ref, text: txt.replace(/(작성자\s*:\s*)([^님]*?)(\s*님|$)/, `$1${o.author}$3`) });
-      if (o.reviewer && /검토자\s*:/.test(txt)) edits.push({ ref, text: txt.replace(/(검토자\s*:\s*)([^님]*?)(\s*님|$)/, `$1${o.reviewer}$3`) });
+      if (o.companyAuthor && /작성자\s*:/.test(txt)) edits.push({ ref, text: txt.replace(/(작성자\s*:\s*)([^님]*?)(\s*님|$)/, `$1${o.companyAuthor}$3`) });
+      if (o.companyReviewer && /검토자\s*:/.test(txt)) edits.push({ ref, text: txt.replace(/(검토자\s*:\s*)([^님]*?)(\s*님|$)/, `$1${o.companyReviewer}$3`) });
     }
     if (edits.length) files[a500.part] = enc(setCells(dec(files[a500.part]), edits));
     if (!headRow || !sumRow) report.notes.push(`${a500.name}: 수정분개 표(머리 「계정과목」~「합계」)를 찾지 못해 비우지 않았습니다.`);
@@ -483,6 +484,54 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
     if (!/^보고서|^WCF/.test(e.name)) continue;
     const r = fillPriorLinks(dec(files[e.part]), sharedStrings(files), adjToPrior);
     if (r.n) { files[e.part] = enc(r.xml); report.notes.push(`${e.name}: 전기 열에 값으로 적힌 ${r.n}칸을 전기 링크로 바꿨습니다(${r.refs.slice(0, 6).join(', ')}${r.refs.length > 6 ? ' …' : ''}).`); }
+  }
+
+  // ⑥-3 WCF 에 없는 과목 — 보고서BS 의 과목(F열 열쇠) 가운데 WCF(A열)에 줄이 없고 올해·작년 금액이 있는 것(제이 부가세대급금 7,925만).
+  {
+    const wbsT = tables.find((t) => t.L.sheet === 'WBS');
+    const nz = new Set<string>();
+    if (wbsT) {
+      const bOf = (r: number) => norm(wbsT.sh.cells.get(`B${r}`)?.text);
+      for (const r of wbsT.L.accounts) if (wbsT.sh.cells.get(`${colName(wbsT.L.adj)}${r}`)?.num) nz.add(bOf(r));
+      for (const f of report.filled) if (f.sheet === 'WBS' && f.value) nz.add(bOf(f.row));
+      for (const p of o.place ?? []) if (p.to === 'new' && p.sheet === 'WBS') nz.add(norm(p.fsli));
+    }
+    const wcf = entries().find((e) => /^WCF/.test(e.name));
+    if (wcf && nz.size) {
+      const added: string[] = [];
+      for (let guard = 0; guard < 40; guard++) {
+        const now = readWorkbook(zipFn(files), (n) => n === '보고서BS' || n === wcf.name);
+        const bs = now.find((x) => x.name === '보고서BS'), cf = now.find((x) => x.name === wcf.name);
+        if (!bs || !cf) break;
+        const keyRows = (sh: SheetData, keyCol: string) => {
+          const out: { key: string; row: number; text: string }[] = [];
+          for (const [ref, v] of sh.cells) if (colOf(ref) === 'B' && /SUMIF/i.test(v.formula ?? '')) {
+            const t = sh.cells.get(`${keyCol}${rowOf(ref)}`)?.text ?? '';
+            if (t) out.push({ key: norm(t), row: rowOf(ref), text: t.trim() });
+          }
+          return out.sort((a, b) => a.row - b.row);
+        };
+        const bsKeys = keyRows(bs, 'F'), cfKeys = keyRows(cf, 'A');
+        const have = new Map(cfKeys.map((k) => [k.key, k.row]));
+        const i = bsKeys.findIndex((k) => !have.has(k.key) && nz.has(k.key));
+        if (i < 0) break;
+        const nextRow = bsKeys.slice(i + 1).map((k) => have.get(k.key)).find((r) => r != null);
+        const prevRow = bsKeys.slice(0, i).reverse().map((k) => have.get(k.key)).find((r) => r != null);
+        const after = nextRow != null ? nextRow - 1 : prevRow;
+        const tmpl = prevRow ?? nextRow;
+        if (after == null || tmpl == null) { report.notes.push(`${wcf.name}: 「${bsKeys[i].text}」 줄을 넣을 자리를 찾지 못했습니다.`); nz.delete(bsKeys[i].key); continue; }
+        insertRowsBook(files, entries().map((e) => ({ name: e.name, part: e.part })), wcf.name, after, 1, dec, enc, insertRowsAfter);
+        const n = after + 1;
+        const edits: CellEdit[] = [{ ref: `A${n}`, text: bsKeys[i].text }];
+        for (let c = 2; c <= 5; c++) {
+          const f = cf.cells.get(`${colName(c)}${tmpl}`)?.formula;
+          if (f) edits.push({ ref: `${colName(c)}${n}`, formula: moveRelative(f, n - (tmpl > after ? tmpl + 1 : tmpl), 0) });
+        }
+        files[wcf.part] = enc(setCells(dec(files[wcf.part]), edits));
+        added.push(`${bsKeys[i].text}(${n}행)`);
+      }
+      if (added.length) report.notes.push(`${wcf.name}: 보고서BS 에는 있고 WCF 에 없던 과목 줄을 넣었습니다 — ${added.join(', ')}. 현금흐름 배분 칸은 비어 있습니다.`);
+    }
   }
 
   // ⑦ 시트 이름 _FY25 → _FY26
@@ -645,4 +694,15 @@ function fillPriorLinks(xml: string, sstr: string[] | null, adjToPrior: Map<stri
     edits.push({ ref: `${colName(prior)}${r}`, formula: g });
   }
   return { xml: edits.length ? setCells(xml, edits) : xml, n: edits.length, refs: edits.map((e) => e.ref) };
+}
+
+/** 화면용 — 작년 A500 의 작성자·검토자(회사 담당). */
+export function wtbA500People(bytes: Uint8Array): { author: string | null; reviewer: string | null } {
+  const sh = readWorkbook(bytes, (n) => /^A500|수정(사항)?집계/.test(n))[0];
+  let author: string | null = null, reviewer: string | null = null;
+  for (const v of sh?.cells.values() ?? []) {
+    const a = /작성자\s*:\s*([^님]*?)\s*(님|$)/.exec(v.text ?? ''); if (a && !author) author = a[1].trim() || null;
+    const r = /검토자\s*:\s*([^님]*?)\s*(님|$)/.exec(v.text ?? ''); if (r && !reviewer) reviewer = r[1].trim() || null;
+  }
+  return { author, reviewer };
 }

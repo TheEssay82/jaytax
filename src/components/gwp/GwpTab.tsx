@@ -693,7 +693,7 @@ export default function GwpTab() {
               )}
 
               {view === 'wtb' && (
-                <WtbRollCard key={`wtb:${picked.id}`} eng={picked} canWrite={canWrite} author={year?.authorDefault ?? null} reviewer={year?.partner ?? null} />
+                <WtbRollCard key={`wtb:${picked.id}`} eng={picked} canWrite={canWrite} />
               )}
 
               {/* ① 올해 파일 ─────────────────────────────── */}

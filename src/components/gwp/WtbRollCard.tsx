@@ -8,7 +8,7 @@ import type { Engagement } from '../../lib/dsdApi';
 import { findEngagement } from '../../lib/dsdApi';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { unzip, zip } from '../../lib/xlsxTransplant';
-import { rollWtb, tbFromSheet, wtbOutline, type TbLine, type WtbPlace, type WtbRollReport, type WtbRow } from '../../lib/wtbRoll';
+import { rollWtb, tbFromSheet, wtbOutline, wtbA500People, type TbLine, type WtbPlace, type WtbRollReport, type WtbRow } from '../../lib/wtbRoll';
 import { listFiles, latestFile, uploadFile, type EngFile } from '../../lib/gwpStageApi';
 import { fileBytes, fileUrl } from '../../lib/gwpApi';
 import { safeName, download } from '../dsd/dsdUi';
@@ -40,9 +40,7 @@ function readTb(bytes: Uint8Array): { tb: TbLine[]; date: string | null; sheet: 
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
 
-export default function WtbRollCard({ eng, canWrite, author, reviewer }: {
-  eng: Engagement; canWrite: boolean; author: string | null; reviewer: string | null;
-}) {
+export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWrite: boolean }) {
   const [prior, setPrior] = useState<Src | null>(null);
   const [fs, setFs] = useState<(Src & { tb: TbLine[] }) | null>(null);
   const [closing, setClosing] = useState(`${eng.fy}-08-31`);
@@ -54,6 +52,11 @@ export default function WtbRollCard({ eng, canWrite, author, reviewer }: {
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  // A500 작성자·검토자 = **회사 담당**(사용자 2026-10-03). 작년 값을 보여 주고 올해 담당을 묻는다 — 확인해야 만든다.
+  const [lastPeople, setLastPeople] = useState<{ author: string | null; reviewer: string | null }>({ author: null, reviewer: null });
+  const [companyAuthor, setCompanyAuthor] = useState('');
+  const [companyReviewer, setCompanyReviewer] = useState('');
+  const [peopleOk, setPeopleOk] = useState(false);
 
   // 작년 확정 정산표 — 작년 작업 건 자료함에서. 만든 이월 정산표 목록.
   useEffect(() => {
@@ -73,12 +76,19 @@ export default function WtbRollCard({ eng, canWrite, author, reviewer }: {
   }, [eng.id, eng.entityId, eng.fy, eng.scope]);
 
   useEffect(() => { setPreview(null); setMade(null); }, [prior, fs, closing]);
-  useEffect(() => { if (prior) { try { setOutline(wtbOutline(prior.bytes).rows); } catch { setOutline([]); } } else setOutline([]); }, [prior]);
+  useEffect(() => {
+    setPeopleOk(false);
+    if (!prior) { setOutline([]); return; }
+    try { setOutline(wtbOutline(prior.bytes).rows); } catch { setOutline([]); }
+    try { const p = wtbA500People(prior.bytes); setLastPeople(p); setCompanyAuthor(p.author ?? ''); setCompanyReviewer(p.reviewer ?? ''); } catch { /* 없으면 빈칸 */ }
+  }, [prior]);
 
   const opts = useMemo(() => ({
     closing, yearEnd: `${eng.fy}-12-31`, prevEnd: `${eng.fy - 1}-12-31`,
-    author: author ?? undefined, reviewer: reviewer ?? undefined, tb: fs?.tb,
-  }), [closing, eng.fy, author, reviewer, fs]);
+    companyAuthor: companyAuthor.trim() && companyAuthor.trim() !== lastPeople.author ? companyAuthor.trim() : undefined,
+    companyReviewer: companyReviewer.trim() && companyReviewer.trim() !== lastPeople.reviewer ? companyReviewer.trim() : undefined,
+    tb: fs?.tb,
+  }), [closing, eng.fy, companyAuthor, companyReviewer, lastPeople, fs]);
 
   async function pickPrior(f: File | undefined) {
     if (!f) return;
@@ -173,8 +183,17 @@ export default function WtbRollCard({ eng, canWrite, author, reviewer }: {
           <input type="date" className="btn-sm" value={closing} onChange={(e) => setClosing(e.target.value)} />
           <span style={{ color: 'var(--ink-3)' }}>중간감사 기준월 말 — 시산표 제목에서 읽습니다. A500 의 FS일은 {eng.fy}-12-31 로 미리 둡니다.</span>
         </div>
-        <b>작성자 · 검토자</b>
-        <span>{author ?? '—'} · {reviewer ?? '—'} <span style={{ color: 'var(--ink-3)' }}>(일반조서 당기 세팅 값 — A500 에 적습니다)</span></span>
+        <b>④ 회사 담당</b>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ color: 'var(--ink-3)' }}>A500 작성자</span>
+          <input className="btn-sm" style={{ width: 110 }} value={companyAuthor} onChange={(e) => { setCompanyAuthor(e.target.value); setPeopleOk(false); }} placeholder="회사 작성자" />
+          <span style={{ color: 'var(--ink-3)' }}>검토자</span>
+          <input className="btn-sm" style={{ width: 110 }} value={companyReviewer} onChange={(e) => { setCompanyReviewer(e.target.value); setPeopleOk(false); }} placeholder="회사 검토자" />
+          <label style={{ color: peopleOk ? 'var(--good)' : 'var(--warn)' }}>
+            <input type="checkbox" checked={peopleOk} disabled={!prior} onChange={(e) => setPeopleOk(e.target.checked)} /> 올해 회사 담당이 맞습니다
+          </label>
+          <span style={{ color: 'var(--ink-3)' }}>{prior ? `작년: ${lastPeople.author ?? '—'} · ${lastPeople.reviewer ?? '—'} — 바뀌었으면 고치세요` : ''}</span>
+        </div>
       </div>
 
       <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -218,10 +237,11 @@ export default function WtbRollCard({ eng, canWrite, author, reviewer }: {
             </div>
           ) : <div style={{ marginTop: 6, color: 'var(--good)', fontSize: 'var(--fs-2)' }}>시산표 계정이 모두 정산표 줄에 맞았습니다.</div>}
           <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button className="btn-p" disabled={!!busy || unresolved > 0} onClick={() => void make()}>
+            <button className="btn-p" disabled={!!busy || unresolved > 0 || !peopleOk} onClick={() => void make()}>
               {busy === 'make' ? '만드는 중…' : `이월 정산표 만들기 — ${wtbFileName(eng, '중간')}`}
             </button>
             {unresolved > 0 && <span style={{ color: 'var(--warn)', fontSize: 'var(--fs-1)' }}>받을 줄이 없는 계정 {unresolved}개를 먼저 고르세요</span>}
+            {!peopleOk && <span style={{ color: 'var(--warn)', fontSize: 'var(--fs-1)' }}>④ 회사 담당(A500 작성자·검토자)을 확인해 주세요</span>}
           </div>
         </div>
       )}
