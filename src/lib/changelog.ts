@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.48.6',
+    date: '2026-10-02',
+    title: '작업 건 새로 만들기 — 회계기준 기본값을 일반기업회계기준으로',
+    highlights: [
+      '「새 작업 건」 창의 회계기준 기본값을 K-IFRS → 일반기업회계기준으로 바꿨습니다(거래처 대부분이 일반기업). 앞 해 작업 건이 있으면 지금처럼 그 기준을 따릅니다.',
+    ],
+  },
+  {
     version: '3.48.5',
     date: '2026-10-02',
     title: '일반조서 — 업무 폴더 이름 꼴이 달라도 가져오기',

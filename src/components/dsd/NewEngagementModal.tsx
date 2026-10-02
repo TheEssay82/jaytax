@@ -36,7 +36,7 @@ export default function NewEngagementModal({ entities, auditIds, onClose, onDone
   // 첫 사업연도는 기간이 짧다. 사업연도를 바꾸면 다시 그 해의 1/1~12/31 로 맞춘다.
   const [period, setPeriod] = useState(defaultPeriod(defaultAuditFy()));
   const [scope, setScope] = useState<'별도' | '연결'>('별도');
-  const [basis, setBasis] = useState<Basis>('K-IFRS');
+  const [basis, setBasis] = useState<Basis>('일반기업회계기준');   // 거래처 대부분이 일반기업(사용자 2026-10-02 — 라이언로켓이 기본값 K-IFRS 로 잘못 만들어짐). 앞 해 건이 있으면 그것을 따른다.
   const [moneyUnit, setMoneyUnit] = useState<'천원' | '원'>('천원');
   // 시트 구성 — 만들 때 정한다(사용자 결정 2026-09-14). 앞 해 건이 있으면 그것을 따른다.
   const [sheetLayout, setSheetLayout] = useState<SheetLayout>('sheets');
