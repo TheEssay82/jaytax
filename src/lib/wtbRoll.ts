@@ -707,3 +707,48 @@ export function wtbA500People(bytes: Uint8Array): { author: string | null; revie
   }
   return { author, reviewer };
 }
+
+/**
+ * 시산표가 없는 회사 — 재무상태표·손익계산서 시트로 시산표 줄을 만든다(사용자 2026-10-03 「모든 회사의 제시재무제표에 시산표가 있지 않다」).
+ * 더존 모양: 「과 목 | 제 11 (당)기 | | 제 10 (전)기 |」 — 당기 금액은 안쪽 열(차감 전) 또는 바깥쪽 열.
+ *   계정 줄 = 들여 쓴 줄(로마 숫자·(1)·총계 머리 줄이 아닌 것). 금액 = 안쪽 열, 없으면 바깥쪽 열.
+ *   차감 계정(감가상각누계액·대손충당금·퇴직연금운용자산 …)은 안쪽 열이 그 금액(양수로 적힘) → 음수로.
+ * 재무제표 금액은 성격대로 양수라서, 시산표 부호(차변 − 대변)로 바꿔 돌려준다 — 자산·비용은 그대로, 부채·자본·수익은 뒤집는다.
+ */
+const CONTRA = /^(감가상각누계액|대손충당금|정부보조금|국고보조금|현재가치할인차금|손상차손누계액|퇴직연금운용자산|국민연금전환금|사채할인발행차금)$/;
+export function fsFromSheet(sh: SheetData, kind: 'BS' | 'PL'): TbLine[] {
+  // 머리 — 「과목」·「계정과목」 칸과 「당기」 칸.
+  let headRow = 0, labelCol = 0, curCol = 0;
+  for (const [ref, v] of sh.cells) {
+    const t = norm(v.text);
+    if (!headRow && /^(과목|계정과목|계정)$/.test(t)) { headRow = rowOf(ref); labelCol = colNum(colOf(ref)); }
+  }
+  if (!headRow) throw new Error(`「${sh.name}」에서 「과목」 머리를 찾지 못했습니다.`);
+  for (let c = labelCol + 1; c <= labelCol + 8 && !curCol; c++) if (/당\)?기|당기|제\d+\(?당/.test(norm(sh.cells.get(`${colName(c)}${headRow}`)?.text))) curCol = c;
+  if (!curCol) curCol = labelCol + 1;
+  const num = (c: number, r: number) => sh.cells.get(`${colName(c)}${r}`)?.num;
+  const maxRow = Math.max(...[...sh.cells.keys()].map(rowOf));
+  const out: TbLine[] = [];
+  let section: TbLine['section'] = kind === 'PL' ? '손익' : '자산', current = true, credit = false;
+  for (let r = headRow + 1; r <= maxRow; r++) {
+    const raw = sh.cells.get(`${colName(labelCol)}${r}`)?.text ?? '';
+    const t = norm(raw);
+    if (!t) continue;
+    const head = /^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+\.?|^\(\d+\)|^\[|^<|총계|합계$/.test(t) || !/^\s{2,}/.test(raw);
+    if (kind === 'BS') {
+      if (/^자산$/.test(t)) section = '자산';
+      else if (/^부채$/.test(t)) { section = '부채'; current = true; }
+      else if (/^자본$/.test(t)) section = '자본';
+      if (head && /비유동/.test(t)) current = false; else if (head && /유동/.test(t)) current = true;
+    } else if (head && /^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+/.test(t)) credit = /매출액|수익$/.test(t.replace(/^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+\.?/, ''));
+    if (head || /^\(?당기순이익\)?$|^당기:|^전기:/.test(t)) continue;
+    const inner = num(curCol, r), outer = num(curCol + 1, r);
+    let amt = inner ?? outer;
+    if (amt == null) continue;
+    if (CONTRA.test(t)) amt = -Math.abs(inner ?? amt);
+    // 재무제표(성격대로 양수) → 시산표 부호(차변 − 대변)
+    const flip = kind === 'BS' ? section !== '자산' : credit;
+    out.push({ name: raw.trim().replace(/\s+/g, ' '), section, current: kind === 'BS' ? current : undefined, bal: flip ? -amt : amt });
+  }
+  return out;
+}
