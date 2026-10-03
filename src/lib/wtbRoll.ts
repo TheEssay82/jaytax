@@ -730,17 +730,21 @@ export function fsFromSheet(sh: SheetData, kind: 'BS' | 'PL'): TbLine[] {
   const maxRow = Math.max(...[...sh.cells.keys()].map(rowOf));
   const out: TbLine[] = [];
   let section: TbLine['section'] = kind === 'PL' ? '손익' : '자산', current = true, credit = false;
+  // 더존은 계정 줄을 들여 쓴다. 들여쓰기가 전혀 없는 프로그램이면 머리 모양(로마 숫자·(1)·총계)만으로 가른다.
+  const indented = [...sh.cells.entries()].some(([ref, v]) => colNum(colOf(ref)) === labelCol && /^\s{2,}\S/.test(v.text ?? ''));
   for (let r = headRow + 1; r <= maxRow; r++) {
     const raw = sh.cells.get(`${colName(labelCol)}${r}`)?.text ?? '';
     const t = norm(raw);
     if (!t) continue;
-    const head = /^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+\.?|^\(\d+\)|^\[|^<|총계|합계$/.test(t) || !/^\s{2,}/.test(raw);
+    // 로마 숫자 머리: 「Ⅰ.」은 그대로, 영문 I·V·X 는 점이 붙을 때만(「VAT…」 같은 계정 이름을 머리로 보지 않게).
+    const roman = /^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]/.test(t) || /^[IVX]+\s*\./.test(raw.trim());
+    const head = roman || /^\(\d+\)|^\[|^<|총계|합계$|^(자산|부채|자본)$/.test(t) || (indented && !/^\s{2,}/.test(raw));
     if (kind === 'BS') {
       if (/^자산$/.test(t)) section = '자산';
       else if (/^부채$/.test(t)) { section = '부채'; current = true; }
       else if (/^자본$/.test(t)) section = '자본';
       if (head && /비유동/.test(t)) current = false; else if (head && /유동/.test(t)) current = true;
-    } else if (head && /^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+/.test(t)) credit = /매출액|수익$/.test(t.replace(/^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+\.?/, ''));
+    } else if (roman) credit = /매출액|수익$/.test(t.replace(/^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩIVX]+/, ''));
     if (head || /^\(?당기순이익\)?$|^당기:|^전기:/.test(t)) continue;
     const inner = num(curCol, r), outer = num(curCol + 1, r);
     let amt = inner ?? outer;

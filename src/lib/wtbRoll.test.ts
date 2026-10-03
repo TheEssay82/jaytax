@@ -55,3 +55,15 @@ test('재무제표 시트 — 들여 쓴 계정 줄만, 안쪽 열 먼저, 차�
   ]);
   assert.deepEqual(fsFromSheet({ name: '손익계산서', cells: pl } as unknown as SheetData, 'PL').map((x) => [x.name, x.bal]), [['임대매출(신사동)', -752000000], ['직원급여', 100533336]]);
 });
+
+test('재무제표 시트 — 들여쓰기 없는 프로그램, VAT 같은 영문 계정 이름', async () => {
+  const { fsFromSheet } = await import('./wtbRoll');
+  const bs = new Map<string, { text?: string; num?: number }>([
+    ['A1', { text: '계정과목' }], ['B1', { text: '당기' }],
+    ['A2', { text: '자산' }], ['A3', { text: 'I. 유동자산' }], ['B3', { num: 9 }],
+    ['A4', { text: '보통예금' }], ['B4', { num: 5 }], ['A5', { text: 'VAT대급금' }], ['B5', { num: 4 }],
+    ['A6', { text: '부채' }], ['A7', { text: '미지급금' }], ['B7', { num: 9 }],
+  ]);
+  assert.deepEqual(fsFromSheet({ name: 'BS', cells: bs } as unknown as SheetData, 'BS').map((x) => [x.name, x.section, x.bal]),
+    [['보통예금', '자산', 5], ['VAT대급금', '자산', 4], ['미지급금', '부채', -9]]);
+});
