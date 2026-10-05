@@ -351,7 +351,8 @@ export default function DsdEngagementTab({ onNavigate }: { onNavigate?: (tab: st
                       <input type="checkbox" checked={picked.isDemo} onChange={(ev) => void setDemo(picked.id, ev.target.checked).then(() => load(picked.id))} /> 외부인에게 보여 주기
                     </label>
                   )}
-                  {!lockWrite && <button className="btn-sm btn-sm-del" onClick={() => void removeEng(picked)}>건 지우기</button>}
+                  {/* 체험 계정은 데모 건도 지우지 못한다 — 여럿이 같은 연습 자료를 쓴다(2026-10-06). */}
+                  {!lockWrite && !sandbox && <button className="btn-sm btn-sm-del" onClick={() => void removeEng(picked)}>건 지우기</button>}
                 </span>
               )}
             />

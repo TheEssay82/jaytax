@@ -58,6 +58,7 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
   const end = mode === '기말';
   const run = end ? refreshWtb : rollWtb;
   const [prior, setPrior] = useState<Src | null>(null);
+  const [loadingPrior, setLoadingPrior] = useState(true);
   const [srcs, setSrcs] = useState<SrcSheet[]>([]);
   const [pair, setPair] = useState<Record<string, string>>({});
   const [closing, setClosing] = useState(end ? `${eng.fy}-12-31` : `${eng.fy}-08-31`);
@@ -80,7 +81,7 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
   // 작년 확정 정산표 — 작년 작업 건 자료함에서. 만든 이월 정산표 목록.
   useEffect(() => {
     let off = false;
-    setPrior(null); setSrcs([]); setPreview(null); setMade(null); setChoice({});
+    setPrior(null); setSrcs([]); setPreview(null); setMade(null); setChoice({}); setLoadingPrior(true);
     void (async () => {
       const mine = await listFiles(eng.id);
       const outs = mine.filter((f) => f.kind === '이월정산표' && !f.meta.void);
@@ -99,7 +100,7 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
       if (!f || off) return;
       const bytes = await fileBytes(f.storagePath);
       if (!off) setPrior({ name: f.fileName, bytes, from: `작년(FY${prev.fy}) 자료함의 확정 정산표` });
-    })().catch(() => undefined);
+    })().catch(() => undefined).finally(() => { if (!off) setLoadingPrior(false); });
     return () => { off = true; };
   }, [eng.id, eng.entityId, eng.fy, eng.scope, end]);
 
@@ -267,6 +268,7 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
         <b>{end ? '① 중간 정산표' : '① 작년 확정 정산표'}</b>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {prior ? <span>{prior.name} <span style={{ color: 'var(--ink-3)' }}>({prior.from}{outline.tables.length ? ` · 표 ${outline.tables.map((t) => t.sheet + (t.hidden ? '(숨김)' : '')).join('·')}` : ''})</span></span>
+            : loadingPrior ? <span style={{ color: 'var(--ink-3)' }}>자료함에서 불러오는 중…</span>
             : <span style={{ color: 'var(--ink-3)' }}>{end ? '이 건 자료함에 중간 정산표가 없습니다 — 파일을 고르세요' : '작년 작업 건 자료함에 없습니다 — 파일을 고르세요'}</span>}
           <label className="btn-sm" style={{ cursor: 'pointer' }}>{prior ? '다른 파일' : '파일 고르기'}
             <input type="file" accept=".xlsx,.xlsm" style={{ display: 'none' }} onChange={(e) => { void pickPrior(e.target.files?.[0]); e.target.value = ''; }} />
