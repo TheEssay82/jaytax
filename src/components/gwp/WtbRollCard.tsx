@@ -11,14 +11,15 @@ import type { Engagement } from '../../lib/dsdApi';
 import { findEngagement } from '../../lib/dsdApi';
 import { readWorkbook, type SheetData } from '../../lib/xlsxRead';
 import { unzip, zip } from '../../lib/xlsxTransplant';
-import { rollWtb, tbFromSheet, fsFromSheet, wtbOutline, wtbA500People, type TbLine, type WtbPlace, type WtbRollReport, type WtbRow, type TableKind } from '../../lib/wtbRoll';
+import { rollWtb, tbFromSheet, fsFromSheet, wtbOutline, wtbA500People, pairKey, type TbLine, type WtbPlace, type WtbRollReport, type WtbRow, type TableKind } from '../../lib/wtbRoll';
 import { listFiles, latestFile, uploadFile, type EngFile } from '../../lib/gwpStageApi';
 import { fileBytes, fileUrl } from '../../lib/gwpApi';
+import { listWtbMaps, saveWtbMaps, deleteWtbMap, mapsToPlaces, type WtbMap, type WtbMapInput } from '../../lib/wtbMapApi';
 import { safeName, download } from '../dsd/dsdUi';
 
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 type Src = { name: string; bytes: Uint8Array; from: string };
-type Choice = { to: 'row'; label: string; row: number } | { to: 'new'; fsli: string } | { to: 'skip' };
+type Choice = { to: 'row'; label: string; row: number; fsli?: string } | { to: 'new'; fsli: string } | { to: 'skip' };
 type SrcKind = 'TB' | 'BS' | 'PL' | 'MC' | 'skip';
 const KIND_LABEL: Record<SrcKind, string> = { TB: '합계잔액시산표', BS: '재무상태표', PL: '손익계산서', MC: '제조원가명세서', skip: '쓰지 않음' };
 type SrcSheet = { key: string; file: string; sheet: SheetData; kind: SrcKind };
@@ -69,6 +70,9 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
   const [lastPeople, setLastPeople] = useState<{ author: string | null; reviewer: string | null }>({ author: null, reviewer: null });
   const [companyAuthor, setCompanyAuthor] = useState('');
   const [companyReviewer, setCompanyReviewer] = useState('');
+  // 회사별로 고른 짝(사용자 2026-10-05) — 맞춰 볼 때 먼저 쓰고, 만들 때 이번에 고른 것을 저장한다.
+  const [maps, setMaps] = useState<WtbMap[]>([]);
+  useEffect(() => { void listWtbMaps(eng.entityId).then(setMaps).catch(() => setMaps([])); }, [eng.entityId]);
 
   // 작년 확정 정산표 — 작년 작업 건 자료함에서. 만든 이월 정산표 목록.
   useEffect(() => {
@@ -87,7 +91,7 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
     return () => { off = true; };
   }, [eng.id, eng.entityId, eng.fy, eng.scope]);
 
-  useEffect(() => { setPreview(null); setMade(null); }, [prior, srcs, closing, pair]);
+  useEffect(() => { setPreview(null); setMade(null); }, [prior, srcs, closing, pair, maps]);
   useEffect(() => {
     if (!prior) { setOutline({ rows: [], tables: [] }); return; }
     try { const o = wtbOutline(prior.bytes); setOutline({ rows: o.rows, tables: o.tables }); } catch { setOutline({ rows: [], tables: [] }); }
@@ -170,17 +174,24 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
     setBusy('preview'); setErr(null); setMsg(null);
     setTimeout(() => {
       try {
-        const r = rollWtb(prior.bytes, opts, unzip, zip).report;
+        const r = rollWtb(prior.bytes, { ...opts, place: mapsToPlaces(maps) }, unzip, zip).report;
         setPreview(r);
+        // 저장된 「넣지 않기」는 미리 골라 둔다.
+        const pre: Record<string, Choice> = {};
+        for (const u of r.unmatched) {
+          const m = maps.find((x) => x.sheet === u.sheet && x.sourceKey === pairKey(u.name, u.group));
+          if (m?.action === 'skip') pre[ckey(u)] = { to: 'skip' };
+        }
+        setChoice(pre);
       } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); } finally { setBusy(''); }
     }, 10);
   }
 
-  const ckey = (t: { sheet: string; name: string }) => `${t.sheet}|${t.name}`;
+  function ckey(t: { sheet: string; name: string; group?: string }) { return `${t.sheet}|${pairKey(t.name, t.group)}`; }
   const places = (): WtbPlace[] => (preview?.unmatched ?? []).flatMap((t) => {
     const c = choice[ckey(t)];
     if (!c || c.to === 'skip') return [];
-    return [c.to === 'row' ? { name: t.name, sheet: t.sheet, to: 'row' as const, label: c.label, row: c.row } : { name: t.name, sheet: t.sheet, to: 'new' as const, fsli: c.fsli }];
+    return [c.to === 'row' ? { name: t.name, sheet: t.sheet, to: 'row' as const, label: c.label, row: c.row, group: t.group } : { name: t.name, sheet: t.sheet, to: 'new' as const, fsli: c.fsli }];
   });
 
   async function make() {
@@ -191,7 +202,8 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
     if (!confirm(`A500(수정사항집계표)의 회사 담당을 확인해 주세요.\n\n  작성자: ${a}\n  검토자: ${rv}\n\n${changed ? `작년(${lastPeople.author ?? '—'} · ${lastPeople.reviewer ?? '—'})과 다르게 고쳐 넣습니다.` : '작년과 같습니다.'}\n올해 회사 담당이 맞으면 [확인], 아니면 [취소]를 누르고 ④ 칸을 고치세요.`)) return;
     setBusy('make'); setErr(null); setMsg(null);
     try {
-      const r = rollWtb(prior.bytes, { ...opts, place: places() }, unzip, zip);
+      // 저장된 짝 + 이번에 고른 것(같은 계정이면 이번 것이 이긴다 — 이번 것이 뒤라 Map 에서 덮어쓴다).
+      const r = rollWtb(prior.bytes, { ...opts, place: [...mapsToPlaces(maps), ...places()] }, unzip, zip);
       const name = wtbFileName(eng, '중간');
       download(r.bytes, name, XLSX);
       if (canWrite) {
@@ -200,6 +212,16 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
           unmatched: r.report.unmatched.length, notes: r.report.notes,
         });
         setSaved((await listFiles(eng.id)).filter((f) => f.kind === '이월정산표' && !f.meta.void));
+      }
+      // 이번에 고른 「이 줄에 더하기」·「넣지 않기」를 회사별로 저장(새 줄은 다음 해 정산표에 그 이름이 생기니 저장하지 않는다).
+      if (canWrite) {
+        const items: WtbMapInput[] = preview.unmatched.flatMap((t): WtbMapInput[] => {
+          const c = choice[ckey(t)];
+          if (c?.to === 'row') return [{ sheet: t.sheet, name: t.name, group: t.group, action: 'row' as const, label: c.label, fsli: c.fsli, row: c.row }];
+          if (c?.to === 'skip') return [{ sheet: t.sheet, name: t.name, group: t.group, action: 'skip' as const }];
+          return [];
+        });
+        try { await saveWtbMaps(eng.entityId, items); setMaps(await listWtbMaps(eng.entityId)); } catch (e) { setErr(`짝을 저장하지 못했습니다: ${e instanceof Error ? e.message : ''}`); }
       }
       setMade(r.report);
       setMsg(`「${name}」을 만들어 내려받았습니다${canWrite ? ' — 자료함에도 남겼습니다' : ''}. 엑셀에서 WBS 차대·이익잉여금 검증·SCE·WCF 검증을 한 번 보세요.`);
@@ -313,6 +335,11 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
             {preview.renamed.length > 0 && <span>시트 이름 {preview.renamed.map(([a, b]) => `${a}→${b}`).join(', ')}</span>}
           </div>
           {preview.notes.filter((n) => !/새 계정/.test(n)).map((n) => <div key={n} style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{n}</div>)}
+          {preview.filled.some((f) => f.how === '고른 짝') && (
+            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)' }}>
+              저장된 짝 {preview.filled.filter((f) => f.how === '고른 짝').length}줄을 썼습니다 — {preview.filled.filter((f) => f.how === '고른 짝').map((f) => `${f.from.join('+')} → ${f.sheet} ${f.label}`).join(' · ')}
+            </div>
+          )}
           {preview.filled.some((f) => f.how === '전기 금액') && (
             <details style={{ fontSize: 'var(--fs-1)', marginTop: 4 }}>
               <summary style={{ cursor: 'pointer', color: 'var(--ink-3)' }}>전기 금액으로 찾은 짝 보기 — 회사 자료의 이름이 정산표와 다른 줄</summary>
@@ -336,7 +363,7 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
                     </span>
                     <select className="btn-sm" style={{ maxWidth: 460 }} value={v} onChange={(e) => {
                       const x = e.target.value;
-                      if (x.startsWith('row:')) { const r = rows.find((y) => String(y.row) === x.slice(4))!; setChoice({ ...choice, [k]: { to: 'row', label: r.label, row: r.row } }); }
+                      if (x.startsWith('row:')) { const r = rows.find((y) => String(y.row) === x.slice(4))!; setChoice({ ...choice, [k]: { to: 'row', label: r.label, row: r.row, fsli: r.fsli } }); }
                       else setChoice({ ...choice, [k]: x.startsWith('new:') ? { to: 'new', fsli: x.slice(4) } : { to: 'skip' } });
                     }}>
                       <option value="">— 고르세요 —</option>
@@ -367,6 +394,26 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
           {made.notes.map((n) => <div key={n}>{n}</div>)}
           {made.unmatched.length > 0 && <div style={{ color: 'var(--warn)' }}>넣지 않은 계정: {made.unmatched.map((t) => `${t.sheet} ${t.name} ${fmt(Math.abs(t.bal))}`).join(', ')}</div>}
         </div>
+      )}
+
+      {maps.length > 0 && (
+        <details style={{ marginTop: 10, fontSize: 'var(--fs-1)' }}>
+          <summary style={{ cursor: 'pointer', color: 'var(--ink-3)' }}>이 회사에 저장된 짝 {maps.length}개 — 다음 이월에도 그대로 씁니다(틀렸으면 지우세요)</summary>
+          <table className="tbl" style={{ marginTop: 4 }}>
+            <thead><tr style={{ background: 'var(--surface-2)' }}><th>표</th><th>회사 자료 계정</th><th>정산표</th><th>고른 사람</th><th /></tr></thead>
+            <tbody>
+              {maps.map((m) => (
+                <tr key={m.id}>
+                  <td>{m.sheet}</td>
+                  <td>{m.sourceName}{m.sourceGroup ? <span style={{ color: 'var(--ink-3)' }}> ({m.sourceGroup})</span> : null}</td>
+                  <td>{m.action === 'skip' ? <span style={{ color: 'var(--ink-3)' }}>넣지 않기</span> : `${m.targetRow ? `${m.targetRow}행 ` : ''}${m.targetLabel}${m.targetFsli && m.targetFsli !== m.targetLabel ? ` (${m.targetFsli})` : ''}`}</td>
+                  <td style={{ color: 'var(--ink-3)' }}>{m.updatedEmail ?? ''} · {new Date(m.updatedAt).toLocaleDateString('sv-SE')}</td>
+                  <td>{canWrite && <button className="btn-sm" onClick={() => { if (confirm(`「${m.sourceName}」 짝을 지울까요? 다음 이월에서 다시 고르게 됩니다.`)) void deleteWtbMap(m.id).then(() => listWtbMaps(eng.entityId)).then(setMaps).catch((e) => setErr(e instanceof Error ? e.message : '지우지 못했습니다.')); }}>지우기</button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
       )}
 
       {saved.length > 0 && (

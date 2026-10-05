@@ -55,7 +55,7 @@ export interface WtbRollOptions {
 }
 
 export type WtbPlace =
-  | { name: string; sheet: string; to: 'row'; label: string; row?: number }
+  | { name: string; sheet: string; to: 'row'; label: string; row?: number; /** 회사 자료의 무리 이름 — 같은 계정 이름이 다른 무리 아래 또 나올 때 가른다 */ group?: string }
   | { name: string; sheet: string; to: 'new'; fsli: string };
 
 export interface WtbRow { sheet: string; row: number; fsli: string; label: string; section: TbLine['section']; kind: TableKind }
@@ -91,6 +91,9 @@ export interface WtbRollReport {
   renamed: [string, string][];
   notes: string[];
 }
+
+/** 짝의 열쇠 — 무리 이름 + 계정 이름(ERP 는 「상각채권추심이익」이 제품·재공품 무리 아래 따로 나온다). 저장(wtb_account_map.source_key)과 같은 규칙. */
+export const pairKey = (name: string, group?: string) => `${norm(group)}|${norm(name)}`;
 
 const dec = (b: Uint8Array) => strFromU8(b);
 const enc = (s: string) => strToU8(s);
@@ -273,9 +276,12 @@ function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], alias: Map<string,
     const byCurrent = (cands: number[]) => (cands.length > 1 && t.current != null ? (cands.filter((r) => sec.get(r)?.current === t.current).length ? cands.filter((r) => sec.get(r)?.current === t.current) : cands) : cands);
     let cands: number[] = [];
     let how = '이름';
-    const al = alias.get(n);
+    const al = alias.get(pairKey(t.name, t.group)) ?? alias.get(pairKey(t.name));
     if (al) {
-      cands = al.row != null && rows.includes(al.row) ? [al.row] : rows.filter((r) => norm(label(r)) === al.label);
+      // 줄 번호가 있고 그 줄 이름이 같으면 그 줄(같은 이름 줄이 여럿일 때), 아니면 이름으로(해가 바뀌어 줄이 밀렸을 때 — 저장된 짝).
+      const byRow = al.row != null && rows.includes(al.row) && norm(label(al.row)) === al.label ? [al.row] : [];
+      cands = byRow.length ? byRow : rows.filter((r) => norm(label(r)) === al.label);
+      if (cands.length > 1 && t.prior) { const same = cands.filter((r) => samePrior(r, t)); if (same.length) cands = same; }
       how = '고른 짝';
       if (!cands.length) { if (t.bal) unmatched.push(t); continue; }
     } else if (contra) {
@@ -533,7 +539,7 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
       const lines = linesFor(t.L, o.tb, o.pair);
       if (t.L.kind === 'MC' && !lines.length) report.notes.push(`${t.L.sheet}: 짝지은 제조원가명세서가 없어 올해 회사제시를 0 으로 두었습니다.`);
       const shift = (r: number) => { let x = r; for (const n of [...(inserted.get(t.L.sheet) ?? [])].sort((a, b) => a - b)) if (n <= x) x++; return x; };
-      const alias = new Map((o.place ?? []).filter((p) => p.sheet === t.L.sheet).map((p) => [norm(p.name), p.to === 'row' ? { label: norm(p.label), row: p.row != null ? shift(p.row) : undefined } : { label: norm(p.name) }] as [string, { label: string; row?: number }]));
+      const alias = new Map((o.place ?? []).filter((p) => p.sheet === t.L.sheet).map((p) => [pairKey(p.name, p.to === 'row' ? p.group : undefined), p.to === 'row' ? { label: norm(p.label), row: p.row != null ? shift(p.row) : undefined } : { label: norm(p.name) }] as [string, { label: string; row?: number }]));
       const m = matchTb(t.sh, t.L, lines, alias, ni);
       fill = m.sums; report.unmatched.push(...m.unmatched.map((x) => ({ ...x, sheet: t.L.sheet })));
       for (const [r, v] of m.sums) report.filled.push({ sheet: t.L.sheet, row: r, label: t.sh.cells.get(`${colName(t.L.acct)}${r}`)?.text ?? '', value: Math.round(v.value), from: v.from, how: v.how });
