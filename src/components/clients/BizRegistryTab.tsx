@@ -116,6 +116,8 @@ function fmtRrn(v: string): string {
 export default function BizRegistryTab() {
   const { readonly, role } = useAuth();
   const canWrite = !readonly && role !== 'per_head_accountant'; // 인당회계사는 거래처관리 조회 전용
+  // 기장팀원은 고치기만 — 거래처·사업장 새로 만들기와 지우기(일괄 포함)는 못 한다(roles.ts, 서버 0167 과 같은 선).
+  const canCreate = canWrite && role !== 'team_member';
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [staff, setStaff] = useState<StaffProfile[]>([]);
   // 사업장별 '최근 매출계약 담당직원'(place_id → 이름[]). 계약이 있으면 담당직원 표시를 이걸로 대체.
@@ -234,7 +236,7 @@ export default function BizRegistryTab() {
   // 숨긴 열은 표에서 빼되, 필터·정렬 로직은 전체 COLUMNS 기준을 그대로 둔다(숨겨도 걸어둔 필터는 유효).
   const orderedCols = tv.orderCols(COLUMNS);            // 개인 표시순서 적용
   const shownCols = orderedCols.filter((c) => !tv.isHidden(c.key));
-  const tableW = (canWrite ? 26 : 0) + shownCols.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 100 : 0);
+  const tableW = (canCreate ? 26 : 0) + shownCols.reduce((s, c) => s + widthOf(c.key, c.w), 0) + (canWrite ? 100 : 0);
   const flatRows = useMemo(() => view.flatMap((e) => (e.places.length ? e.places.map((p) => ({ e, p: p as BizPlace | null })) : [{ e, p: null as BizPlace | null }])), [view]);
   const tableRows = useMemo(() => flatRows.filter(({ e, p }) => COLUMNS.every((c) => {
     const fv = (colF[c.key] || '').trim().toLowerCase();
@@ -478,12 +480,12 @@ export default function BizRegistryTab() {
           </button>
         )}
         {viewMode === 'table' && <ColumnSettings cols={orderedCols} view={tv} onMessage={flash} />}
-        {canWrite && (
+        {canCreate && (
           <button className="btn-p" onClick={() => setShowAdd((s) => !s)}>{showAdd ? '닫기' : '＋ 신규 거래처'}</button>
         )}
       </div>
 
-      {showAdd && canWrite && <RegisterForm staff={staff} onSubmit={handleRegister} onCancel={() => setShowAdd(false)} />}
+      {showAdd && canCreate && <RegisterForm staff={staff} onSubmit={handleRegister} onCancel={() => setShowAdd(false)} />}
 
       {role === 'superuser' && <BizImportPanel entities={entities} staff={staff} onImported={load} />}
 
@@ -510,8 +512,8 @@ export default function BizRegistryTab() {
               {canWrite && (
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                   <button className="btn-sm btn-sm-blue" onClick={() => setEditEntity(e)}>수정</button>
-                  <button className="btn-sm" onClick={() => setAddPlaceFor(e)}>＋사업장</button>
-                  <button className="btn-sm btn-sm-del" onClick={() => handleDeleteEntity(e)}>삭제</button>
+                  {canCreate && <button className="btn-sm" onClick={() => setAddPlaceFor(e)}>＋사업장</button>}
+                  {canCreate && <button className="btn-sm btn-sm-del" onClick={() => handleDeleteEntity(e)}>삭제</button>}
                 </span>
               )}
             </div>
@@ -547,7 +549,7 @@ export default function BizRegistryTab() {
                         <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                           {p.hasHometaxPw && <button className="btn-sm btn-sm-blue" onClick={() => reveal('hometax', p.id, '홈텍스PW')}>PW보기</button>}
                           <button className="btn-sm btn-sm-blue" onClick={() => setEditPlace({ place: p, entity: e })}>수정</button>
-                          <button className="btn-sm btn-sm-del" onClick={() => handleDeletePlace(p)}>삭제</button>
+                          {canCreate && <button className="btn-sm btn-sm-del" onClick={() => handleDeletePlace(p)}>삭제</button>}
                         </span>
                       )}
                     </div>
@@ -605,7 +607,7 @@ export default function BizRegistryTab() {
       {/* 목록(표) */}
       {viewMode === 'table' && (
         <>
-        {canWrite && selected.size > 0 && (
+        {canCreate && selected.size > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fbecec', border: '1px solid #e6b8b8', borderRadius: 6, padding: '6px 10px', marginBottom: 8 }}>
             <b style={{ fontSize: 'var(--fs-2)', color: 'var(--bad)' }}>✔ {selected.size}개 거래처 선택됨</b>
             <button className="btn-sm btn-sm-del" onClick={bulkDeleteSelected}>🗑 선택 일괄삭제</button>
@@ -616,13 +618,13 @@ export default function BizRegistryTab() {
         <div style={{ overflow: 'auto', maxHeight: '68vh', border: '1px solid var(--rule-2)', borderRadius: 6 }}>
           <table style={{ tableLayout: 'fixed', width: tableW, borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
             <colgroup>
-              {canWrite && <col style={{ width: 26 }} />}
+              {canCreate && <col style={{ width: 26 }} />}
               {shownCols.map((col) => <col key={col.key} style={{ width: widthOf(col.key, col.w) }} />)}
               {canWrite && <col style={{ width: 100 }} />}
             </colgroup>
             <thead>
               <tr>
-                {canWrite && (() => { const ids = [...new Set(sortedRows.map((r) => r.e.id))]; const all = ids.length > 0 && ids.every((id) => selected.has(id)); return (
+                {canCreate && (() => { const ids = [...new Set(sortedRows.map((r) => r.e.id))]; const all = ids.length > 0 && ids.every((id) => selected.has(id)); return (
                   <th style={{ ...thc, height: 26, position: 'sticky', top: 0, zIndex: 3, background: '#f4efe4' }}><input type="checkbox" checked={all} onChange={() => setSelected(all ? new Set() : new Set(ids))} title="현재 목록 전체 선택" /></th>
                 ); })()}
                 {shownCols.map((col) => (
@@ -634,7 +636,7 @@ export default function BizRegistryTab() {
                 {canWrite && <th style={{ ...thc, position: 'sticky', top: 0, zIndex: 2, background: '#f4efe4' }}></th>}
               </tr>
               <tr>
-                {canWrite && <th style={{ padding: 2, position: 'sticky', top: 26, zIndex: 3, background: '#faf7f0' }}></th>}
+                {canCreate && <th style={{ padding: 2, position: 'sticky', top: 26, zIndex: 3, background: '#faf7f0' }}></th>}
                 {shownCols.map((col) => (
                   <th key={col.key} style={{ padding: 2, position: 'sticky', top: 26, zIndex: 2, background: '#faf7f0' }}>
                     <ColFilter opts={col.opts} value={colF[col.key] || ''} onChange={(v) => setColF((p) => ({ ...p, [col.key]: v }))} />
@@ -645,14 +647,14 @@ export default function BizRegistryTab() {
             </thead>
             <tbody>
               {sortedRows.length === 0 && (
-                <EmptyRow colSpan={shownCols.length + (canWrite ? 2 : 1)}
+                <EmptyRow colSpan={shownCols.length + (canWrite ? 1 : 0) + (canCreate ? 1 : 0)}
                   text="조건에 맞는 거래처가 없습니다"
                   hint={`열 아래 칸에 넣은 값으로 걸러서 비었습니다 — 전체는 ${entities.length}곳입니다.`}
                   action={{ label: '필터 초기화', onClick: () => setColF({}) }} />
               )}
               {sortedRows.map(({ e, p }) => (
                 <tr key={p ? p.id : e.id} style={{ background: selected.has(e.id) ? '#fdf3f3' : undefined }}>
-                  {canWrite && <td style={{ ...tdc, textAlign: 'center', borderTop: '1px solid var(--rule-2)' }}><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSelect(e.id)} /></td>}
+                  {canCreate && <td style={{ ...tdc, textAlign: 'center', borderTop: '1px solid var(--rule-2)' }}><input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleSelect(e.id)} /></td>}
                   {shownCols.map((col) => (
                     <td key={col.key} style={{ ...tdc, ...clip, fontWeight: col.key === 'name' ? 600 : 400, borderTop: '1px solid var(--rule-2)' }} title={col.val(e, p)}>
                       {col.key === 'htpw' && !hometaxPws
@@ -665,7 +667,7 @@ export default function BizRegistryTab() {
                       <span style={{ display: 'flex', gap: 3 }}>
                         <button className="btn-sm btn-sm-blue" onClick={() => setEditEntity(e)}>거래처</button>
                         {p && <button className="btn-sm btn-sm-blue" onClick={() => setEditPlace({ place: p, entity: e })}>사업장</button>}
-                        <button className="btn-sm" onClick={() => setAddPlaceFor(e)} title="이 거래처에 사업장을 하나 더 추가">＋</button>
+                        {canCreate && <button className="btn-sm" onClick={() => setAddPlaceFor(e)} title="이 거래처에 사업장을 하나 더 추가">＋</button>}
                       </span>
                     </td>
                   )}

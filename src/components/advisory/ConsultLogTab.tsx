@@ -19,7 +19,7 @@ import ConsultSlides from './ConsultSlides';
 import { confirmDanger } from '../common/DangerConfirm';
 
 export default function ConsultLogTab() {
-  const { user, role } = useAuth();
+  const { user, role, readonly } = useAuth();
   const [items, setItems] = useState<Consultation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
@@ -57,8 +57,9 @@ export default function ConsultLogTab() {
       <Detail
         item={selected}
         seq={selected.status === 'final' ? finalSeq.get(selected.id) : undefined}
-        isOwner={!!user && selected.authorId === user.id}
-        canFinalize={can(role, 'finalizeConsult')}
+        // 쓰기 잠금 계정은 본인 상담이어도 편집·확정·삭제·공유를 못 한다.
+        isOwner={!readonly && !!user && selected.authorId === user.id}
+        canFinalize={!readonly && can(role, 'finalizeConsult')}
         onBack={() => setSelected(null)}
         onChanged={reload}
       />

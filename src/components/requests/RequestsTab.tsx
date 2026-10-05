@@ -34,7 +34,7 @@ const dtShort = (s?: string) => {
 };
 
 export default function RequestsTab() {
-  const { user, role, profileName } = useAuth();
+  const { user, role, profileName, readonly } = useAuth();
   const { requests, loading, error, refresh } = useRequests();
   const canSetStatus = role === 'superuser';
   // 요청자·작성자는 로그인한 담당자명으로 강제(수정 불가). 담당자명 없으면 이메일 아이디로 대체.
@@ -130,7 +130,7 @@ export default function RequestsTab() {
             }}
           />
         </div>
-        <button className="btn-p" style={{ marginTop: 7 }} onClick={submit} disabled={busy}>
+        <button className="btn-p" style={{ marginTop: 7 }} onClick={submit} disabled={busy || readonly} title={readonly ? '쓰기 잠금 계정입니다' : ''}>
           {busy ? '등록 중…' : '📨 요청 등록'}
         </button>
       </div>
@@ -144,7 +144,10 @@ export default function RequestsTab() {
           key={r.id}
           r={r}
           onStatus={(s) => changeStatus(r.id, s)}
-          canSetStatus={canSetStatus}
+          canSetStatus={canSetStatus && !readonly}
+          // 지우기는 작성자 본인·최고관리자만(2026-10-05 — 누구나 남의 요청을 지울 수 있었다). 서버(마이그 0165)도 같은 선.
+          canDelete={!readonly && (role === 'superuser' || (!!r.createdBy && r.createdBy === user?.id))}
+          canComment={!readonly}
           onDelete={() => void remove(r.id, `${r.requester} — ${r.content.slice(0, 40)}`)}
           onCommentAdded={refresh}
           authorName={authorName}
@@ -158,12 +161,14 @@ interface CardProps {
   r: UpdateRequest;
   onStatus: (s: RequestStatus) => void;
   canSetStatus: boolean;
+  canDelete: boolean;
+  canComment: boolean;
   onDelete: () => void;
   onCommentAdded: () => Promise<void>;
   authorName: string;
 }
 
-function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSetStatus }: CardProps) {
+function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSetStatus, canDelete, canComment }: CardProps) {
   const [expanded, setExpanded] = useState(false);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -220,9 +225,11 @@ function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSet
               ))}
             </select>
           )}
-          <button className="btn-sm btn-sm-del" onClick={onDelete}>
-            🗑
-          </button>
+          {canDelete && (
+            <button className="btn-sm btn-sm-del" onClick={onDelete} title="지우기(작성자·최고관리자)">
+              🗑
+            </button>
+          )}
         </div>
       </div>
 
@@ -309,7 +316,7 @@ function RequestCard({ r, onStatus, onDelete, onCommentAdded, authorName, canSet
                   resize: 'vertical',
                 }}
               />
-              <button className="btn-sm btn-sm-blue" onClick={submitComment} disabled={busy} style={{ flexShrink: 0 }}>
+              <button className="btn-sm btn-sm-blue" onClick={submitComment} disabled={busy || !canComment} title={canComment ? '' : '쓰기 잠금 계정입니다'} style={{ flexShrink: 0 }}>
                 {busy ? '…' : '등록'}
               </button>
             </div>

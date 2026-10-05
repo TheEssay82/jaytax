@@ -20,7 +20,7 @@ const READ_ONLY: Rule = { all: null };
 
 export const MENU_PERMS: Record<string, MenuPerm> = {
   // ── 거래처관리 ── 인당회계사는 서버(is_perhead)가 거래처·계약 쓰기를 막는다.
-  'biz-register': { write: { all: true, per_head_accountant: false }, note: '주민번호·홈택스 비밀번호 열람은 서버가 따로 판단 · 엑셀 가져오기는 최고관리자' },
+  'biz-register': { write: { all: true, team_member: '일부: 고치기만(거래처·사업장 등록·삭제 불가)', per_head_accountant: false }, note: '주민번호·홈택스 비밀번호 열람은 서버가 따로 판단 · 엑셀 가져오기는 최고관리자' },
   'biz-contract': { use: { all: true, team_member: '일부: 피벗·요약 표는 안 보임' }, write: { all: true, per_head_accountant: false } },
   'biz-contacts': { write: { all: true, per_head_accountant: false } },
   'biz-status': { write: { ...SU_AC_TL, team_member: false, per_head_accountant: false, all: false }, note: '쓰기는 예산 편집뿐(회계사·팀장·최고관리자)' },
@@ -85,7 +85,7 @@ export const MENU_PERMS: Record<string, MenuPerm> = {
   'estimate': { use: { all: '준비 중' }, write: READ_ONLY },
 
   // ── 우측 아이콘 ──
-  'requests': { write: { all: true, superuser: true }, note: '처리 상태 바꾸기는 최고관리자' },
+  'requests': { write: { all: '일부: 올리기·댓글, 지우기는 본인 요청만', superuser: true }, note: '처리 상태 바꾸기는 최고관리자' },
   'users': { write: { all: true }, note: '본인 등급·잠금은 못 바꾼다' },
   'access-log': { write: READ_ONLY },
   'retention': { write: { all: true } },

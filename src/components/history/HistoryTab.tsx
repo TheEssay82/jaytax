@@ -25,9 +25,10 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
   const { records: allRecords, loading, error, refresh } = useBillingData();
   const { loadRecord } = useWizard();
   const { config } = useConfig();
-  const { user, role, profileName } = useAuth();
-  const canDelete = can(role, 'deleteBilling');
-  const canFinalize = can(role, 'finalizeInvoice');
+  const { user, role, profileName, readonly } = useAuth();
+  // 쓰기 잠금 계정은 확정·수정·삭제 단추가 없다(서버 ro_block 과 같은 선).
+  const canDelete = !readonly && can(role, 'deleteBilling');
+  const canFinalize = !readonly && can(role, 'finalizeInvoice');
   const ownOnly = !can(role, 'viewAllBilling');
   // 전체 조회 권한이 없으면 본인 담당 청구기록만 (담당자 계정ID 우선, 없으면 이름)
   const records = ownOnly
@@ -113,10 +114,10 @@ export default function HistoryTab({ onSwitchTab }: { onSwitchTab: (id: string) 
           {r.status === 'draft' && canFinalize && (
             <button className="btn-sm btn-sm-navy" onClick={() => void finalize(r)}>확정</button>
           )}
-          {(canFinalize || (r.status === 'draft' && isOwnRecord(r, user?.id ?? '', profileName))) && (
+          {(canFinalize || (!readonly && r.status === 'draft' && isOwnRecord(r, user?.id ?? '', profileName))) && (
             <button className="btn-sm" onClick={() => edit(r)}>✏️</button>
           )}
-          {(canDelete || (r.status === 'draft' && isOwnRecord(r, user?.id ?? '', profileName))) && (
+          {(canDelete || (!readonly && r.status === 'draft' && isOwnRecord(r, user?.id ?? '', profileName))) && (
             <button className="btn-sm btn-sm-del" onClick={() => void del(r)}>🗑</button>
           )}
         </div>

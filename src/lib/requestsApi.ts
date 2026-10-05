@@ -10,6 +10,7 @@ interface RequestRow {
   comments: RequestComment[] | null;
   created_at: string;
   updated_at: string;
+  created_by: string | null;
 }
 
 function rowToRequest(r: RequestRow): UpdateRequest {
@@ -21,6 +22,7 @@ function rowToRequest(r: RequestRow): UpdateRequest {
     comments: r.comments || [],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    createdBy: r.created_by,
   };
 }
 

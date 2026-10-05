@@ -19,11 +19,14 @@ import {
 } from '../../lib/confirmApi';
 import ConfirmItemsModal from './ConfirmItemsModal';
 import DateParts from '../common/DateParts';
+import { useAuth } from '../../context/AuthContext';
 
 /** 담당회계사 후보 — 최고관리자·회계사·인당회계사 */
 const ACCOUNTANT_ROLES = ['superuser', 'accountant', 'per_head_accountant'];
 
 export default function ConfirmRegisterTab() {
+  // 쓰기 잠금 계정은 조회만(새 등록·가져오기·수정·삭제 숨김, 서버도 0166 에서 막는다).
+  const { readonly } = useAuth();
   const [clients, setClients] = useState<DocClient[]>([]);
   const [people, setPeople] = useState<UserProfile[]>([]);
   const [rows, setRows] = useState<Confirmation[]>([]);
@@ -177,7 +180,7 @@ export default function ConfirmRegisterTab() {
       </div>
 
       {/* ── 신규 등록 ── */}
-      <div style={{ background: '#FaF8F4', border: '1px solid var(--rule)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
+      {!readonly && <div style={{ background: '#FaF8F4', border: '1px solid var(--rule)', borderRadius: 10, padding: 12, marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
           <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>＋ 새 조회서 등록</b>
           <button
@@ -231,7 +234,7 @@ export default function ConfirmRegisterTab() {
             {saving ? '등록 중…' : '＋ 등록'}
           </button>
         </div>
-      </div>
+      </div>}
 
       {/* ── 등록된 조회서 목록 ── */}
       <div className="sbar">
@@ -301,10 +304,10 @@ export default function ConfirmRegisterTab() {
                     </span>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
+                    {!readonly && <div style={{ display: 'flex', gap: 4 }}>
                       <button className="btn-sm btn-sm-blue" title="수정" onClick={() => setEditId(r.id)}>✏️</button>
                       <button className="btn-sm btn-sm-del" title="삭제" onClick={() => void handleDelete(r)}>🗑</button>
-                    </div>
+                    </div>}
                   </td>
                 </tr>
               ),

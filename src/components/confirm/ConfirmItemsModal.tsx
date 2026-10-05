@@ -3,6 +3,7 @@
 // 양식 다운로드 2종: 빈 양식(거래처 배포용) / 현재 명세(손봐서 다시 올리는 용도)
 import { useEffect, useRef, useState } from 'react';
 import { useEscape } from '../../lib/useEscape';
+import { useAuth } from '../../context/AuthContext';
 import { confirmDanger } from '../common/DangerConfirm';
 import {
   listItems,
@@ -54,6 +55,9 @@ export default function ConfirmItemsModal({
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  // 쓰기 잠금 계정 — 올리기·추가·수정·삭제·완료 표시를 잠근다(내려받기는 그대로).
+  const { readonly } = useAuth();
+  const lock = busy || readonly;
   // 부모가 넘긴 confirmation 은 모달이 열린 시점의 스냅샷이라, 여기서 상태를 바꿔도
   // prop 은 그대로다. 화면 표시는 로컬 상태로 들고 가야 토글이 반영된다.
   const [status, setStatus] = useState(confirmation.status);
@@ -152,7 +156,7 @@ export default function ConfirmItemsModal({
             <button
               className="btn-sm btn-sm-blue"
               style={{ fontSize: 'var(--fs-1)' }}
-              disabled={busy}
+              disabled={lock}
               onClick={() => fileRef.current?.click()}
               title="작성한 엑셀 양식을 올려 조회처를 한 번에 채웁니다"
             >
@@ -202,7 +206,7 @@ export default function ConfirmItemsModal({
               <button
                 className="btn-p"
                 style={{ fontSize: 'var(--fs-1)' }}
-                disabled={busy || !canComplete}
+                disabled={lock || !canComplete}
                 title={canComplete ? undefined : '조회처를 1건 이상 등록해야 완료할 수 있습니다'}
                 onClick={() => {
                   const next = status === '등록완료' ? '작성중' : '등록완료';
@@ -259,7 +263,7 @@ export default function ConfirmItemsModal({
                         seq={idx + 1}
                         value={editDraft}
                         onChange={setEditDraft}
-                        busy={busy}
+                        busy={lock}
                         onSubmit={() => void run(() => updateItem(it.id, editDraft).then(() => setEditId(null)), '✅ 수정했습니다.')}
                         onCancel={() => setEditId(null)}
                         submitLabel="저장"
@@ -295,11 +299,11 @@ export default function ConfirmItemsModal({
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 3 }}>
-                            <button className="btn-sm btn-sm-blue" title="수정" disabled={busy} onClick={() => { setEditId(it.id); setEditDraft(toInput(it)); }}>✏️</button>
+                            <button className="btn-sm btn-sm-blue" title="수정" disabled={lock} onClick={() => { setEditId(it.id); setEditDraft(toInput(it)); }}>✏️</button>
                             <button
                               className="btn-sm btn-sm-del"
                               title="삭제"
-                              disabled={busy}
+                              disabled={lock}
                               onClick={async () => {
                                 if (!await confirmDanger({ title: '조회처를 삭제합니다', target: it.institution })) return;
                                 void run(async () => {
@@ -321,7 +325,7 @@ export default function ConfirmItemsModal({
                     seq={items.length + 1}
                     value={draft}
                     onChange={setDraft}
-                    busy={busy}
+                    busy={lock}
                     onSubmit={() =>
                       void run(async () => {
                         if (!draft.institution.trim()) throw new Error('금융기관명을 입력하세요.');

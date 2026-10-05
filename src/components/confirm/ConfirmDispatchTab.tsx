@@ -18,6 +18,7 @@ import {
 } from '../../lib/confirmApi';
 import TrackingLink from '../docsend/TrackingLink';
 import DateParts from '../common/DateParts';
+import { useAuth } from '../../context/AuthContext';
 
 
 /** 거래처 발송 단계 — 조회처 집계에서 파생한다 */
@@ -41,6 +42,8 @@ export default function ConfirmDispatchTab() {
   const [msg, setMsg] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 쓰기 잠금 계정은 발송·회수 처리 단추가 모두 잠긴다(서버도 0166 에서 막는다).
+  const { readonly } = useAuth();
 
   async function load(y = year) {
     try {
@@ -153,7 +156,7 @@ export default function ConfirmDispatchTab() {
                   progress={p}
                   stage={stage}
                   open={open}
-                  busy={busy}
+                  busy={busy || readonly}
                   onToggle={() => setOpenId(open ? null : r.id)}
                   onRun={run}
                 />

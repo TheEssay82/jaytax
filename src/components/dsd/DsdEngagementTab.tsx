@@ -48,8 +48,10 @@ const STATUS_COLOR: Record<string, string> = {
 export default function DsdEngagementTab() {
   // 외부인 시연 — 「시연용」 표가 붙은 건 하나만 서버가 내준다(0145). 화면에서는 **보기만**
   // 하게 막는다. 쓰기는 RLS 가 이미 막지만, 눌러도 안 되는 단추를 내놓을 까닭이 없다.
-  const { role } = useAuth();
+  const { role, readonly } = useAuth();
   const isExternal = role === 'external';
+  // 서버에 쓰는 것(새 건·건 지우기·① 입력·④ 저장)은 외부인과 쓰기 잠금 계정에게 잠근다. ②③④ 의 브라우저 안 작업은 그대로.
+  const lockWrite = isExternal || readonly;
   const isSuper = role === 'superuser';
   const [engs, setEngs] = useState<Engagement[]>([]);
   const [ents, setEnts] = useState<BizEntityFull[]>([]);
@@ -174,7 +176,7 @@ export default function DsdEngagementTab() {
           <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
             {picked ? `${picked.entityName} · FY${picked.fy} ${picked.scope}` : '작업 건을 고르세요'}
           </span>
-          {!isExternal && (
+          {!lockWrite && (
             <button className="btn-sm btn-sm-navy" style={{ marginLeft: 'auto' }} onClick={() => setAdding(true)}>
               + 새 건 만들기
             </button>
@@ -224,7 +226,7 @@ export default function DsdEngagementTab() {
       )}
       {at === '4' && picked && dsdFile.dsd && (
         <NoteDsdCard eng={picked} notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} spare={spare}
-          layout={picked.sheetLayout} book={book} onBook={setBook} readOnly={isExternal} />
+          layout={picked.sheetLayout} book={book} onBook={setBook} readOnly={lockWrite} />
       )}
 
       <div style={{ display: at === '1' ? 'block' : 'none' }}>
@@ -311,7 +313,7 @@ export default function DsdEngagementTab() {
                   외부인에게 보여 주기
                 </label>
               )}
-              {!isExternal && (
+              {!lockWrite && (
                 <button className="btn-sm btn-sm-del" style={{ marginLeft: isSuper ? 10 : 'auto' }}
                   onClick={() => void removeEng(picked)}>
                   건 지우기
@@ -333,7 +335,7 @@ export default function DsdEngagementTab() {
             )}
 
             {/* 외부인에게는 통째로 잠근다 — 안의 입력·단추가 한꺼번에 꺼진다. */}
-            <fieldset disabled={isExternal} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+            <fieldset disabled={lockWrite} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center', marginBottom: 12 }}>
               <Field label="회계기준">
@@ -378,7 +380,7 @@ export default function DsdEngagementTab() {
               </div>
             </div>
 
-            <NoteBookCard eng={picked} book={book} onChange={setBook} readOnly={isExternal} />
+            <NoteBookCard eng={picked} book={book} onChange={setBook} readOnly={lockWrite} />
 
             <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 6 }}>
               금액은 엑셀에 <b>원(장부값)</b>으로 쓰고 DSD 에는 <b>{picked.moneyUnit}</b>으로 내보냅니다.

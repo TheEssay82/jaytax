@@ -23,6 +23,7 @@ import {
 import TrackingLink from '../docsend/TrackingLink';
 import { Bar } from './ConfirmDispatchTab';
 import DateParts from '../common/DateParts';
+import { useAuth } from '../../context/AuthContext';
 
 
 /** 거래처 회수 단계 — 조회처 집계에서 파생 */
@@ -49,6 +50,8 @@ export default function ConfirmCollectTab() {
   const [msg, setMsg] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 쓰기 잠금 계정은 발송·회수 처리 단추가 모두 잠긴다(서버도 0166 에서 막는다).
+  const { readonly } = useAuth();
   // 독촉 대상 — 발송했는데 임계일이 지나도록 회신이 없는 건. 거래처를 가로질러 본다.
   const [mode, setMode] = useState<'client' | 'overdue'>('client');
   const [overdueDays, setOverdueDays] = useState<number>(DEFAULT_OVERDUE_DAYS);
@@ -161,7 +164,7 @@ export default function ConfirmCollectTab() {
           rows={overdue}
           days={overdueDays}
           pending={pending}
-          busy={busy}
+          busy={busy || readonly}
           onRun={run}
         />
       ) : (
@@ -197,7 +200,7 @@ export default function ConfirmCollectTab() {
                   progress={p}
                   stage={stage}
                   open={open}
-                  busy={busy}
+                  busy={busy || readonly}
                   onToggle={() => setOpenId(open ? null : r.id)}
                   onRun={run}
                 />

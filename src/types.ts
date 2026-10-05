@@ -146,6 +146,8 @@ export interface UpdateRequest {
   comments: RequestComment[];
   createdAt: string;
   updatedAt?: string;
+  /** 작성자 로그인 id — 지우기는 작성자 본인·최고관리자만(2026-10-05). 옛 요청은 비어 있다. */
+  createdBy?: string | null;
 }
 
 /** 설정 버전 이력 항목 */

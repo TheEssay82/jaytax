@@ -4,6 +4,7 @@ import type { AppConfig } from '../../types';
 import { confirmDanger } from '../common/DangerConfirm';
 import { DEFAULT_CONFIG, FEE_LABELS, HELP_TEXTS, HELP_KEYS } from '../../lib/constants';
 import { useConfig } from '../../context/ConfigContext';
+import { useAuth } from '../../context/AuthContext';
 import { DEFAULT_VERSION_ID } from '../../lib/configApi';
 
 type WeightKey = '방문횟수' | '전화횟수' | '상담난이도' | '업무해당' | '업무량' | '업무난이도' | '증빙금액';
@@ -26,6 +27,8 @@ export default function SettingsTab() {
   const [label, setLabel] = useState('');
   const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false);
+  // 쓰기 잠금 계정은 적용·저장·덮어쓰기·삭제 단추가 잠긴다(보기·편집기 값 바꿔 보기는 된다).
+  const { readonly } = useAuth();
   const inited = useRef(false);
 
   const isDefault = selectedId === DEFAULT_VERSION_ID;
@@ -172,12 +175,12 @@ export default function SettingsTab() {
           ))}
         </select>
         {selectedId !== activeId && (
-          <button className="btn-sm btn-sm-grn" onClick={doApply} disabled={saving}>
+          <button className="btn-sm btn-sm-grn" onClick={doApply} disabled={saving || readonly}>
             이 버전 적용
           </button>
         )}
         {!isDefault && (
-          <button className="btn-sm btn-sm-del" onClick={doDelete} disabled={saving}>
+          <button className="btn-sm btn-sm-del" onClick={doDelete} disabled={saving || readonly}>
             버전 삭제
           </button>
         )}
@@ -189,7 +192,7 @@ export default function SettingsTab() {
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-          <button className="btn-sm" onClick={loadDefaultIntoEditor} disabled={saving}>
+          <button className="btn-sm" onClick={loadDefaultIntoEditor} disabled={saving || readonly}>
             ↺ DEFAULT 값 불러오기
           </button>
         </div>
@@ -205,11 +208,11 @@ export default function SettingsTab() {
         onChange={(e) => setLabel(e.target.value)}
         style={{ padding: '5px 9px', border: '1px solid var(--rule)', borderRadius: 6, fontSize: 'var(--fs-2)', width: 180 }}
       />
-      <button className="btn-p" onClick={doSaveNew} disabled={saving}>
+      <button className="btn-p" onClick={doSaveNew} disabled={saving || readonly}>
         💾 새 버전으로 저장·적용
       </button>
       {!isDefault && (
-        <button className="btn-s" onClick={doOverwrite} disabled={saving}>
+        <button className="btn-s" onClick={doOverwrite} disabled={saving || readonly}>
           이 버전 덮어쓰기
         </button>
       )}
