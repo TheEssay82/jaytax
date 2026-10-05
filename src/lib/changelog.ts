@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.60.0',
+    date: '2026-10-06',
+    title: '로그인 화면에 소개 영상',
+    highlights: [
+      '로그인 전 화면 왼쪽에 JAYTAX 소개 영상(3분 — 정산표 이월 · 주석·DSD 검증 · 일반조서 · 조회서)을 붙였습니다. 누를 때만 내려받아 로그인 화면은 그대로 가볍습니다. 휴대폰에서는 로그인 아래에 보입니다.',
+    ],
+  },
+  {
     version: '3.59.2',
     date: '2026-10-06',
     title: '주석·DSD ④ — 위아래로 합친 칸이 있는 표에서 DSD 가 깨지던 것 고침',

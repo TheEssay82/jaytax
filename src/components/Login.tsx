@@ -22,12 +22,31 @@ export default function Login() {
       style={{
         minHeight: '100vh',
         display: 'flex',
+        flexWrap: 'wrap-reverse',
+        gap: 28,
         alignItems: 'center',
+        alignContent: 'center',
         justifyContent: 'center',
         background: '#F0EDE7',
+        padding: '24px 16px',
       }}
     >
-      <form onSubmit={handleSubmit} className="card" style={{ width: 340, padding: '28px 26px' }}>
+      {/* 소개 영상(2026-10-06) — 로그인 전에 무엇을 하는 시스템인지 보이게. 누를 때만 내려받는다(preload none). 좁은 화면에서는 로그인 아래로. */}
+      <div style={{ width: 'min(720px, 100%)' }}>
+        <video
+          src="/promo/jaytax-intro.mp4"
+          poster="/promo/jaytax-intro.jpg"
+          controls
+          preload="none"
+          playsInline
+          style={{ width: '100%', aspectRatio: '16 / 9', display: 'block', borderRadius: 10, background: '#fff', boxShadow: '0 6px 24px rgba(26, 43, 82, .14)' }}
+        />
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 8, rowGap: 2, marginTop: 9, color: 'var(--navy)' }}>
+          <b style={{ fontSize: 'var(--fs-2)', whiteSpace: 'nowrap' }}>JAYTAX 소개 영상</b>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>3분 · 정산표 이월 · 주석·DSD 검증 · 일반조서 · 조회서</span>
+        </div>
+      </div>
+      <form onSubmit={handleSubmit} className="card" style={{ width: 340, maxWidth: '100%', padding: '28px 26px', margin: 0 }}>
         <div style={{ textAlign: 'center', marginBottom: 22 }}>
           <div
             style={{
