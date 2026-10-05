@@ -43,7 +43,7 @@ test('재무제표 시트 — 들여 쓴 계정 줄만, 안쪽 열 먼저, 차�
     ['A50', { text: ' 부             채 ' }], ['A63', { text: '      장기차입금' }], ['C63', { num: 25000000000 }],
     ['A67', { text: '부    채    총    계' }], ['C67', { num: 1 }],
   ]);
-  const t = fsFromSheet({ name: '재무상태표', cells: bs } as unknown as SheetData, 'BS');
+  const t = fsFromSheet({ name: '재무상태표', cells: bs } as unknown as SheetData, 'BS').filter((x) => !x.subtotal);   // 합계 줄은 표시만 하고 묻지 않는다
   assert.deepEqual(t.map((x) => [x.name, x.section, x.current, x.bal]), [
     ['보통예금', '자산', true, 3495683], ['건물', '자산', false, 2913327108], ['감가상각누계액', '자산', false, -321810611],
     ['장기차입금', '부채', true, -25000000000],
@@ -66,4 +66,28 @@ test('재무제표 시트 — 들여쓰기 없는 프로그램, VAT 같은 영�
   ]);
   assert.deepEqual(fsFromSheet({ name: 'BS', cells: bs } as unknown as SheetData, 'BS').map((x) => [x.name, x.section, x.bal]),
     [['보통예금', '자산', 5], ['VAT대급금', '자산', 4], ['미지급금', '부채', -9]]);
+});
+
+test('ERP 재무제표(아비즈) — 번호 층층, 쪽 머리 되풀이, 번호 없는 차감 줄, 글자 금액, 전기 금액', async () => {
+  const { fsFromSheet } = await import('./wtbRoll');
+  const c = new Map<string, { text?: string; num?: number }>([
+    ['B8', { text: '계정과목' }], ['D8', { text: '당기' }], ['H8', { text: '전기' }],
+    ['B9', { text: '  I. 자산' }], ['F9', { text: '18,820,234,557' }],
+    ['B10', { text: '    (1) 유동자산' }], ['B11', { text: '      1. 당좌자산' }],
+    ['B12', { text: '        1) 미수금' }], ['D12', { text: '4,188,690' }],
+    ['B13', { text: '          1. 미수금' }], ['D13', { text: '37,481,201' }], ['H13', { text: '273,666,602' }],
+    ['B14', { text: '               세금과공과 면허세' }], ['D14', { text: '33,292,511' }], ['H14', { text: '33,292,511' }],
+    ['B43', { text: '재무상태표' }], ['B49', { text: '계정과목' }], ['D49', { text: '당기' }],
+    ['B50', { text: '        2) 선급금' }], ['D50', { text: '274,972,286' }],
+    ['B51', { text: '          1. 선급금' }], ['D51', { text: '274,972,286' }], ['H51', { text: '197,175,193' }],
+    ['B60', { text: '  II. 부채' }], ['B61', { text: '    (1) 유동부채' }], ['B62', { text: '      1. 미지급금' }],
+    ['B63', { text: '        1) 미지급금' }], ['D63', { text: '(1,000)' }],
+  ]);
+  const t = fsFromSheet({ name: '재무상태표', cells: c } as unknown as SheetData, 'BS', 'BS');
+  assert.deepEqual(t.map((x) => [x.name, x.section, x.bal, x.prior]), [
+    ['미수금', '자산', 37481201, 273666602],
+    ['세금과공과 면허세(차감 — 미수금)', '자산', -33292511, -33292511],
+    ['선급금', '자산', 274972286, 197175193],
+    ['미지급금', '부채', 1000, undefined],
+  ]);
 });
