@@ -10,6 +10,7 @@ import {
   type Capability, type Role,
 } from '../../lib/roles';
 import { MENU_GROUPS, ICON_ITEMS, menuAllowed, groupAllowed, type MenuItem } from '../../lib/menu';
+import { MENU_PERMS, levels, type Mark } from '../../lib/permissions';
 import type { UserProfile } from '../../lib/usersApi';
 
 /** 권한 항목이 무엇을 뜻하는지 — 코드의 주석을 사람 말로. */
@@ -29,15 +30,32 @@ const CAP_LABELS: Record<Capability, string> = {
   viewDispatch: '발송요청 처리 조회',
   processDispatch: '발송요청 처리(쓰기)',
   viewDevNotes: '📓 개발노트 열람',
-  viewAuditPapers: '📘 일반조서 관리(감사팀)',
+  viewAuditPapers: '감사팀 메뉴(주석·DSD·일반조서·JE)',
 };
 const CAPS = Object.keys(CAP_LABELS) as Capability[];
 
 const O = <span style={{ color: 'var(--good)', fontWeight: 700 }}>●</span>;
 const X = <span style={{ color: '#DDD' }}>·</span>;
 
+/** 세 단계 칸 — ● 가능 · ◐ 일부(사유는 마우스를 올리면) · — 쓰기 없는 조회 화면 · · 불가. */
+function MarkCell({ m }: { m: Mark }) {
+  if (m === true) return <span title="가능" style={{ color: 'var(--good)', fontWeight: 700 }}>●</span>;
+  if (m === null) return <span title="이 화면엔 쓰기가 없습니다(조회 화면)" style={{ color: 'var(--ink-4)' }}>—</span>;
+  if (typeof m === 'string') return <span title={m} style={{ color: '#B7791F', fontWeight: 700, cursor: 'help' }}>◐</span>;
+  return X;
+}
+/** 메뉴 × 등급 표의 한 칸 — 가장 높은 단계를 짧게. */
+function LevelTag({ v }: { v: { access: boolean; use: Mark; write: Mark } }) {
+  if (!v.access) return X;
+  const why = [typeof v.use === 'string' ? `이용 ${v.use}` : '', typeof v.write === 'string' ? `쓰기 ${v.write}` : ''].filter(Boolean).join(' / ');
+  const [t, c] = v.write === true ? ['쓰기', 'var(--good)'] : typeof v.write === 'string' ? ['쓰기◐', '#B7791F']
+    : v.use === true || v.use === null ? ['이용', '#2F7BD8'] : typeof v.use === 'string' ? ['이용◐', '#B7791F'] : ['접근', 'var(--ink-3)'];
+  return <span title={why || t} style={{ color: c, fontWeight: 700, fontSize: 'var(--fs-0)', cursor: why ? 'help' : undefined }}>{t}</span>;
+}
+
 export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
-  const [tab, setTab] = useState<'menu' | 'cap' | 'user'>('menu');
+  const [tab, setTab] = useState<'dash' | 'menu' | 'cap' | 'user'>('dash');
+  const [role, setRole] = useState<Role>('accountant');
   /** 이름으로 갈리는 메뉴가 있어(hideFor·onlyFor) 등급만으로는 답이 안 나온다. */
   const [who, setWho] = useState('');
 
@@ -60,17 +78,24 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
     if (g && !groupAllowed(role, g)) return false;
     return menuAllowed(role, name, r.item);
   };
+  /** 세 단계(접근·이용·쓰기). 하위 메뉴가 있는 묶음 줄은 접근만. */
+  const lv = (role: Role, name: string, r: { group: string; item: MenuItem }): { access: boolean; use: Mark; write: Mark } => {
+    const a = visible(role, name, r);
+    if (r.item.children) return { access: a, use: a, write: a ? null : false };
+    return levels(r.item.id, role, a);
+  };
 
   return (
     <div className="card" style={{ marginTop: 14 }}>
       <div className="chdr" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         🔐 권한 현황
         <span style={{ display: 'flex', gap: 4 }}>
+          <button className={tab === 'dash' ? 'btn-p' : 'btn-sm'} onClick={() => setTab('dash')}>등급별 대시보드</button>
           <button className={tab === 'menu' ? 'btn-p' : 'btn-sm'} onClick={() => setTab('menu')}>메뉴 × 등급</button>
           <button className={tab === 'cap' ? 'btn-p' : 'btn-sm'} onClick={() => setTab('cap')}>권한 × 등급</button>
           <button className={tab === 'user' ? 'btn-p' : 'btn-sm'} onClick={() => setTab('user')}>사용자별</button>
         </span>
-        {tab === 'menu' && (
+        {(tab === 'menu' || tab === 'dash') && (
           <label style={{ fontSize: 'var(--fs-1)', marginLeft: 'auto' }}>
             이름으로 갈리는 메뉴 확인{' '}
             <select value={who} onChange={(e) => setWho(e.target.value)}>
@@ -85,12 +110,71 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
         summary={<>
           여기 보이는 것은 설명이 아니라 <b>화면이 실제로 쓰는 규칙</b>입니다(<code>lib/menu.ts</code>·<code>lib/roles.ts</code>).
         </>}>
-        · 메뉴나 권한을 고치면 이 표가 저절로 따라옵니다.
+        · <b>접근</b> = 메뉴가 보이고 열림 · <b>이용</b> = 화면의 자료를 보고 씀 · <b>쓰기</b> = 만들기·고치기·지우기.
+        {' '}● 가능 · ◐ 일부(마우스를 올리면 사유) · — 쓰기 없는 조회 화면 · · 불가. 접근은 메뉴 규칙(<code>lib/menu.ts</code>),
+        {' '}이용·쓰기는 화면 조건과 서버 권한을 조사해 적은 표(<code>lib/permissions.ts</code>)에서 옵니다.
+        <br />· <b>쓰기 잠금</b> 계정은 등급과 상관없이 쓰기가 막힙니다(사용자별 탭).
+        <br />· 메뉴나 권한을 고치면 이 표가 저절로 따라옵니다.
         <br />· ● = 메뉴가 보이고 접근 가능 · · = 보이지 않음. <b>메뉴가 보인다고 다 쓸 수 있는 것은 아닙니다</b> —
         {' '}쓰기 여부는 <b>권한 × 등급</b> 탭과 화면별 <code>readonly</code>가 함께 정합니다.
         <br />· 일부 메뉴는 등급이 아니라 <b>이름</b>으로 갈립니다(매출통계는 김민섭·김동주 제외, 기초미수금 입력은 관리자만).
         {' '}오른쪽에서 사람을 골라 확인하세요.
       </Guide>
+
+      {tab === 'dash' && (
+        <div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '6px 0 10px' }}>
+            {ROLES.map((r) => {
+              const vs = rows.filter((x) => !x.item.children).map((x) => lv(r, who, x));
+              const n = (f: (v: { access: boolean; use: Mark; write: Mark }) => boolean) => vs.filter(f).length;
+              const part = n((v) => typeof v.write === 'string');
+              return (
+                <button key={r} onClick={() => setRole(r)} style={{
+                  textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', borderRadius: 10, padding: '8px 12px', minWidth: 150,
+                  border: `1.5px solid ${role === r ? 'var(--navy)' : 'var(--rule)'}`, background: role === r ? 'var(--navy-bg)' : '#fff',
+                }}>
+                  <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{ROLE_LABELS[r]}</div>
+                  <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 2 }}>
+                    접근 {n((v) => v.access)} · 이용 {n((v) => v.use !== false && v.use !== '준비 중')} · 쓰기 {n((v) => v.write === true)}{part ? ` (+일부 ${part})` : ''}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="tbl-scroll">
+            <table className="tbl" style={{ fontSize: 'var(--fs-1)' }}>
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 110 }}>대분류</th><th style={{ minWidth: 190 }}>메뉴</th>
+                  <th style={{ textAlign: 'center', width: 56 }}>접근</th><th style={{ textAlign: 'center', width: 56 }}>이용</th><th style={{ textAlign: 'center', width: 56 }}>쓰기</th>
+                  <th>{ROLE_LABELS[role]} — 일부인 까닭 · 메모</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => {
+                  const v = lv(role, who, r);
+                  const why = [typeof v.use === 'string' ? `이용 ${v.use.replace(/^일부: /, '')}` : '', typeof v.write === 'string' ? `쓰기 ${v.write.replace(/^일부: /, '')}` : ''].filter(Boolean).join(' · ');
+                  const memo = v.access ? MENU_PERMS[r.item.id]?.note : '';
+                  return (
+                    <tr key={`${r.item.id}:${i}`} style={{ opacity: v.access ? 1 : 0.45 }}>
+                      <td style={{ color: 'var(--ink-3)' }}>{i === 0 || rows[i - 1].group !== r.group ? r.group : ''}</td>
+                      <td style={{ fontWeight: r.depth ? 400 : 700, color: 'var(--navy)', paddingLeft: r.depth ? 18 : undefined }}>
+                        {r.depth ? '└ ' : ''}{r.item.label}
+                        {r.item.hideFor && <Tag>제외 {r.item.hideFor.join('·')}</Tag>}
+                        {r.item.onlyFor && <Tag>{r.item.onlyFor.join('·')}·관리자만</Tag>}
+                      </td>
+                      <td style={{ textAlign: 'center' }}><MarkCell m={v.access} /></td>
+                      <td style={{ textAlign: 'center' }}><MarkCell m={v.use} /></td>
+                      <td style={{ textAlign: 'center' }}><MarkCell m={v.write} /></td>
+                      <td style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-2)' }}>{[why, memo].filter(Boolean).join(' — ')}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {tab === 'menu' && (
         <div className="tbl-scroll">
@@ -117,7 +201,7 @@ export default function PermissionMatrix({ users }: { users: UserProfile[] }) {
                   </td>
                   {ROLES.map((role) => (
                     <td key={role} style={{ textAlign: 'center' }}>
-                      {visible(role, who, r) ? O : X}
+                      <LevelTag v={lv(role, who, r)} />
                     </td>
                   ))}
                 </tr>
