@@ -25,17 +25,19 @@ import { removeSheets } from '../../lib/xlsxTransplant';
 import { wtbSources, linkToWtb, linkListSheet, leftoverSheets } from '../../lib/noteWtbLink';
 import { writeNotes, buildDsd, sheetsFromPlans, contentsOf } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
-import { findEngagement, type Engagement, type NoteRow } from '../../lib/dsdApi';
+import { findEngagement, updateEngagement, type Engagement, type NoteRow } from '../../lib/dsdApi';
 import { getNoteBook, noteBookBytes, type NoteBook } from '../../lib/dsdBookApi';
 import { StepHead, Opt, Note, type LoadedDsd, type NoteFrom } from './DsdShell';
 import { safeName, download } from './dsdUi';
 
 export default function NotePrepareTab(
-  { eng, notes, dsd, from, spare, layout, roll }:
+  { eng, notes, dsd, from, spare, layout, roll, canWrite, onStarted }:
   {
     eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd; from: NoteFrom; spare: number;
     layout: SheetLayout;
     /** 다음 해로 이월 — ②③④ 공통(DsdShell.WorkSettings) */ roll: boolean;
+    /** 서버에 쓸 수 있나(건 상태를 「진행」으로) */ canWrite: boolean;
+    /** 주석 엑셀을 내려받아 건이 「진행」이 되었을 때 — 목록 색을 다시 칠한다 */ onStarted: () => void;
   },
 ) {
   const [wtb, setWtb] = useState<{ name: string; bytes: Uint8Array } | null>(null);
@@ -160,6 +162,8 @@ export default function NotePrepareTab(
       download(out, `${wtb.name.replace(/\.xlsx$/i, '')}_주석시트.xlsx`,
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       const yellow = plans.flatMap((x) => x.cells).filter((c) => c.kind === 'input').length;
+      // 주석 엑셀을 내려받으면 그 회사는 「진행 중」(사용자 2026-10-05). 건 상태 「준비」 → 「진행」. 못 써도 내려받기는 된 것이다.
+      if (canWrite && eng.status === '준비') void updateEngagement(eng.id, { status: '진행' }).then(onStarted).catch(() => undefined);
       setDone((layout === 'long'
         ? `주석 ${plans.length}개를 「${LONG_SHEET}」 시트 한 장에 세로로 내리고 목록 한 장을 그 앞에 두었습니다`
         : `주석 시트 ${plans.length}장을 얹고 목록 한 장을 그 앞에 두었습니다`)

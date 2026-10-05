@@ -114,10 +114,11 @@ export type DsdProgressKey = 'none' | 'list' | 'doing' | 'done';
 export const DSD_PROGRESS: Record<DsdProgressKey, { label: string; color: string }> = {
   none: { label: '주석 목록 없음', color: '#9AA0A6' },
   list: { label: '목록만 · 작성 전', color: '#E0A100' },
-  doing: { label: '작성 중', color: '#2F7BD8' },
+  doing: { label: '진행 중', color: '#2F7BD8' },
   done: { label: '완료', color: '#12A38A' },
 };
-/** 켜 둔 주석 수·작업완료 수·건 상태 → 진행 정도. 건 상태를 「완료」로 두면 주석과 상관없이 완료. */
+/** 켜 둔 주석 수·작업완료 수·건 상태 → 진행 정도. 건 상태를 「완료」로 두면 주석과 상관없이 완료.
+ *  ② 주석 엑셀을 내려받으면 건 상태가 「진행」이 되어 진행 중(사용자 2026-10-05). */
 export function dsdProgressOf(on: number, done: number, status: '준비' | '진행' | '완료'): DsdProgressKey {
   if (status === '완료' || (on > 0 && done >= on)) return 'done';
   if (on === 0) return 'none';

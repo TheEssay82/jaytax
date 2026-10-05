@@ -315,7 +315,8 @@ export default function DsdEngagementTab() {
             />
           )}
           {at === '2' && dsdFile.dsd && (
-            <NotePrepareTab eng={picked} notes={notes} dsd={dsdFile.dsd} from={useFrom} spare={spare} layout={picked.sheetLayout} roll={roll} />
+            <NotePrepareTab eng={picked} notes={notes} dsd={dsdFile.dsd} from={useFrom} spare={spare} layout={picked.sheetLayout} roll={roll}
+              canWrite={!lockWrite} onStarted={() => void listEngagements().then(setEngs).catch(() => undefined)} />
           )}
           {at === '3' && dsdFile.dsd && (
             <NoteVerifyCard notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} spare={spare} layout={picked.sheetLayout} roll={roll} />

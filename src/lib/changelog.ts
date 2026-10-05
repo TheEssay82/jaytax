@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.57.1',
+    date: '2026-10-05',
+    title: '주석·DSD — 주석 엑셀을 내려받은 회사는 「진행 중」',
+    highlights: [
+      '② 에서 주석 엑셀을 내려받으면 그 회사의 건 상태가 「준비」에서 「진행」으로 바뀌어 목록에 파란 「진행 중」으로 보입니다(전 이름 「작성 중」).',
+    ],
+  },
+  {
     version: '3.57.0',
     date: '2026-10-05',
     title: '주석·DSD 관리 화면 재편 — 감사 흐름 네 단계 · 회사 목록 · 읽기 쉽게',
