@@ -39,7 +39,7 @@ import GwpTemplatesCard from './GwpTemplatesCard';
 import GwpProcStdCard from './GwpProcStdCard';
 import GwpStageBoard from './GwpStageBoard';
 import GwpFolderCard from './GwpFolderCard';
-import WtbRollCard from './WtbRollCard';
+import { pickEngagementFor, takePickedEngagement } from './WtbTab';
 import { listProgress } from '../../lib/gwpStageApi';
 import { progressOf, PROGRESS, type StageNo } from '../../lib/gwpStage';
 
@@ -87,7 +87,7 @@ function kdate(iso: string | null): string {
   return m ? `${m[1]}년 ${Number(m[2])}월 ${Number(m[3])}일` : iso;
 }
 
-export default function GwpTab() {
+export default function GwpTab({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
   const { role, readonly, profileName } = useAuth();
   // 감사팀 = 최고관리자·회계사·인당회계사(사용자 2026-10-02 — 조현규·김준성). 서버 is_audit_staff() 와 같은 선.
   const canWrite = !readonly && (role === 'superuser' || role === 'accountant' || role === 'per_head_accountant');
@@ -122,7 +122,7 @@ export default function GwpTab() {
   /** 이월 결과에서 「다른 문구」를 펼친 시트 */
   const [openDiff, setOpenDiff] = useState<string | null>(null);
   // 화면 순서 — ① 올해 파일 → ② 단계 진행 → ③ 엑셀 조서 현황(사용자 2026-09-27 「순서와 UI 를 직관적으로」).
-  const [view, setView] = useState<'file' | 'stage' | 'status' | 'wtb'>('file');
+  const [view, setView] = useState<'file' | 'stage' | 'status'>('file');
   const [rollDetail, setRollDetail] = useState(false);
   const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all');
   // 거래처 목록 — 진행 정도(세팅·판·확정 단계)와 접기(사용자 2026-10-01 「선택하면 나머지는 사라지고 접히게」).
@@ -140,7 +140,10 @@ export default function GwpTab() {
       const live = list.filter((e) => !e.isDemo);
       setEngs(live);
       setEnts(es); setAuditIds(aud); setTemplates(tpls); setYearsBy(ys);
-      const id = keep ?? pickedId ?? null;
+      // 📒 정산표 관리에서 「일반조서 관리로」를 누르고 오면 그 회사를 골라 둔다.
+      const want = takePickedEngagement();
+      const id = keep ?? (want && list.some((e) => e.id === want) ? want : null) ?? pickedId ?? null;
+      if (want && id === want) setListOpen(false);
       setPickedId(id);
       setBooks(id ? await listBooks(id) : []);
       const pe = id ? live.find((e) => e.id === id) : null;
@@ -655,14 +658,14 @@ export default function GwpTab() {
                     <div style={{ fontWeight: 700, color: final ? 'var(--good)' : 'var(--ink-3)' }}>④ 최종본{final ? ` ✓ v${final.version}` : ''}</div>
                     <div style={{ marginTop: 2 }}>{final ? '내년 이월은 이 판에서' : '감사 끝나면 ①의 판 목록에서'}</div>
                   </div>
-                  {/* 정산표 이월 — 조서와 따로 가는 줄기(사용자 2026-10-03). 올해 파일이 없어도 연다. */}
-                  <button onClick={() => setView('wtb')} style={{
+                  {/* 정산표 — 📒 정산표 관리로 옮겼다(사용자 2026-10-05). 여기는 그 회사를 골라 둔 채 가는 바로가기. */}
+                  <button onClick={() => { pickEngagementFor(picked.id); onNavigate?.('wtb'); }} title="📒 정산표 관리에서 중간 이월 · 기말 갱신" style={{
                     flex: '0 1 170px', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', marginLeft: 8,
-                    border: `1.5px solid ${view === 'wtb' ? 'var(--navy)' : 'var(--rule)'}`, background: view === 'wtb' ? 'var(--navy-bg)' : '#fff',
+                    border: '1.5px solid var(--rule)', background: '#fff',
                     borderRadius: 10, padding: '8px 12px',
                   }}>
-                    <div style={{ fontWeight: 700, color: 'var(--navy)' }}>📒 정산표 이월</div>
-                    <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 2 }}>작년 정산표 + 회사 시산표</div>
+                    <div style={{ fontWeight: 700, color: 'var(--navy)' }}>📒 정산표 ›</div>
+                    <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 2 }}>중간 이월 · 기말 갱신</div>
                   </button>
                 </div>
                 {latest && (
@@ -690,10 +693,6 @@ export default function GwpTab() {
               {(view === 'file' || view === 'stage') && !!profileName && (contractCpa === profileName || year?.authorDefault === profileName) && (
                 <GwpFolderCard key={`folder:${picked.id}`} eng={picked} canWrite={canWrite} canRoll={!!year && !!tpl && canWrite} hasBook={!!latest}
                   onRoll={(bytes, label) => rollFromBytes(bytes, label)} onMsg={(m) => setMsg(m)} />
-              )}
-
-              {view === 'wtb' && (
-                <WtbRollCard key={`wtb:${picked.id}`} eng={picked} canWrite={canWrite} />
               )}
 
               {/* ① 올해 파일 ─────────────────────────────── */}

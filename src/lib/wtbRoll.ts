@@ -256,11 +256,12 @@ function linesFor(L: TableLayout, tb: TbLine[], pair: Record<string, string> | u
  * 찾는 차례: 사람이 고른 짝 → 이름(차감 계정은 바로 위 계정과 짝) → **전기 금액이 작년 수정후와 같은 줄**(아비즈 ERP 처럼 세목 이름이 틀리게 찍힐 때).
  * 이름 후보가 여럿이면(아비즈 WPL 의 「기초제품재고액」 세 줄) 전기 금액이 같은 줄을 고른다.
  */
-function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], alias: Map<string, { label: string; row?: number }>, ni: number) {
+function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], alias: Map<string, { label: string; row?: number }>, ni: number, priorCol?: number) {
   const label = (r: number) => sh.cells.get(`${colName(L.acct)}${r}`)?.text ?? '';
   const flabel = (r: number) => (L.fsli != null ? sh.cells.get(`${colName(L.fsli)}${r}`)?.text ?? '' : '');
   // 작년 금액 — 수정후(회사가 수정분개를 장부에 반영한 경우, 제이) 또는 회사제시(반영 안 한 경우, 아비즈 기말제품재고액(System)).
-  const priorsOf = (r: number) => [sh.cells.get(`${colName(L.adj)}${r}`)?.num, sh.cells.get(`${colName(L.cur)}${r}`)?.num].filter((x): x is number => x != null);
+  // 기말 갱신은 중간 정산표의 **전기 열**(작년 수정후를 끼운 열)과 댄다 — 회사제시·수정후 열에는 중간 숫자가 들어 있다.
+  const priorsOf = (r: number) => (priorCol != null ? [sh.cells.get(`${colName(priorCol)}${r}`)?.num] : [sh.cells.get(`${colName(L.adj)}${r}`)?.num, sh.cells.get(`${colName(L.cur)}${r}`)?.num]).filter((x): x is number => x != null);
   const isPl = L.kind !== 'BS';
   const { sec, sign } = rowSections(sh, L);
   const rows = L.accounts;
@@ -452,14 +453,12 @@ export function hideCols(xml: string, from: number, to: number): string {
   });
 }
 
-/** 작년 최종 정산표 → 올해 이월본. */
-export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8Array) => Record<string, Uint8Array>, zipFn: (f: Record<string, Uint8Array>) => Uint8Array): { bytes: Uint8Array; report: WtbRollReport } {
-  const files = unzipFn(bytes);
-  for (const e of sheetEntries(files)) files[e.part] = enc(unshareFormulas(dec(files[e.part])));   // 공유 수식을 풀고 읽는다
+/** ⓪ 새 계정 줄 — 과목 무리 끝에 한 줄(과목 열이 없는 제조원가 표는 고른 줄 바로 아래). 다른 시트의 SUMIF 범위도 따라 밀린다(insertRowsBook). */
+function insertNewRows(files: Record<string, Uint8Array>, place: WtbPlace[], zipFn: (f: Record<string, Uint8Array>) => Uint8Array): { inserted: Map<string, number[]>; notes: string[] } {
   const report0: string[] = [];
   const inserted = new Map<string, number[]>();   // 시트 → 끼운 줄 번호(사람이 고른 「이 줄」 번호를 따라 민다)
   // ⓪ 새 계정 줄 — 과목 무리 끝에 한 줄(과목 열이 없는 제조원가 표는 고른 줄 바로 아래). 다른 시트의 SUMIF 범위도 따라 밀린다(insertRowsBook).
-  for (const p of (o.place ?? []).filter((x): x is Extract<WtbPlace, { to: 'new' }> => x.to === 'new')) {
+  for (const p of place.filter((x): x is Extract<WtbPlace, { to: 'new' }> => x.to === 'new')) {
     const sh = readWorkbook(zipFn(files), (n) => n === p.sheet)[0];
     const L = sh && readLayout(sh);
     const key = L ? (L.fsli ?? L.acct) : 0;
@@ -479,6 +478,14 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
     files[part] = enc(setCells(dec(files[part]), edits));
     report0.push(`${p.sheet} ${n}행 — 「${p.fsli}」 끝에 새 계정 「${p.name}」`);
   }
+  return { inserted, notes: report0 };
+}
+
+/** 작년 최종 정산표 → 올해 이월본. */
+export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8Array) => Record<string, Uint8Array>, zipFn: (f: Record<string, Uint8Array>) => Uint8Array): { bytes: Uint8Array; report: WtbRollReport } {
+  const files = unzipFn(bytes);
+  for (const e of sheetEntries(files)) files[e.part] = enc(unshareFormulas(dec(files[e.part])));   // 공유 수식을 풀고 읽는다
+  const { inserted, notes: report0 } = insertNewRows(files, o.place ?? [], zipFn);
   const before = readWorkbook(zipFn(files));
   const entries = () => sheetEntries(files);
   const partOf = (name: string) => entries().find((e) => e.name === name)!.part;
@@ -675,6 +682,62 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
     report.renamed = [...ren];
     report.notes = report.notes.map((n) => [...ren].reduce((x, [from, to]) => x.split(`${from}:`).join(`${to}:`), n));
   }
+  dropCalcChain(files);
+  forceRecalc(files);
+  return { bytes: zipFn(files), report };
+}
+
+/**
+ * **기말 갱신** — 중간감사 정산표(이미 이월한 것, 주석 시트가 붙어 있어도 된다)의 **회사제시 열만** 기말 회사 재무제표로 바꾼다.
+ * (사용자 2026-10-05 「기말감사 때 중간감사 정산표에 기말 제시 재무제표를 당기에 넣어야 한다」)
+ *   · 열 끼우기·한 해 밀기·A500·SCE·보고서 머리·시트 이름은 건드리지 않는다 — 중간 이월에서 이미 했다.
+ *   · 수정분개(DR·CR)도 그대로 — 중간감사 때는 수정분개가 생기지 않는다(사용자).
+ *   · 계정 짝은 이월과 같은 차례(고른 짝 → 이름 → 전기 금액 → 과목). 전기 금액은 중간 정산표의 전기 열과 댄다.
+ *   · 회사제시 날짜 칸(값이면)은 기준일로. 받을 줄이 없는 계정은 이월처럼 「새 줄 · 이 줄에 더하기 · 넣지 않기」.
+ * 다른 시트(주석 시트·대사표·정산표연결·보고서)는 바이트 그대로다(새 계정 줄을 넣으면 그 줄을 가리키는 범위만 밀린다) — 주석의 파란 칸이 새 숫자를 따라온다.
+ */
+export function refreshWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8Array) => Record<string, Uint8Array>, zipFn: (f: Record<string, Uint8Array>) => Uint8Array): { bytes: Uint8Array; report: WtbRollReport } {
+  const files = unzipFn(bytes);
+  // 공유 수식은 **정산표 표 시트만** 푼다 — 주석 시트·보고서 등 다른 시트는 바이트 그대로 둔다.
+  const tableNames = new Set(readWorkbook(bytes).filter((sh) => readLayout(sh)).map((sh) => sh.name));
+  for (const e of sheetEntries(files)) if (tableNames.has(e.name)) files[e.part] = enc(unshareFormulas(dec(files[e.part])));
+  const { inserted, notes } = insertNewRows(files, o.place ?? [], zipFn);
+  const book = readWorkbook(zipFn(files));
+  const partOf = (name: string) => sheetEntries(files).find((e) => e.name === name)!.part;
+  const report: WtbRollReport = { term: 0, tables: [], filled: [], unmatched: [], renamed: [], notes: [...notes] };
+  const closing = excelSerial(o.closing)!;
+  const prevYear = Number(o.prevEnd.slice(0, 4));
+  const ni = (o.tb ?? []).filter((t) => t.section === '손익' && !t.subtotal).reduce((a, t) => a - t.bal, 0);
+  let found = 0;
+  for (const sh of book) {
+    const L = readLayout(sh);
+    if (!L) continue;
+    found++;
+    if (L.kind === 'BS') report.term = L.curTerm ?? 0;
+    const pc = L.history.get(prevYear);
+    if (pc == null) report.notes.push(`${L.sheet}: 전기(${prevYear}) 열을 찾지 못했습니다 — 중간 이월을 한 정산표인지 보십시오. 전기 금액으로 짝 찾기는 쓰지 않습니다.`);
+    const lines = linesFor(L, o.tb ?? [], o.pair);
+    if (L.kind === 'MC' && !lines.length) report.notes.push(`${L.sheet}: 짝지은 제조원가명세서가 없어 회사제시를 0 으로 두었습니다.`);
+    const shift = (r: number) => { let x = r; for (const n of [...(inserted.get(L.sheet) ?? [])].sort((a, b) => a - b)) if (n <= x) x++; return x; };
+    const alias = new Map((o.place ?? []).filter((p) => p.sheet === L.sheet).map((p) => [pairKey(p.name, p.to === 'row' ? p.group : undefined), p.to === 'row' ? { label: norm(p.label), row: p.row != null ? shift(p.row) : undefined } : { label: norm(p.name) }] as [string, { label: string; row?: number }]));
+    const m = matchTb(sh, L, lines, alias, ni, pc ?? undefined);
+    report.unmatched.push(...m.unmatched.map((x) => ({ ...x, sheet: L.sheet })));
+    const edits: CellEdit[] = [];
+    const C = colName(L.cur);
+    const d = sh.cells.get(`${C}${L.dateRow}`);
+    if (d && !d.formula && d.num != null) edits.push({ ref: `${C}${L.dateRow}`, num: closing });
+    let zeroed = 0;
+    for (const r of L.accounts) {
+      const old = sh.cells.get(`${C}${r}`);
+      if (old?.formula) continue;                 // 회사제시가 식인 줄(합계 줄 등)은 그대로
+      const v = m.sums.get(r);
+      if (v) { edits.push({ ref: `${C}${r}`, num: Math.round(v.value) }); report.filled.push({ sheet: L.sheet, row: r, label: sh.cells.get(`${colName(L.acct)}${r}`)?.text ?? '', value: Math.round(v.value), from: v.from, how: v.how }); }
+      else if (old?.num) { edits.push({ ref: `${C}${r}`, num: 0 }); zeroed++; }
+    }
+    if (edits.length) files[partOf(L.sheet)] = enc(setCells(dec(files[partOf(L.sheet)]), edits));
+    report.tables.push({ sheet: L.sheet, insertedAt: '', prior: pc != null ? colName(pc) : '', company: `${C}열 → ${o.closing}`, zeroed, normalized: 0, hidden: '' });
+  }
+  if (!found) throw new Error('정산표 표(WBS·WPL — 머리 「과목」, 올해 묶음 「DR | CR」)를 찾지 못했습니다.');
   dropCalcChain(files);
   forceRecalc(files);
   return { bytes: zipFn(files), report };

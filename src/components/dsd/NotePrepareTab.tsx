@@ -31,13 +31,14 @@ import { StepHead, Opt, Note, type LoadedDsd, type NoteFrom } from './DsdShell';
 import { safeName, download } from './dsdUi';
 
 export default function NotePrepareTab(
-  { eng, notes, dsd, from, spare, layout, roll, canWrite, onStarted }:
+  { eng, notes, dsd, from, spare, layout, roll, canWrite, onStarted, onWtb }:
   {
     eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd; from: NoteFrom; spare: number;
     layout: SheetLayout;
     /** 다음 해로 이월 — ②③④ 공통(DsdShell.WorkSettings) */ roll: boolean;
     /** 서버에 쓸 수 있나(건 상태를 「진행」으로) */ canWrite: boolean;
     /** 주석 엑셀을 내려받아 건이 「진행」이 되었을 때 — 목록 색을 다시 칠한다 */ onStarted: () => void;
+    /** 📒 정산표 관리로(이 회사를 골라 둔 채) */ onWtb: () => void;
   },
 ) {
   const [wtb, setWtb] = useState<{ name: string; bytes: Uint8Array } | null>(null);
@@ -255,6 +256,7 @@ export default function NotePrepareTab(
             {wtb
               ? <span style={{ marginLeft: 8, color: 'var(--good)' }}>✓ <b>{wtb.name}</b> · {Math.round(wtb.bytes.length / 1024)}KB</span>
               : <span style={{ marginLeft: 8, color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>정산표 이월로 만든 중간 정산표를 그대로 넣으면 됩니다</span>}
+            <button className="btn-sm" style={{ marginLeft: 8 }} onClick={onWtb} title="📒 정산표 관리 — 중간 이월 · 기말 갱신">📒 정산표 만들기 ›</button>
           </Opt>
           {extras.length > 0 && (
             <Opt label="뺄 시트" hint="정산표 표(WBS·WPL·WMS)·보고서·SCE·SCF·WCF·A500 이 아닌 시트입니다. 다른 시트의 수식이 가리키는 시트는 빼면 #REF! 가 되어 막아 둡니다. 원본 파일은 그대로입니다.">

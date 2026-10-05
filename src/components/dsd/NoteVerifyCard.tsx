@@ -22,7 +22,7 @@ import { findLinks } from '../../lib/noteLink';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { injectSheets } from '../../lib/xlsxInject';
 import type { NoteRow } from '../../lib/dsdApi';
-import { StepHead, Opt, type LoadedDsd, type NoteFrom } from './DsdShell';
+import { StepHead, Opt, More, type LoadedDsd, type NoteFrom } from './DsdShell';
 import { download } from './dsdUi';
 
 const TONE: Record<Level, { bg: string; ink: string }> = {
@@ -129,21 +129,14 @@ export default function NoteVerifyCard(
         line={<>다 채운 주석 엑셀을 훑어 <b>합계 · 주석끼리 맞아야 할 숫자 · 전기 숫자 · 재무제표↔주석</b>이 맞는지 봅니다.</>}
         more={<>
           파일은 브라우저 안에서만 열립니다. 여기서 고른 엑셀은 ④ 도 그대로 씁니다.
-          작년 보고서가 없어 회사가 주석을 지어 주거나 손으로 짠 경우에는 「① 에 올린 DSD 그대로」를 고르면, ① 목록과 상관없이 그 파일의 주석 전부를 훑습니다
-          (합계와 재무제표↔주석 대사만 — 전기 값은 대 볼 작년이 없어 보지 않습니다).
         </>}
       />
 
-      <Opt label="무엇을 검증하나">
-        <label style={{ marginRight: 18 }}>
-          <input type="radio" checked={src === 'xlsx'} onChange={() => { setSrc('xlsx'); setRes(null); }} /> <b>채워 넣은 주석 엑셀</b>
-        </label>
-        <label>
-          <input type="radio" checked={src === 'dsd'} onChange={() => { setSrc('dsd'); setRes(null); }} /> ① 에 올린 DSD 그대로
-          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}> (이미 다 적힌 보고서)</span>
-        </label>
-      </Opt>
-
+      {src === 'dsd' && (
+        <div style={{ margin: '4px 0 6px', padding: '7px 10px', borderRadius: 'var(--r-sm)', background: 'var(--warn-bg)', color: 'var(--warn)', fontSize: 'var(--fs-2)' }}>
+          <b>다른 경우</b> — ① 에 올린 완성 DSD 를 그대로 훑습니다(④ 로 이어지지 않습니다). <button className="btn-sm" onClick={() => { setSrc('xlsx'); setRes(null); }}>보통으로 돌아가기</button>
+        </div>
+      )}
       {src === 'xlsx' ? (
         <Opt label="채워 넣은 엑셀">
           <label className="btn-sm btn-sm-navy" style={{ cursor: 'pointer' }}>
@@ -168,6 +161,15 @@ export default function NoteVerifyCard(
         }}>{say}</div>
       )}
 
+      {src === 'xlsx' && (
+        <div style={{ marginTop: 8 }}>
+          <More label="다른 경우 — 완성된 DSD 를 그대로 검사하기">
+            작년 보고서가 없어 <b>회사가 주석을 지어 준 DSD</b> 나 <b>초도감사라 손으로 짠 DSD</b> 를 받았을 때, ① 에 그 <b>당기 완성 DSD</b> 를 올리고 여기서 그대로 훑습니다.
+            합계와 재무제표↔주석 대사만 봅니다(전기 값은 대 볼 작년이 없음). 이 갈래는 ④ 로 이어지지 않습니다 — 고칠 곳은 DART 편집기에서 고칩니다.
+            <div style={{ marginTop: 6 }}><button className="btn-sm" onClick={() => { setSrc('dsd'); setRes(null); }}>완성 DSD 그대로 검사하기</button></div>
+          </More>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 12 }}>
         {res && <button className="btn-sm" onClick={saveReport}>검증보고서 얹은 엑셀 내려받기</button>}
         <button className="btn-p" disabled={busy} onClick={run}>{busy ? '훑는 중…' : '검증하기'}</button>

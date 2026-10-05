@@ -48,6 +48,7 @@ import ConfirmStatusTab from './confirm/ConfirmStatusTab';
 import DsdEngagementTab from './dsd/DsdEngagementTab';
 import GwpTab from './gwp/GwpTab';
 import InternalHome from './home/InternalHome';
+import WtbTab from './gwp/WtbTab';
 import PlaceholderTab from './common/PlaceholderTab';
 import DevNotesModal from './common/DevNotesModal';
 import UpdateBanner from './common/UpdateBanner';
@@ -520,10 +521,13 @@ function TabContent({
       return <ConfirmStatusTab />;
     // 감사업무관리 › 주석·DSD 관리 (v3.0)
     case 'dsd':
-      return <DsdEngagementTab />;
+      return <DsdEngagementTab onNavigate={onNavigate} />;
+    // 감사업무관리 › 정산표 관리 — 중간 이월 · 기말 갱신(2026-10-05)
+    case 'wtb':
+      return <WtbTab onNavigate={onNavigate} />;
     // 감사업무관리 › 일반조서 관리 (v3.19)
     case 'gwp':
-      return <GwpTab />;
+      return <GwpTab onNavigate={onNavigate} />;
     // 감사업무관리 › Journal Entry 시스템 — 개발 준비 중(2026-10-05)
     case 'je':
       return <PlaceholderTab title="🔍 Journal Entry 시스템" desc="개발 준비 중입니다 — 분개장 전수 검토(JE Test): 회사 분개장을 올려 결산·수동·라운드 금액·주말 전표 같은 위험 지표를 걸러 보는 자리가 될 예정입니다." />;

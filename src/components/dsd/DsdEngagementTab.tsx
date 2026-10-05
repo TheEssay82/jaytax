@@ -36,6 +36,7 @@ import {
   useDsdFile, DsdBar, DsdTabs, NeedDsd, WorkSettings, StepHead, More, type TabDef, type NoteFrom,
 } from './DsdShell';
 import DateParts from '../common/DateParts';
+import { pickEngagementFor, takePickedEngagement } from '../gwp/WtbTab';
 
 const TABS: TabDef[] = [
   { key: '1', no: '①', label: '작년 보고서', when: '준비 · 주석 목록' },
@@ -51,7 +52,7 @@ const STATUS_TONE: Record<string, { bg: string; ink: string }> = {
   작성제외: { bg: '#F4F4F4', ink: 'var(--ink-4)' },
 };
 
-export default function DsdEngagementTab() {
+export default function DsdEngagementTab({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
   // 외부인 시연 — 「시연용」 표가 붙은 건 하나만 서버가 내준다(0145). 화면에서는 **보기만**
   // 하게 막는다. 쓰기는 RLS 가 이미 막지만, 눌러도 안 되는 단추를 내놓을 까닭이 없다.
   const { role, readonly } = useAuth();
@@ -97,7 +98,10 @@ export default function DsdEngagementTab() {
       setEngs(list);
       setEnts(es);
       setAuditIds(aud);
-      const id = keep ?? pickedId ?? null;
+      // 다른 화면(📒 정산표 관리)에서 「주석·DSD 관리로」를 누르고 오면 그 회사를 골라 둔다.
+      const want = takePickedEngagement();
+      const id = keep ?? (want && list.some((e) => e.id === want) ? want : null) ?? pickedId ?? null;
+      if (want && id === want) setListOpen(false);
       setPickedId(id);
       setNotes(id ? await listNotes(id) : []);
       setBook(id ? await getNoteBook(id).catch(() => null) : null);
@@ -315,7 +319,7 @@ export default function DsdEngagementTab() {
             />
           )}
           {at === '2' && dsdFile.dsd && (
-            <NotePrepareTab eng={picked} notes={notes} dsd={dsdFile.dsd} from={useFrom} spare={spare} layout={picked.sheetLayout} roll={roll}
+            <NotePrepareTab onWtb={() => { pickEngagementFor(picked.id); onNavigate?.('wtb'); }} eng={picked} notes={notes} dsd={dsdFile.dsd} from={useFrom} spare={spare} layout={picked.sheetLayout} roll={roll}
               canWrite={!lockWrite} onStarted={() => void listEngagements().then(setEngs).catch(() => undefined)} />
           )}
           {at === '3' && dsdFile.dsd && (

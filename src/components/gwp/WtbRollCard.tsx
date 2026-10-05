@@ -1,4 +1,5 @@
 // 정산표 이월 — 작년 확정 정산표 + 회사 제시 재무제표 → 올해 중간감사 정산표.
+// 기말 갱신(mode='기말', 2026-10-05) — 중간 정산표(주석 시트가 붙은 것도) + 기말 회사 재무제표 → 회사제시 열만 바꾼 기말 정산표(refreshWtb).
 //
 // 사용자 2026-10-03: 이월 순서 16단계(wtbRoll.ts)를 버튼으로. 새 계정은 2120A 처럼 「이 줄에 더하기」 또는 「과목 끝에 새 줄」.
 // 사용자 2026-10-05(아비즈): ERP 재무제표는 형식이 다르다 · 제조원가명세서가 3종 · **파일을 여러 개** 올릴 수 있어야 한다.
@@ -11,7 +12,7 @@ import type { Engagement } from '../../lib/dsdApi';
 import { findEngagement } from '../../lib/dsdApi';
 import { readWorkbook, type SheetData } from '../../lib/xlsxRead';
 import { unzip, zip } from '../../lib/xlsxTransplant';
-import { rollWtb, tbFromSheet, fsFromSheet, wtbOutline, wtbA500People, pairKey, type TbLine, type WtbPlace, type WtbRollReport, type WtbRow, type TableKind } from '../../lib/wtbRoll';
+import { rollWtb, refreshWtb, tbFromSheet, fsFromSheet, wtbOutline, wtbA500People, pairKey, type TbLine, type WtbPlace, type WtbRollReport, type WtbRow, type TableKind } from '../../lib/wtbRoll';
 import { listFiles, latestFile, uploadFile, type EngFile } from '../../lib/gwpStageApi';
 import { fileBytes, fileUrl } from '../../lib/gwpApi';
 import { listWtbMaps, saveWtbMaps, deleteWtbMap, mapsToPlaces, type WtbMap, type WtbMapInput } from '../../lib/wtbMapApi';
@@ -53,11 +54,13 @@ const nameKey = (s: string) => s.replace(/[\s_\-.()]/g, '').toUpperCase();
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
 
-export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWrite: boolean }) {
+export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: Engagement; canWrite: boolean; mode?: '중간' | '기말' }) {
+  const end = mode === '기말';
+  const run = end ? refreshWtb : rollWtb;
   const [prior, setPrior] = useState<Src | null>(null);
   const [srcs, setSrcs] = useState<SrcSheet[]>([]);
   const [pair, setPair] = useState<Record<string, string>>({});
-  const [closing, setClosing] = useState(`${eng.fy}-08-31`);
+  const [closing, setClosing] = useState(end ? `${eng.fy}-12-31` : `${eng.fy}-08-31`);
   const [preview, setPreview] = useState<WtbRollReport | null>(null);
   const [outline, setOutline] = useState<{ rows: WtbRow[]; tables: { sheet: string; kind: TableKind; hidden: boolean }[] }>({ rows: [], tables: [] });
   const [choice, setChoice] = useState<Record<string, Choice>>({});
@@ -80,7 +83,16 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
     setPrior(null); setSrcs([]); setPreview(null); setMade(null); setChoice({});
     void (async () => {
       const mine = await listFiles(eng.id);
-      if (!off) setSaved(mine.filter((f) => f.kind === '이월정산표' && !f.meta.void));
+      const outs = mine.filter((f) => f.kind === '이월정산표' && !f.meta.void);
+      if (!off) setSaved(outs);
+      if (end) {
+        // 기말 — 이 건 자료함의 중간 정산표(주석 시트를 붙인 파일은 PC 에 있으니 직접 고르면 된다).
+        const f = outs.find((x) => /_중간_/.test(x.fileName)) ?? outs[0];
+        if (!f || off) return;
+        const bytes = await fileBytes(f.storagePath);
+        if (!off) setPrior({ name: f.fileName, bytes, from: '이 건 자료함의 중간 정산표' });
+        return;
+      }
       const prev = await findEngagement(eng.entityId, eng.fy - 1, eng.scope);
       if (!prev) return;
       const f = latestFile(await listFiles(prev.id), '정산표', prev.fy);
@@ -89,7 +101,7 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
       if (!off) setPrior({ name: f.fileName, bytes, from: `작년(FY${prev.fy}) 자료함의 확정 정산표` });
     })().catch(() => undefined);
     return () => { off = true; };
-  }, [eng.id, eng.entityId, eng.fy, eng.scope]);
+  }, [eng.id, eng.entityId, eng.fy, eng.scope, end]);
 
   useEffect(() => { setPreview(null); setMade(null); }, [prior, srcs, closing, pair, maps]);
   useEffect(() => {
@@ -174,7 +186,7 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
     setBusy('preview'); setErr(null); setMsg(null);
     setTimeout(() => {
       try {
-        const r = rollWtb(prior.bytes, { ...opts, place: mapsToPlaces(maps) }, unzip, zip).report;
+        const r = run(prior.bytes, { ...opts, place: mapsToPlaces(maps) }, unzip, zip).report;
         setPreview(r);
         // 저장된 「넣지 않기」는 미리 골라 둔다.
         const pre: Record<string, Choice> = {};
@@ -199,12 +211,12 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
     // A500 작성자·검토자 = 회사 담당 — 만들 때 한 번 묻는다(사용자 2026-10-03 「당기 회사담당을 질문하는 절차」).
     const a = companyAuthor.trim() || '(비움)', rv = companyReviewer.trim() || '(비움)';
     const changed = a !== (lastPeople.author ?? '(비움)') || rv !== (lastPeople.reviewer ?? '(비움)');
-    if (!confirm(`A500(수정사항집계표)의 회사 담당을 확인해 주세요.\n\n  작성자: ${a}\n  검토자: ${rv}\n\n${changed ? `작년(${lastPeople.author ?? '—'} · ${lastPeople.reviewer ?? '—'})과 다르게 고쳐 넣습니다.` : '작년과 같습니다.'}\n올해 회사 담당이 맞으면 [확인], 아니면 [취소]를 누르고 ④ 칸을 고치세요.`)) return;
+    if (!end && !confirm(`A500(수정사항집계표)의 회사 담당을 확인해 주세요.\n\n  작성자: ${a}\n  검토자: ${rv}\n\n${changed ? `작년(${lastPeople.author ?? '—'} · ${lastPeople.reviewer ?? '—'})과 다르게 고쳐 넣습니다.` : '작년과 같습니다.'}\n올해 회사 담당이 맞으면 [확인], 아니면 [취소]를 누르고 ④ 칸을 고치세요.`)) return;
     setBusy('make'); setErr(null); setMsg(null);
     try {
       // 저장된 짝 + 이번에 고른 것(같은 계정이면 이번 것이 이긴다 — 이번 것이 뒤라 Map 에서 덮어쓴다).
-      const r = rollWtb(prior.bytes, { ...opts, place: [...mapsToPlaces(maps), ...places()] }, unzip, zip);
-      const name = wtbFileName(eng, '중간');
+      const r = run(prior.bytes, { ...opts, place: [...mapsToPlaces(maps), ...places()] }, unzip, zip);
+      const name = wtbFileName(eng, mode);
       download(r.bytes, name, XLSX);
       if (canWrite) {
         await uploadFile(eng.id, '이월정산표', { name, bytes: r.bytes }, {
@@ -224,7 +236,9 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
         try { await saveWtbMaps(eng.entityId, items); setMaps(await listWtbMaps(eng.entityId)); } catch (e) { setErr(`짝을 저장하지 못했습니다: ${e instanceof Error ? e.message : ''}`); }
       }
       setMade(r.report);
-      setMsg(`「${name}」을 만들어 내려받았습니다${canWrite ? ' — 자료함에도 남겼습니다' : ''}. 엑셀에서 WBS 차대·이익잉여금 검증·SCE·WCF 검증을 한 번 보세요.`);
+      setMsg(`「${name}」을 만들어 내려받았습니다${canWrite ? ' — 자료함에도 남겼습니다' : ''}. `
+        + (end ? '회사제시 열만 기말 숫자로 바꿨습니다 — 주석 시트를 붙인 파일이면 파란 칸이 새 숫자를 따라옵니다. WBS 차대·이익잉여금·SCE·WCF 검증을 한 번 보세요.'
+          : '엑셀에서 WBS 차대·이익잉여금 검증·SCE·WCF 검증을 한 번 보세요.'));
     } catch (e) { setErr(e instanceof Error ? e.message : '만들지 못했습니다.'); } finally { setBusy(''); }
   }
 
@@ -240,20 +254,24 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
   const box = { padding: '8px 10px', borderRadius: 8, background: 'var(--surface-2)', marginTop: 8 } as const;
   return (
     <div className="card">
-      <div className="chdr">정산표 이월
-        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>작년 확정 정산표 + 회사 제시 재무제표 → 올해 중간감사 정산표(WBS·WPL·제조원가·A500·SCE·보고서·WCF를 한 해 밀어 둠)</span>
+      <div className="chdr">{end ? '기말 갱신' : '중간 이월'}
+        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
+          {end ? '중간 정산표 + 기말 회사 재무제표 → 회사제시 열만 기말 숫자로(열 밀기·A500·SCE 는 그대로)'
+            : '작년 확정 정산표 + 회사 제시 재무제표 → 올해 중간감사 정산표(WBS·WPL·제조원가·A500·SCE·보고서·WCF를 한 해 밀어 둠)'}
+        </span>
       </div>
       {err && <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)', marginBottom: 6 }}>{err}</div>}
       {msg && <div style={{ color: 'var(--good)', fontSize: 'var(--fs-2)', marginBottom: 6 }}>{msg}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '8px 12px', alignItems: 'start', fontSize: 'var(--fs-2)' }}>
-        <b>① 작년 확정 정산표</b>
+        <b>{end ? '① 중간 정산표' : '① 작년 확정 정산표'}</b>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {prior ? <span>{prior.name} <span style={{ color: 'var(--ink-3)' }}>({prior.from}{outline.tables.length ? ` · 표 ${outline.tables.map((t) => t.sheet + (t.hidden ? '(숨김)' : '')).join('·')}` : ''})</span></span>
-            : <span style={{ color: 'var(--ink-3)' }}>작년 작업 건 자료함에 없습니다 — 파일을 고르세요</span>}
+            : <span style={{ color: 'var(--ink-3)' }}>{end ? '이 건 자료함에 중간 정산표가 없습니다 — 파일을 고르세요' : '작년 작업 건 자료함에 없습니다 — 파일을 고르세요'}</span>}
           <label className="btn-sm" style={{ cursor: 'pointer' }}>{prior ? '다른 파일' : '파일 고르기'}
             <input type="file" accept=".xlsx,.xlsm" style={{ display: 'none' }} onChange={(e) => { void pickPrior(e.target.files?.[0]); e.target.value = ''; }} />
           </label>
+          {end && <span style={{ color: 'var(--info)', fontSize: 'var(--fs-1)' }}>주석 시트를 붙인 파일(…_주석시트.xlsx)을 고르면 주석의 파란 칸이 기말 숫자를 따라옵니다.</span>}
         </div>
 
         <b>② 회사 재무제표</b>
@@ -307,21 +325,21 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
         <b>③ 기준일</b>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input type="date" className="btn-sm" value={closing} onChange={(e) => setClosing(e.target.value)} />
-          <span style={{ color: 'var(--ink-3)' }}>중간감사 기준월 말 — 재무제표·시산표 제목에서 읽습니다. A500 의 FS일은 {eng.fy}-12-31 로 미리 둡니다.{eng.termNo ? ` 올해 제${eng.termNo}기.` : ''}</span>
+          <span style={{ color: 'var(--ink-3)' }}>{end ? '기말 결산일 — 재무제표 제목에서 읽습니다. 회사제시 열의 날짜 칸이 이 날로 바뀝니다.'
+            : `중간감사 기준월 말 — 재무제표·시산표 제목에서 읽습니다. A500 의 FS일은 ${eng.fy}-12-31 로 미리 둡니다.${eng.termNo ? ` 올해 제${eng.termNo}기.` : ''}`}</span>
         </div>
-        <b>④ 회사 담당</b>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {!end && <b>④ 회사 담당</b>}
+        {!end && <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--ink-3)' }}>A500 작성자</span>
           <input className="btn-sm" style={{ width: 120 }} value={companyAuthor} onChange={(e) => setCompanyAuthor(e.target.value)} placeholder="회사 작성자" />
           <span style={{ color: 'var(--ink-3)' }}>검토자</span>
           <input className="btn-sm" style={{ width: 120 }} value={companyReviewer} onChange={(e) => setCompanyReviewer(e.target.value)} placeholder="회사 검토자" />
           <span style={{ color: 'var(--ink-3)' }}>{prior ? '작년 A500 값입니다 — 올해 회사 담당이 바뀌었으면 고치세요. 만들 때 한 번 더 묻습니다.' : ''}</span>
-        </div>
+        </div>}
       </div>
 
       <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="btn-p" disabled={!prior || !built.tb.length || !!busy} onClick={check}>{busy === 'preview' ? '맞춰 보는 중…' : '회사 자료 맞춰 보기'}</button>
-        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>기말감사 정산표 갱신(열 밀기 없이 회사제시만 바꾸기)은 다음에 붙입니다.</span>
       </div>
 
       {preview && (
@@ -331,7 +349,7 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
             {(() => { const n = preview.filled.filter((f) => f.how === '전기 금액').length; return n ? <span style={{ color: 'var(--ink-3)' }}> (그 가운데 {n}줄은 이름이 달라 <b>전기 금액</b>으로 찾음)</span> : null; })()}
           </div>
           <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
-            {preview.tables.map((t) => <span key={t.sheet}>{t.sheet} {t.insertedAt}열에 작년 수정후 끼움{t.hidden ? ` · ${t.hidden} 숨김` : ''}; </span>)}
+            {preview.tables.map((t) => <span key={t.sheet}>{end ? `${t.sheet} 회사제시 ${t.company}` : `${t.sheet} ${t.insertedAt}열에 작년 수정후 끼움${t.hidden ? ` · ${t.hidden} 숨김` : ''}`}; </span>)}
             {preview.renamed.length > 0 && <span>시트 이름 {preview.renamed.map(([a, b]) => `${a}→${b}`).join(', ')}</span>}
           </div>
           {preview.notes.filter((n) => !/새 계정/.test(n)).map((n) => <div key={n} style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{n}</div>)}
@@ -382,7 +400,7 @@ export default function WtbRollCard({ eng, canWrite }: { eng: Engagement; canWri
           ) : <div style={{ marginTop: 6, color: 'var(--good)', fontSize: 'var(--fs-2)' }}>회사 자료 계정이 모두 정산표 줄에 맞았습니다.</div>}
           <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
             <button className="btn-p" disabled={!!busy || unresolved > 0} onClick={() => void make()}>
-              {busy === 'make' ? '만드는 중…' : `이월 정산표 만들기 — ${wtbFileName(eng, '중간')}`}
+              {busy === 'make' ? '만드는 중…' : `${end ? '기말 정산표' : '이월 정산표'} 만들기 — ${wtbFileName(eng, mode)}`}
             </button>
             {unresolved > 0 && <span style={{ color: 'var(--warn)', fontSize: 'var(--fs-1)' }}>받을 줄이 없는 계정 {unresolved}개를 먼저 고르세요</span>}
           </div>

@@ -69,6 +69,7 @@ export const MENU_PERMS: Record<string, MenuPerm> = {
   'conf-dispatch': { write: { all: true } },
   'conf-collect': { write: { all: true } },
   'conf-status': { write: { all: true } },
+  'wtb': { write: { ...AUDIT }, note: '만든 정산표는 그 건 자료함에 남는다' },
   'dsd': { write: { ...AUDIT, external: '시연 — 조회만' }, note: '「외부인에게 보여 주기」 표시는 최고관리자' },
   'gwp': { write: { ...AUDIT } },
   'je': { use: { all: '준비 중' }, write: READ_ONLY },

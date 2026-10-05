@@ -209,3 +209,19 @@ export async function listProgress(): Promise<Map<string, { confirmed: StageNo[]
   }
   return out;
 }
+
+/** 정산표 관리 목록 — 건마다 만든 이월정산표(중간·기말) 가운데 최신 하나씩(2026-10-05). 파일 이름의 「_중간_」·「_기말_」로 가른다. */
+export async function listWtbOutputs(): Promise<Map<string, { mid: EngFile | null; end: EngFile | null }>> {
+  const { data, error } = await supabase.from('engagement_file').select(`engagement_id, ${FILE_SEL}`)
+    .eq('kind', '이월정산표').order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  const out = new Map<string, { mid: EngFile | null; end: EngFile | null }>();
+  for (const r of (data ?? []) as unknown as (FileRow & { engagement_id: string })[]) {
+    const f = toFile(r);
+    if (f.meta.void) continue;
+    const x = out.get(r.engagement_id) ?? { mid: null, end: null };
+    if (/_기말_/.test(f.fileName)) x.end ??= f; else x.mid ??= f;
+    out.set(r.engagement_id, x);
+  }
+  return out;
+}
