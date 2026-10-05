@@ -27,8 +27,8 @@ const STAGE: Record<Key, { label: string; color: string }> = {
 };
 
 export default function WtbTab({ onNavigate }: { onNavigate?: (tab: string) => void }) {
-  const { role, readonly } = useAuth();
-  const canWrite = !readonly && (role === 'superuser' || role === 'accountant' || role === 'per_head_accountant');
+  const { role, readonly, sandbox } = useAuth();
+  const canWriteBase = !readonly && (role === 'superuser' || role === 'accountant' || role === 'per_head_accountant');
   const [engs, setEngs] = useState<Engagement[]>([]);
   const [outs, setOuts] = useState<Map<string, { mid: EngFile | null; end: EngFile | null }>>(new Map());
   const [pickedId, setPickedId] = useState<string | null>(null);
@@ -44,7 +44,7 @@ export default function WtbTab({ onNavigate }: { onNavigate?: (tab: string) => v
     void (async () => {
       try {
         const [list, o] = await Promise.all([listEngagements(), listWtbOutputs()]);
-        const real = list.filter((e) => !e.isDemo);
+        const real = list.filter((e) => !e.isDemo || sandbox);
         setEngs(real); setOuts(o);
         const want = takePickedEngagement();
         if (want && real.some((e) => e.id === want)) {
@@ -60,6 +60,8 @@ export default function WtbTab({ onNavigate }: { onNavigate?: (tab: string) => v
   const inYear = useMemo(() => engs.filter((e) => e.fy === fy).sort((a, b) => a.entityName.localeCompare(b.entityName, 'ko')), [engs, fy]);
   const keyOf = (id: string): Key => (outs.get(id)?.end ? 'end' : outs.get(id)?.mid ? 'mid' : 'none');
   const picked = engs.find((e) => e.id === pickedId) ?? null;
+  // 체험 계정은 시연용 건에서만 저장(서버 0168 과 같은 선).
+  const canWrite = canWriteBase && (!sandbox || !!picked?.isDemo);
 
   function pick(id: string) {
     setPickedId(id); setListOpen(false);

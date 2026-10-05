@@ -43,7 +43,9 @@ export default function ConfirmDispatchTab() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // 쓰기 잠금 계정은 발송·회수 처리 단추가 모두 잠긴다(서버도 0166 에서 막는다).
-  const { readonly } = useAuth();
+  // 체험 계정도 조회서는 보기만(서버 0168).
+  const { readonly: ro, sandbox } = useAuth();
+  const readonly = ro || sandbox;
 
   async function load(y = year) {
     try {

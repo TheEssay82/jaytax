@@ -56,7 +56,9 @@ export default function ConfirmItemsModal({
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   // 쓰기 잠금 계정 — 올리기·추가·수정·삭제·완료 표시를 잠근다(내려받기는 그대로).
-  const { readonly } = useAuth();
+  // 체험 계정도 조회서는 보기만(서버 0168).
+  const { readonly: ro, sandbox } = useAuth();
+  const readonly = ro || sandbox;
   const lock = busy || readonly;
   // 부모가 넘긴 confirmation 은 모달이 열린 시점의 스냅샷이라, 여기서 상태를 바꿔도
   // prop 은 그대로다. 화면 표시는 로컬 상태로 들고 가야 토글이 반영된다.

@@ -51,7 +51,9 @@ export default function ConfirmCollectTab() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // 쓰기 잠금 계정은 발송·회수 처리 단추가 모두 잠긴다(서버도 0166 에서 막는다).
-  const { readonly } = useAuth();
+  // 체험 계정도 조회서는 보기만(서버 0168).
+  const { readonly: ro, sandbox } = useAuth();
+  const readonly = ro || sandbox;
   // 독촉 대상 — 발송했는데 임계일이 지나도록 회신이 없는 건. 거래처를 가로질러 본다.
   const [mode, setMode] = useState<'client' | 'overdue'>('client');
   const [overdueDays, setOverdueDays] = useState<number>(DEFAULT_OVERDUE_DAYS);

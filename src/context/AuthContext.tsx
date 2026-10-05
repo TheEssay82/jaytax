@@ -30,6 +30,8 @@ interface AuthValue {
   profileName: string;
   /** 읽기전용 계정 여부 (profiles.readonly) — 저장·변경·삭제가 서버에서 차단됨 */
   readonly: boolean;
+  /** 체험 계정(profiles.sandbox, 마이그 0168) — 감사업무관리만 보이고, 저장은 (시연) 데모산업 건에서만 */
+  sandbox: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -44,19 +46,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role>('team_member');
   const [profileName, setProfileName] = useState('');
   const [readonly, setReadonly] = useState(false);
+  const [sandbox, setSandbox] = useState(false);
   const [loading, setLoading] = useState(true);
   const signedInRef = useRef(false);
 
   async function loadProfile(uid: string) {
     try {
-      const { data } = await supabase.from('profiles').select('role, name, readonly').eq('id', uid).maybeSingle();
+      const { data } = await supabase.from('profiles').select('role, name, readonly, sandbox').eq('id', uid).maybeSingle();
       setRole(normalizeRole(data?.role as string | undefined));
       setProfileName((data?.name as string) || '');
       setReadonly(!!data?.readonly);
+      setSandbox(!!(data as { sandbox?: boolean } | null)?.sandbox);
     } catch {
       setRole('team_member');
       setProfileName('');
       setReadonly(false);
+      setSandbox(false);
     }
   }
 
@@ -146,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ session, user: session?.user ?? null, role, profileName, readonly, loading, signIn, signOut, changePassword }}
+      value={{ session, user: session?.user ?? null, role, profileName, readonly, sandbox, loading, signIn, signOut, changePassword }}
     >
       {children}
     </AuthContext.Provider>

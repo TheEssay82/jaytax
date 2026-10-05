@@ -26,7 +26,9 @@ const ACCOUNTANT_ROLES = ['superuser', 'accountant', 'per_head_accountant'];
 
 export default function ConfirmRegisterTab() {
   // 쓰기 잠금 계정은 조회만(새 등록·가져오기·수정·삭제 숨김, 서버도 0166 에서 막는다).
-  const { readonly } = useAuth();
+  // 체험 계정도 조회서는 보기만(서버 0168).
+  const { readonly: ro, sandbox } = useAuth();
+  const readonly = ro || sandbox;
   const [clients, setClients] = useState<DocClient[]>([]);
   const [people, setPeople] = useState<UserProfile[]>([]);
   const [rows, setRows] = useState<Confirmation[]>([]);

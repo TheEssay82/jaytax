@@ -92,7 +92,7 @@ function tabHref(id: string): string {
 }
 
 function Shell() {
-  const { user, signOut, role, readonly, profileName } = useAuth();
+  const { user, signOut, role, readonly, sandbox, profileName } = useAuth();
   const { resetNew } = useWizard();
   const [curTab, setCurTab] = useState(tabFromUrl);
   const [reloadKey, setReloadKey] = useState(0);
@@ -125,6 +125,8 @@ function Shell() {
   const allowed = (it: MenuItem) => menuAllowed(role, profileName, it);
   const visibleGroups = MENU_GROUPS
     .filter((g) => groupAllowed(role, g))
+    // 체험 계정(심리실 등)은 감사업무관리만(사용자 2026-10-05 「감사업무관리 전부」).
+    .filter((g) => !sandbox || g.id === 'audit')
     .map((g) => ({
       ...g,
       items: g.items
@@ -132,7 +134,7 @@ function Shell() {
         .filter((it) => (it.children ? it.children.length > 0 : allowed(it))),
     }))
     .filter((g) => g.items.length > 0);
-  const visibleIcons = isExternal
+  const visibleIcons = isExternal || sandbox
     ? []
     : ICON_ITEMS.filter((it) => (!it.cap || can(role, it.cap)) && (!isPerHead || PER_HEAD_ALLOWED_ICONS.has(it.id)));
 
@@ -396,6 +398,15 @@ function Shell() {
       {showPw && <PasswordModal onClose={() => setShowPw(false)} />}
       {showMfa && <MfaModal onClose={() => setShowMfa(false)} />}
       {showDevNotes && canDevNotes && <DevNotesModal onClose={() => setShowDevNotes(false)} />}
+
+      {sandbox && (
+        <div role="status" style={{
+          background: '#E6F0FC', borderBottom: '1px solid #9CC0EE', color: '#1F4E8C',
+          padding: '8px 16px', fontSize: 'var(--fs-2)', fontWeight: 600, textAlign: 'center',
+        }}>
+          🧪 체험 계정입니다 — 모든 회사의 감사업무를 볼 수 있고, 저장은 <b>(시연) 데모산업</b>에서만 됩니다. 실제 회사에서는 내려받기·미리보기까지만 됩니다.
+        </div>
+      )}
 
       {readonly && (
         <div

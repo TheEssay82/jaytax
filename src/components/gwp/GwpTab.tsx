@@ -88,9 +88,9 @@ function kdate(iso: string | null): string {
 }
 
 export default function GwpTab({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
-  const { role, readonly, profileName } = useAuth();
+  const { role, readonly, profileName, sandbox } = useAuth();
   // 감사팀 = 최고관리자·회계사·인당회계사(사용자 2026-10-02 — 조현규·김준성). 서버 is_audit_staff() 와 같은 선.
-  const canWrite = !readonly && (role === 'superuser' || role === 'accountant' || role === 'per_head_accountant');
+  const canWriteBase = !readonly && (role === 'superuser' || role === 'accountant' || role === 'per_head_accountant');
   const [engs, setEngs] = useState<Engagement[]>([]);
   const [ents, setEnts] = useState<BizEntityFull[]>([]);
   const [auditIds, setAuditIds] = useState<Set<string>>(new Set());
@@ -137,7 +137,8 @@ export default function GwpTab({ onNavigate }: { onNavigate?: (tab: string) => v
       setErr(null);
       const [list, es, aud, tpls, ys, pg] = await Promise.all([listEngagements(), listBizEntities(), listAuditEntityIds(), listTemplates(), listYears(), listProgress().catch(() => new Map())]);
       setProgressBy(pg);
-      const live = list.filter((e) => !e.isDemo);
+      // 시연용 건은 체험 계정에게만 보인다(그 계정이 저장할 수 있는 유일한 자리).
+      const live = list.filter((e) => !e.isDemo || sandbox);
       setEngs(live);
       setEnts(es); setAuditIds(aud); setTemplates(tpls); setYearsBy(ys);
       // 📒 정산표 관리에서 「일반조서 관리로」를 누르고 오면 그 회사를 골라 둔다.
@@ -157,6 +158,9 @@ export default function GwpTab({ onNavigate }: { onNavigate?: (tab: string) => v
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const picked = useMemo(() => engs.find((e) => e.id === pickedId) ?? null, [engs, pickedId]);
+  // 체험 계정은 시연용 건에서만 저장(서버 0168 과 같은 선). 표준양식·절차·새 건은 못 고친다.
+  const canWrite = canWriteBase && (!sandbox || !!picked?.isDemo);
+  const canWriteShared = canWriteBase && !sandbox;
   const years = useMemo(() => [...new Set(engs.map((e) => e.fy))].sort((a, b) => b - a), [engs]);
   const fy = fyAt ?? years[0] ?? defaultAuditFy();
   // 가나다 순(사용자 2026-10-01).
@@ -514,7 +518,7 @@ export default function GwpTab({ onNavigate }: { onNavigate?: (tab: string) => v
             <button className={`btn-sm${sub === 'work' ? ' btn-sm-navy' : ''}`} onClick={() => setSub('work')}>① 작업 건·조서</button>
             <button className={`btn-sm${sub === 'tpl' ? ' btn-sm-navy' : ''}`} onClick={() => setSub('tpl')}>② 표준양식 ({templates.length})</button>
             <button className={`btn-sm${sub === 'proc' ? ' btn-sm-navy' : ''}`} onClick={() => setSub('proc')} title="2120A 주요 감사절차(K열) 표준">③ 표준 절차</button>
-            {canWrite && <button className="btn-sm" onClick={() => setAdding(true)}>+ 새 건 만들기</button>}
+            {canWriteShared && <button className="btn-sm" onClick={() => setAdding(true)}>+ 새 건 만들기</button>}
           </span>
         </div>
         <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
@@ -532,7 +536,7 @@ export default function GwpTab({ onNavigate }: { onNavigate?: (tab: string) => v
       )}
 
       {sub === 'tpl' && <GwpTemplatesCard templates={templates} onChange={() => load(pickedId ?? undefined)} />}
-      {sub === 'proc' && <GwpProcStdCard canWrite={canWrite} />}
+      {sub === 'proc' && <GwpProcStdCard canWrite={canWriteShared} />}
 
       {sub === 'work' && (
         <>

@@ -55,10 +55,10 @@ const STATUS_TONE: Record<string, { bg: string; ink: string }> = {
 export default function DsdEngagementTab({ onNavigate }: { onNavigate?: (tab: string) => void } = {}) {
   // 외부인 시연 — 「시연용」 표가 붙은 건 하나만 서버가 내준다(0145). 화면에서는 **보기만**
   // 하게 막는다. 쓰기는 RLS 가 이미 막지만, 눌러도 안 되는 단추를 내놓을 까닭이 없다.
-  const { role, readonly } = useAuth();
+  const { role, readonly, sandbox } = useAuth();
   const isExternal = role === 'external';
   // 서버에 쓰는 것(새 건·건 지우기·① 입력·④ 저장)은 외부인과 쓰기 잠금 계정에게 잠근다. ②③④ 의 브라우저 안 작업은 그대로.
-  const lockWrite = isExternal || readonly;
+  const lockBase = isExternal || readonly;
   const isSuper = role === 'superuser';
   const [engs, setEngs] = useState<Engagement[]>([]);
   const [ents, setEnts] = useState<BizEntityFull[]>([]);
@@ -115,6 +115,9 @@ export default function DsdEngagementTab({ onNavigate }: { onNavigate?: (tab: st
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const picked = useMemo(() => engs.find((e) => e.id === pickedId) ?? null, [engs, pickedId]);
+  // 체험 계정은 시연용 건에서만 쓴다(서버 0168 과 같은 선). 새 건 만들기는 막는다.
+  const lockWrite = lockBase || (sandbox && !picked?.isDemo);
+  const canCreate = !lockBase && !sandbox;
   // **사업연도로 거른다.** 해가 쌓이면 목록이 끝없이 길어진다(사용자 지적 2026-09-13).
   const years = useMemo(() => [...new Set(engs.map((e) => e.fy))].sort((a, b) => b - a), [engs]);
   const [fyAt, setFyAt] = useState<number | null>(null);
@@ -213,7 +216,7 @@ export default function DsdEngagementTab({ onNavigate }: { onNavigate?: (tab: st
           <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
             {picked ? `${picked.entityName} · FY${picked.fy} ${picked.scope}` : '회사를 고르세요'}
           </span>
-          {!lockWrite && (
+          {canCreate && (
             <button className="btn-sm btn-sm-navy" style={{ marginLeft: 'auto' }} onClick={() => setAdding(true)}>+ 새 건 만들기</button>
           )}
         </div>
