@@ -18,19 +18,19 @@ import { writeNotes, buildDsd, contentsOf } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
 import type { Engagement, NoteRow } from '../../lib/dsdApi';
 import { registerNoteBook, type NoteBook } from '../../lib/dsdBookApi';
-import type { LoadedDsd, NoteFrom } from './DsdShell';
+import { StepHead, Opt, type LoadedDsd, type NoteFrom } from './DsdShell';
 import type { Filled } from './NoteVerifyCard';
 import { safeName, download } from './dsdUi';
 
 export default function NoteDsdCard(
-  { eng, notes, dsd, xl, setXl, from, spare, layout, book, onBook, readOnly }:
+  { eng, notes, dsd, xl, setXl, from, spare, layout, book, onBook, readOnly, roll }:
   {
     eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd;
     xl: Filled | null; setXl: (v: Filled | null) => void; from: NoteFrom; spare: number;
     layout: SheetLayout; book: NoteBook | null; onBook: (b: NoteBook) => void; readOnly: boolean;
+    /** 다음 해로 이월 — ②③④ 공통(DsdShell.WorkSettings) */ roll: boolean;
   },
 ) {
-  const [roll, setRoll] = useState(true);
   const [rollFs, setRollFs] = useState(true);
   const [force, setForce] = useState(false);
   const [say, setSay] = useState<string | null>(null);
@@ -125,57 +125,31 @@ export default function NoteDsdCard(
 
   return (
     <div className="card">
-      <div className="chdr">
-        ④ DSD 만들기
-        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
-          검증이 끝난 엑셀로 완성본을 냅니다
-        </span>
-      </div>
+      <StepHead no="④" title="DSD 완성" when="보고서"
+        line={<>검증이 끝난 주석 엑셀의 글자를 <b>작년 DSD 제자리에</b> 갈아끼워 올해 감사보고서(.dsd)를 냅니다 — 표 너비·정렬·글꼴은 그대로.</>}
+        more={<>
+          틀은 언제나 ① 에 올린 <b>작년 감사보고서</b>입니다 — ② 의 사전작성 DSD 는 넣지 않습니다(나갈 때 들고 가는 껍데기).
+          시트 구성은 <b>{LAYOUT_LABEL[layout]}</b>으로 읽습니다. 안 채운 노란 칸이 남아 있으면 만들지 않습니다 — 작년 숫자가 올해 보고서로 나가는 것을 막으려고.
+          감사보고서 본문(의견·기간)과 자본변동표는 손대지 않으니 DART 편집기에서 고치십시오.
+        </>}
+      />
 
-      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7, marginBottom: 12 }}>
-        <b>작년 DSD 를 틀로 두고 글자만 갈아끼웁니다</b> — 표 너비·정렬·글꼴이 하나도 상하지 않습니다.
-        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 5 }}>
-          ② 가 만든 <b>사전작성 DSD 는 여기에 넣지 않습니다</b> — 그것은 나갈 때 들고 가는 것이고,
-          완성본은 언제나 <b>위에서 고른 작년 감사보고서</b>를 틀로 씁니다.
-          {' '}시트 구성은 <b>{LAYOUT_LABEL[layout]}</b>으로 읽습니다(① 에서 정함).
-        </div>
-      </div>
-
-      <div className="frow"><span className="fl">채워 넣은 엑셀</span>
-        <div>
-          <input type="file" accept=".xlsx" style={{ fontSize: 'var(--fs-1)' }}
-            onChange={(e) => void takeXl(e.target.files?.[0])} />
-          {xl ? (
-            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)', marginTop: 3 }}>
-              {xl.name} · {Math.round(xl.bytes.length / 1024)}KB
-            </div>
-          ) : (
-            <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', marginTop: 3 }}>
-              ③ 검증에서 고른 파일이 있으면 여기에도 그대로 잡힙니다.
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="frow"><span className="fl">이월해서 만든 것</span>
-        <label style={{ fontSize: 'var(--fs-2)' }}>
-          <input type="checkbox" checked={roll} onChange={(e) => setRoll(e.target.checked)} />{' '}
-          ② 에서 <b>「다음 해로 이월」을 켜고</b> 만든 파일입니다
+      <Opt label="채워 넣은 엑셀">
+        <label className="btn-sm btn-sm-navy" style={{ cursor: 'pointer' }}>
+          {xl ? '다른 파일' : '파일 고르기'}
+          <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={(e) => { void takeXl(e.target.files?.[0]); e.target.value = ''; }} />
         </label>
-      </div>
+        {xl
+          ? <span style={{ marginLeft: 8, color: 'var(--good)' }}>✓ <b>{xl.name}</b> · {Math.round(xl.bytes.length / 1024)}KB</span>
+          : <span style={{ marginLeft: 8, color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>③ 에서 고른 파일이 있으면 여기에도 그대로 잡힙니다</span>}
+        {!roll && <div style={{ color: 'var(--warn)', fontSize: 'var(--fs-1)', marginTop: 4 }}>「다음 해로 이월」이 꺼져 있습니다 — ② 와 같게 두어야 자리가 맞습니다(위 작업 설정).</div>}
+      </Opt>
 
-      <div className="frow"><span className="fl">재무제표·표지</span>
-        <label style={{ fontSize: 'var(--fs-2)', opacity: roll ? 1 : 0.5 }}>
-          <input type="checkbox" checked={rollFs} disabled={!roll}
-            onChange={(e) => setRollFs(e.target.checked)} />{' '}
-          <b>기수·연도를 올리고 금액을 전기로 내립니다</b>
-          <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.6 }}>
-            「제 18(당) 기 2025년 12월 31일」 → 「제 19(당) 기 2026년 12월 31일」.
-            <b> 본문 서술 속의 연도는 건드리지 않습니다.</b>
-            감사보고서 본문과 자본변동표는 손대지 않고 몇 곳인지 알려 드립니다.
-          </div>
+      <Opt label="재무제표·표지" hint="「제 18(당) 기 2025년 12월 31일」 → 「제 19(당) 기 2026년 12월 31일」. 본문 서술 속의 연도는 건드리지 않습니다. 감사보고서 본문과 자본변동표는 손대지 않고 몇 곳인지 알려 드립니다.">
+        <label style={{ opacity: roll ? 1 : 0.5 }}>
+          <input type="checkbox" checked={rollFs} disabled={!roll} onChange={(e) => setRollFs(e.target.checked)} /> 기수·연도를 올리고 재무제표 금액을 전기로 내립니다
         </label>
-      </div>
+      </Opt>
 
       {say && (
         <div style={{

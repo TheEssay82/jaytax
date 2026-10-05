@@ -1,4 +1,4 @@
-// 주석·DSD 관리 › ① 대상 › **표준주석엑셀** — 다 채우고 검증까지 마친 엑셀을 이 건에 등록한다.
+// 주석·DSD 관리 › ④ 보고서 › **표준주석엑셀**(2026-10-05 ① 에서 옮김) — 다 채우고 검증까지 마친 엑셀을 이 건에 등록한다.
 //
 // 등록해 두면 다음 해 ② 가 노란 칸의 수식을 이어받고(noteInherit), 다른 회사의 틀로 내려받아
 // 볼 수도 있다. 파일을 서버에 두는 유일한 자리다(사용자 결정 2026-09-14 — 주석은 공시 정보다).
@@ -101,10 +101,8 @@ export default function NoteBookCard(
           )}
         </span>
       </div>
-      <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 4, lineHeight: 1.6 }}>
-        다음 해 ② 준비가 이 파일에서 <b>노란 칸에 걸었던 수식</b>(재무제표·TB 링크)을 이어받습니다.
-        값은 이어받지 않습니다. 다른 회사의 틀로 볼 때는 내려받아 쓰십시오.
-        {' '}<span style={{ color: 'var(--ink-3)' }}>주석은 공시되는 정보라 서버에 둡니다 — 재무제표·DSD 는 여전히 올리지 않습니다.</span>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 4 }}>
+        값은 이어받지 않습니다. 주석은 공시되는 정보라 서버에 둡니다 — 재무제표·DSD 는 여전히 올리지 않습니다.
       </div>
       {say && <div style={{ marginTop: 6, fontSize: 'var(--fs-1)', color: 'var(--bad)' }}>{say}</div>}
       {done && <div style={{ marginTop: 6, fontSize: 'var(--fs-1)', color: 'var(--good)' }}>{done}</div>}

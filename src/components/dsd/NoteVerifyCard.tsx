@@ -22,7 +22,7 @@ import { findLinks } from '../../lib/noteLink';
 import { readWorkbook } from '../../lib/xlsxRead';
 import { injectSheets } from '../../lib/xlsxInject';
 import type { NoteRow } from '../../lib/dsdApi';
-import type { LoadedDsd, NoteFrom } from './DsdShell';
+import { StepHead, Opt, type LoadedDsd, type NoteFrom } from './DsdShell';
 import { download } from './dsdUi';
 
 const TONE: Record<Level, { bg: string; ink: string }> = {
@@ -34,17 +34,17 @@ const TONE: Record<Level, { bg: string; ink: string }> = {
 export interface Filled { name: string; bytes: Uint8Array }
 
 export default function NoteVerifyCard(
-  { notes, dsd, xl, setXl, from, spare, layout }:
+  { notes, dsd, xl, setXl, from, spare, layout, roll }:
   {
     notes: NoteRow[]; dsd: LoadedDsd;
     xl: Filled | null; setXl: (v: Filled | null) => void; from: NoteFrom; spare: number;
     layout: SheetLayout;
+    /** 다음 해로 이월 — ②③④ 공통(DsdShell.WorkSettings) */ roll: boolean;
   },
 ) {
   const [src, setSrc] = useState<'xlsx' | 'dsd'>('xlsx');
   const [ties, setTies] = useState<TieRow[]>([]);
   const [linkCount, setLinkCount] = useState(0);
-  const [roll, setRoll] = useState(true);
   const [res, setRes] = useState<VerifyResult | null>(null);
   const [say, setSay] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -125,76 +125,40 @@ export default function NoteVerifyCard(
 
   return (
     <div className="card">
-      <div className="chdr">
-        ③ 검증
-        <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
-          채워 넣은 엑셀을 훑습니다
-        </span>
-      </div>
+      <StepHead no="③" title="검증" when="기말감사"
+        line={<>다 채운 주석 엑셀을 훑어 <b>합계 · 주석끼리 맞아야 할 숫자 · 전기 숫자 · 재무제표↔주석</b>이 맞는지 봅니다.</>}
+        more={<>
+          파일은 브라우저 안에서만 열립니다. 여기서 고른 엑셀은 ④ 도 그대로 씁니다.
+          작년 보고서가 없어 회사가 주석을 지어 주거나 손으로 짠 경우에는 「① 에 올린 DSD 그대로」를 고르면, ① 목록과 상관없이 그 파일의 주석 전부를 훑습니다
+          (합계와 재무제표↔주석 대사만 — 전기 값은 대 볼 작년이 없어 보지 않습니다).
+        </>}
+      />
 
-      <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7, marginBottom: 12 }}>
-        <b>합계가 맞는지</b>, <b>주석끼리 맞아야 하는 숫자가 맞는지</b>,
-        <b> 전기 숫자가 바뀌지 않았는지</b>, <b>재무제표가 가리킨 금액이 주석에 있는지</b>를 봅니다.
-        <span style={{ color: 'var(--ink-3)' }}> 파일은 브라우저 안에서만 열립니다.</span>
-      </div>
-
-      <div className="frow"><span className="fl">무엇을 검증하나</span>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 'var(--fs-2)' }}>
-            <input type="radio" checked={src === 'xlsx'} onChange={() => { setSrc('xlsx'); setRes(null); }} />{' '}
-            <b>채워 넣은 엑셀</b>
-            <span style={{ color: 'var(--ink-3)' }}> — ② 가 만든 「…_주석시트.xlsx」를 채운 것</span>
-          </label>
-          <label style={{ fontSize: 'var(--fs-2)' }}>
-            <input type="radio" checked={src === 'dsd'} onChange={() => { setSrc('dsd'); setRes(null); }} />{' '}
-            <b>위에 올린 DSD 그대로</b>
-            <span style={{ color: 'var(--ink-3)' }}> — 이미 다 적힌 보고서를 훑습니다</span>
-            <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.6 }}>
-              주석을 <b>회사 쪽에서 지어 주거나</b>, 작년 보고서가 없어 <b>손으로 짠</b> 경우입니다.
-              ① 의 목록과 상관없이 <b>그 파일에 든 주석을 전부</b> 봅니다.
-            </div>
-          </label>
-        </div>
-      </div>
+      <Opt label="무엇을 검증하나">
+        <label style={{ marginRight: 18 }}>
+          <input type="radio" checked={src === 'xlsx'} onChange={() => { setSrc('xlsx'); setRes(null); }} /> <b>채워 넣은 주석 엑셀</b>
+        </label>
+        <label>
+          <input type="radio" checked={src === 'dsd'} onChange={() => { setSrc('dsd'); setRes(null); }} /> ① 에 올린 DSD 그대로
+          <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}> (이미 다 적힌 보고서)</span>
+        </label>
+      </Opt>
 
       {src === 'xlsx' ? (
-        <>
-          <div className="frow"><span className="fl">채워 넣은 엑셀</span>
-            <div>
-              <input type="file" accept=".xlsx" style={{ fontSize: 'var(--fs-1)' }}
-                onChange={(e) => void takeXl(e.target.files?.[0])} />
-              {xl && (
-                <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)', marginTop: 3 }}>
-                  {xl.name} · {Math.round(xl.bytes.length / 1024)}KB
-                </div>
-              )}
-              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 3 }}>
-                여기서 고른 엑셀은 ④ 도 함께 씁니다.
-              </div>
-            </div>
-          </div>
-
-          <div className="frow"><span className="fl">이월해서 만든 것</span>
-            <label style={{ fontSize: 'var(--fs-2)' }}>
-              <input type="checkbox" checked={roll} onChange={(e) => setRoll(e.target.checked)} />{' '}
-              ② 에서 <b>「다음 해로 이월」을 켜고</b> 만든 파일입니다
-              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2 }}>
-                ② 와 다르게 두면 자리가 어긋나 온통 틀렸다고 나옵니다.
-              </div>
-            </label>
-          </div>
-        </>
+        <Opt label="채워 넣은 엑셀">
+          <label className="btn-sm btn-sm-navy" style={{ cursor: 'pointer' }}>
+            {xl ? '다른 파일' : '파일 고르기'}
+            <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={(e) => { void takeXl(e.target.files?.[0]); e.target.value = ''; }} />
+          </label>
+          {xl
+            ? <span style={{ marginLeft: 8, color: 'var(--good)' }}>✓ <b>{xl.name}</b> · {Math.round(xl.bytes.length / 1024)}KB</span>
+            : <span style={{ marginLeft: 8, color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>② 가 만든 「…_주석시트.xlsx」를 채운 것</span>}
+          {!roll && <div style={{ color: 'var(--warn)', fontSize: 'var(--fs-1)', marginTop: 4 }}>「다음 해로 이월」이 꺼져 있습니다 — ② 와 같게 두어야 자리가 맞습니다(위 작업 설정).</div>}
+        </Opt>
       ) : (
-        <div style={{
-          fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7,
-          padding: '9px 11px', borderRadius: 'var(--r-sm)', background: 'var(--surface-2)',
-        }}>
-          위에 올린 <b>{dsd.name}</b> 안의 숫자를 그대로 훑습니다 — 주석 {dsd.blocks.length}개.
-          <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 3 }}>
-            이 갈래에서는 <b>합계</b>와 <b>재무제표 ↔ 주석 대사</b>를 봅니다. 전기 값이 바뀌었는지는
-            대 볼 작년이 없어 보지 않습니다.
-          </div>
-        </div>
+        <Opt label="훑을 파일">
+          <b>{dsd.name}</b> 안의 숫자 — 주석 {dsd.blocks.length}개
+        </Opt>
       )}
 
       {say && (

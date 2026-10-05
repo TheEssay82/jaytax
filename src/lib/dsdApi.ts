@@ -25,6 +25,9 @@ export interface Engagement {
   status: '준비' | '진행' | '완료';
   note: string | null;
   noteCount: number;
+  /** 켜 둔 주석 · 그 가운데 작업완료 — 거래처 목록의 진행 색(2026-10-05). */
+  onCount: number;
+  doneCount: number;
   /** 외부인에게 보여 주는 시연용 건인가. 진짜 거래처는 외부인에게 한 줄도 안 보인다. */
   isDemo: boolean;
   /** 엑셀 시트 구성 — 주석별 시트('sheets') 또는 한 시트 종단형('long'). ②③④ 가 함께 읽는다. */
@@ -39,6 +42,8 @@ type EngRow = {
   sheet_layout: string | null;
   biz_entity: { name: string; code: string | null } | null;
   dsd_note: { count: number }[] | null;
+  on_notes?: { count: number }[] | null;
+  done_notes?: { count: number }[] | null;
 };
 
 function toEng(r: EngRow): Engagement {
@@ -57,6 +62,8 @@ function toEng(r: EngRow): Engagement {
     status: r.status,
     note: r.note,
     noteCount: r.dsd_note?.[0]?.count ?? 0,
+    onCount: r.on_notes?.[0]?.count ?? r.dsd_note?.[0]?.count ?? 0,
+    doneCount: r.done_notes?.[0]?.count ?? 0,
     isDemo: r.is_demo === true,
     sheetLayout: r.sheet_layout === 'long' ? 'long' : 'sheets',
   };
@@ -64,11 +71,16 @@ function toEng(r: EngRow): Engagement {
 
 const SEL = 'id, entity_id, fy, scope, term_no, period_from, period_to, basis, money_unit, status, note,'
   + ' is_demo, sheet_layout, biz_entity(name, code), dsd_note(count)';
+/** 목록용 — 켜 둔 주석·작업완료 수를 함께(별칭으로 같은 표를 두 번, 각자 거른다). */
+const SEL_LIST = `${SEL}, on_notes:dsd_note(count), done_notes:dsd_note(count)`;
 
 export async function listEngagements(): Promise<Engagement[]> {
   const { data, error } = await supabase
     .from('dsd_engagement')
-    .select(SEL)
+    .select(SEL_LIST)
+    .eq('on_notes.enabled', true)
+    .eq('done_notes.enabled', true)
+    .eq('done_notes.status', '작업완료')
     // 시연용은 **맨 뒤**로. 실무에서 먼저 뜰 까닭이 없다 — 만든 지 가장 최근이라
     // 그냥 두면 목록 맨 앞에 앉는다(2026-09-14).
     .order('is_demo', { ascending: true })

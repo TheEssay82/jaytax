@@ -1,4 +1,4 @@
-// 주석·DSD 관리 › ② 준비 — **감사 나가기 전에 만들어 두는 것 둘**
+// 주석·DSD 관리 › ② 중간감사 · 주석 엑셀 준비 — **감사 나가기 전에 만들어 두는 것 둘**
 //
 //   가. 주석 서식 엑셀 — 올해 정산표에 노란 칸 서식과 대사표를 얹는다
 //   나. 사전작성 DSD  — 작년 것을 한 해 밀어 껍데기만 만든다
@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { unzipSync, zipSync } from 'fflate';
 import { layoutIndex, INDEX_SHEET } from '../../lib/noteSheet';
 import {
-  pickAll, pickNotes, planNotes, sheetsToInject, isAnyNoteSheet, LONG_SHEET, LAYOUT_LABEL,
+  pickAll, pickNotes, planNotes, sheetsToInject, isAnyNoteSheet, LONG_SHEET,
   type SheetLayout,
 } from '../../lib/notePick';
 import { findLinks, layoutTieSheet } from '../../lib/noteLink';
@@ -27,18 +27,18 @@ import { writeNotes, buildDsd, sheetsFromPlans, contentsOf } from '../../lib/dsd
 import { rollStatements } from '../../lib/dsdRoll';
 import { findEngagement, type Engagement, type NoteRow } from '../../lib/dsdApi';
 import { getNoteBook, noteBookBytes, type NoteBook } from '../../lib/dsdBookApi';
-import type { LoadedDsd, NoteFrom } from './DsdShell';
+import { StepHead, Opt, Note, type LoadedDsd, type NoteFrom } from './DsdShell';
 import { safeName, download } from './dsdUi';
 
 export default function NotePrepareTab(
-  { eng, notes, dsd, from, spare, layout }:
+  { eng, notes, dsd, from, spare, layout, roll }:
   {
     eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd; from: NoteFrom; spare: number;
     layout: SheetLayout;
+    /** 다음 해로 이월 — ②③④ 공통(DsdShell.WorkSettings) */ roll: boolean;
   },
 ) {
   const [wtb, setWtb] = useState<{ name: string; bytes: Uint8Array } | null>(null);
-  const [roll, setRoll] = useState(true);
   const [busy, setBusy] = useState('');
   const [say, setSay] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -207,130 +207,88 @@ export default function NotePrepareTab(
     }
   }
 
-  const on = notes.filter((n) => n.enabled).length;
 
   return (
     <div>
       <div className="card">
-        <div className="chdr">
-          ② 준비
-          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
-            감사 나가기 전에 만들어 둡니다
-          </span>
-        </div>
-        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
-          <b>주석 서식 엑셀</b>과 <b>사전작성 DSD</b> 둘을 냅니다. 현장에서는 엑셀의 노란 칸만
-          채우시면 되고, DSD 는 껍데기라 편집기에서 이어 작업하실 수 있습니다.
-          <span style={{ color: 'var(--ink-3)' }}>
-            {' '}주석 {from === 'file' ? `${dsd.blocks.length}개(파일에 든 것 전부)` : `${on}개(① 에서 켜 둔 것)`}
-            {' '}· 금액은 {eng.moneyUnit} 단위로 적힌 그대로 · 시트 구성은 <b>{LAYOUT_LABEL[layout]}</b>(① 에서 정함)
-          </span>
-        </div>
-
-        <div className="frow" style={{ marginTop: 10 }}><span className="fl">다음 해로 이월</span>
-          <label style={{ fontSize: 'var(--fs-2)' }}>
-            <input type="checkbox" checked={roll} onChange={(e) => setRoll(e.target.checked)} />{' '}
-            <b>당기 값을 전기로 밀고, 당기 칸은 비워 노랗게</b>
-            <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2 }}>
-              끄면 작년 보고서를 그대로 옮깁니다 — 작년 것을 확인할 때 씁니다. ③ 검증에서도 같게 두십시오.
-            </div>
-          </label>
-        </div>
-
+        <StepHead no="②" title="주석 엑셀 준비" when="중간감사"
+          line={<>올해 <b>정산표</b>(중간감사 것이면 충분)를 넣으면 주석 시트를 얹은 엑셀을 줍니다. 현장에서는 <b>노란 칸</b>만 채우면 됩니다.</>}
+          more={<>
+            <b>가. 주석 엑셀</b> — 올해 정산표에 주석 시트·주석목록·대사표를 얹어 <b>새 파일</b>로 내려받습니다(원본은 그대로). 한 파일에 한 번만 얹으십시오.
+            「당기 칸 미리 연결」을 켜 두면 작년 금액이 같은 정산표 줄의 당기 칸을 가리키는 수식이 파란 칸으로 들어가, 기말에 정산표만 갱신해도 주석이 따라옵니다.
+            <br /><b>나. 사전작성 DSD</b> — 작년 것을 한 해 밀어(기수·연도↑, 재무제표 금액→전기, 당기 칸 비움) 편집기에서 이어 쓸 껍데기를 만듭니다. 정산표가 없어도 됩니다.
+            ④ 완성본은 이 파일이 아니라 작년 감사보고서를 틀로 씁니다.
+          </>}
+        />
+        {!roll && (
+          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--warn)', marginLeft: 38 }}>
+            지금 「다음 해로 이월」이 꺼져 있습니다 — 작년 보고서를 그대로 옮긴 엑셀이 나옵니다(위 작업 설정).
+          </div>
+        )}
         {prevBook && (
-          <div className="frow"><span className="fl">작년 수식</span>
-            <label style={{ fontSize: 'var(--fs-2)', opacity: roll ? 1 : 0.5 }}>
-              <input type="checkbox" checked={inherit} disabled={!roll} onChange={(e) => setInherit(e.target.checked)} />{' '}
-              <b>FY{eng.fy - 1} 표준주석엑셀의 수식을 노란 칸에 이어받기</b>
-              <span style={{ color: 'var(--ink-3)' }}> — {prevBook.fileName}</span>
-              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.6 }}>
-                주석 제목 → 행 라벨 → 열로 짝을 지어 <b>수식만</b> 가져옵니다. 값은 가져오지 않습니다.
-                올해 정산표의 시트 이름이 작년과 같아야 링크가 삽니다.
-              </div>
-            </label>
+          <div style={{ marginLeft: 38 }}>
+            <Opt label="작년 수식" hint="주석 제목 → 행 라벨 → 열로 짝을 지어 수식만 가져옵니다(값은 안 가져옴). 올해 정산표의 시트 이름이 작년과 같아야 링크가 삽니다.">
+              <label style={{ opacity: roll ? 1 : 0.5 }}>
+                <input type="checkbox" checked={inherit} disabled={!roll} onChange={(e) => setInherit(e.target.checked)} />{' '}
+                FY{eng.fy - 1} 표준주석엑셀(<b>{prevBook.fileName}</b>)의 수식을 노란 칸에 이어받기
+              </label>
+            </Opt>
           </div>
         )}
       </div>
 
-      {say && (
-        <div className="card" style={{ background: 'var(--bad-bg)', color: 'var(--bad)', fontSize: 'var(--fs-2)', lineHeight: 1.6 }}>
-          {say}
-        </div>
-      )}
-      {done && (
-        <div className="card" style={{ background: 'var(--good-bg)', color: 'var(--good)', fontSize: 'var(--fs-2)', lineHeight: 1.7 }}>
-          {done}
-        </div>
-      )}
+      {say && <Note tone="bad">{say}</Note>}
+      {done && <Note tone="good">{done}</Note>}
 
-      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))' }}>
+      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'minmax(0, 3fr) minmax(280px, 2fr)', alignItems: 'start' }}>
         <div className="card">
-          <div className="chdr">가. 주석 서식 엑셀</div>
-          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7, marginBottom: 10 }}>
-            올해 정산표에 <b>주석 시트와 대사표</b>를 얹습니다. <b>원본은 손대지 않고</b> 새 파일로
-            내려받습니다. <b>한 파일에 한 번만</b> 얹으십시오.
-          </div>
-          <div className="frow"><span className="fl">올해 정산표</span>
-            <div>
-              <input type="file" accept=".xlsx" style={{ fontSize: 'var(--fs-1)' }}
-                onChange={(e) => void takeWtb(e.target.files?.[0])} />
-              {wtb && (
-                <div style={{ fontSize: 'var(--fs-1)', color: 'var(--good)', marginTop: 3 }}>
-                  {wtb.name} · {Math.round(wtb.bytes.length / 1024)}KB
-                </div>
-              )}
-            </div>
-          </div>
+          <div className="chdr">가. 주석 엑셀 <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>정산표에 주석 시트를 얹어 새 파일로</span></div>
+          <Opt label="올해 정산표">
+            <label className="btn-sm btn-sm-navy" style={{ cursor: 'pointer' }}>
+              {wtb ? '다른 파일' : '파일 고르기'}
+              <input type="file" accept=".xlsx" style={{ display: 'none' }} onChange={(e) => { void takeWtb(e.target.files?.[0]); e.target.value = ''; }} />
+            </label>
+            {wtb
+              ? <span style={{ marginLeft: 8, color: 'var(--good)' }}>✓ <b>{wtb.name}</b> · {Math.round(wtb.bytes.length / 1024)}KB</span>
+              : <span style={{ marginLeft: 8, color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>정산표 이월로 만든 중간 정산표를 그대로 넣으면 됩니다</span>}
+          </Opt>
           {extras.length > 0 && (
-            <div className="frow" style={{ alignItems: 'flex-start' }}><span className="fl">뺄 시트</span>
-              <div style={{ fontSize: 'var(--fs-1)', lineHeight: 1.8 }}>
+            <Opt label="뺄 시트" hint="정산표 표(WBS·WPL·WMS)·보고서·SCE·SCF·WCF·A500 이 아닌 시트입니다. 다른 시트의 수식이 가리키는 시트는 빼면 #REF! 가 되어 막아 둡니다. 원본 파일은 그대로입니다.">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px' }}>
                 {extras.map((x) => (
-                  <label key={x.name} style={{ display: 'block', opacity: x.refBy.length && !drop.has(x.name) ? 0.55 : 1 }}
-                    title={x.refBy.length ? `${x.refBy.join(' · ')} 시트의 수식이 이 시트를 가리킵니다 — 빼면 #REF! 가 됩니다` : ''}>
+                  <label key={x.name} style={{ opacity: x.refBy.length && !drop.has(x.name) ? 0.55 : 1 }}
+                    title={x.refBy.length ? `${x.refBy.join(' · ')} 시트의 수식이 이 시트를 가리킵니다` : ''}>
                     <input type="checkbox" checked={drop.has(x.name)} disabled={!!x.refBy.length && !drop.has(x.name)}
                       onChange={(e) => setDrop((d) => { const n = new Set(d); if (e.target.checked) n.add(x.name); else n.delete(x.name); return n; })} />{' '}
-                    {x.name}
-                    {x.refBy.length > 0 && <span style={{ color: 'var(--ink-4)' }}> — {x.refBy.join(' · ')} 가 가리킴</span>}
+                    {x.name}{x.refBy.length > 0 && <span style={{ color: 'var(--ink-4)' }}> (← {x.refBy.join('·')})</span>}
                   </label>
                 ))}
-                <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)' }}>
-                  정산표 표(WBS·WPL·WMS)·보고서·SCE·SCF·WCF·A500 이 아닌 시트입니다. 지난 주석 시도·메모는 빼고 만드십시오 — 원본 파일은 그대로입니다.
-                </div>
               </div>
-            </div>
+              <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 3 }}>지난 주석 시도·메모 시트는 빼고 만드십시오.</div>
+            </Opt>
           )}
-          <div className="frow"><span className="fl">미리 연결</span>
-            <label style={{ fontSize: 'var(--fs-2)', opacity: roll ? 1 : 0.5 }}>
+          <Opt label="미리 연결" hint="작년 금액이 같은 정산표 줄(보고서BS·PL 먼저, 없으면 WBS·WPL)을 찾아 당기 칸에 수식을 겁니다. 같은 금액 줄이 여럿이거나 증감·기초·날짜 줄, 약정·현금흐름 주석은 노랗게 둡니다. 「정산표연결」 시트에 목록이 붙습니다.">
+            <label style={{ opacity: roll ? 1 : 0.5 }}>
               <input type="checkbox" checked={link} disabled={!roll} onChange={(e) => setLink(e.target.checked)} />{' '}
-              <b>당기 칸을 정산표에 미리 연결</b>
-              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.6 }}>
-                작년 금액이 같은 정산표 줄(보고서BS·PL 먼저, 없으면 WBS·WPL)을 찾아 당기 칸에 수식을 겁니다 — 파란 칸.
-                중간감사 정산표로 만들어 두면 기말에 정산표만 고쳐도 주석이 따라옵니다. 같은 금액 줄이 여럿이거나 증감·기초 칸은 노랗게 둡니다.
-              </div>
+              당기 칸을 정산표에 미리 연결 <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>(파란 칸 — 기말에 정산표만 고치면 따라옴)</span>
             </label>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-            <button className="btn-p" disabled={!!busy} onClick={() => void makeSheet()}>
-              {busy === 'sheet' ? '만드는 중…' : '주석 시트 얹은 엑셀 내려받기'}
+          </Opt>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 10, borderTop: '1px solid var(--rule-2)' }}>
+            <button className="btn-p" disabled={!!busy || !wtb} onClick={() => void makeSheet()}>
+              {busy === 'sheet' ? '만드는 중…' : '주석 엑셀 내려받기'}
             </button>
           </div>
         </div>
 
         <div className="card">
-          <div className="chdr">나. 사전작성 DSD</div>
-          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7, marginBottom: 10 }}>
-            작년 것을 <b>한 해 밀어</b> 껍데기를 만듭니다 — 기수·연도를 올리고, 재무제표 금액을
-            전기로 내리고, 당기 칸을 비웁니다. <b>민 자리는 붉게</b> 표시합니다.
-            <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 5 }}>
-              정산표가 없어도 됩니다 — 작년 감사보고서 하나로 만듭니다.
-            </div>
+          <div className="chdr">나. 사전작성 DSD <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>편집기용 껍데기</span></div>
+          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
+            작년 보고서를 한 해 밀어 둡니다 — 민 자리는 <b style={{ color: 'var(--bad)' }}>붉게</b>. 정산표는 필요 없습니다.
           </div>
-          <div className="frow"><span className="fl">나올 이름</span>
-            <span style={{ fontSize: 'var(--fs-1)', fontFamily: 'var(--font-num)' }}>
-              감사보고서_{safeName(eng.entityName)}_FY{eng.fy}_사전작성.DSD
-            </span>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', margin: '8px 0', fontFamily: 'var(--font-num)', wordBreak: 'break-all' }}>
+            감사보고서_{safeName(eng.entityName)}_FY{eng.fy}_사전작성.DSD
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button className="btn-p" disabled={!!busy} onClick={makeDsd}>
               {busy === 'dsd' ? '만드는 중…' : '사전작성 DSD 내려받기'}
             </button>
@@ -339,10 +297,8 @@ export default function NotePrepareTab(
       </div>
 
       <div className="card" style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
-        <b>다음에 할 일</b> — 내려받은 엑셀을 열어 <b>노란 칸</b>을 채웁니다. 대개 재무제표 시트에서
-        링크를 겁니다. <b>「대사표」 시트</b>를 옆에 띄워 두시면 맞아야 하는 숫자의 「차이」가 채우는
-        대로 0 이 됩니다. 다 채우면 <b>③ 검증</b>으로 오십시오. 검증까지 마친 엑셀은 ① 에
-        <b> 표준주석엑셀</b>로 등록해 두면 내년에 수식을 이어받습니다.
+        <b>다음</b> — 내려받은 엑셀의 <b>노란 칸</b>을 채웁니다(파란 칸은 정산표를 따라옴). 「대사표」 시트를 옆에 띄우면 맞아야 하는 숫자의 차이가 채우는 대로 0 이 됩니다.
+        기말감사 때 다 채우면 <b>③ 검증</b>으로 오십시오.
       </div>
     </div>
   );
