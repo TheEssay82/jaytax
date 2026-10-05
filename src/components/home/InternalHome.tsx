@@ -57,6 +57,14 @@ const READY: ShortcutDef[] = [
   { key: 'inquiry', label: '조회서 발송', emoji: '📮', color: 'blue', tab: 'conf-register', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member', 'per_head_accountant'].includes(r) },
 ];
 
+// 체험 계정(심리실 등) — 감사업무관리만 쓰므로 바로가기도 그것만(2026-10-06).
+const SANDBOX: ShortcutDef[] = [
+  { key: 'wtb', label: '정산표 관리', emoji: '📒', color: 'amber', tab: 'wtb', allow: () => true },
+  { key: 'dsd', label: '주석·DSD 관리', emoji: '📗', color: 'teal', tab: 'dsd', allow: () => true },
+  { key: 'gwp', label: '일반조서 관리', emoji: '📘', color: 'blue', tab: 'gwp', allow: () => true },
+  { key: 'inquiry', label: '조회서 발송', emoji: '📮', color: 'blue', tab: 'conf-register', allow: () => true },
+];
+
 // 준비 중(미개발) — 로드맵 노출용. 클릭 불가.
 const COMING: ShortcutDef[] = [
   { key: 'indiv', label: '개별업무 청구', emoji: '💰', color: 'amber', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member'].includes(r) },
@@ -78,7 +86,7 @@ export default function InternalHome({
   /** 개발노트를 열 수 있으면 그 함수, 볼 수 없는 등급이면 null — 섹션을 아예 그리지 않는다. */
   onOpenDevNotes: (() => void) | null;
 }) {
-  const { user, role, profileName } = useAuth();
+  const { user, role, profileName, sandbox } = useAuth();
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loaded, setLoaded] = useState(false);
 
@@ -100,8 +108,8 @@ export default function InternalHome({
   const openTodos = loaded ? myTodos.filter((t) => (counts[t.key] ?? 0) > 0) : myTodos;
   const doneTodos = loaded ? myTodos.filter((t) => (counts[t.key] ?? 0) === 0) : [];
 
-  const ready = READY.filter((s) => s.allow(role));
-  const coming = COMING.filter((s) => s.allow(role));
+  const ready = sandbox ? SANDBOX : READY.filter((s) => s.allow(role));
+  const coming = sandbox ? [] : COMING.filter((s) => s.allow(role));
   const latest = CHANGELOG[0];
   const name = profileName || user?.email || '';
 
