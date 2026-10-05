@@ -431,3 +431,26 @@ test('번호가 아직 없는 새 주석이면 제목만 쓴다', () => {
   const plan = layoutNewNote(null, '리스', 'N19 리스');
   assert.equal(plan.cells.find((c) => c.kind === 'title')?.text, '리스');
 });
+
+test('위아래로 합친 칸(ROWSPAN)에 걸린 행은 지우기 대상이 아니다 — 지우면 표가 깨진다(2026-10-06)', async () => {
+  const { planNotes } = await import('./notePick.ts');
+  const td = (slot: number, col: number, text: string, rowspan = 1) => ({ slot, text, tag: 'TD' as const, col, colspan: 1, rowspan });
+  const note = {
+    no: 9, title: '담보제공자산', blocks: [{
+      kind: 'table' as const, unit: '원',
+      rows: [
+        [{ slot: 1, text: '구분', tag: 'TH' as const, col: 0, colspan: 1, rowspan: 1 }, { slot: 2, text: '자산', tag: 'TH' as const, col: 1, colspan: 1, rowspan: 1 }, { slot: 3, text: '당기', tag: 'TH' as const, col: 2, colspan: 1, rowspan: 1 }],
+        [td(10, 0, '토지', 2), td(11, 1, '본사', 1), td(12, 2, '100')],
+        [td(20, 1, '공장'), td(21, 2, '200')],
+        [td(30, 0, '예금'), td(31, 1, '정기'), td(32, 2, '300')],
+        [td(40, 0, '합계'), td(41, 1, ''), td(42, 2, '600')],
+      ],
+      rowAt: [[0, 9], [10, 19], [20, 29], [30, 39], [40, 49]] as [number, number][],
+    }],
+  };
+  const p = planNotes([{ note: note as never, title: '담보제공자산' }], true, 0)[0];
+  const labels = (p.drops ?? []).map((d) => d.origLabel);
+  assert.ok(!labels.includes('토지'), '합친 칸을 품은 행');
+  assert.ok(!labels.includes('200') && !labels.includes('공장'), '합친 칸 아래 행(첫 칸이 금액)');
+  assert.ok(labels.includes('예금'), '합치지 않은 행은 그대로 지울 수 있다');
+});

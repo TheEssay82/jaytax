@@ -637,10 +637,18 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     // 거래처 행에는 금액이 있고 머리 행에는 없다 — 그것으로 가른다.
     if (!b.isUnitMark && items.length >= 2) {
       const hasNum = numericCol.length > 0;
+      // **위아래로 합친 칸(ROWSPAN)에 걸린 행은 지울 수 없다**(2026-10-06 제이 N09·N18).
+      //   · 그 행의 첫 칸이 위 행에 붙어 있으면 b.rows[i][0] 은 금액 칸이다 — 이월하면 비므로 「지웠다」로 오인했다.
+      //   · 합친 칸에 걸린 `<TR>` 을 통째로 빼면 칸 수가 어긋나 DART 편집기가 문서를 못 연다.
+      const spanned = new Set<number>();
+      b.rows.forEach((row, r) => row.forEach((c) => {
+        if ((c.rowspan ?? 1) > 1) for (let k = r; k < r + c.rowspan; k++) spanned.add(k);
+      }));
       for (const i of items) {
         const at = b.rowAt?.[i];
         const first = b.rows[i][0];
         if (!at || !first) continue;
+        if (first.col !== 0 || spanned.has(i)) continue;
         const anyNum = b.rows[i].some((c) => asNumber(c.text) != null || isDash(c.text));
         if (hasNum && !anyNum) continue;
         drops.push({
