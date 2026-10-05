@@ -66,7 +66,7 @@ export type Capability =
   | 'viewDispatch' // 문서발송 › 발송요청 처리 '조회' — 처리권한자 + 회계사(조회전용)
   | 'processDispatch' // 문서발송 › 발송요청 처리(상태변경·발송일·등기번호) — 최고관리자·기장팀장·기장팀원
   | 'viewDevNotes' // 📓 개발노트(버전별 개발내역) — 기장팀장·기장팀원은 볼 수 없다
-  | 'viewAuditPapers'; // 📘 일반조서 관리 — 감사팀(최고관리자·회계사·인당회계사). 서버도 is_audit_staff() 로 같은 선을 긋는다
+  | 'viewAuditPapers'; // 감사업무관리의 감사팀 메뉴(일반조서·주석·DSD·Journal Entry) — 최고관리자·회계사·인당회계사. 일반조서 표는 서버도 is_audit_staff() 로 같은 선. 조회서 발송관리는 기장팀도 쓰므로 cap 없음
 
 // 항목별 허용 역할 (매트릭스)
 const MATRIX: Record<Capability, Role[]> = {

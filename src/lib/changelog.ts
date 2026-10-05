@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.54.1',
+    date: '2026-10-05',
+    title: '감사업무관리 권한 정리',
+    highlights: [
+      '감사업무관리는 감사팀(최고관리자·회계사·인당회계사)이 모두 씁니다. 기장팀(팀장·팀원)은 발송·회수 업무를 처리해 주는 📮 조회서 발송관리만 봅니다 — 📗 주석·DSD 관리도 이제 감사팀만(일반조서·Journal Entry 와 같게).',
+      '일반업무관리는 그대로입니다.',
+    ],
+  },
+  {
     version: '3.54.0',
     date: '2026-10-05',
     title: '메뉴 개편 — 「감사업무관리」 대분류 신설',

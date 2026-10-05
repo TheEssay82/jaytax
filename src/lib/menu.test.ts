@@ -109,3 +109,13 @@ test('Journal Entry 는 일반조서처럼 감사팀만', () => {
   assert.equal(opens(송현주, 'je'), true);
   assert.equal(opens(정남지, 'je'), false);
 });
+
+test('감사업무관리 — 인당회계사는 모두, 기장팀은 조회서 발송관리만(2026-10-05)', () => {
+  const 인당: [Role, string] = ['per_head_accountant', '조현규'];
+  for (const id of ['inquiry-send', 'conf-register', 'conf-dispatch', 'conf-collect', 'conf-status', 'dsd', 'gwp', 'je']) assert.equal(opens(인당, id), true, id);
+  for (const p of [정남지, 김민섭]) {
+    for (const id of ['inquiry-send', 'conf-register', 'conf-dispatch', 'conf-collect', 'conf-status']) assert.equal(opens(p, id), true, id);
+    for (const id of ['dsd', 'gwp', 'je']) assert.equal(opens(p, id), false, id);
+  }
+  assert.equal(menuAllowed('external', '외부', item('dsd')), true);   // 외부인 시연은 그대로
+});
