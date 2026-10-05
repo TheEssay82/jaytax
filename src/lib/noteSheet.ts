@@ -14,7 +14,9 @@
 import { gridWidth, type Block, type NoteBlocks } from './dsdBlocks';
 
 /** 어떤 서식으로 그릴 칸인가 — xlsxStyles 의 이름과 같다. */
-export type CellKind = 'label' | 'title' | 'para' | 'head' | 'text' | 'num' | 'input' | 'link';
+export type CellKind = 'label' | 'title' | 'para' | 'head' | 'text' | 'num' | 'input' | 'link'
+  /** 노란 칸인데 정산표에 미리 연결한 것(noteWtbLink) — 파란 바탕 */
+  | 'linked';
 
 export interface SheetCell {
   /** 1부터 */ row: number;

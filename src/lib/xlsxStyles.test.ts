@@ -33,9 +33,9 @@ test('개수(count)를 함께 올린다 — 안 올리면 엑셀이 못 연다',
   const count = (tag: string) => Number(new RegExp(`<${tag}[^>]*count="(\\d+)"`).exec(xml)![1]);
   assert.equal(count('numFmts'), 3);        // 2 + 1
   assert.equal(count('fonts'), 7);          // 3 + 4(보통·굵게·제목·링크)
-  assert.equal(count('fills'), 4);          // 2 + 2(머리 음영·입력 노랑)
+  assert.equal(count('fills'), 5);          // 2 + 3(머리 음영·입력 노랑·연결 파랑)
   assert.equal(count('borders'), 3);        // 2 + 1
-  assert.equal(count('cellXfs'), 12);       // 4 + 8
+  assert.equal(count('cellXfs'), 13);       // 4 + 9
 });
 
 test('숫자꼴 번호가 이미 쓰는 것과 겹치지 않는다', () => {

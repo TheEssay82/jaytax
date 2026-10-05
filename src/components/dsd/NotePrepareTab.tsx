@@ -10,7 +10,8 @@
 // 재무제표·TB 링크를 해마다 다시 걸지 않게 하려는 것이다(2026-09-14).
 //
 // ⚠️ **원본 정산표는 손대지 않는다.** 새 파일로 내려받는다.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { unzipSync, zipSync } from 'fflate';
 import { layoutIndex, INDEX_SHEET } from '../../lib/noteSheet';
 import {
   pickAll, pickNotes, planNotes, sheetsToInject, isAnyNoteSheet, LONG_SHEET, LAYOUT_LABEL,
@@ -19,7 +20,9 @@ import {
 import { findLinks, layoutTieSheet } from '../../lib/noteLink';
 import { inheritFormulas } from '../../lib/noteInherit';
 import { injectSheets } from '../../lib/xlsxInject';
-import { readWorkbook, sheetNames } from '../../lib/xlsxRead';
+import { readWorkbook, sheetNames, type SheetData } from '../../lib/xlsxRead';
+import { removeSheets } from '../../lib/xlsxTransplant';
+import { wtbSources, linkToWtb, linkListSheet, leftoverSheets } from '../../lib/noteWtbLink';
 import { writeNotes, buildDsd, sheetsFromPlans, contentsOf } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
 import { findEngagement, type Engagement, type NoteRow } from '../../lib/dsdApi';
@@ -42,6 +45,12 @@ export default function NotePrepareTab(
   // 작년 건에 등록된 표준주석엑셀 — 있으면 수식을 이어받는다. 없으면 이 줄은 화면에 없다.
   const [prevBook, setPrevBook] = useState<NoteBook | null>(null);
   const [inherit, setInherit] = useState(true);
+  // 올해 정산표 — 시트를 읽어 둔다(옛 작업 시트 빼기 · 당기 칸 미리 연결, 2026-10-05).
+  const [book, setBook] = useState<SheetData[] | null>(null);
+  const [drop, setDrop] = useState<Set<string>>(new Set());
+  const [link, setLink] = useState(true);
+  /** 정산표 표·보고서가 아닌 시트 — 빼기 후보. 남는 시트의 수식이 가리키면 뺄 수 없다. */
+  const extras = useMemo(() => (book ? leftoverSheets(book, drop).filter((x) => !x.core) : []), [book, drop]);
 
   useEffect(() => {
     let alive = true;
@@ -59,12 +68,18 @@ export default function NotePrepareTab(
     setSay(null); setDone(null);
     const bytes = new Uint8Array(await f.arrayBuffer());
     setWtb({ name: f.name, bytes });
+    // 옛 작업 시트(지난 주석 시도·메모)는 처음부터 빼기로 골라 둔다 — 조서 번호 시트(2110A 등)와 다른 시트가 가리키는 것은 남긴다.
+    try {
+      const b = readWorkbook(bytes);
+      setBook(b);
+      setDrop(new Set(leftoverSheets(b).filter((x) => !x.core && !x.refBy.length && !/^\d{4}[A-Z]/.test(x.name)).map((x) => x.name)));
+    } catch { setBook(null); setDrop(new Set()); }
     // **이미 주석 시트가 있는 파일에 또 얹으면 시트가 두 벌이 된다** — 이름이 「N01 …(2)」가 된다.
     try {
       const had = sheetNames(bytes).filter((n) => isAnyNoteSheet(n) || /^대사표|^주석목록\(생성\)/.test(n)).length;
       if (had) {
-        setSay(`이 파일에는 이미 주석 시트가 ${had}장 있습니다. 그대로 만들면 시트가 두 벌이 됩니다`
-          + ' — 주석 시트를 얹기 전의 원본 정산표를 넣으십시오.');
+        setSay(`이 파일에는 이미 주석 시트가 ${had}장 있습니다. 아래 「정산표에서 뺄 시트」에 골라 두었습니다`
+          + ' — 남겨 두면 시트가 두 벌이 됩니다.');
       }
     } catch { /* 못 읽어도 만들기는 해 본다 */ }
   }
@@ -93,6 +108,13 @@ export default function NotePrepareTab(
     if (!wtb) return setSay('올해 정산표 엑셀(.xlsx)을 고르세요.');
     setBusy('sheet'); setSay(null); setDone(null);
     try {
+      // 옛 작업 시트를 뺀 정산표 — 원본 파일은 그대로다(새 파일로 내려받는다).
+      let base = wtb.bytes;
+      const kept = (book ?? []).filter((x) => !drop.has(x.name));
+      const blocked = extras.filter((x) => drop.has(x.name) && x.refBy.length);
+      if (blocked.length) throw new Error(`${blocked.map((x) => `「${x.name}」(${x.refBy.join('·')} 가 가리킴)`).join(', ')} 는 뺄 수 없습니다.`);
+      let dropped: string[] = [];
+      if (drop.size) { const files = unzipSync(base); dropped = removeSheets(files, [...drop]); base = zipSync(files); }
       const p = picked();
       const fresh = p.filter((x) => !x.note).map((x) => x.title);
       let plans = planNotes(p, roll, spare, layout);
@@ -104,7 +126,7 @@ export default function NotePrepareTab(
       if (roll && inherit && prevBook) {
         const old = readWorkbook(await noteBookBytes(prevBook), isAnyNoteSheet);
         const known = new Set([
-          ...sheetNames(wtb.bytes), ...plans.map((x) => x.name), INDEX_SHEET, '대사표',
+          ...sheetNames(base), ...plans.map((x) => x.name), INDEX_SHEET, '대사표',
         ]);
         const r = inheritFormulas(plans, old, known);
         plans = r.plans;
@@ -119,13 +141,22 @@ export default function NotePrepareTab(
             + (r.notes ? ' — 노란 칸에 수식이 아니라 값이 들어 있었던 것 같습니다.' : ' — 주석 제목이 하나도 맞지 않습니다.');
       }
 
+      // 당기 칸을 정산표에 미리 연결 — 작년 금액이 같은 정산표 줄의 당기 칸(noteWtbLink). 이어받은 수식이 있으면 그대로 둔다.
+      let linked = 0, ambiguous = 0;
+      const extra: ReturnType<typeof linkListSheet>[] = [];
+      if (roll && link && kept.length) {
+        const r = linkToWtb(plans, planNotes(p, false, spare, layout), wtbSources(kept, eng.fy - 1));
+        plans = r.plans; linked = r.links.length; ambiguous = r.ambiguous;
+        if (r.links.length) extra.push(linkListSheet(r.links));
+      }
+
       const index = layoutIndex(p.map(({ title }, i) => ({
         no: i + 1, title, enabled: true, sheet: plans[i].name,
         // 종단형은 시트가 하나라 **몇 행인지**까지 가리켜야 한다.
         at: layout === 'long' ? `B${plans[i].cells.find((c) => c.kind === 'title')?.row ?? 2}` : undefined,
       })));
       // 목록이 **주석 1번 왼쪽**에 선다 — 맨 뒤에 있으면 스무 장을 지나 찾아가야 한다(2026-09-14).
-      const out = injectSheets(wtb.bytes, [index, ...sheetsToInject(plans), layoutTieSheet(links)]);
+      const out = injectSheets(base, [index, ...sheetsToInject(plans), layoutTieSheet(links), ...extra]);
       download(out, `${wtb.name.replace(/\.xlsx$/i, '')}_주석시트.xlsx`,
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       const yellow = plans.flatMap((x) => x.cells).filter((c) => c.kind === 'input').length;
@@ -135,6 +166,9 @@ export default function NotePrepareTab(
         + ' — 목록의 제목을 누르면 그 주석으로, 주석 맨 위 「◀ 주석목록」을 누르면 목록으로 갑니다.'
         + (roll ? ` 당기 값을 전기로 밀고 채워 넣을 칸 ${yellow}개를 노랗게 두었습니다.` : '')
         + told
+        + (linked ? ` 당기 칸 ${linked}개는 작년 금액이 같은 정산표 줄에 미리 연결했습니다(파란 칸 — 「정산표연결」 시트에 목록).`
+          + (ambiguous ? ` ${ambiguous}칸은 같은 금액 줄이 여럿이라 비워 두었습니다.` : '') : '')
+        + (dropped.length ? ` 정산표에서 ${dropped.join(' · ')} 시트를 뺐습니다.` : '')
         + (links.length ? ` 맞아야 하는 숫자 짝 ${links.length}개를 「대사표」 시트에 걸어 두었습니다.` : '')
         + (fresh.length ? ` 그 가운데 ${fresh.length}개는 작년 보고서에 없어 빈 서식으로 두었습니다 — ${fresh.join(' · ')}` : ''));
     } catch (e) {
@@ -246,6 +280,34 @@ export default function NotePrepareTab(
                 </div>
               )}
             </div>
+          </div>
+          {extras.length > 0 && (
+            <div className="frow" style={{ alignItems: 'flex-start' }}><span className="fl">뺄 시트</span>
+              <div style={{ fontSize: 'var(--fs-1)', lineHeight: 1.8 }}>
+                {extras.map((x) => (
+                  <label key={x.name} style={{ display: 'block', opacity: x.refBy.length && !drop.has(x.name) ? 0.55 : 1 }}
+                    title={x.refBy.length ? `${x.refBy.join(' · ')} 시트의 수식이 이 시트를 가리킵니다 — 빼면 #REF! 가 됩니다` : ''}>
+                    <input type="checkbox" checked={drop.has(x.name)} disabled={!!x.refBy.length && !drop.has(x.name)}
+                      onChange={(e) => setDrop((d) => { const n = new Set(d); if (e.target.checked) n.add(x.name); else n.delete(x.name); return n; })} />{' '}
+                    {x.name}
+                    {x.refBy.length > 0 && <span style={{ color: 'var(--ink-4)' }}> — {x.refBy.join(' · ')} 가 가리킴</span>}
+                  </label>
+                ))}
+                <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)' }}>
+                  정산표 표(WBS·WPL·WMS)·보고서·SCE·SCF·WCF·A500 이 아닌 시트입니다. 지난 주석 시도·메모는 빼고 만드십시오 — 원본 파일은 그대로입니다.
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="frow"><span className="fl">미리 연결</span>
+            <label style={{ fontSize: 'var(--fs-2)', opacity: roll ? 1 : 0.5 }}>
+              <input type="checkbox" checked={link} disabled={!roll} onChange={(e) => setLink(e.target.checked)} />{' '}
+              <b>당기 칸을 정산표에 미리 연결</b>
+              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-4)', marginTop: 2, lineHeight: 1.6 }}>
+                작년 금액이 같은 정산표 줄(보고서BS·PL 먼저, 없으면 WBS·WPL)을 찾아 당기 칸에 수식을 겁니다 — 파란 칸.
+                중간감사 정산표로 만들어 두면 기말에 정산표만 고쳐도 주석이 따라옵니다. 같은 금액 줄이 여럿이거나 증감·기초 칸은 노랗게 둡니다.
+              </div>
+            </label>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
             <button className="btn-p" disabled={!!busy} onClick={() => void makeSheet()}>

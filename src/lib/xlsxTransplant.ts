@@ -441,3 +441,97 @@ export function moveSheetAfter(files: Record<string, Uint8Array>, name: string, 
   names.splice(j + 1, 0, name);
   return reorderSheets(files, names);
 }
+
+/** 관계 파일(.rels) 경로 → 그 부품이 가리키는 부품들(외부 링크 제외). */
+function relTargets(files: Record<string, Uint8Array>, relsPath: string): string[] {
+  const x = files[relsPath]; if (!x) return [];
+  const base = relsPath.replace(/_rels\/[^/]*\.rels$/, '');           // 「xl/worksheets/」
+  const out: string[] = [];
+  for (const m of strFromU8(x).matchAll(/<Relationship\b([^>]*?)\/>/g)) {
+    if (/TargetMode="External"/.test(m[1])) continue;
+    const to = /\bTarget="([^"]*)"/.exec(m[1])?.[1]; if (!to) continue;
+    if (to.startsWith('/')) { out.push(to.slice(1)); continue; }
+    const parts = (base + to).split('/'); const st: string[] = [];
+    for (const p of parts) { if (p === '..') st.pop(); else if (p && p !== '.') st.push(p); }
+    out.push(st.join('/'));
+  }
+  return out;
+}
+const relsOf = (part: string) => part.replace(/([^/]*)$/, '_rels/$1.rels');
+
+/** 뿌리(_rels/.rels)에서 닿는 부품 전부. */
+function reachable(files: Record<string, Uint8Array>): Set<string> {
+  const seen = new Set<string>(); const stack = relTargets(files, '_rels/.rels');
+  while (stack.length) {
+    const p = stack.pop()!; if (seen.has(p) || !files[p]) continue;
+    seen.add(p); stack.push(...relTargets(files, relsOf(p)));
+  }
+  return seen;
+}
+
+/**
+ * 시트 빼기 — 정산표에 붙어 있던 옛 작업 시트(지난 주석 시도·메모)를 지운다(2026-10-05, 주석·DSD ② 준비).
+ * 지운 시트에만 딸린 부품(그림·메모·표)도 함께 지우고, 시트 번호로 걸린 것(정의된 이름 localSheetId, 열 때 탭)을
+ * 새 차례로 고친다. 지운 시트를 가리키는 정의된 이름도 지운다(#REF! 이름을 남기지 않는다).
+ * **다른 시트의 수식이 지운 시트를 가리키는지는 부르는 쪽이 먼저 본다** — 여기서는 막지 않는다.
+ */
+export function removeSheets(files: Record<string, Uint8Array>, names: string[]): string[] {
+  const all = sheetEntries(files);
+  const gone = all.filter((e) => names.includes(e.name));
+  if (!gone.length) return [];
+  if (gone.length >= all.length) throw new Error('시트를 모두 지울 수는 없습니다.');
+  const before = reachable(files);
+  const oldIdx = new Map(all.map((e, k) => [e.name, k]));
+  const goneIdx = new Set(gone.map((e) => oldIdx.get(e.name)!));
+  const newIdx = new Map<number, number>(); let n = 0;
+  all.forEach((_, k) => { if (!goneIdx.has(k)) newIdx.set(k, n++); });
+
+  let wb = strFromU8(files['xl/workbook.xml']);
+  for (const e of gone) wb = wb.replace(e.raw, '');
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const refRx = gone.map((e) => {
+    const nm = e.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return new RegExp(`(^|[^A-Za-z0-9_가-힣.])('${esc(nm.replace(/'/g, "''"))}'|${esc(nm)})!`);
+  });
+  wb = wb.replace(/<definedName\b([^>]*)>([\s\S]*?)<\/definedName>|<definedName\b[^>]*\/>/g, (m, a: string | undefined, body: string | undefined) => {
+    const loc = /\blocalSheetId="(\d+)"/.exec(a ?? m);
+    if (loc && goneIdx.has(Number(loc[1]))) return '';
+    if (body && refRx.some((r) => r.test(body))) return '';
+    return loc ? m.replace(/\blocalSheetId="(\d+)"/, `localSheetId="${newIdx.get(Number(loc[1])) ?? 0}"`) : m;
+  });
+  wb = wb.replace(/<definedNames>\s*<\/definedNames>/, '');
+  wb = wb.replace(/<workbookView\b[^>]*?\/?>/, (v) => v
+    .replace(/\bactiveTab="(\d+)"/, (_m, k: string) => `activeTab="${newIdx.get(Number(k)) ?? 0}"`)
+    .replace(/\bfirstSheet="(\d+)"/, 'firstSheet="0"'));
+  files['xl/workbook.xml'] = strToU8(wb);
+
+  let rels = strFromU8(files['xl/_rels/workbook.xml.rels']);
+  for (const e of gone) rels = rels.replace(new RegExp(`<Relationship\\b[^>]*\\bId="${esc(e.rId)}"[^>]*/>`), '');
+  files['xl/_rels/workbook.xml.rels'] = strToU8(rels);
+
+  const after = reachable(files);
+  const dead = [...before].filter((p) => !after.has(p));
+  let types = strFromU8(files['[Content_Types].xml']);
+  for (const p of dead) {
+    delete files[p]; delete files[relsOf(p)];
+    types = types.replace(new RegExp(`<Override PartName="/${esc(p)}"[^>]*/>`), '');
+  }
+  files['[Content_Types].xml'] = strToU8(types);
+
+  // 문서 속성(app.xml)의 시트 이름 목록 — 엑셀이 「복구」를 묻지 않게 맞춘다.
+  if (files['docProps/app.xml']) {
+    let app = strFromU8(files['docProps/app.xml']);
+    let cut = 0;
+    app = app.replace(/(<TitlesOfParts>\s*<vt:vector\b[^>]*size=")(\d+)("[^>]*>)([\s\S]*?)(<\/vt:vector>)/, (_m, a, size, b, body: string, c) => {
+      for (const e of gone) {
+        const t = `<vt:lpstr>${e.name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</vt:lpstr>`;
+        if (body.includes(t)) { body = body.replace(t, ''); cut++; }
+      }
+      return `${a}${Number(size) - cut}${b}${body}${c}`;
+    });
+    if (cut) app = app.replace(/(<HeadingPairs>[\s\S]*?<vt:i4>)(\d+)(<\/vt:i4>)/, (_m, a, k, b) => `${a}${Number(k) - cut}${b}`);
+    files['docProps/app.xml'] = strToU8(app);
+  }
+  dropCalcChain(files);
+  return gone.map((e) => e.name);
+}
