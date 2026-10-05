@@ -20,7 +20,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 /** 인당회계사가 접근 가능한 대분류(그룹) id. 조회 전용이다. */
 export const PER_HEAD_ALLOWED_GROUPS = new Set<string>([
-  'general', 'clients-hub', 'billing-req', 'billing', 'advisory',
+  'general', 'audit', 'clients-hub', 'billing-req', 'billing', 'advisory',   // audit = 감사업무관리(2026-10-05, 일반업무관리에서 옮김)
 ]);
 /**
  * 인당회계사에게 숨기는 세부 탭 id.

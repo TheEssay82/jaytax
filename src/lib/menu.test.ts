@@ -94,3 +94,18 @@ test('막힌 사람의 접근 가능 탭 목록에 그 id 가 아예 없다', ()
   assert.equal(min.has('staff-revenue'), false);
   assert.equal(min.has('stats'), false);
 });
+
+// ── 감사업무관리(2026-10-05) — 감사 보조 시스템을 일반업무관리에서 옮겼다 ──
+
+test('감사업무관리에 조회서 발송관리·주석·DSD·일반조서·Journal Entry 가 있고, 일반업무관리에는 없다', () => {
+  const audit = MENU_GROUPS.find((g) => g.id === 'audit')!;
+  const general = MENU_GROUPS.find((g) => g.id === 'general')!;
+  assert.equal(audit.label, '감사업무관리');
+  assert.deepEqual(audit.items.map((i) => i.id), ['inquiry-send', 'dsd', 'gwp', 'je']);
+  for (const id of ['inquiry-send', 'dsd', 'gwp', 'je']) assert.equal(general.items.some((i) => i.id === id), false);
+});
+
+test('Journal Entry 는 일반조서처럼 감사팀만', () => {
+  assert.equal(opens(송현주, 'je'), true);
+  assert.equal(opens(정남지, 'je'), false);
+});

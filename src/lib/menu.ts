@@ -75,6 +75,31 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
   {
+    // 감사 시즌에 쓰는 보조 시스템을 한데 모았다(사용자 2026-10-05 「일반업무관리에 감사업무 보조시스템이 많이 들어와 있다」).
+    // 메뉴 id 는 그대로라 화면·권한·책갈피(?tab=)가 바뀌지 않는다 — 자리만 옮겼다.
+    id: 'audit',
+    label: '감사업무관리',
+    items: [
+      {
+        id: 'inquiry-send',
+        label: '📮 조회서 발송관리',
+        children: [
+          { id: 'conf-register', label: '📝 조회서등록' },
+          { id: 'conf-dispatch', label: '📮 조회서 발송및진행' },
+          { id: 'conf-collect', label: '📬 조회서 회수관리' },
+          { id: 'conf-status', label: '📊 조회현황' },
+        ],
+      },
+      // 감사 주석을 엑셀에서 검증하고 DSD 파일로 옮기는 자리(v3.0).
+      { id: 'dsd', label: '📗 주석·DSD 관리' },
+      // 한공회 표준 일반조서(1000~9000)를 회사·사업연도마다 짓고 이어 가는 자리(2026-09-15). 정산표 이월도 여기.
+      // 위험평가·독립성 같은 내부 정보라 감사팀만 본다.
+      { id: 'gwp', label: '📘 일반조서 관리', cap: 'viewAuditPapers' },
+      // 분개장 전수 검토(JE Test) — 개발 준비 중(사용자 2026-10-05). 일반조서와 같은 감사팀 자리.
+      { id: 'je', label: '🔍 Journal Entry 시스템', cap: 'viewAuditPapers' },
+    ],
+  },
+  {
     id: 'general',
     label: '일반업무관리',
     items: [
@@ -91,22 +116,6 @@ export const MENU_GROUPS: MenuGroup[] = [
         ],
       },
       { id: 'evidence', label: '📁 자료실' },
-      {
-        id: 'inquiry-send',
-        label: '📮 조회서 발송관리',
-        children: [
-          { id: 'conf-register', label: '📝 조회서등록' },
-          { id: 'conf-dispatch', label: '📮 조회서 발송및진행' },
-          { id: 'conf-collect', label: '📬 조회서 회수관리' },
-          { id: 'conf-status', label: '📊 조회현황' },
-        ],
-      },
-      // 감사 주석을 엑셀에서 검증하고 DSD 파일로 옮기는 자리(v3.0).
-      // 조회서 발송관리와 같은 성격이라 여기 둔다 — 감사 시즌에 쓰는 일이다.
-      { id: 'dsd', label: '📗 주석·DSD 관리' },
-      // 한공회 표준 일반조서(1000~9000)를 회사·사업연도마다 짓고 이어 가는 자리(2026-09-15).
-      // 위험평가·독립성 같은 내부 정보라 감사팀만 본다.
-      { id: 'gwp', label: '📘 일반조서 관리', cap: 'viewAuditPapers' },
       { id: 'vacation', label: '🌴 휴가관리' },
       { id: 'estimate', label: '🧮 견적산출 시스템' },
     ],
