@@ -23,6 +23,7 @@ import { injectSheets } from '../../lib/xlsxInject';
 import { readWorkbook, sheetNames, type SheetData } from '../../lib/xlsxRead';
 import { removeSheets } from '../../lib/xlsxTransplant';
 import { wtbSources, linkToWtb, linkListSheet, leftoverSheets } from '../../lib/noteWtbLink';
+import { readLayout } from '../../lib/wtbRoll';
 import { writeNotes, buildDsd, sheetsFromPlans, contentsOf } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
 import { findEngagement, updateEngagement, type Engagement, type NoteRow } from '../../lib/dsdApi';
@@ -75,6 +76,8 @@ export default function NotePrepareTab(
     try {
       const b = readWorkbook(bytes);
       setBook(b);
+      // 정산표가 아닌 파일(회사 재무제표 등)을 넣는 일이 있다(2026-10-06 체험) — 알려만 준다.
+      if (!b.some((sh) => readLayout(sh))) setSay('이 파일에서 정산표 표(WBS·WPL — 머리 「과목」, 「DR | CR」 묶음)를 찾지 못했습니다. 회사 재무제표가 아니라 📒 정산표 관리에서 만든 정산표를 넣으셨는지 보세요.');
       setDrop(new Set(leftoverSheets(b).filter((x) => !x.core && !x.refBy.length && !/^\d{4}[A-Z]/.test(x.name)).map((x) => x.name)));
     } catch { setBook(null); setDrop(new Set()); }
     // **이미 주석 시트가 있는 파일에 또 얹으면 시트가 두 벌이 된다** — 이름이 「N01 …(2)」가 된다.
