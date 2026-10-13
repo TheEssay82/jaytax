@@ -72,6 +72,7 @@ export const MENU_PERMS: Record<string, MenuPerm> = {
   'wtb': { write: { ...AUDIT }, note: '만든 정산표는 그 건 자료함에 남는다' },
   'dsd': { write: { ...AUDIT, external: '시연 — 조회만' }, note: '「외부인에게 보여 주기」 표시는 최고관리자' },
   'gwp': { write: { ...AUDIT } },
+  'issue': { write: { ...AUDIT }, note: '지우기는 만든 사람 본인 것만' },
   'je': { use: { all: '준비 중' }, write: READ_ONLY },
 
   // ── 일반업무관리 ──

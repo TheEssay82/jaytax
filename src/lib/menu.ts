@@ -99,6 +99,8 @@ export const MENU_GROUPS: MenuGroup[] = [
       // 한공회 표준 일반조서(1000~9000)를 회사·사업연도마다 짓고 이어 가는 자리(2026-09-15). 정산표 이월은 📒 정산표 관리로 옮겼다.
       // 위험평가·독립성 같은 내부 정보라 감사팀만 본다.
       { id: 'gwp', label: '📘 일반조서 관리', cap: 'viewAuditPapers' },
+      // 감사 건마다 이슈를 아이템으로 쌓고 경과를 남기는 자리(2026-10-14, 옛 엑셀 ISSUELOG). 우리 내부용 — 감사팀만.
+      { id: 'issue', label: '📝 감사이슈 LOG', cap: 'viewAuditPapers' },
       // 분개장 전수 검토(JE Test) — 개발 준비 중(사용자 2026-10-05). 일반조서와 같은 감사팀 자리.
       { id: 'je', label: '🔍 Journal Entry 시스템', cap: 'viewAuditPapers' },
     ],
