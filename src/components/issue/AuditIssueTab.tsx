@@ -26,7 +26,15 @@ const STATUS_STYLE: Record<IssueStatus, { bg: string; fg: string }> = {
   이월: { bg: '#E0E7FF', fg: '#3730A3' },
 };
 const STAGE_COLOR: Record<string, string> = { 계획: '#7C3AED', 중간: '#2F7BD8', 기말: '#12A38A' };
-const fmt = (s: string) => s.slice(0, 16).replace('T', ' ');
+/** 서버 시각(UTC)을 이 컴퓨터 시각으로 — 「2026-10-14 00:35」. */
+const fmt = (s: string) => {
+  const d = new Date(s);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+/** 관련 계정이 비었거나 N/A 면 목록에 적지 않는다. */
+const NA = 'N/A';
+const showAccount = (a: string | null) => !!a && a.trim().toUpperCase() !== NA;
 
 type Counts = Map<string, { all: number; open: number; decision: number }>;
 
@@ -169,7 +177,7 @@ function IssueBoard({ eng, engs, canWrite, myName, myId, onChanged }: {
   async function save(x: IssueInput) {
     setBusy(true); setErr(null);
     try {
-      if (editing === 'new') { const c = await createIssue(eng.id, x); setOpen((o) => new Set(o).add(c.id)); }
+      if (editing === 'new') await createIssue(eng.id, x);
       else if (editing) await updateIssue(editing, x, myName);
       setEditing(null); await load(); onChanged();
     } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } finally { setBusy(false); }
@@ -229,6 +237,7 @@ function IssueBoard({ eng, engs, canWrite, myName, myId, onChanged }: {
           </button>
         ))}
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {shown.length > 0 && <button className="btn-sm" onClick={() => setOpen(open.size ? new Set() : new Set(shown.map((i) => i.id)))}>{open.size ? '모두 접기 ▲' : '모두 펼치기 ▼'}</button>}
           {issues.length > 0 && <button className="btn-sm" onClick={() => void exportXlsx()}>엑셀로 내려받기</button>}
           {canWrite && openOnes.length > 0 && (nextEng
             ? <button className="btn-sm btn-sm-blue" disabled={busy} onClick={() => void doCarry()}>FY{nextEng.fy} 로 이월 ({openOnes.length})</button>
@@ -265,9 +274,10 @@ function IssueBoard({ eng, engs, canWrite, myName, myId, onChanged }: {
                     <td style={{ ...td, color: IMP_COLOR[i.importance], fontWeight: 700 }}>{i.importance}</td>
                     <td style={{ ...td, textAlign: 'left', whiteSpace: 'normal' }}>
                       <span style={{ fontWeight: 700, color: 'var(--navy)' }}>{i.title}</span>
-                      {i.account && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginLeft: 6 }}>· {i.account}</span>}
+                      {showAccount(i.account) && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginLeft: 6 }}>· {i.account}</span>}
                       {pv && <span style={{ fontSize: 'var(--fs-1)', color: '#3730A3', marginLeft: 6 }}>↩ FY{eng.fy - 1}</span>}
                       {trail.length > 0 && <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', marginLeft: 6 }}>경과 {trail.length}</span>}
+                      {!on && i.body && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 520 }}>{(trail.length ? trail[trail.length - 1].body : i.body).split('\n')[0]}</div>}
                     </td>
                     <td style={td}>{i.ourStaff.join(', ')}</td>
                     <td style={td}>{i.clientContact}</td>
@@ -296,7 +306,7 @@ function IssueBoard({ eng, engs, canWrite, myName, myId, onChanged }: {
         <IssueEditor
           initial={editing === 'new' ? emptyIssueInput({ clientContact: lastContact, ourStaff: myName ? [myName] : [], dueStage: '중간' }) : issueToInput(editing)}
           title={editing === 'new' ? `새 이슈 — ${eng.entityName} FY${eng.fy}` : `#${editing.no} 고치기`}
-          busy={busy} onCancel={() => setEditing(null)} onSave={(x) => void save(x)} />
+          busy={busy} accounts={[...new Set(issues.map((i) => i.account).filter((a): a is string => showAccount(a)))]} onCancel={() => setEditing(null)} onSave={(x) => void save(x)} />
       )}
     </div>
   );
@@ -353,8 +363,8 @@ function IssueDetail({ issue: i, trail, canWrite, canDelete, busy, onEdit, onSta
 }
 
 // ── 새 이슈 · 고치기 창 ─────────────────────────────────────────────
-function IssueEditor({ initial, title, busy, onCancel, onSave }: {
-  initial: IssueInput; title: string; busy: boolean; onCancel: () => void; onSave: (x: IssueInput) => void;
+function IssueEditor({ initial, title, busy, accounts, onCancel, onSave }: {
+  initial: IssueInput; title: string; busy: boolean; accounts: string[]; onCancel: () => void; onSave: (x: IssueInput) => void;
 }) {
   const [x, setX] = useState<IssueInput>(initial);
   const [staffText, setStaffText] = useState(initial.ourStaff.join(', '));
@@ -380,7 +390,12 @@ function IssueEditor({ initial, title, busy, onCancel, onSave }: {
         <div className="frow"><span className="fl">중요도</span>{seg(ISSUE_IMPORTANCE, x.importance, (v) => set('importance', v), (v) => IMP_COLOR[v])}</div>
         <div className="frow"><span className="fl">처리 시점</span>{seg(ISSUE_STAGES, x.dueStage, (v) => set('dueStage', v), (v) => STAGE_COLOR[v])}</div>
         <div className="frow"><span className="fl">관련 계정·주제</span>
-          <input style={inp} value={x.account} onChange={(e) => set('account', e.target.value)} placeholder="예: 매출, 영업권, 리스, 법인세" /></div>
+          <span style={{ display: 'flex', gap: 6 }}>
+            <input style={inp} value={x.account} list="issue-accounts" disabled={x.account === NA} onChange={(e) => set('account', e.target.value)} placeholder="예: 매출, 영업권, 리스, 법인세" />
+            <datalist id="issue-accounts">{accounts.map((a) => <option key={a} value={a} />)}</datalist>
+            <button type="button" className="btn-sm" onClick={() => set('account', x.account === NA ? '' : NA)}
+              style={x.account === NA ? { background: 'var(--navy)', borderColor: 'var(--navy)', color: '#fff', fontWeight: 700, whiteSpace: 'nowrap' } : { whiteSpace: 'nowrap' }}>N/A</button>
+          </span></div>
         <div className="frow"><span className="fl">인덕담당자</span>
           <span>
             <input style={inp} value={staffText} onChange={(e) => setStaffText(e.target.value)} placeholder="쉼표로 여럿" />
