@@ -31,14 +31,20 @@ test('가장 최근 달의 결정을 따른다 — 7월에 접었다가 8월에 
   assert.equal(r.rows[0].entityId, 'E2');
 });
 
-test('상호로 이미 붙은 줄은 그대로 — 사업장만 비었으면 같은 거래처일 때 사업장을 채운다', () => {
+test('상호로 이미 붙은 줄 — 같은 거래처면 그대로, 사업장만 비었으면 이전 달 사업장', () => {
   const r = inheritPrior(
     [row('시파사', 'E3', null), row('윤강', 'E4', 'P4')],
-    [p('2026-08', '시파사', 'E3', 'P3'), p('2026-08', '윤강', 'E9', 'P9')],
+    [p('2026-08', '시파사', 'E3', 'P3'), p('2026-08', '윤강', 'E4', 'P4')],
   );
   assert.equal(r.rows[0].placeId, 'P3');
-  assert.equal(r.rows[1].entityId, 'E4', '상호 매칭이 이전 달 연결보다 앞선다');
   assert.equal(r.rows[1].placeId, 'P4');
+  assert.equal(r.linked, 1);
+});
+
+test('상호 매칭이 이전 달에 사람이 고친 연결과 다르면 이전 달 연결을 따른다 — 개인 크리스앤코(이영호)', () => {
+  const r = inheritPrior([row('크리스앤코', 'E_CORP', 'P_CORP')], [p('2026-09', '크리스앤코', 'E_LEE', 'P_LEE')]);
+  assert.equal(r.rows[0].entityId, 'E_LEE');
+  assert.equal(r.rows[0].placeId, 'P_LEE');
   assert.equal(r.linked, 1);
 });
 

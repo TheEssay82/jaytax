@@ -6,6 +6,8 @@
 //   · 그 달에 접어 두었으면(excluded) → 이번에도 접는다
 //   · 상호로 못 붙은 줄 → 이전 달에 붙어 있던 거래처·사업장
 //   · 상호로 거래처는 붙었는데 사업장을 못 정한 줄(사업장 여럿) → 이전 달에 같은 거래처로 정해 둔 사업장
+//   · 상호로 붙은 거래처가 이전 달 연결과 **다르면** 이전 달 것 — 사람이 고쳐 둔 것이다
+//     (2026-10-19 개인 「크리스앤코」(이영호)가 「㈜」를 떼고 맞추다 ㈜크리스앤코에 붙던 일)
 import type { ArItem } from './arLedgerApi';
 
 export interface PriorArLink {
@@ -43,7 +45,7 @@ export function inheritPrior(rows: ArItem[], prior: PriorArLink[]): InheritResul
     if (last.excluded) { excluded++; return { ...r, excluded: true }; }
     const lk = latestLinked.get(k);
     if (!lk) return r;
-    if (!r.entityId) { linked++; return { ...r, entityId: lk.entityId, placeId: lk.placeId }; }
+    if (!r.entityId || r.entityId !== lk.entityId) { linked++; return { ...r, entityId: lk.entityId, placeId: lk.placeId }; }
     if (!r.placeId && lk.placeId && lk.entityId === r.entityId) { linked++; return { ...r, placeId: lk.placeId }; }
     return r;
   });
