@@ -10,6 +10,7 @@
 import { supabase } from './supabase';
 import { corpDisplayName, type BizEntityFull } from './bizRegistryApi';
 import { dateOfSlip } from './receiptApi';
+import type { PriorArLink } from './arInherit';
 
 const num = (v: unknown) => Number(String(v ?? '').replace(/[^0-9.-]/g, '')) || 0;
 const txt = (v: unknown) => String(v ?? '').trim();
@@ -119,7 +120,7 @@ export async function saveArItems(
       client_name: r.clientName, billed: r.billed, opening: r.opening, paid: r.paid,
       writeoff: r.writeoff, balance: r.balance, contract_no: r.contractNo || null,
       phase: r.phase || null, kind: r.kind || null, cpa: r.cpa || null,
-      entity_id: r.entityId, place_id: r.placeId,
+      entity_id: r.entityId, place_id: r.placeId, excluded: !!r.excluded,
     })));
     if (error) throw new Error(error.message);
   }
@@ -131,6 +132,21 @@ export async function saveArItems(
   }, { onConflict: 'ym,team' });
   if (e2) throw new Error(e2.message);
   return rows.length;
+}
+
+/** 이 달 앞의 사람 결정(연결·제외) — 새 달 대장이 이어받는다(arInherit.ts). */
+export async function listPriorArLinks(ym: string, team: string): Promise<PriorArLink[]> {
+  const { data, error } = await supabase.from('biz_ar_item')
+    .select('ym, client_name, entity_id, place_id, excluded')
+    .eq('team', team).lt('ym', ym)
+    .or('entity_id.not.is.null,excluded.eq.true')
+    .order('ym', { ascending: false }).limit(5000);
+  if (error) throw new Error(error.message);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  return ((data as any[]) ?? []).map((r) => ({
+    ym: r.ym, clientName: r.client_name || '', entityId: r.entity_id, placeId: r.place_id, excluded: !!r.excluded,
+  }));
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 export async function listArItems(ym?: string, team?: string): Promise<ArItem[]> {

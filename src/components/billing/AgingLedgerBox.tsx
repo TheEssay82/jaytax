@@ -18,7 +18,7 @@ export function AgingLedgerBox({
   ym: string;
   team: string;
   uploads: ArUpload[];
-  preview: (ArRead & { fileName: string }) | null;
+  preview: (ArRead & { fileName: string; inherited?: { linked: number; excluded: number } }) | null;
   busy: boolean;
   canWrite: boolean;
   unmatched: { clientName: string; cpa: string; count: number; balance: number; excluded: boolean }[];
@@ -74,6 +74,11 @@ export function AgingLedgerBox({
             <br />기초이월 {won(preview.openingTotal)} + 청구 {won(preview.billedTotal)} − 입금 {won(preview.paidTotal)}
             {' ≒ '}<b>잔금 {won(preview.balanceTotal)}</b>
             <br />상호로 우리 거래처에 붙입니다. 못 붙은 것은 아래에 따로 나옵니다.
+            {!!preview.inherited && (preview.inherited.linked > 0 || preview.inherited.excluded > 0) && (
+              <><br /><span style={{ color: 'var(--good)' }}>
+                지난달 결정 이어받음 — 연결 {preview.inherited.linked}줄 · 제외(다른 회계사 건) {preview.inherited.excluded}줄
+              </span></>
+            )}
           </div>
           {up && (
             <div className="alert-w" style={{ fontSize: 'var(--fs-1)' }}>

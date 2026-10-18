@@ -59,8 +59,8 @@ const PROFILE_DIR = (profile === 'tax' && fs.existsSync(LEGACY))
   ? LEGACY : path.join(BASE, `jaytax-erp-${profile}`);
 // 팀마다 폴더가 다르다. --out 으로 언제든 바꿀 수 있다.
 const OUT_BY_PROFILE = {
-  tax: 'D:/Dropbox/4.영업관리/5520_기장사업부관리/기장24팀ERP데이터',
-  audit: 'D:/Dropbox/4.영업관리/2본부5팀',
+  tax: 'D:/Dropbox/4.영업관리/5520_사업부관리/기장사업부/기장24팀ERP데이터',
+  audit: 'D:/Dropbox/4.영업관리/5520_사업부관리/2본부5팀',
 };
 const OUT_DIR = arg('out') || process.env.ERP_OUT_DIR || OUT_BY_PROFILE[profile] || OUT_BY_PROFILE.tax;
 

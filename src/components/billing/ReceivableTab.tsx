@@ -29,9 +29,10 @@ import {
   agingReport, notifyOverdue, listArUnmatched, type AgingRow, type AgingSource,
 } from '../../lib/agingApi';
 import {
-  parseArLedger, attachEntities, saveArItems, listArUploads, listArItems, assignArClient, excludeArClient,
+  parseArLedger, attachEntities, saveArItems, listPriorArLinks, listArUploads, listArItems, assignArClient, excludeArClient,
   type ArItem, type ArRead, type ArUpload,
 } from '../../lib/arLedgerApi';
+import { inheritPrior } from '../../lib/arInherit';
 import { balanceOf, bucketOf, hasAnything } from '../../lib/receivableCalc';
 import { AgingPanel, AgingDetail } from './AgingPanel';
 import { AgingLedgerBox } from './AgingLedgerBox';
@@ -101,7 +102,7 @@ export default function ReceivableTab() {
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [agingSource, setAgingSource] = useState<AgingSource>('추정(FIFO)');
   const [arUploads, setArUploads] = useState<ArUpload[]>([]);
-  const [arPreview, setArPreview] = useState<(ArRead & { fileName: string }) | null>(null);
+  const [arPreview, setArPreview] = useState<(ArRead & { fileName: string; inherited?: { linked: number; excluded: number } }) | null>(null);
   const [arUnmatched, setArUnmatched] = useState<Awaited<ReturnType<typeof listArUnmatched>>>([]);
 
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 3500); };
@@ -258,7 +259,9 @@ export default function ReceivableTab() {
     try {
       const read = await parseArLedger(file, ym, team);
       if (!read.rows.length) throw new Error('미수금대장에서 줄을 하나도 찾지 못했습니다.');
-      setArPreview({ ...read, fileName: file.name });
+      // 상호로 붙이고 → 못 붙은 것은 지난달에 사람이 정한 연결·제외를 이어받는다.
+      const got = inheritPrior(attachEntities(read.rows, entities), await listPriorArLinks(ym, team));
+      setArPreview({ ...read, rows: got.rows, fileName: file.name, inherited: { linked: got.linked, excluded: got.excluded } });
     } catch (e) { alert('파일을 읽지 못했습니다.\n\n' + (e instanceof Error ? e.message : e)); }
     finally { setBusy(false); }
   }
@@ -547,8 +550,7 @@ export default function ReceivableTab() {
           onFile={onArFile} onCancel={() => setArPreview(null)}
           onSave={() => void run(async () => {
             if (!arPreview) return;
-            const rowsWith = attachEntities(arPreview.rows, entities);
-            await saveArItems(ym, team, rowsWith, arPreview.fileName, arPreview);
+            await saveArItems(ym, team, arPreview.rows, arPreview.fileName, arPreview);
             setArPreview(null);
           }, '✓ 미수금대장을 반영했습니다')}
           onAssign={(name, opt) => run(() => assignArClient(name, opt.entityId, opt.id).then(() => undefined), '✓ 연결했습니다')}
