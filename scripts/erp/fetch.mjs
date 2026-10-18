@@ -68,7 +68,9 @@ const month = arg('month') || prevMonth();
 const dept = arg('dept', '기장24팀');
 const buCode = arg('bu', '1024');
 const only = (arg('only') || '').split(',').map((s) => s.trim()).filter(Boolean);
-const tag = month.replace('-', '');
+// --to 2026-02 : 부서별원장을 여러 달 한 번에(--month 가 시작 달). 다른 리포트는 --month 한 달 그대로.
+const toMonth = arg('to');
+const tag = month.replace('-', '') + (toMonth ? `-${toMonth.replace('-', '')}` : '');
 
 function prevMonth() {
   const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
@@ -77,7 +79,13 @@ function prevMonth() {
 function range(ym) {
   const [y, m] = ym.split('-').map(Number);
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return { y, m, last, from: `${ym}-01`, to: `${ym}-${String(last).padStart(2, '0')}` };
+  const r = { y, m, last, from: `${ym}-01`, to: `${ym}-${String(last).padStart(2, '0')}`, y2: y, m2: m, last2: last };
+  if (toMonth) {
+    const [y2, m2] = toMonth.split('-').map(Number);
+    r.y2 = y2; r.m2 = m2; r.last2 = new Date(Date.UTC(y2, m2, 0)).getUTCDate();
+    r.to = `${toMonth}-${String(r.last2).padStart(2, '0')}`;
+  }
+  return r;
 }
 
 const CHROME_PATHS = [
@@ -369,14 +377,14 @@ async function fetchLedger(page, r) {
   await page.waitForTimeout(900);
 
   const popup = page.waitForEvent('popup', { timeout: 15000 }).catch(() => null);
-  await page.evaluate(({ y, m, last, bu }) => {
+  await page.evaluate(({ y, m, y2, m2, last2, bu }) => {
     const f = document.forms['myform'];
     const set = (n, v) => { const e = f.elements[n]; if (e) e.value = v; };
     set('JunpyoDateYear1', String(y)); set('JunpyoDateMonth1', String(m)); set('JunpyoDateDay1', '1');
-    set('JunpyoDateYear2', String(y)); set('JunpyoDateMonth2', String(m)); set('JunpyoDateDay2', String(last));
+    set('JunpyoDateYear2', String(y2)); set('JunpyoDateMonth2', String(m2)); set('JunpyoDateDay2', String(last2));
     set('BuCode', bu);
     window.buttonPeriod_onclick();
-  }, { y: r.y, m: r.m, last: r.last, bu: buCode });
+  }, { y: r.y, m: r.m, y2: r.y2, m2: r.m2, last2: r.last2, bu: buCode });
 
   const win = await popup;                     // 결과가 팝업으로 뜨면 그쪽에서, 아니면 같은 탭에서
   const target = win || page;
