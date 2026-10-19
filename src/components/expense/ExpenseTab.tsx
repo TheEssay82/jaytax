@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Empty from '../common/Empty';
 import { confirmDanger } from '../common/DangerConfirm';
 import { useAuth } from '../../context/AuthContext';
-import { parseExpenseFile, fyRange, defaultFy, basketOf, periodLabel, type ParsedExpense } from '../../lib/expenseParse';
+import { parseExpenseFile, fyRange, defaultFy, basketOf, periodLabel, erpDetailXlsUrl, erpListXlsUrl, erpLoginUrl, type ParsedExpense } from '../../lib/expenseParse';
 import { exportWriterXlsx } from '../../lib/expenseExport';
 import { personalOf, summarize, type ClientRef } from '../../lib/expenseSuggest';
 import {
@@ -84,7 +84,12 @@ export default function ExpenseTab() {
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(null), 4000); };
   const clientOptions = useMemo(() => ['기장', '기타', ...[...new Set([...lines.map((l) => l.client).filter(Boolean) as string[], ...clients.map((c) => c.name)])].filter((x) => x !== '기장' && x !== '기타').sort((a, b) => a.localeCompare(b, 'ko'))], [lines, clients]);
 
-  async function onFile(f: File) {
+  /** 여러 파일을 한꺼번에 놓아도 된다 — 리스트는 바로 저장, 상세는 미리보기. */
+  async function onFiles(fs: FileList | File[]) {
+    const arr = [...fs];
+    for (const f of arr) await onFile(f, arr.length > 1);
+  }
+  async function onFile(f: File, many = false) {
     setErr(null); setBusy(true);
     try {
       const parsed = await parseExpenseFile(f);
@@ -92,6 +97,8 @@ export default function ExpenseTab() {
         const n = await saveExpenseVouchers(parsed.vouchers);
         flash(`② 지출결의서번호별리스트 ${n}건을 저장했습니다 — 산출물 첫 시트의 자금집행예정일자·결재진행상태에 씁니다.`);
         return;
+      }
+      if (many && preview) { setErr('상세 파일은 한 번에 하나씩 저장합니다 — 먼저 열린 미리보기를 저장한 뒤 나머지를 올려 주세요.'); return;
       }
       const { rows, sheet } = parsed;
       const { from, to } = fyRange(fy);
@@ -169,6 +176,8 @@ export default function ExpenseTab() {
         {guide && (
           <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.8, marginTop: 8 }}>
             <b>결의서를 쓴 사람 본인 계정</b>으로 인덕 ERP(induk.ibcenter.kr)에 로그인합니다 — 지출결의서는 작성자 본인 것만 보입니다.
+            <div style={{ margin: '6px 0', padding: '6px 10px', background: 'var(--navy-bg)', borderRadius: 6 }}>가장 쉬운 방법 — ERP에 로그인해 둔 채로 위 <b>「ERP에서 바로 받기」</b>의 ① · ② 단추를 누르면 아래 두 파일이 바로 내려받아집니다. 메뉴를 찾아 들어갈 필요가 없습니다.</div>
+            직접 받을 때는:
             <div style={{ margin: '8px 0 4px', fontWeight: 700, color: 'var(--navy)' }}>① 지출결의서 상세 (꼭 필요)</div>
             <ol style={{ margin: 0, paddingLeft: 20 }}>
               <li>상단 <b>회계관리</b> 메뉴 › <b>지출결의서</b> › <b>검색</b></li>
@@ -190,14 +199,28 @@ export default function ExpenseTab() {
       {err && <div className="alert-w">{err}</div>}
       {msg && <div className="card" style={{ color: 'var(--good)', padding: '8px 14px' }}>{msg}</div>}
 
+      {canWrite && (
+        <div className="card" style={{ padding: '10px 14px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>ERP에서 바로 받기</b>
+          <button className="btn-sm btn-sm-navy" onClick={() => window.open(erpDetailXlsUrl(writer, fy), '_blank', 'noopener')} title={`작성자 ${writer} · 지출일 ${from} ~ ${to}`}>① 상세 엑셀 받기 ({writer} · {periodLabel(fy)})</button>
+          <button className="btn-sm" onClick={() => window.open(erpListXlsUrl(), '_blank', 'noopener')}>② 리스트 엑셀 받기</button>
+          <a className="btn-sm" href={erpLoginUrl()} target="_blank" rel="noopener noreferrer">ERP 로그인 열기</a>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', lineHeight: 1.6, flex: '1 1 260px' }}>
+            이 컴퓨터 브라우저에서 ERP에 <b>{writer} 계정으로 로그인</b>돼 있으면 누르는 즉시 파일이 내려받아집니다. 로그인 화면이 나오면 로그인한 뒤 다시 누르세요.
+            받은 파일(둘 다 한꺼번에 가능)을 아래 상자에 놓으면 끝입니다.
+            {writer !== profileName && <><br /><span style={{ color: '#B45309' }}>지금 고른 작성자({writer})와 JAYTAX 사용자({profileName})가 다릅니다 — ERP가 {writer} 계정으로 로그인돼 있을 때만 받아집니다.</span></>}
+          </span>
+        </div>
+      )}
+
       {canWrite && !preview && (
-        <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) void onFile(f); }}
+        <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files?.length) void onFiles(e.dataTransfer.files); }}
           style={{ display: 'block', border: '2px dashed #c9b98a', borderRadius: 8, background: '#fdfaf3', padding: '12px 16px', textAlign: 'center', cursor: 'pointer', margin: '0 0 10px' }}>
-          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>ERP 엑셀(① 상세 또는 ② 리스트)을 끌어다 놓으세요</div>
+          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>받은 ERP 엑셀(① 상세 · ② 리스트)을 끌어다 놓으세요 — 둘 다 한꺼번에 놓아도 됩니다</div>
           <div style={{ fontSize: 'var(--fs-1)', color: '#777', lineHeight: 1.7, marginTop: 4 }}>
             지출일 <b>{periodLabel(fy)}</b> 기간 밖의 줄은 넣지 않습니다. 받는 방법은 위 「ERP에서 어떤 파일을…」을 펼쳐 보세요. 다시 올려도 이미 정한 줄은 그대로 둡니다.
           </div>
-          <input type="file" accept=".xls,.xlsx" style={{ display: 'none' }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f); }} />
+          <input type="file" multiple accept=".xls,.xlsx" style={{ display: 'none' }} disabled={busy} onChange={(e) => { const fs = e.target.files ? [...e.target.files] : []; e.target.value = ''; if (fs.length) void onFiles(fs); }} />
         </label>
       )}
 

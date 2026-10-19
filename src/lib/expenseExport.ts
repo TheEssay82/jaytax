@@ -83,9 +83,9 @@ export async function buildWriterWorkbook(writer: string, lines: ExpenseLine[], 
     const work = l.excluded ? 0 : (l.work_amount ?? null);
     const note = [l.excluded ? '결산 제외' : '', l.status !== '확정' ? `(${l.status})` : '', l.memo ?? ''].filter(Boolean).join(' ');
     row.values = [
-      l.exjunpyo_no, l.card_type === '법카' ? '과세신용카드' : (l.card_type ? '개인카드' : ''), l.line_no, l.evid_date ?? '', l.description,
-      AC[l.account ?? ''] ?? '', l.account ?? '', '', l.vendor ?? '', l.supply, l.vat, l.total, l.inv_slip ?? '', l.acct_slip ?? '',
-      EMP[l.writer] ?? '', l.writer, '0205', '2본부5팀', l.wf_no ?? '', '결재', '1건', l.card_type ?? '', l.client ?? '',
+      l.exjunpyo_no, l.evid_type || (l.card_type === '법카' ? '과세신용카드' : (l.card_type ? '개인카드' : '')), l.line_no, l.evid_date ?? '', l.description,
+      l.account_code || (AC[l.account ?? ''] ?? ''), l.account ?? '', l.vendor_code ?? '', l.vendor ?? '', l.supply, l.vat, l.total, l.inv_slip ?? '', l.acct_slip ?? '',
+      l.emp_code || (EMP[l.writer] ?? ''), l.writer, '0205', '2본부5팀', l.wf_no ?? '', '결재', '1건', l.card_type ?? '', l.client ?? '',
       work == null ? '' : (work === l.supply && !l.split_kjs && !l.split_jhg ? { formula: `J${r}` } : work),
       l.excluded ? 0 : { formula: hasSplit ? `J${r}-X${r}-AA${r}-AB${r}` : `J${r}-X${r}` },
       note, ...(hasSplit ? [l.split_kjs || '', l.split_jhg || ''] : []),

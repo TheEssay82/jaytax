@@ -21,6 +21,10 @@ export interface ParsedExpense {
   wfNo: string;
   writer: string;
   cardType: string;
+  evidType: string;
+  accountCode: string;
+  vendorCode: string;
+  empCode: string;
   /** 작업본에 이미 적힌 판단(있으면) */
   prior?: { client: string | null; work: number | null; kjs: number; jhg: number; memo: string | null; excluded: boolean };
 }
@@ -55,6 +59,7 @@ export function parseExpenseRows(raw: unknown[][]): ParsedExpense[] | null {
     inv: at('거래전표번호'), slip: at('회계전표번호'), wf: at('전자결재번호'),
     writer: at('라인사원명', '작성자', '귀속자'),
     card: at('개인/법카'),
+    evid: at('증빙유형'), acode: at('계정과목코드(차변)', '계정코드'), vcode: at('거래처코드'), ecode: at('라인사원코드'),
     client: at('클라이언트명'), work: at('업무사용'), personal: at('개인사용'),
     kjs: at('김준성'), jhg: at('조현규'), memo: at('검토메모', '비고'),
   };
@@ -82,6 +87,8 @@ export function parseExpenseRows(raw: unknown[][]): ParsedExpense[] | null {
       invSlip: col.inv >= 0 ? t(r[col.inv]) : '', acctSlip: col.slip >= 0 ? t(r[col.slip]) : '', wfNo: col.wf >= 0 ? t(r[col.wf]) : '',
       writer: col.writer >= 0 ? t(r[col.writer]) : '',
       cardType: cardRaw || (/신용카드/.test(title) ? '법카' : title ? '개인' : ''),
+      evidType: col.evid >= 0 ? t(r[col.evid]) : '', accountCode: col.acode >= 0 ? t(r[col.acode]) : '',
+      vendorCode: col.vcode >= 0 ? t(r[col.vcode]) : '', empCode: col.ecode >= 0 ? t(r[col.ecode]) : '',
     };
     if (col.client >= 0 && (t(r[col.client]) || t(r[col.work]))) {
       const work = col.work >= 0 && t(r[col.work]) !== '' ? n(r[col.work]) : (col.personal >= 0 && t(r[col.personal]) !== '' ? sup - n(r[col.personal]) : null);
@@ -143,6 +150,16 @@ export async function parseExpenseFile(file: File): Promise<
 
 /** 정산기간: fy = 끝나는 해. FY2026 = 2025-07-01 ~ 2026-06-30 */
 export const fyRange = (fy: number) => ({ from: `${fy - 1}-07-01`, to: `${fy}-06-30` });
+/** ERP 에서 바로 내려받는 주소(로그인한 그 사람 결의서만 나온다). 화면 단추가 새 창으로 연다. */
+const ERP = 'http://induk.ibcenter.kr';
+export function erpDetailXlsUrl(writer: string, fy: number) {
+  const { from, to } = fyRange(fy);
+  const q = new URLSearchParams({ tabID: 'main', CreaterName: writer, LikeBuCode: '', PageAction: '""', FromAmount: '0', ToAmount: '0', exglFromDate: from, exglToDate: to, menu: 'BCC', scope: 'BCC', ReadPersonal: '1' });
+  return `${ERP}/apps/fi/expenditure/xls/xls_exgl_find_list.jsp?${q}`;
+}
+export const erpListXlsUrl = () => `${ERP}/apps/fi/expenditure/xls/xls_exjunpyonolist.jsp?gubun=&menu=BCC&scope=BCC&ReadPersonal=1&PageAction=OrderByNo`;
+export const erpLoginUrl = () => ERP;
+
 /** 화면 표기 — 연도 없이 기간만(사용자 2026-10-19). */
 export const periodLabel = (fy: number) => `${fy - 1}.07.01 ~ ${fy}.06.30`;
 /** 오늘 기준 기본 연도 — 가장 최근에 끝난 정산기간(10월이면 그해 6월 끝난 기간). */

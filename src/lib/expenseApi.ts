@@ -24,6 +24,10 @@ export interface ExpenseLine {
   acct_slip: string | null;
   wf_no: string | null;
   card_type: string | null;
+  evid_type?: string | null;
+  account_code?: string | null;
+  vendor_code?: string | null;
+  emp_code?: string | null;
   client: string | null;
   work_amount: number | null;
   split_kjs: number;
@@ -121,6 +125,7 @@ export async function saveExpenseUpload(
       evid_date: r.evidDate, title: r.title || null, description: r.description, account: r.account || null,
       vendor: r.vendor || null, supply: r.supply, vat: r.vat, total: r.total, inv_slip: r.invSlip || null,
       acct_slip: r.acctSlip || null, wf_no: r.wfNo || null, card_type: r.cardType || null,
+      evid_type: r.evidType || null, account_code: r.accountCode || null, vendor_code: r.vendorCode || null, emp_code: r.empCode || null,
     };
     const old = byKey.get(`${r.exjunpyoNo}|${r.lineNo}`);
     if (old) {
