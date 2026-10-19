@@ -214,15 +214,18 @@ export async function resolveCpas(rows: ClientAgg[]): Promise<Map<string, string
 
 /** 원장에서 모은 줄을 저장한다. 사람이 고친 담당·구분·메모는 남긴다. fallback: 앱에서 못 찾은 담당(지난해 엑셀 등). */
 export async function saveClients(fy: number, rows: ClientAgg[], byName: string, fallback: Map<string, string> = new Map(), prefer: Map<string, string | null> = new Map()): Promise<{ saved: number; noCpa: number }> {
-  const [old, found] = await Promise.all([listClients(fy), resolveCpas(rows)]);
+  const [old, found, lastYear] = await Promise.all([listClients(fy), resolveCpas(rows), listClients(fy - 1)]);
+  // 지난해 사람이 고른 세무조정 구분·담당은 올해 기본값으로 이어받는다(사용자 2026-10-20 「지난해처럼 자가로」).
+  const prevHand = new Map(lastYear.map((r) => [`${r.dept}|${r.code}`, r]));
   const prev = new Map(old.map((r) => [`${r.dept}|${r.code}`, r]));
   const recs = rows.map((r) => {
     const k = `${r.dept}|${r.code}`;
     const o = prev.get(k);
-    const cpa = o?.cpa_by_hand ? o.cpa : prefer.has(k) ? prefer.get(k)! : found.get(k) ?? fallback.get(k) ?? o?.cpa ?? null;
+    const ly = prevHand.get(k);
+    const cpa = o?.cpa_by_hand ? o.cpa : ly?.cpa_by_hand ? ly.cpa : prefer.has(k) ? prefer.get(k)! : found.get(k) ?? fallback.get(k) ?? o?.cpa ?? null;
     return {
       fy, ...r, cpa,
-      tax_mode: o?.mode_by_hand ? o.tax_mode : r.tax_mode,
+      tax_mode: o?.mode_by_hand ? o.tax_mode : ly?.mode_by_hand ? ly.tax_mode : r.tax_mode,
       mode_by_hand: o?.mode_by_hand ?? false, cpa_by_hand: o?.cpa_by_hand ?? false, memo: o?.memo ?? null, updated_name: byName,
     };
   });

@@ -209,7 +209,7 @@ export default function BkSettleTab() {
                 <b>ERP 기간 미수금대장</b>(부서별 미수금현황, {periodLabel(b.settle.fy)})을 기장24팀 · 2본부5팀 것 둘 다 올리세요 — 청구서마다 계약구분(기장 / 세무조정 / 감사)이 있어
                 거래처별 입금 · 기초 · 기말 미수금이 그대로 나옵니다. <b>부서별원장</b>도 함께 놓으면 6/30 대손 처리분을 입금에서 뺍니다(미수금대장은 대손을 입금으로 적음).
                 감사팀 거래처의 담당은 미수금대장의 「회계사」 칸으로 정합니다(우리 셋이 아니면 배분 제외). 자문(컨설팅)은 앱 매출 실적 비율로 기장에서 뗍니다.
-                세무조정은 기장 계약이 있는 거래처면 <b>기장수행</b>, 아니면 <b>자가</b>가 기본값 — 거래처마다 바꿀 수 있습니다.
+                세무조정은 기장 계약이 있는 거래처면 <b>기장수행</b>, 아니면 <b>자가</b>가 기본값 — 거래처마다 바꿀 수 있고, 사람이 고른 구분·담당은 <b>다음 해에도 이어집니다</b>.
               </div>
               {!locked && (
                 <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files?.length) void onLedgerFiles([...e.dataTransfer.files]); }}

@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.67.1',
+    date: '2026-10-20',
+    title: '기장배분 — 사람이 고른 세무조정 구분·담당을 다음 해로 이어받기',
+    highlights: [
+      '「② 거래처 입금」에서 사람이 고른 기장수행 / 자가 구분과 담당은, 다음 해 ERP 자료를 올릴 때 같은 거래처의 기본값이 됩니다(지난해 「자체세무조정」 거래처를 해마다 다시 고치지 않게).',
+    ],
+  },
+  {
     version: '3.67.0',
     date: '2026-10-20',
     title: '기장배분 — ERP 기간 미수금대장으로 거래처별 입금·미수금, 엑셀에 「거래처별」 시트',
