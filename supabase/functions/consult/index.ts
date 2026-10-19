@@ -44,6 +44,25 @@ const FT_FETCH = 24;      // HNSW로 가져올 원문 후보 수
 const FT_MIN_SIM = 0.40;  // 근거 채택 유사도 하한
 const FT_MIN_KEEP = 6;    // 하한 미달이어도 최소 유지(근거 기아 방지)
 const FT_MAX_KEEP = 20;   // 근거 폭주 방지 상한
+// 감사기준은 세트 안에서 따로 찾는다(match_standard_fulltext_in_set) — 전체 검색에 섞으면 짧은 질문에서
+// K-IFRS 잡음(0.55)이 감사기준(0.45~0.5)을 밀어낸다(2026-10-19, 「재고자산 실사 입회」 → K-IFRS 1036 1위).
+const AUD_FETCH = 12;     // 감사기준 후보 수
+const AUD_MIN_SIM = 0.35; // 감사 질문일 때 채택 하한(세트 안 순위는 맞으므로 낮게)
+const AUD_MIN_KEEP = 4;   // 감사 질문이면 최소 이만큼은 싣는다
+const AUD_MAX_KEEP = 10;
+const AUD_OTHER_SIM = 0.55; // 감사 질문이 아니어도 이만큼 가까우면(가산점 포함) 2~3개 싣는다(회계 질문에 감사 쟁점이 섞인 경우)
+/** 감사 질문인가 — 감사기준 근거를 앞에 세울지. 「감사합니다」에 걸리지 않게 '감사' 단독은 보지 않는다. */
+const AUDIT_Q = /감사(인|기준|보고서|의견|절차|증거|위험|조서|계약|범위|팀|업무|대상|위원회)|외부감사|회계감사|조회서|외부조회|입회|재고실사|핵심감사|계속기업|수행중요성|중요성\s*금액|왜곡표시|내부회계|표본감사|분석적\s*절차|후속사건|서면진술|지배기구|부문감사|경영진\s*주장|부정위험|강조사항|기타사항문단|한정의견|부적정의견|의견거절|초도감사|기초잔액|품질관리|전문가적\s*의구심|업무수행이사/;
+/** 질문의 핵심 낱말 — 감사기준 검색의 낱말 가산점용(0177). 조사·어미를 한 번 떼고, 두 글자 이상만. */
+const KW_STOP = new Set(['어떻게', '무엇', '경우', '관련', '여부', '해야', '하나요', '있는', '없는', '대한', '대해', '그리고', '또는', '질문', '문의', '알려', '주세요', '가능', '방법', '어떤', '언제', '얼마']);
+function queryKeywords(q: string): string[] {
+  const out: string[] = [];
+  for (const raw of q.split(/[^가-힣A-Za-z0-9]+/)) {
+    const w = raw.replace(/(으로는|에서는|에서|으로|에는|에게|까지|부터|이나|이면|하나요|인가요|되나요|있나요|없나요|해야|하는|하면|은|는|이|가|을|를|에|의|도|로|와|과|만)$/, '');
+    if (w.length >= 2 && !KW_STOP.has(w) && !out.includes(w)) out.push(w);
+  }
+  return out.slice(0, 8);
+}
 const LIB_FETCH = 12;     // 자료실 후보 수
 const LIB_MIN_SIM = 0.40; // 자료실 채택 하한
 const LIB_MAX_KEEP = 6;   // 자료실 상한
@@ -82,6 +101,7 @@ const SYSTEM = `당신은 한국 회계·세무 실무 회신을 작성하는 �
 - 근거 유형별 인용법:
   · [회계기준(원문)]: 게시된 기준서 원문 발췌 — 문단번호와 함께 인용(발췌라 앞뒤 맥락 확인 권고).
   · [회계기준(요지)]: 정리본 — "(요지)"와 원문 대조 권고를 붙인다.
+  · [감사기준(원문)]: 회계감사기준(2026년 7월 개정) 원문 발췌 — "감사기준서 315 문단 12" · "감사기준서 505 문단 A4"처럼 기준서 번호와 발췌 안의 문단번호(본문 1., 2. / 적용 및 기타 설명자료 A1., A2.)로 인용한다. 본문 문단은 '요구사항'(감사인이 "~하여야 한다"), A문단은 적용지침이므로 둘을 구분해 쓴다. 발췌 첫 줄의 [감사기준서 N · 부분 · 소제목]은 위치 안내이지 인용 문구가 아니다.
   · [세법]: 법령 원문 — 법령명·조문번호·시행일을 명시하고, 핵심 문구를 "직접 인용"한 뒤 쉬운 말로 풀이한다.
   · [예규]: 국세청·기재부의 유권해석 — **[요지]와 [회답] 본문이 함께 온다.** 실무에서 과세관청이 실제로 어떻게 보는지를 말해 주는 근거이므로 결론에 **반드시 반영**한다. 안건번호·해석일자와 함께 회답 문구를 직접 인용한다. 회답이 다른 해석사례를 인용하는 형식이면(예: "기획재정부 법인세제과-○○○을 참조") 그 인용된 문구가 실질 내용이므로 그것을 인용한다.
   · [예규(제목만)]: 본문을 받지 못한 것 — 안건명만 있다. 이것으로 결론을 내거나 회답 내용을 추정하지 않는다. '실무 유의'에 안건번호와 링크만 안내한다.
@@ -92,7 +112,7 @@ const SYSTEM = `당신은 한국 회계·세무 실무 회신을 작성하는 �
   · [자료실]: 사무소 내부 참고자료 발췌(예규·해석사례·개정세법·실무가이드 등 정리본) — 자료명과 함께 인용하되 "(내부자료)"로 표기하고, 결론의 핵심 근거는 가급적 법령·기준서·심판례 원문으로 뒷받침하고 내부자료는 보조로 삼는다(원출처 대조 권고).
 
 [형식] 아래 6블록을 마크다운으로 그대로 따른다:
-# <제목 — 쟁점을 한 줄로. 세무면 "[세무 회신]", 회계면 "[회계 회신]", 둘 다면 "[회계·세무 회신]" 접두>
+# <제목 — 쟁점을 한 줄로. 세무면 "[세무 회신]", 회계면 "[회계 회신]", 감사기준 질문이면 "[감사 회신]", 둘 다면 "[회계·세무 회신]" 접두>
 ## 한눈에
 - <핵심 결론 한 줄>
 - <그 결론을 가르는 조건·기준 한 줄(시점·대상·금액 등). 조건이 없으면 결론의 직접 근거 한 줄>
@@ -727,16 +747,35 @@ Deno.serve(async (req) => {
 
       // 1-a) 원문(게시 PDF 추출) 근거 — 전 기준서 대상, 주 근거.
       //   상위 FT_FETCH개를 가져와 유사도 임계값으로 동적 선택(질문 폭에 맞춰 근거 수 자동 조절).
-      const { data: fullRows, error: eFull } = await caller.rpc('match_standard_fulltext', {
-        query_embedding: qe,
-        match_count: FT_FETCH,
-        filter_standard_no: nStd,
-      });
+      const [{ data: fullRows, error: eFull }, { data: audRows }] = await Promise.all([
+        caller.rpc('match_standard_fulltext', {
+          query_embedding: qe,
+          match_count: FT_FETCH,
+          filter_standard_no: nStd,
+        }),
+        nStd ? Promise.resolve({ data: [] }) : caller.rpc('match_standard_fulltext_in_set', {
+          query_embedding: qe,
+          filter_set: '회계감사기준',
+          match_count: AUD_FETCH,
+          keywords: queryKeywords(groundingQuery),
+        }),
+      ]);
       if (eFull) return json({ ok: false, error: `원문 근거 검색 실패: ${eFull.message}` }, 500);
-      const fullPicked = pickByThreshold((fullRows ?? []) as (Record<string, unknown> & { similarity: number })[], FT_MIN_SIM, FT_MIN_KEEP, FT_MAX_KEEP);
-      fullCites = fullPicked.map((r: Record<string, unknown>) => {
+      type Row = Record<string, unknown> & { similarity: number };
+      // 감사기준은 아래에서 따로 고른다 — 전체 검색에 섞여 온 것은 빼서 겹치지 않게.
+      const fullPicked = pickByThreshold(((fullRows ?? []) as Row[]).filter((r) => nStd || r.standard_set !== '회계감사기준'), FT_MIN_SIM, FT_MIN_KEEP, FT_MAX_KEEP);
+      // 순위·채택은 낱말 가산점을 더한 score 로(similarity 는 순수 유사도).
+      const aud = ((audRows ?? []) as Row[]).map((r) => ({ ...r, similarity: Number(r.score ?? r.similarity) }));
+      const audPicked = AUDIT_Q.test(groundingQuery)
+        ? pickByThreshold(aud, AUD_MIN_SIM, AUD_MIN_KEEP, AUD_MAX_KEEP)
+        : aud.filter((r) => Number(r.similarity) >= AUD_OTHER_SIM).slice(0, 3);
+      // 감사 질문이면 감사기준을 앞에 세운다(근거 순서 = 모델이 무게를 두는 순서).
+      fullCites = [...audPicked, ...fullPicked].map((r: Record<string, unknown>) => {
         const no = String(r.standard_no);
-        // 숫자 기준서번호 → '제1115호', 일반기업 장 → '제10장', 그 외(법령 등 한글 키) → 접두 없이 제목만.
+        // 감사기준 → '감사기준서 315', 숫자 기준서번호 → '제1115호', 일반기업 장 → '제10장', 그 외(법령 등 한글 키) → 접두 없이 제목만.
+        if (r.standard_set === '회계감사기준') {
+          return { type: '감사기준(원문)', ref: `회계감사기준 감사기준서 ${no} 「${r.standard_title}」 원문 발췌`, text: String(r.content) };
+        }
         const noLabel = /^\d/.test(no) ? `제${no}호 ` : /장$/.test(no) ? `제${no} ` : '';
         return {
           type: '회계기준(원문)',

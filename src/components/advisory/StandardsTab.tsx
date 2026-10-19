@@ -22,7 +22,7 @@ import {
   type QnaIndexItem,
   type QnaContent,
 } from '../../lib/standardsApi';
-import { CATALOG, type CatalogItem, type StandardSet } from '../../lib/standardsCatalog';
+import { CATALOG, standardLabel, type CatalogItem, type StandardSet } from '../../lib/standardsCatalog';
 import { confirmDanger } from '../common/DangerConfirm';
 
 type Mode = 'search' | 'browse' | 'qna';
@@ -350,7 +350,8 @@ function StandardDetail({
       .finally(() => setBusy(false));
   }, [set, item.no, loaded]);
 
-  const related = filterQnasByStandardNo(qnaIndex, item.no);
+  // KASB 질의회신은 회계기준 것 — 감사기준서 번호(200 등)와 섞이지 않게 뺀다.
+  const related = set === '회계감사기준' ? [] : filterQnasByStandardNo(qnaIndex, item.no);
   let lastSection: string | null = null;
 
   return (
@@ -369,7 +370,7 @@ function StandardDetail({
         </a>
       </div>
       <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--navy)', marginBottom: 10 }}>
-        {set} {item.no && /^\d/.test(item.no) ? `제${item.no}호 ` : ''}{item.title}
+        {set} {standardLabel(set, item.no) ? `${standardLabel(set, item.no)} ` : ''}{item.title}
       </div>
 
       {/* 원문 PDF (게시·열람·다운로드) */}
