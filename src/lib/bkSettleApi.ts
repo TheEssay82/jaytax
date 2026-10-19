@@ -6,7 +6,7 @@ import {
   BK_STAFF, CPAS, CPA_FIELDS, EXPENSE_ITEM, rollCosts, rollCpa,
   type CellState, type CostCell, type CpaField, type CpaRow, type Settle, type SettleBundle,
 } from './bkSettle';
-import { aggregateLedger, normName, readLedgerWorkbook, sumByCpa, type ClientAgg, type ClientRow, type Dept, type LedgerLine } from './bkLedger';
+import { aggregateArFlow, aggregateLedger, applyWriteoffs, normName, readArFlow, readLedgerWorkbook, slipKindsByName, sumByCpa, writeoffsByName, type ArFlow, type ClientAgg, type ClientRow, type Dept, type LedgerLine } from './bkLedger';
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
 
@@ -161,6 +161,7 @@ export async function listClients(fy: number): Promise<ClientRow[]> {
     dept: r.dept, code: r.code, name: r.name, cpa: r.cpa, tax_mode: r.tax_mode, mode_by_hand: r.mode_by_hand, cpa_by_hand: r.cpa_by_hand, memo: r.memo,
     cash: num(r.cash), cash_bk: num(r.cash_bk), cash_adv: num(r.cash_adv), cash_tax: num(r.cash_tax), cash_other: num(r.cash_other),
     billed_bk: num(r.billed_bk), billed_tax: num(r.billed_tax), billed_other: num(r.billed_other), writeoff: num(r.writeoff),
+    ar_open: num(r.ar_open), ar_close: num(r.ar_close), source: r.source, erp_cpa: r.erp_cpa,
   }));
 }
 
@@ -212,13 +213,13 @@ export async function resolveCpas(rows: ClientAgg[]): Promise<Map<string, string
 }
 
 /** 원장에서 모은 줄을 저장한다. 사람이 고친 담당·구분·메모는 남긴다. fallback: 앱에서 못 찾은 담당(지난해 엑셀 등). */
-export async function saveClients(fy: number, rows: ClientAgg[], byName: string, fallback: Map<string, string> = new Map()): Promise<{ saved: number; noCpa: number }> {
+export async function saveClients(fy: number, rows: ClientAgg[], byName: string, fallback: Map<string, string> = new Map(), prefer: Map<string, string | null> = new Map()): Promise<{ saved: number; noCpa: number }> {
   const [old, found] = await Promise.all([listClients(fy), resolveCpas(rows)]);
   const prev = new Map(old.map((r) => [`${r.dept}|${r.code}`, r]));
   const recs = rows.map((r) => {
     const k = `${r.dept}|${r.code}`;
     const o = prev.get(k);
-    const cpa = o?.cpa_by_hand ? o.cpa : found.get(k) ?? fallback.get(k) ?? o?.cpa ?? null;
+    const cpa = o?.cpa_by_hand ? o.cpa : prefer.has(k) ? prefer.get(k)! : found.get(k) ?? fallback.get(k) ?? o?.cpa ?? null;
     return {
       fy, ...r, cpa,
       tax_mode: o?.mode_by_hand ? o.tax_mode : r.tax_mode,
@@ -241,31 +242,72 @@ export async function updateClient(fy: number, dept: string, code: string, patch
 }
 
 /**
- * 브라우저에서 원장 엑셀을 읽어 저장한다. 부서는 시트로 가린다(기장대리수입이 있으면 기장팀).
- * **한 부서의 파일은 한꺼번에** 올려야 한다(여러 달이 따로 받힌 파일도 함께) — 부서마다 모아 다시 계산하고,
- * 이번에 없는 그 부서 거래처는 금액을 0으로 둔다(지우지 않는다).
+ * 브라우저에서 ERP 엑셀을 읽어 거래처 줄로 저장한다. 두 가지를 받는다:
+ *   · **기간 미수금대장**(시트 「부서별 미수금현황」, 청구서마다 계약구분) — 있으면 이것으로 계산한다(입금 성격·기초/기말 미수금이 정확).
+ *   · **부서별원장**(시트 「1_외상매출금」 …) — 미수금대장이 없으면 선입선출로 추정하고, 있으면 대손(대손상각비)만 가져다 쓴다.
+ * 부서(기장팀 · 감사팀)는 자료의 머리말·계정으로 가린다. 한 부서의 파일은 한꺼번에 올린다 — 이번에 없는 그 부서 거래처는 0으로 둔다(지우지 않는다).
  */
-export async function importLedgerFiles(fy: number, files: File[], byName: string): Promise<{ dept: Dept; saved: number; noCpa: number; files: number }[]> {
+export async function importErpFiles(fy: number, files: File[], byName: string): Promise<{ dept: Dept; saved: number; noCpa: number; files: number; source: string }[]> {
   const XLSX = await import('xlsx');
-  const byDept = new Map<Dept, { lines: LedgerLine[]; files: number }>();
+  const toRows = (sh: unknown) => XLSX.utils.sheet_to_json(sh as never, { header: 1, defval: '' }) as unknown[][];
+  const per = new Map<Dept, { lines: LedgerLine[]; flow: ArFlow | null; files: number }>();
+  const slot = (d: Dept) => { const o = per.get(d) ?? { lines: [], flow: null, files: 0 }; per.set(d, o); return o; };
+  const want = { from: `${fy - 1}-07-01`, to: `${fy}-06-30` };
   for (const file of files) {
     const wb = XLSX.read(await file.arrayBuffer());
-    const lines = readLedgerWorkbook(wb, (sh) => XLSX.utils.sheet_to_json(sh as never, { header: 1, defval: '' }) as unknown[][]);
-    if (!lines.some((x) => x.acct === '외상매출금')) throw new Error(`${file.name} — 「외상매출금」 시트가 없습니다. ERP 부서별원장을 올려 주세요.`);
-    const dept: Dept = lines.some((x) => x.acct === '기장대리수입') ? '기장팀' : '감사팀';
-    const o = byDept.get(dept) ?? { lines: [], files: 0 };
+    const flowSheet = wb.SheetNames.find((n) => /미수금현황/.test(n));
+    const flow = flowSheet ? readArFlow(toRows(wb.Sheets[flowSheet])) : null;
+    if (flow) {
+      if (!flow.dept) throw new Error(`${file.name} — 부서(기장팀 / 2본부5팀)를 알아보지 못했습니다.`);
+      if (flow.from !== want.from || flow.to !== want.to) throw new Error(`${file.name} — 기간이 ${flow.from} ~ ${flow.to} 입니다. ${want.from} ~ ${want.to} 로 받은 미수금대장을 올려 주세요.`);
+      const o = slot(flow.dept); o.flow = flow; o.files++;
+      continue;
+    }
+    const lines = readLedgerWorkbook(wb, toRows);
+    if (!lines.some((x) => x.acct === '외상매출금')) throw new Error(`${file.name} — 미수금대장(부서별 미수금현황)도, 부서별원장(외상매출금 시트)도 아닙니다.`);
+    const o = slot(lines.some((x) => x.acct === '기장대리수입') ? '기장팀' : '감사팀');
     o.lines.push(...lines); o.files++;
-    byDept.set(dept, o);
   }
-  const old = await listClients(fy);
+  const [old, pl, en, adv] = await Promise.all([
+    listClients(fy),
+    supabase.from('biz_place').select('erp_client_code, place_name, entity_id'),
+    supabase.from('biz_entity').select('id, name'),
+    advRatios(fy),
+  ]);
+  if (pl.error) throw new Error(pl.error.message);
+  if (en.error) throw new Error(en.error.message);
+  // 거래처명 → ERP 코드: 원장에서 본 이름 → 사업장 이름 → 거래처 이름. 못 찾으면 「N:이름」.
+  const code = new Map<string, string>();
+  for (const r of old) if (!r.code.startsWith('N:')) code.set(normName(r.name), r.code);
+  const enName = new Map((en.data ?? []).map((e) => [e.id, e.name as string]));
+  for (const p of pl.data ?? []) {
+    if (!p.erp_client_code) continue;
+    for (const nm of [p.place_name, enName.get(p.entity_id)]) if (nm && !code.has(normName(nm))) code.set(normName(nm), p.erp_client_code);
+  }
+  for (const [, o] of per) for (const x of o.lines) if (x.code && !code.has(normName(x.name))) code.set(normName(x.name), x.code);
+  const codeOf = (name: string) => code.get(normName(name)) ?? `N:${normName(name)}`;
+
   const out = [];
-  for (const [dept, o] of byDept) {
-    const rows = aggregateLedger(o.lines, dept, dept === '기장팀' ? await advRatios(fy) : new Map());
+  for (const [dept, o] of per) {
+    let rows: ClientAgg[];
+    const prefer = new Map<string, string | null>();
+    let source: string;
+    if (o.flow) {
+      let fr = aggregateArFlow(o.flow, dept, codeOf, dept === '기장팀' ? adv : new Map(), o.lines.length ? slipKindsByName(o.lines) : undefined);
+      if (o.lines.length) fr = applyWriteoffs(fr, o.flow, writeoffsByName(o.lines));
+      // 감사팀 미수금대장의 「회계사」 = 담당 회계사. 송현주는 정우철 바구니(사용자 2026-10-19). 우리 셋이 아니면 팀 밖 거래처라 담당 없음(배분 제외).
+      if (dept === '감사팀') for (const r of fr) { const p = r.erp_cpa === '송현주' ? '정우철' : r.erp_cpa; prefer.set(`${dept}|${r.code}`, CPA_SET.has(p ?? '') ? p : null); }
+      rows = fr.map((r) => ({ ...r, source: '미수금대장' }) as ClientAgg);
+      source = `미수금대장${o.lines.length ? ' + 원장(대손)' : ''}`;
+    } else {
+      rows = aggregateLedger(o.lines, dept, dept === '기장팀' ? adv : new Map()).map((r) => ({ ...r, source: '원장' }) as ClientAgg);
+      source = '원장(선입선출 추정)';
+    }
     const now = new Set(rows.map((r) => r.code));
     const gone = old.filter((r) => r.dept === dept && !now.has(r.code))
-      .map((r) => ({ ...r, cash: 0, cash_bk: 0, cash_adv: 0, cash_tax: 0, cash_other: 0, billed_bk: 0, billed_tax: 0, billed_other: 0, writeoff: 0 }));
-    const r = await saveClients(fy, [...rows, ...gone], byName);
-    out.push({ dept, files: o.files, ...r });
+      .map((r) => ({ ...r, cash: 0, cash_bk: 0, cash_adv: 0, cash_tax: 0, cash_other: 0, billed_bk: 0, billed_tax: 0, billed_other: 0, writeoff: 0, ar_open: 0, ar_close: 0 }));
+    const r = await saveClients(fy, [...rows, ...gone] as ClientAgg[], byName, new Map(), prefer);
+    out.push({ dept, files: o.files, source, ...r });
   }
   return out;
 }
@@ -281,10 +323,11 @@ export async function fillCpaFromClients(fy: number, byName: string): Promise<st
     const row = cur.cpas.find((r) => r.cpa === cpa) ?? ({ cpa, states: {}, sources: {}, memo: null, bk_fee: 0, tax_bk: 0, tax_self: 0, advisory_excl: 0, ar_open: 0, ar_close: 0, writeoff: 0 } as CpaRow);
     const v = byCpa[cpa];
     const next = { ...row, states: { ...row.states }, sources: { ...row.sources } };
-    for (const k of ['bk_fee', 'tax_bk', 'tax_self', 'advisory_excl', 'writeoff'] as const) {
+    const hasAr = rows.some((r) => r.dept === '기장팀' && r.source === '미수금대장');
+    for (const k of ['bk_fee', 'tax_bk', 'tax_self', 'advisory_excl', 'writeoff', ...(hasAr ? ['ar_open', 'ar_close'] as const : [])] as const) {
       next[k] = Math.round(v[k]);
       next.states[k] = '확정';
-      next.sources[k] = k === 'writeoff' ? `${src} — 대손상각비 ÷ 1.1` : src;
+      next.sources[k] = k === 'writeoff' ? `${src} — 대손상각비 ÷ 1.1` : k === 'ar_open' || k === 'ar_close' ? `ERP 기간 미수금대장(기장팀) 거래처별 합계, VAT 제외` : src;
     }
     return next;
   });

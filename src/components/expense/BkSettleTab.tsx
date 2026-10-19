@@ -13,7 +13,7 @@ import {
   BK_STAFF, CPAS, COST_ITEMS, CPA_FIELDS, CPA_FIELD_LABEL, VAT_INCLUDED, STATES, computeSettle,
   type CellState, type CostCell, type CpaField, type CpaResult, type CpaRow, type SettleBundle,
 } from '../../lib/bkSettle';
-import { listSettleYears, loadSettle, createEstimate, refreshFromApp, updateSettle, saveCpaCell, saveCostCell, listClients, importLedgerFiles, updateClient, fillCpaFromClients } from '../../lib/bkSettleApi';
+import { listSettleYears, loadSettle, createEstimate, refreshFromApp, updateSettle, saveCpaCell, saveCostCell, listClients, importErpFiles, updateClient, fillCpaFromClients } from '../../lib/bkSettleApi';
 import { sumByCpa, type ClientRow } from '../../lib/bkLedger';
 import { exportSettleXlsx } from '../../lib/bkSettleExport';
 
@@ -88,8 +88,8 @@ export default function BkSettleTab() {
     const notes: string[] = [];
     setBusy(true); setErr(null);
     try {
-      for (const r of await importLedgerFiles(b.settle.fy, fs, profileName)) {
-        notes.push(`${r.dept} 원장 ${r.files}개 — 거래처 ${r.saved}곳 저장${r.noCpa ? `(담당 못 찾음 ${r.noCpa}곳)` : ''}`);
+      for (const r of await importErpFiles(b.settle.fy, fs, profileName)) {
+        notes.push(`${r.dept} ${r.source} 파일 ${r.files}개 — 거래처 ${r.saved}곳 저장${r.noCpa ? `(담당 없음 ${r.noCpa}곳)` : ''}`);
       }
       await reload(); flash(notes.join(' · '));
     } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); } finally { setBusy(false); }
@@ -125,7 +125,7 @@ export default function BkSettleTab() {
             <span style={{ background: b.settle.status === '확정' ? '#DCFCE7' : '#FEF3C7', color: b.settle.status === '확정' ? '#166534' : '#92400E', borderRadius: 999, padding: '2px 10px', fontWeight: 700, fontSize: 'var(--fs-1)' }}>{b.settle.status}</span>
             {!readonly && <button className="btn-sm" disabled={busy} onClick={() => void run(() => updateSettle(b.settle.fy, { status: b.settle.status === '확정' ? '예상' : '확정' }, profileName), b.settle.status === '확정' ? '예상으로 되돌렸습니다 — 다시 고칠 수 있습니다' : '확정했습니다 — 고치려면 「예상으로」를 누르세요')}>{b.settle.status === '확정' ? '예상으로 되돌리기' : '이 해 확정'}</button>}
             {!locked && <button className="btn-sm" disabled={busy} onClick={() => void run(() => refreshFromApp(b.settle.fy, profileName), '앱 자료를 다시 가져왔습니다')} title="인건비 계획 · 경비귀속처리 기장분 · 기말 미수금. 사람이 확정한 칸은 그대로 둡니다">앱 자료 다시 가져오기</button>}
-            <button className="btn-sm btn-sm-navy" disabled={busy} onClick={() => void exportSettleXlsx(b).catch((e) => setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'))}>엑셀로 내려받기</button>
+            <button className="btn-sm btn-sm-navy" disabled={busy} onClick={() => void exportSettleXlsx(b, clients).catch((e) => setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'))}>엑셀로 내려받기</button>
           </>}
         </div>
       </div>
@@ -206,14 +206,15 @@ export default function BkSettleTab() {
           return (<>
             <div className="card" style={{ padding: '10px 14px' }}>
               <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
-                <b>ERP 부서별원장</b>(기장24팀 · 2본부5팀 감사팀, {periodLabel(b.settle.fy)} 여러 달 한 파일)을 올리면 거래처마다 입금을 모읍니다.
-                입금의 성격(기장 / 세무조정 / 감사·용역)은 그 해 청구서에 <b>먼저 생긴 것부터</b> 맞춰 정하고, 자문(컨설팅)은 앱 매출 실적의 비율로 기장에서 뗍니다.
-                세무조정은 기장팀 원장에 기장 청구가 있으면 <b>기장수행</b>, 아니면 <b>자가</b>가 기본값 — 거래처마다 바꿀 수 있습니다.
+                <b>ERP 기간 미수금대장</b>(부서별 미수금현황, {periodLabel(b.settle.fy)})을 기장24팀 · 2본부5팀 것 둘 다 올리세요 — 청구서마다 계약구분(기장 / 세무조정 / 감사)이 있어
+                거래처별 입금 · 기초 · 기말 미수금이 그대로 나옵니다. <b>부서별원장</b>도 함께 놓으면 6/30 대손 처리분을 입금에서 뺍니다(미수금대장은 대손을 입금으로 적음).
+                감사팀 거래처의 담당은 미수금대장의 「회계사」 칸으로 정합니다(우리 셋이 아니면 배분 제외). 자문(컨설팅)은 앱 매출 실적 비율로 기장에서 뗍니다.
+                세무조정은 기장 계약이 있는 거래처면 <b>기장수행</b>, 아니면 <b>자가</b>가 기본값 — 거래처마다 바꿀 수 있습니다.
               </div>
               {!locked && (
                 <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files?.length) void onLedgerFiles([...e.dataTransfer.files]); }}
                   style={{ display: 'block', border: '2px dashed #c9b98a', borderRadius: 8, background: '#fdfaf3', padding: '10px 14px', textAlign: 'center', cursor: 'pointer', marginTop: 8 }}>
-                  <b style={{ color: 'var(--navy)' }}>{busy ? '읽는 중…' : '부서별원장 엑셀(.xls)을 끌어다 놓으세요 — 기장팀·감사팀 둘 다 한꺼번에 가능'}</b>
+                  <b style={{ color: 'var(--navy)' }}>{busy ? '읽는 중…' : 'ERP 미수금대장 · 부서별원장 엑셀을 끌어다 놓으세요 — 기장팀 · 감사팀 한꺼번에 가능'}</b>
                   <div style={{ fontSize: 'var(--fs-1)', color: '#777', marginTop: 2 }}>한 부서의 파일은 <b>한꺼번에</b>(달마다 따로 받은 파일도 함께) 놓으세요 — 부서마다 새로 계산합니다. 사람이 고친 담당·구분·메모는 그대로 둡니다.</div>
                   <input type="file" multiple accept=".xls,.xlsx" style={{ display: 'none' }} disabled={busy} onChange={(e) => { const fs = e.target.files ? [...e.target.files] : []; e.target.value = ''; if (fs.length) void onLedgerFiles(fs); }} />
                 </label>
@@ -228,7 +229,7 @@ export default function BkSettleTab() {
                       <div key={c} style={{ border: '1px solid var(--rule)', borderRadius: 6, padding: '6px 10px', fontSize: 'var(--fs-1)', lineHeight: 1.6 }}>
                         <b style={{ fontSize: 'var(--fs-2)' }}>{c}</b> <span style={{ color: 'var(--ink-3)' }}>{v.clients}곳</span><br />
                         기장료 {won(v.bk_fee)} <span style={{ color: 'var(--ink-4)' }}>(자문 {won(v.advisory_excl)})</span><br />
-                        기장수행 {won(v.tax_bk)} · 자가 {won(v.tax_self)}<br />대손(VAT 제외) {won(v.writeoff)}
+                        기장수행 {won(v.tax_bk)} · 자가 {won(v.tax_self)}<br />대손(VAT 제외) {won(v.writeoff)}<br />미수금 기초 {won(v.ar_open)} → 기말 {won(v.ar_close)}
                       </div>
                     );
                   })}
@@ -246,12 +247,12 @@ export default function BkSettleTab() {
                 </div>
                 <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 330px)', minHeight: 240, border: '1px solid var(--rule)', borderRadius: 4 }}>
                   <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)', minWidth: 1100 }}>
-                    <thead><tr>{['부서', '거래처', '담당', '입금(VAT 포함)', '기장', '자문', '세무조정', '구분', '감사·용역', '청구 기장/세무/기타(VAT 제외)', '대손', '메모'].map((h) => <th key={h} style={{ ...th, position: 'sticky', top: 0, zIndex: 1, textAlign: /입금|^기장$|자문|^세무조정$|감사|대손/.test(h) ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+                    <thead><tr>{['부서', '거래처', '담당', '입금(VAT 포함)', '기장', '자문', '세무조정', '구분', '감사·용역', '기초 미수금', '기말 미수금', '대손', '메모'].map((h) => <th key={h} style={{ ...th, position: 'sticky', top: 0, zIndex: 1, textAlign: /입금|^기장$|자문|^세무조정$|감사|대손|미수금/.test(h) ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
                     <tbody>
                       {shown.map((r) => (
                         <tr key={`${r.dept}|${r.code}`} style={{ background: !r.cpa && (r.cash_bk || r.cash_tax || r.writeoff) ? '#FEF2F2' : undefined }}>
                           <td style={td}>{r.dept}</td>
-                          <td style={td}>{r.name}<div style={{ color: 'var(--ink-4)' }}>{r.code}</div></td>
+                          <td style={td} title={`청구(VAT 제외) 기장 ${won(r.billed_bk)} · 세무조정 ${won(r.billed_tax)} · 기타 ${won(r.billed_other)}`}>{r.name}<div style={{ color: 'var(--ink-4)' }}>{r.code.startsWith('N:') ? '' : r.code}{r.erp_cpa ? ` · ERP ${r.erp_cpa}` : ''}{r.source === '원장' ? ' · 원장 추정' : ''}</div></td>
                           <td style={td}><select value={r.cpa ?? ''} disabled={locked} onChange={(e) => void setClient(r, { cpa: e.target.value || null })} style={{ ...sel, fontWeight: r.cpa_by_hand ? 700 : 400 }} title={r.cpa_by_hand ? '사람이 고른 담당' : '자동으로 찾은 담당'}><option value="">(없음)</option>{CPAS.map((c) => <option key={c}>{c}</option>)}</select></td>
                           <td style={tdr}>{won(r.cash)}</td>
                           <td style={tdr}>{r.cash_bk ? won(r.cash_bk) : ''}</td>
@@ -259,7 +260,8 @@ export default function BkSettleTab() {
                           <td style={tdr}>{r.cash_tax ? won(r.cash_tax) : ''}</td>
                           <td style={td}>{r.cash_tax || r.billed_tax ? <select value={r.tax_mode} disabled={locked} onChange={(e) => void setClient(r, { tax_mode: e.target.value as '기장수행' | '자가' })} style={{ ...sel, fontWeight: r.mode_by_hand ? 700 : 400 }}><option>기장수행</option><option>자가</option></select> : ''}</td>
                           <td style={{ ...tdr, color: 'var(--ink-3)' }}>{r.cash_other ? won(r.cash_other) : ''}</td>
-                          <td style={{ ...tdr, color: 'var(--ink-3)' }}>{[r.billed_bk, r.billed_tax, r.billed_other].map((v) => (v ? won(v) : '–')).join(' / ')}</td>
+                          <td style={tdr}>{r.ar_open ? won(r.ar_open) : ''}</td>
+                          <td style={tdr}>{r.ar_close ? won(r.ar_close) : ''}</td>
                           <td style={tdr}>{r.writeoff ? won(r.writeoff) : ''}</td>
                           <td style={td}>{locked ? (r.memo ?? '') : <input defaultValue={r.memo ?? ''} key={`m${r.code}${r.memo}`} onBlur={(e) => { const v = e.target.value.trim() || null; if (v !== (r.memo ?? null)) void setClient(r, { memo: v }); }} style={{ width: 140, fontFamily: 'inherit', fontSize: 'var(--fs-1)', padding: '2px 4px', border: '1px solid var(--rule)', borderRadius: 3 }} />}</td>
                         </tr>

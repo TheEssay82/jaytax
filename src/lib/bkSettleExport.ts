@@ -2,6 +2,7 @@
 // 숫자 칸은 앱 값, 비율·배분·정산·요약은 전부 수식.
 import { FONT, FONT_BOLD, FONT_TITLE, FILL_HEADER, FILL_TOTAL, FILL_INPUT, BORDER_ALL, setWidths, saveWorkbook } from './confirmExcelStyle';
 import { CPAS, COST_ITEMS, type SettleBundle } from './bkSettle';
+import type { ClientRow } from './bkLedger';
 import { fyRange, periodLabel } from './expenseParse';
 
 async function loadExcelJS() {
@@ -18,10 +19,56 @@ export function settleFileName(fy: number, status: string, today = new Date()) {
   return `기장배분안_${from.replace(/-/g, '')}~${to.replace(/-/g, '')}_${status}_${d}.xlsx`;
 }
 
-export async function buildSettleWorkbook(b: SettleBundle) {
+export async function buildSettleWorkbook(b: SettleBundle, clients: ClientRow[] = []) {
   const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('기장_세무배분안');
+  // ── 거래처별(원본 「기장24」 시트처럼) — 회계사별 수임료·미수금 칸이 이 시트를 SUMIFS 로 더한다 ──
+  const CS = '거래처별';
+  const cs = clients.length ? wb.addWorksheet(CS) : null;
+  let cLast = 3;
+  if (cs) {
+    cs.getCell('A1').value = `거래처별 입금 · 미수금 · ${periodLabel(b.settle.fy)} (ERP 기간 미수금대장 · 부서별원장)`;
+    cs.getCell('A1').font = FONT_TITLE;
+    const hc = ['부서', 'ERP 코드', '거래처', '담당', '세무조정 구분', '입금(VAT 포함)', '기장', '그중 자문', '세무조정', '감사·용역', '대손(VAT 포함)', '기초 미수금(VAT 제외)', '기말 미수금(VAT 제외)', 'ERP 회계사', '자료', '메모'];
+    hc.forEach((h, i) => { const c = cs.getRow(3).getCell(i + 1); c.value = h; c.font = FONT_BOLD; c.fill = FILL_HEADER; c.border = BORDER_ALL; c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; });
+    let rr = 4;
+    const sorted = [...clients].filter((r) => r.cash || r.cash_bk || r.cash_tax || r.writeoff || r.ar_open || r.ar_close)
+      .sort((x, y) => x.dept.localeCompare(y.dept, 'ko') || (x.cpa ?? '힣').localeCompare(y.cpa ?? '힣', 'ko') || x.name.localeCompare(y.name, 'ko'));
+    for (const r of sorted) {
+      const row = cs.getRow(rr);
+      row.values = [r.dept, r.code.startsWith('N:') ? '' : r.code, r.name, r.cpa ?? '(없음)', r.cash_tax || r.billed_tax ? r.tax_mode : '', r.cash, r.cash_bk, r.cash_adv, r.cash_tax, r.cash_other, r.writeoff, Math.round(r.ar_open ?? 0), Math.round(r.ar_close ?? 0), r.erp_cpa ?? '', r.source ?? '', r.memo ?? ''];
+      for (let i = 1; i <= hc.length; i++) { const c = row.getCell(i); c.font = FONT; c.border = BORDER_ALL; if (i >= 6 && i <= 13) c.numFmt = NUM; }
+      if (!r.cpa) for (let i = 1; i <= hc.length; i++) row.getCell(i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE2E2' } };
+      rr++;
+    }
+    cLast = rr - 1;
+    const tr = cs.getRow(rr);
+    tr.getCell(3).value = '합계';
+    for (let i = 6; i <= 13; i++) { const col = String.fromCharCode(64 + i); tr.getCell(i).value = { formula: `SUM(${col}4:${col}${cLast})` }; tr.getCell(i).numFmt = NUM; }
+    for (let i = 1; i <= hc.length; i++) { const c = tr.getCell(i); c.font = FONT_BOLD; c.fill = FILL_TOTAL; c.border = BORDER_ALL; }
+    cs.getCell(`A${rr + 2}`).value = '담당이 「(없음)」인 줄(분홍)은 회계사별 합계에 들어가지 않습니다. 세무조정 구분: 기장수행 = 비율에 듦, 자가 = 정산(회수금액)에만.';
+    cs.getCell(`A${rr + 2}`).font = FONT;
+    setWidths(cs, [8, 9, 30, 8, 10, 14, 13, 12, 13, 13, 11, 14, 14, 9, 11, 26]);
+    cs.views = [{ state: 'frozen', ySplit: 3 }];
+    cs.autoFilter = { from: 'A3', to: `P${cLast}` };
+  }
+  // 회계사별 칸을 거래처별 시트의 합으로 — 그 칸이 거래처 자료로 채워진 경우만(사람이 직접 고친 칸은 값 그대로).
+  const R = (col: string) => `'${CS}'!$${col}$4:$${col}$${cLast}`;
+  const viaClients = (k: string, name: string, src?: string): { formula: string } | null => {
+    if (!cs || !src || !/^ERP/.test(src)) return null;
+    const byCpa = `${R('D')},"${name}"`;
+    switch (k) {
+      case 'bk_fee': return { formula: `SUMIFS(${R('G')},${byCpa})` };
+      case 'advisory_excl': return { formula: `SUMIFS(${R('H')},${byCpa})` };
+      case 'tax_bk': return { formula: `SUMIFS(${R('I')},${byCpa},${R('E')},"기장수행")` };
+      case 'tax_self': return { formula: `SUMIFS(${R('I')},${byCpa},${R('E')},"자가")` };
+      case 'writeoff': return { formula: `ROUND(SUMIFS(${R('K')},${byCpa},${R('A')},"기장팀")/1.1,0)` };
+      case 'ar_open': return { formula: `SUMIFS(${R('L')},${byCpa},${R('A')},"기장팀")` };
+      case 'ar_close': return { formula: `SUMIFS(${R('M')},${byCpa},${R('A')},"기장팀")` };
+      default: return null;
+    }
+  };
   const cell = (ref: string, v: unknown, o: { bold?: boolean; fmt?: string; fill?: 'h' | 't' | 'i'; box?: boolean } = {}) => {
     const c = ws.getCell(ref);
     c.value = v as never;
@@ -37,7 +84,7 @@ export async function buildSettleWorkbook(b: SettleBundle) {
   ws.getCell('B1').font = FONT_TITLE;
   cell('B3', '정액부담금(1인)', { fill: 'h' }); cell('C3', b.settle.fixed_share, { fmt: NUM, fill: 'i' });
   cell('B4', '공통비율', { fill: 'h' }); cell('C4', b.settle.common_rate, { fmt: '0.0%', fill: 'i' });
-  ws.getCell('E3').value = '노란 칸을 고치면 아래가 다시 계산됩니다. 미수금·대손은 VAT 제외, 입금은 VAT 포함.';
+  ws.getCell('E3').value = clients.length ? '노란 칸을 고치면 아래가 다시 계산됩니다. 흰 수임료 칸은 「거래처별」 시트의 합(SUMIFS)입니다 — 그 시트의 담당·구분을 바꾸면 따라 바뀝니다. 미수금·대손은 VAT 제외, 입금은 VAT 포함.' : '노란 칸을 고치면 아래가 다시 계산됩니다. 미수금·대손은 VAT 제외, 입금은 VAT 포함.';
   ws.getCell('E3').font = FONT;
 
   // ── 비용 ──
@@ -69,7 +116,10 @@ export async function buildSettleWorkbook(b: SettleBundle) {
   for (const name of CPAS) {
     const x = b.cpas.find((c) => c.cpa === name);
     cell(`B${r}`, name);
-    (['bk_fee', 'tax_bk', 'tax_self', 'advisory_excl', 'ar_open', 'ar_close', 'writeoff'] as const).forEach((k, i) => cell(`${'CDEFGHI'[i]}${r}`, x?.[k] ?? 0, { fmt: NUM, fill: 'i' }));
+    (['bk_fee', 'tax_bk', 'tax_self', 'advisory_excl', 'ar_open', 'ar_close', 'writeoff'] as const).forEach((k, i) => {
+      const fml = viaClients(k, name, x?.sources[k]);
+      cell(`${'CDEFGHI'[i]}${r}`, fml ?? x?.[k] ?? 0, { fmt: NUM, fill: fml ? undefined : 'i' });
+    });
     cell(`J${r}`, f(`H${r}-G${r}+I${r}`), { fmt: NUM });
     cell(`K${r}`, f(`(C${r}+D${r}-F${r})/1.1+J${r}`), { fmt: NUM });
     r++;
@@ -138,6 +188,6 @@ export async function buildSettleWorkbook(b: SettleBundle) {
   return wb;
 }
 
-export async function exportSettleXlsx(b: SettleBundle) {
-  await saveWorkbook(await buildSettleWorkbook(b), settleFileName(b.settle.fy, b.settle.status));
+export async function exportSettleXlsx(b: SettleBundle, clients: ClientRow[] = []) {
+  await saveWorkbook(await buildSettleWorkbook(b, clients), settleFileName(b.settle.fy, b.settle.status));
 }

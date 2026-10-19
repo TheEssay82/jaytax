@@ -8,7 +8,7 @@
 // 원본 엑셀은 이 일을 입금 줄마다 손으로 했다(기장24 시트 F~J열·A열).
 
 export type Dept = '기장팀' | '감사팀';
-export interface LedgerLine { acct: string; slip: string; code: string; name: string; dr: number; cr: number }
+export interface LedgerLine { acct: string; slip: string; code: string; name: string; dr: number; cr: number; sum?: string }
 export interface ClientAgg {
   dept: Dept; code: string; name: string;
   cash: number; cash_bk: number; cash_adv: number; cash_tax: number; cash_other: number;
@@ -34,7 +34,7 @@ export function readLedgerWorkbook(wb: { SheetNames: string[]; Sheets: Record<st
       if (!slip || slip === '이월액' || /^(월계|누계|합계)/.test(slip)) continue;
       const dr = n(r[at('차변금액')]), cr = n(r[at('대변금액')]);
       if (!dr && !cr) continue;
-      out.push({ acct, slip, code: t(r[at('거래처코드')]), name: t(r[at('거래처')]), dr, cr });
+      out.push({ acct, slip, code: t(r[at('거래처코드')]), name: t(r[at('거래처')]), dr, cr, sum: t(r[at('적 요')] ?? r[at('적요')]) });
     }
   }
   return out;
@@ -131,21 +131,153 @@ export function aggregateLedger(lines: LedgerLine[], dept: Dept, advRatio: Map<s
 /** 회사 이름 비교용 — ㈜·(주)·주식회사·공백을 뗀다. */
 export const normName = (s: string) => s.replace(/\(주\)|㈜|주식회사|\(유\)|유한회사|\s/g, '');
 
-export interface ClientRow extends ClientAgg { cpa: string | null; mode_by_hand?: boolean; cpa_by_hand?: boolean; memo?: string | null }
+export interface ClientRow extends ClientAgg { cpa: string | null; mode_by_hand?: boolean; cpa_by_hand?: boolean; memo?: string | null; ar_open?: number; ar_close?: number; source?: string | null; erp_cpa?: string | null }
 
 /** 회계사별 합계 → bk_settle_cpa 칸. 대손은 VAT 제외로(미수금이 VAT 제외라서) ÷ 1.1. */
 export function sumByCpa(rows: ClientRow[]) {
-  const z = () => ({ bk_fee: 0, tax_bk: 0, tax_self: 0, advisory_excl: 0, writeoff: 0, clients: 0 });
+  const z = () => ({ bk_fee: 0, tax_bk: 0, tax_self: 0, advisory_excl: 0, writeoff: 0, ar_open: 0, ar_close: 0, clients: 0 });
   const out: Record<string, ReturnType<typeof z>> = { 조현규: z(), 김준성: z(), 정우철: z() };
-  const loose = { cash: 0, writeoff: 0, clients: 0 };
+  const loose = { cash: 0, writeoff: 0, ar_open: 0, ar_close: 0, clients: 0 };
   for (const r of rows) {
     const o = r.cpa ? out[r.cpa] : undefined;
-    if (!o) { loose.cash += r.cash_bk + r.cash_tax; loose.writeoff += r.writeoff; loose.clients++; continue; }
+    if (!o) { if (r.cash_bk || r.cash_tax || r.writeoff || r.ar_open || r.ar_close) { loose.cash += r.cash_bk + r.cash_tax; loose.writeoff += r.writeoff; loose.ar_open += r.ar_open ?? 0; loose.ar_close += r.ar_close ?? 0; loose.clients++; } continue; }
     o.clients++;
     o.bk_fee += r.cash_bk;
     o.advisory_excl += r.cash_adv;
     if (r.tax_mode === '기장수행') o.tax_bk += r.cash_tax; else o.tax_self += r.cash_tax;
-    o.writeoff += Math.round(r.writeoff / 1.1);
+    // 대손은 미수금 변동의 일부라 미수금처럼 기장팀 것만 본다(감사팀 대손 = 감사 보수 미수금).
+    if (r.dept === '기장팀') o.writeoff += Math.round(r.writeoff / 1.1);
+    o.ar_open += r.ar_open ?? 0;
+    o.ar_close += r.ar_close ?? 0;
   }
   return { byCpa: out, loose };
+}
+
+// ── ERP 기간 미수금대장(시트 「부서별 미수금현황」) ─────────────────────────
+// 청구서마다 계약구분(기장 · 세무조정 · 감사 및 검토 …) · 청구액 · 기초이월액 · 당기입금액 · 당기대손액 · 잔금이 있다.
+// 원장보다 정확하다 — 입금이 어느 청구서(어떤 일)에 대한 것인지 ERP 가 이미 맞춰 두었다. 기장팀 자료에는 VAT 제외 칸(…_부가세)도 있다.
+// 「회계사」 칸: 감사팀은 담당 회계사, 기장팀은 담당 직원.
+
+export interface ArFlowItem {
+  name: string; invoice: string; kind: 'bk' | 'tax' | 'other'; contract: string; person: string;
+  billed: number; billedNet: number; open: number; openNet: number; paid: number; paidNet: number; writeoff: number; close: number; closeNet: number;
+}
+export interface ArFlow { dept: Dept | null; from: string | null; to: string | null; items: ArFlowItem[] }
+
+export function readArFlow(raw: unknown[][]): ArFlow | null {
+  const hi = raw.findIndex((r) => r.some((c) => t(c) === 'invoiceNo') && r.some((c) => t(c) === '계약구분'));
+  if (hi < 0) return null;
+  const head = raw.slice(0, hi).map((r) => r.map(t).join(' ')).join(' ');
+  const period = head.match(/기간\s*:\s*(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})/);
+  const dept: Dept | null = /기장\d*팀/.test(head) ? '기장팀' : /2본부5팀|\[0205\]/.test(head) ? '감사팀' : null;
+  const h = raw[hi].map(t);
+  const at = (x: string) => h.indexOf(x);
+  const val = (r: unknown[], x: string) => (at(x) >= 0 ? n(r[at(x)]) : null);
+  const items: ArFlowItem[] = [];
+  for (const r of raw.slice(hi + 1)) {
+    const name = t(r[at('거래처')]);
+    if (!name || t(r[at('계정명')]) !== '외상매출금') continue;
+    const contract = t(r[at('계약구분')]);
+    const g = (x: string) => val(r, x) ?? 0;
+    const net = (x: string) => val(r, `${x}_부가세`) ?? Math.round(g(x) / 1.1);
+    items.push({
+      name, invoice: t(r[at('invoiceNo')]), contract, person: t(r[at('회계사')]),
+      kind: contract === '기장' ? 'bk' : /세무조정/.test(contract) ? 'tax' : 'other',
+      billed: g('청구액'), billedNet: net('청구액'), open: g('기초이월액'), openNet: net('기초이월액'),
+      paid: g('당기입금액'), paidNet: net('당기입금액'), writeoff: g('당기대손액'), close: g('잔금'), closeNet: net('잔금'),
+    });
+  }
+  return { dept, from: period?.[1] ?? null, to: period?.[2] ?? null, items };
+}
+
+/**
+ * 원장에서 「청구번호|거래처명」마다 수입 성격별 금액. 미수금대장의 invoiceNo 는 원장 외상매출금 차변 적요의
+ * 「거래#:26-0331-0719」 번호다(전표번호와 다르다 — 2026-10-19 백련·에이치앤아비즈로 확인). 거래#가 없으면 전표번호로도 찾게 둔다.
+ */
+export function slipKindsByName(lines: LedgerLine[]): Map<string, Record<'bk' | 'tax' | 'other', number>> {
+  const bySlip = new Map<string, Record<'bk' | 'tax' | 'other', number>>();
+  for (const x of lines) {
+    if (!isRevenue(x.acct)) continue;
+    const key = `${x.slip}|${normName(x.name)}`;
+    const o = bySlip.get(key) ?? { bk: 0, tax: 0, other: 0 };
+    o[kindOf(x.acct)] += x.cr - x.dr;
+    bySlip.set(key, o);
+  }
+  const m = new Map(bySlip);
+  for (const x of lines) {
+    if (x.acct !== '외상매출금' || !x.dr) continue;
+    const inv = (x.sum ?? '').match(/거래#\s*:?\s*(\d{2}-\d{4}-\d{4})/)?.[1];
+    const k = bySlip.get(`${x.slip}|${normName(x.name)}`);
+    if (inv && k) m.set(`${inv}|${normName(x.name)}`, k);
+  }
+  return m;
+}
+
+/**
+ * 미수금대장 → 거래처 줄. codeOf: 거래처명 → ERP 코드(부르는 쪽이 준다). 감사팀은 세무조정이 있는 거래처만.
+ * slipKinds(원장)가 있으면 청구서마다 **원장의 수입 계정 비율**로 기장 / 세무조정 / 기타를 나눈다 —
+ * 감사 계약 청구서 안에 세무조정 보수가 든 경우가 많아 계약구분만으로는 세무조정이 빠진다(2026-10-19 감사팀 확인).
+ * 원장에 그 전표가 없으면(지난해 청구서) 계약구분을 따른다.
+ * 감사팀 담당(erp_cpa)은 세무조정 부분이 있는 청구서의 「회계사」를 금액으로 가중해 고른다.
+ */
+export function aggregateArFlow(flow: ArFlow, dept: Dept, codeOf: (name: string) => string, advRatio: Map<string, number> = new Map(), slipKinds?: Map<string, Record<'bk' | 'tax' | 'other', number>>): (ClientAgg & { ar_open: number; ar_close: number; erp_cpa: string | null })[] {
+  type Row = ClientAgg & { ar_open: number; ar_close: number; erp_cpa: string | null; persons: Map<string, number>; taxPersons: Map<string, number>; hasBk: boolean };
+  const m = new Map<string, Row>();
+  for (const x of flow.items) {
+    const code = codeOf(x.name);
+    let c = m.get(code);
+    if (!c) {
+      c = { dept, code, name: x.name, cash: 0, cash_bk: 0, cash_adv: 0, cash_tax: 0, cash_other: 0, billed_bk: 0, billed_tax: 0, billed_other: 0, writeoff: 0, tax_mode: '자가', ar_open: 0, ar_close: 0, erp_cpa: null, persons: new Map(), taxPersons: new Map(), hasBk: false };
+      m.set(code, c);
+    }
+    const sk = slipKinds?.get(`${x.invoice}|${normName(x.name)}`);
+    const tot = sk ? sk.bk + sk.tax + sk.other : 0;
+    const frac: Record<'bk' | 'tax' | 'other', number> = tot > 0 ? { bk: sk!.bk / tot, tax: sk!.tax / tot, other: sk!.other / tot } : { bk: 0, tax: 0, other: 0, [x.kind]: 1 };
+    c.cash += x.paid;
+    c.cash_bk += x.paid * frac.bk; c.cash_tax += x.paid * frac.tax; c.cash_other += x.paid * frac.other;
+    c.billed_bk += x.billedNet * frac.bk; c.billed_tax += x.billedNet * frac.tax; c.billed_other += x.billedNet * frac.other;
+    if (frac.bk > 0) c.hasBk = true;
+    c.writeoff += x.writeoff;
+    // 미수금은 기장 관련만 본다(원본 AR 시트도 감사 관련을 뺐다) — 감사팀 자료의 미수금은 넣지 않는다.
+    if (dept === '기장팀') { c.ar_open += x.openNet; c.ar_close += x.closeNet; }
+    if (x.person) {
+      c.persons.set(x.person, (c.persons.get(x.person) ?? 0) + Math.abs(x.billed) + Math.abs(x.paid) + 1);
+      if (frac.tax > 0) c.taxPersons.set(x.person, (c.taxPersons.get(x.person) ?? 0) + (Math.abs(x.billed) + Math.abs(x.paid)) * frac.tax + 1);
+    }
+  }
+  const top = (mp: Map<string, number>) => [...mp.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  return [...m.values()].map(({ persons, taxPersons, hasBk, ...c }) => {
+    c.cash_tax = Math.round(c.cash_tax); c.cash_other = Math.round(c.cash_other); c.cash_bk = c.cash - c.cash_tax - c.cash_other;
+    c.billed_bk = Math.round(c.billed_bk); c.billed_tax = Math.round(c.billed_tax); c.billed_other = Math.round(c.billed_other);
+    c.erp_cpa = (dept === '감사팀' ? top(taxPersons) : null) ?? top(persons);
+    c.cash_adv = Math.round(c.cash_bk * Math.min(1, Math.max(0, advRatio.get(c.code) ?? 0)));
+    c.tax_mode = dept === '기장팀' && hasBk ? '기장수행' : '자가';
+    return c;
+  }).filter((c) => dept === '기장팀' || c.billed_tax || c.cash_tax)
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+}
+
+/** 원장의 대손 — 거래처명 → 대손상각비(VAT 포함). 미수금대장은 대손 처리분을 「당기입금액」에 넣어 두기 때문에 빼야 한다. */
+export function writeoffsByName(lines: LedgerLine[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const x of lines) if (x.acct === '대손상각비' && x.dr) m.set(normName(x.name), (m.get(normName(x.name)) ?? 0) + x.dr);
+  return m;
+}
+
+/**
+ * 미수금대장 줄에서 대손 처리분을 입금에서 빼고 대손으로 옮긴다. 어느 일(기장·세무조정)의 미수금이었는지는
+ * 그 거래처 기초 미수금의 구성 비율로 나눈다(대손은 지난해 미수금을 떠는 것이라).
+ */
+export function applyWriteoffs<T extends ClientAgg>(rows: T[], flow: ArFlow, wo: Map<string, number>): T[] {
+  return rows.map((r) => {
+    const w = wo.get(normName(r.name)) ?? 0;
+    if (!w || r.writeoff) return r;
+    const its = flow.items.filter((x) => normName(x.name) === normName(r.name));
+    const open = { bk: 0, tax: 0, other: 0 };
+    for (const x of its) open[x.kind] += x.open;
+    const tot = open.bk + open.tax + open.other;
+    const part = (k: 'bk' | 'tax' | 'other') => (tot ? Math.round((w * open[k]) / tot) : k === 'bk' ? w : 0);
+    const pt = part('tax'), po = part('other'), pb = w - pt - po;
+    return { ...r, writeoff: w, cash: r.cash - w, cash_bk: r.cash_bk - pb, cash_tax: r.cash_tax - pt, cash_other: r.cash_other - po };
+  });
 }

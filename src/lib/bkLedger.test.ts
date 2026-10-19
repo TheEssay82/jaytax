@@ -40,3 +40,23 @@ test('감사팀 — 세무조정과 상관없는 거래처(감사·용역만)는
   assert.deepEqual(rows.map((r) => r.code), ['C']);
   assert.equal(sumByCpa([{ ...rows[0], cpa: null }]).loose.cash, 1100000);
 });
+
+test('미수금대장 — invoiceNo 는 원장 적요의 거래#, 감사 계약 청구서의 세무조정 보수는 원장 수입 계정으로 가른다', async () => {
+  const { readArFlow, aggregateArFlow, slipKindsByName, applyWriteoffs, writeoffsByName } = await import('./bkLedger');
+  const raw = [
+    ['부서별 미수금현황'], ['회사명 : 인덕회계법인부서코드/명 : 2본부5팀 [0205] | 기간 : 2025-07-01 ~ 2026-06-30'],
+    ['계정명', '거래처', 'invoiceNo', '청구액', '기초이월액', '당기입금액', '당기대손액', '잔금', '계약번호', '청구구분', '계약구분', '회계사', '비고'],
+    ['외상매출금', '(주)백련', '26-0331-0716', 5698000, 0, 5698000, 0, 0, '', '잔금', '감사 및 검토', '정우철', ''],
+    ['외상매출금', '(주)백련', '26-0331-0719', 4400000, 0, 4400000, 0, 0, '', '잔금', '용역', '조현규', ''],
+  ];
+  const flow = readArFlow(raw)!;
+  assert.deepEqual([flow.dept, flow.from, flow.to, flow.items.length], ['감사팀', '2025-07-01', '2026-06-30', 2]);
+  const lines = [
+    { acct: '외상매출금', slip: '26-0331-1071', code: '02183', name: '(주)백련', dr: 5698000, cr: 0, sum: '2025 회계감사 잔금 (거래#:26-0331-0716)' },
+    { acct: '외감법감사수입(일반)', slip: '26-0331-1071', code: '02183', name: '(주)백련', dr: 0, cr: 5000000 },
+    { acct: '외상매출금', slip: '26-0331-1074', code: '02183', name: '(주)백련', dr: 4400000, cr: 0, sum: '2025 세무조정보수 총액 (거래#:26-0331-0719)' },
+    { acct: '세무조정수입(법인)', slip: '26-0331-1074', code: '02183', name: '(주)백련', dr: 0, cr: 4000000 },
+  ];
+  const [c] = applyWriteoffs(aggregateArFlow(flow, '감사팀', () => '02183', new Map(), slipKindsByName(lines)), flow, writeoffsByName(lines));
+  assert.deepEqual([c.cash_tax, c.cash_other, c.billed_tax, c.erp_cpa], [4400000, 5698000, 4000000, '조현규']);
+});
