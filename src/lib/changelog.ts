@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.64.1',
+    date: '2026-10-19',
+    title: '개발 백로그 정리',
+    highlights: [
+      '9월분 월 마감(10-18 완료)을 10월분(11월 중순)으로, 개인 정산 시스템을 「1단계 완료」로 바꿨습니다.',
+      'DSD 시스템 오류 추가 검증을 「주석·DSD — 남은 보강」에 적었습니다(개발 검토 중). 심리실 체험 뒤 데모산업 초기화 진행 상황을 적었습니다.',
+    ],
+  },
+  {
     version: '3.64.0',
     date: '2026-10-19',
     title: '팀결산시스템 — 경비귀속처리 탭·기간 고르기·일괄 분류·거르기와 정렬',
