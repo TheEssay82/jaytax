@@ -163,11 +163,17 @@ export default function ExpenseTab() {
           <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>지출일 기간</span>
           {yearsShown.map((y) => <button key={y} style={chip(y === fy)} onClick={() => setFy(y)}>{periodLabel(y)}</button>)}
           <span style={{ marginLeft: 12, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>작성자</span>
-          {MEMBERS.map((w) => (
-            <button key={w} style={chip(w === writer)} onClick={() => { setWriter(w); setSel(new Set()); }}>
-              {w}{w === '송현주' ? ' (정우철 바구니)' : ''} <span style={{ opacity: 0.6 }}>{lines.filter((l) => l.writer === w).length}</span>
-            </button>
-          ))}
+          {/* 정우철·송현주는 한 바구니(예산집단) — 큰 상자로 묶는다(사용자 2026-10-19). */}
+          {[['정우철', '송현주'], ['조현규'], ['김준성']].map((grp) => {
+            const btns = grp.map((w) => (
+              <button key={w} style={chip(w === writer)} onClick={() => { setWriter(w); setSel(new Set()); }}>
+                {w} <span style={{ opacity: 0.6 }}>{lines.filter((l) => l.writer === w).length}</span>
+              </button>
+            ));
+            return grp.length > 1
+              ? <span key={grp.join()} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', border: '1.5px solid var(--navy)', borderRadius: 10, padding: '3px 6px' }}>{btns}</span>
+              : btns;
+          })}
         </div>
       </div>
 

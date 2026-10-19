@@ -20,7 +20,11 @@ const CSS = `
 
 export default function Login() {
   const { signIn } = useAuth();
-  const [email, setEmail] = useState('');
+  // 이메일 기억하기 — 이 브라우저에만 이메일을 적어 둔다(비밀번호는 저장하지 않는다). 사용자 2026-10-19.
+  const REMEMBER_KEY = 'jaytax:rememberEmail';
+  const saved = (() => { try { return localStorage.getItem(REMEMBER_KEY) || ''; } catch { return ''; } })();
+  const [email, setEmail] = useState(saved);
+  const [remember, setRemember] = useState(!!saved);
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -30,6 +34,9 @@ export default function Login() {
     setBusy(true);
     setError(null);
     const { error } = await signIn(email.trim(), password);
+    if (!error) {
+      try { if (remember) localStorage.setItem(REMEMBER_KEY, email.trim()); else localStorage.removeItem(REMEMBER_KEY); } catch { /* 저장소를 못 쓰면 그냥 넘어간다 */ }
+    }
     if (error) setError('로그인 실패: 이메일 또는 비밀번호를 확인하세요.');
     setBusy(false);
   }
@@ -73,6 +80,7 @@ export default function Login() {
             <label className="fl">이메일</label>
             <input
               type="email"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="staff@jaytax.co.kr"
@@ -83,11 +91,15 @@ export default function Login() {
             <label className="fl">비밀번호</label>
             <input
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
           </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginTop: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> 이메일 기억하기 <span style={{ color: 'var(--ink-4)' }}>(이 브라우저에만 · 비밀번호는 저장 안 함)</span>
+          </label>
           <button className="btn-p" type="submit" disabled={busy} style={{ width: '100%', marginTop: 14 }}>
             {busy ? '로그인 중…' : '로그인'}
           </button>
