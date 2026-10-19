@@ -83,6 +83,7 @@ export const MENU_PERMS: Record<string, MenuPerm> = {
   },
   'doc-status': { write: READ_ONLY },
   'team-settle': { use: { all: '일부: 정우철·조현규·김준성·송현주만' }, write: { all: '일부: 정우철·조현규·김준성·송현주만' } },
+  'bk-settle': { use: { all: '일부: 정우철·조현규·김준성·송현주만' }, write: { all: '일부: 정우철·조현규·김준성·송현주만' }, note: '확정한 해는 「예상으로 되돌리기」 전에는 못 고침' },
   'expense': { use: { all: '일부: 정우철·조현규·김준성·송현주만' }, write: { all: '일부: 정우철·조현규·김준성·송현주만' }, note: '확정은 줄마다 사람이' },
   'evidence': { write: { ...SU_AC_TL, team_member: '일부: 올리기 + 본인 자료만 고치기', per_head_accountant: '일부: 올리기 + 본인 자료만 고치기' } },
   'vacation': { use: { all: '준비 중' }, write: READ_ONLY },

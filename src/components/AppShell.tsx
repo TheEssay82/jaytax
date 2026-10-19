@@ -49,6 +49,7 @@ import DsdEngagementTab from './dsd/DsdEngagementTab';
 import GwpTab from './gwp/GwpTab';
 import InternalHome from './home/InternalHome';
 import ExpenseTab from './expense/ExpenseTab';
+import BkSettleTab from './expense/BkSettleTab';
 import AuditIssueTab from './issue/AuditIssueTab';
 import WtbTab from './gwp/WtbTab';
 import PlaceholderTab from './common/PlaceholderTab';
@@ -550,6 +551,8 @@ function TabContent({
     // 일반업무관리 › 팀결산 경비 귀속(2026-10-19)
     case 'expense':
       return <ExpenseTab />;
+    case 'bk-settle':
+      return <BkSettleTab />;
     case 'vacation':
       return <PlaceholderTab title="🌴 휴가관리 (개발중)" desc="설계 예정" />;
     case 'estimate':

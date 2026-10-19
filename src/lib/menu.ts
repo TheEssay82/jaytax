@@ -129,6 +129,8 @@ export const MENU_GROUPS: MenuGroup[] = [
         onlyFor: ['정우철', '조현규', '김준성', '송현주'],
         children: [
           { id: 'expense', label: '💳 경비귀속처리', onlyFor: ['정우철', '조현규', '김준성', '송현주'] },
+          // 기장배분 — 기장팀 비용을 세 회계사에게(2026-10-19). 같은 네 사람.
+          { id: 'bk-settle', label: '🧾 기장배분', onlyFor: ['정우철', '조현규', '김준성', '송현주'] },
         ],
       },
       { id: 'vacation', label: '🌴 휴가관리 (개발중)' },

@@ -10,6 +10,7 @@
 // 보는 사람: 정우철 · 조현규 · 김준성 · 송현주(서버 expense_member_name 과 같은 선).
 import { useEffect, useMemo, useState } from 'react';
 import Empty from '../common/Empty';
+import MoneyInput from '../common/MoneyInput';
 import { confirmDanger } from '../common/DangerConfirm';
 import { useAuth } from '../../context/AuthContext';
 import { parseExpenseFile, fyRange, defaultFy, basketOf, periodLabel, erpDetailXlsUrl, erpListXlsUrl, erpLoginUrl, type ParsedExpense } from '../../lib/expenseParse';
@@ -25,19 +26,6 @@ const won = (n: number) => Math.round(n).toLocaleString();
 const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
   미분류: { bg: '#F3F4F6', fg: '#6B7280' }, 제안: { bg: '#FEF3C7', fg: '#92400E' }, 확정: { bg: '#DCFCE7', fg: '#166534' },
 };
-
-/** 금액 칸 — 세 자리마다 쉼표(사용자 2026-10-19). 고칠 때만 숫자로 풀고, 나가면 다시 쉼표. */
-function MoneyInput({ value, onCommit, width = 96 }: { value: number | null; onCommit: (v: number | null) => void; width?: number }) {
-  const [txt, setTxt] = useState(value == null ? '' : won(value));
-  useEffect(() => { setTxt(value == null ? '' : won(value)); }, [value]);
-  return (
-    <input inputMode="numeric" value={txt}
-      onFocus={() => setTxt(value == null ? '' : String(value))}
-      onChange={(e) => setTxt(e.target.value.replace(/[^0-9-]/g, ''))}
-      onBlur={() => { const v = txt.trim() === '' ? null : Number(txt.replace(/,/g, '')); setTxt(v == null ? '' : won(v)); if (v !== value) onCommit(v); }}
-      style={{ width, textAlign: 'right', fontFamily: 'inherit', fontSize: 'var(--fs-1)', padding: '2px 4px', border: '1px solid var(--rule)', borderRadius: 3 }} />
-  );
-}
 
 type TabKey = 'upload' | 'classify' | 'summary';
 const TAB_KEY = 'jaytax:expenseTab';
