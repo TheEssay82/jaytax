@@ -102,7 +102,7 @@ export const MENU_GROUPS: MenuGroup[] = [
       // 감사 건마다 이슈를 아이템으로 쌓고 경과를 남기는 자리(2026-10-14, 옛 엑셀 ISSUELOG). 우리 내부용 — 감사팀만.
       { id: 'issue', label: '📝 감사이슈 LOG', cap: 'viewAuditPapers' },
       // 분개장 전수 검토(JE Test) — 개발 준비 중(사용자 2026-10-05). 일반조서와 같은 감사팀 자리.
-      { id: 'je', label: '🔍 Journal Entry 시스템', cap: 'viewAuditPapers' },
+      { id: 'je', label: '🔍 Journal Entry 시스템 (개발중)', cap: 'viewAuditPapers' },
     ],
   },
   {
@@ -122,17 +122,17 @@ export const MENU_GROUPS: MenuGroup[] = [
         ],
       },
       { id: 'evidence', label: '📁 자료실' },
-      // 팀결산보고시스템 › 경비귀속처리 — ERP 지출결의서를 줄마다 업무/개인으로(2026-10-19). 개인 지출이라 네 사람만(서버 expense_member_name 과 같은 선).
+      // 팀결산시스템 › 경비귀속처리 — ERP 지출결의서를 줄마다 업무/개인으로(2026-10-19). 개인 지출이라 네 사람만(서버 expense_member_name 과 같은 선).
       {
         id: 'team-settle',
-        label: '📊 팀결산보고시스템',
+        label: '📊 팀결산시스템',
         onlyFor: ['정우철', '조현규', '김준성', '송현주'],
         children: [
           { id: 'expense', label: '💳 경비귀속처리', onlyFor: ['정우철', '조현규', '김준성', '송현주'] },
         ],
       },
-      { id: 'vacation', label: '🌴 휴가관리' },
-      { id: 'estimate', label: '🧮 견적산출 시스템' },
+      { id: 'vacation', label: '🌴 휴가관리 (개발중)' },
+      { id: 'estimate', label: '🧮 견적산출 시스템 (개발중)' },
     ],
   },
 ];
