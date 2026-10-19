@@ -50,6 +50,8 @@ const JUDGE = /야근|주말|휴일|골프|라운딩|cc\b|c\.c/i;
 const BOOKKEEPING = /인지세|위하고|세무사랑|더존|오피스|사무용품|소모품|모니터|복합기|토너|파티션|책상|기장팀|기장24팀/;
 const PERSONAL = /교육|연수|수강|도서|책자|한공회|경조|조의|축의|부의|명절|일비|자동차세|자동차보험|주유/;
 const ENTERTAIN = /기업업무추진비|접대/;
+/** 거래처 경조사 — 거래처 이름이 있어도 개인(2026-10-19 정우철 FY2026 확정분: 축의·조의·근조화환 모두 개인). */
+const CONDOLENCE = /축의|조의|근조|부의|경조|화환|빙모상|부친상|모친상|결혼/;
 
 export function suggest(line: ExpenseLineIn, basket: string, clients: ClientRef[], prior: PriorDecision[]): Suggestion {
   const d = line.description || '';
@@ -72,6 +74,7 @@ export function suggest(line: ExpenseLineIn, basket: string, clients: ClientRef[
     }
   }
   if (best) {
+    if (CONDOLENCE.test(d)) return { client: best.name, work: 0, reason: '거래처 경조사(축의·조의·화환) → 개인' };
     const entertain = ENTERTAIN.test(line.account || '') || ENTERTAIN.test(d);
     if (entertain && best.taxOwners.includes(basket)) {
       return { client: best.name, work: 0, reason: `${basket} 기장·세무조정 거래처 접대 → 개인 거래처(개인)` };

@@ -99,6 +99,25 @@ export function priorFrom(lines: ExpenseLine[], basket: string): PriorDecision[]
     .map((l) => ({ description: l.description, account: l.account || '', client: l.client!, workRatio: Math.max(0, Math.min(1, (l.work_amount ?? 0) / l.supply)) }));
 }
 
+/**
+ * 같은 바구니의 **다른 해까지** 확정한 줄 — 내년엔 작업본이 없으니 지난해 확정이 제안의 첫 근거다(2026-10-19).
+ * (같은 해 확정분은 화면에 이미 올라온 줄에서 더한다.)
+ */
+export async function listPriorConfirmed(basket: string, exceptFy: number): Promise<PriorDecision[]> {
+  const out: PriorDecision[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from('expense_line').select('description, account, client, work_amount, supply, excluded')
+      .eq('basket', basket).eq('status', '확정').neq('fy', exceptFy).order('fy', { ascending: false }).range(from, from + 999);
+    if (error) throw new Error(error.message);
+    for (const l of (data ?? []) as { description: string; account: string | null; client: string | null; work_amount: number | null; supply: number; excluded: boolean }[]) {
+      if (l.excluded || !l.client || l.work_amount == null || !Number(l.supply)) continue;
+      out.push({ description: l.description, account: l.account || '', client: l.client, workRatio: Math.max(0, Math.min(1, Number(l.work_amount) / Number(l.supply))) });
+    }
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
 export interface UploadResult { inserted: number; updated: number; kept: number; reset: number }
 
 /**
@@ -116,7 +135,7 @@ export async function saveExpenseUpload(
   if (e1) throw new Error(e1.message);
   const uploadId = (up as { id: string }).id;
   const byKey = new Map(existing.map((l) => [`${l.exjunpyo_no}|${l.line_no}`, l]));
-  const prior = priorFrom(existing, basket);
+  const prior = [...priorFrom(existing, basket), ...await listPriorConfirmed(basket, fy)];
   const res: UploadResult = { inserted: 0, updated: 0, kept: 0, reset: 0 };
   const inserts: Record<string, unknown>[] = [];
   for (const r of rows) {
@@ -191,9 +210,11 @@ export async function unconfirmExpenseLine(id: string): Promise<void> {
 /** 확정 안 된 줄의 제안을 지금 규칙·확정 기록으로 다시 만든다(작업본에서 가져온 제안은 그대로). */
 export async function resuggest(lines: ExpenseLine[], all: ExpenseLine[], clients: ClientRef[]): Promise<number> {
   let n = 0;
+  const past = new Map<string, PriorDecision[]>();
+  for (const b of new Set(lines.map((l) => l.basket))) past.set(b, await listPriorConfirmed(b, lines[0]?.fy ?? 0));
   for (const l of lines) {
     if (l.status === '확정' || (l.suggest_reason || '').startsWith('작업본') || l.suggest_reason === '직접 입력') continue;
-    const s = suggest({ description: l.description, account: l.account || '', vendor: l.vendor || '', supply: l.supply }, l.basket, clients, priorFrom(all, l.basket));
+    const s = suggest({ description: l.description, account: l.account || '', vendor: l.vendor || '', supply: l.supply }, l.basket, clients, [...priorFrom(all, l.basket), ...(past.get(l.basket) ?? [])]);
     const { error } = await supabase.from('expense_line').update({
       client: s.client, work_amount: s.work, status: s.client != null && s.work != null ? '제안' : '미분류', suggest_reason: s.reason,
     }).eq('id', l.id).neq('status', '확정');

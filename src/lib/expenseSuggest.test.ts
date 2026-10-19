@@ -57,3 +57,10 @@ test('집계 — 기장 업무 / 3인 공동 / 개인 / 나눈 몫, 송현주 FY
   assert.deepEqual([s.confirmed, s.suggested], [3, 1]);
   assert.equal(personalOf({ supply: 300000, work_amount: 100000, split_kjs: 50000, split_jhg: 50000 }), 100000);
 });
+
+test('거래처 경조사는 거래처 이름이 있어도 개인, 거래처 미팅 주유비는 업무', () => {
+  const a = suggest(L('거래처 축의금((주)오톰_김과장)', '기업업무추진비', 100000), '정우철', clients, []);
+  assert.deepEqual([a.client, a.work], ['㈜오톰', 0]);
+  const b = suggest(L('(주)오톰 미팅 관련 주유비', '차량유지비', 50000), '정우철', clients, []);
+  assert.deepEqual([b.client, b.work], ['㈜오톰', 50000]);
+});

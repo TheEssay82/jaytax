@@ -49,6 +49,17 @@ export default function ExpenseTab() {
   const [clients, setClients] = useState<ClientRef[]>([]);
   const [writer, setWriter] = useState<string>((MEMBERS as readonly string[]).includes(profileName) ? profileName : '정우철');
   const [guide, setGuide] = useState(false);
+  /** ERP 받기 단추를 누른 뒤 — 새 창에서 내려받기가 시작되기까지 몇 초 걸린다(리스트가 특히 느리다). */
+  const [dl, setDl] = useState<{ what: string; file: string; done: boolean } | null>(null);
+  /** 올린 파일마다 결과 — 사라지지 않게 남긴다(사용자 2026-10-19 「성공했는지 명시적으로」). */
+  const [log, setLog] = useState<{ ok: boolean | null; file: string; text: string; at: string }[]>([]);
+  const addLog = (ok: boolean | null, file: string, text: string) =>
+    setLog((l) => [...l, { ok, file, text, at: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }]);
+  function startDownload(what: string, file: string, url: string) {
+    window.open(url, '_blank', 'noopener');
+    setDl({ what, file, done: false });
+    setTimeout(() => setDl((d) => (d && d.file === file ? { ...d, done: true } : d)), 12000);
+  }
   const [statusF, setStatusF] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -95,10 +106,10 @@ export default function ExpenseTab() {
       const parsed = await parseExpenseFile(f);
       if (parsed.kind === 'list') {
         const n = await saveExpenseVouchers(parsed.vouchers);
-        flash(`② 지출결의서번호별리스트 ${n}건을 저장했습니다 — 산출물 첫 시트의 자금집행예정일자·결재진행상태에 씁니다.`);
+        addLog(true, f.name, `② 리스트 — 결의서 ${n}건 저장 완료(산출물 첫 시트의 자금집행예정일자·결재진행상태)`);
         return;
       }
-      if (many && preview) { setErr('상세 파일은 한 번에 하나씩 저장합니다 — 먼저 열린 미리보기를 저장한 뒤 나머지를 올려 주세요.'); return;
+      if (many && preview) { addLog(false, f.name, '상세 파일은 한 번에 하나씩 — 먼저 열린 미리보기를 저장한 뒤 이 파일을 다시 올려 주세요'); return;
       }
       const { rows, sheet } = parsed;
       const { from, to } = fyRange(fy);
@@ -107,7 +118,8 @@ export default function ExpenseTab() {
       const ws = [...new Set(inside.map((r) => r.writer).filter(Boolean))];
       const w = ws.length === 1 ? ws[0] : writer;
       setPreview({ rows: inside, outside, fileName: f.name, writer: w, basket: basketOf(w) ?? '정우철', sheet, priorCount: inside.filter((r) => r.prior).length });
-    } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); } finally { setBusy(false); }
+      addLog(null, f.name, `① 상세 — ${inside.length}줄 읽음. 아래 미리보기에서 「저장」을 누르면 반영됩니다`);
+    } catch (e) { addLog(false, f.name, e instanceof Error ? e.message : '읽지 못했습니다.'); } finally { setBusy(false); }
   }
   async function savePreview() {
     if (!preview) return;
@@ -115,8 +127,8 @@ export default function ExpenseTab() {
     try {
       const r = await saveExpenseUpload(fy, preview.writer, preview.basket, preview.rows, preview.fileName, profileName, clients, lines);
       setPreview(null); setWriter(preview.writer); await reload(); setYears(await listExpenseYears());
-      flash(`새 줄 ${r.inserted} · 이미 있던 줄 ${r.updated}(판단 유지${r.reset ? ` · 금액이 바뀌어 확정 푼 줄 ${r.reset}` : ''})`);
-    } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } finally { setBusy(false); }
+      addLog(true, preview.fileName, `① 상세 — ${preview.rows.length}줄 저장 완료(새 줄 ${r.inserted} · 이미 있던 줄 ${r.updated} 판단 유지${r.reset ? ` · 금액이 바뀌어 확정 푼 줄 ${r.reset}` : ''})`);
+    } catch (e) { addLog(false, preview.fileName, e instanceof Error ? e.message : '저장하지 못했습니다.'); } finally { setBusy(false); }
   }
   async function patch(l: ExpenseLine, p: LinePatch) {
     setLines((ls) => ls.map((x) => (x.id === l.id ? { ...x, ...p, ...(('client' in p || 'work_amount' in p || 'excluded' in p) ? { status: '제안' as const, suggest_reason: '직접 입력' } : {}) } : x)));
@@ -208,14 +220,41 @@ export default function ExpenseTab() {
       {canWrite && (
         <div className="card" style={{ padding: '10px 14px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>ERP에서 바로 받기</b>
-          <button className="btn-sm btn-sm-navy" onClick={() => window.open(erpDetailXlsUrl(writer, fy), '_blank', 'noopener')} title={`작성자 ${writer} · 지출일 ${from} ~ ${to}`}>① 상세 엑셀 받기 ({writer} · {periodLabel(fy)})</button>
-          <button className="btn-sm" onClick={() => window.open(erpListXlsUrl(), '_blank', 'noopener')}>② 리스트 엑셀 받기</button>
+          <button className="btn-sm btn-sm-navy" onClick={() => startDownload('① 상세', 'xls_exgl_find_list.xls', erpDetailXlsUrl(writer, fy))} title={`작성자 ${writer} · 지출일 ${from} ~ ${to}`}>① 상세 엑셀 받기 ({writer} · {periodLabel(fy)})</button>
+          <button className="btn-sm" onClick={() => startDownload('② 리스트', 'xls_exjunpyonolist.xls', erpListXlsUrl())}>② 리스트 엑셀 받기</button>
           <a className="btn-sm" href={erpLoginUrl()} target="_blank" rel="noopener noreferrer">ERP 로그인 열기</a>
           <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', lineHeight: 1.6, flex: '1 1 260px' }}>
             이 컴퓨터 브라우저에서 ERP에 <b>{writer} 계정으로 로그인</b>돼 있으면 누르는 즉시 파일이 내려받아집니다. 로그인 화면이 나오면 로그인한 뒤 다시 누르세요.
             받은 파일(둘 다 한꺼번에 가능)을 아래 상자에 놓으면 끝입니다.
             {writer !== profileName && <><br /><span style={{ color: '#B45309' }}>지금 고른 작성자({writer})와 JAYTAX 사용자({profileName})가 다릅니다 — ERP가 {writer} 계정으로 로그인돼 있을 때만 받아집니다.</span></>}
           </span>
+        </div>
+      )}
+
+      {dl && (
+        <div className="card" style={{ padding: '8px 14px', display: 'flex', gap: 10, alignItems: 'center', background: dl.done ? '#F0FDF4' : '#EFF6FF', border: `1px solid ${dl.done ? '#86EFAC' : '#93C5FD'}` }}>
+          {!dl.done && <span style={{ width: 14, height: 14, border: '2px solid #2F7BD8', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'expspin 0.8s linear infinite' }} />}
+          <style>{'@keyframes expspin { to { transform: rotate(360deg); } }'}</style>
+          <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-1)' }}>
+            {dl.done
+              ? <>ERP {dl.what} 엑셀을 받았으면 다운로드 폴더의 <b>{dl.file}</b> 를 아래 상자에 놓으세요. 새 창에 로그인 화면이 떴다면 로그인 후 단추를 다시 누르세요.</>
+              : <>ERP에서 <b>{dl.what} 엑셀</b>을 받는 중입니다… 새 창(탭)에서 내려받기가 시작됩니다. 결의서가 많으면 몇 초~십여 초 걸립니다.</>}
+          </span>
+          <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setDl(null)}>닫기</button>
+        </div>
+      )}
+
+      {log.length > 0 && (
+        <div className="card" style={{ padding: '8px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+            <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>올린 파일 결과</b>
+            <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setLog([])}>기록 지우기</button>
+          </div>
+          {log.map((x, i) => (
+            <div key={i} style={{ fontSize: 'var(--fs-2)', padding: '2px 0', color: x.ok === false ? 'var(--bad)' : x.ok ? 'var(--good)' : '#B45309' }}>
+              {x.ok === false ? '✗' : x.ok ? '✓' : '…'} <span style={{ color: 'var(--ink-3)' }}>{x.at} · {x.file}</span> — {x.text}
+            </div>
+          ))}
         </div>
       )}
 
