@@ -48,6 +48,7 @@ import ConfirmStatusTab from './confirm/ConfirmStatusTab';
 import DsdEngagementTab from './dsd/DsdEngagementTab';
 import GwpTab from './gwp/GwpTab';
 import InternalHome from './home/InternalHome';
+import ExpenseTab from './expense/ExpenseTab';
 import AuditIssueTab from './issue/AuditIssueTab';
 import WtbTab from './gwp/WtbTab';
 import PlaceholderTab from './common/PlaceholderTab';
@@ -546,6 +547,9 @@ function TabContent({
       return <AuditIssueTab />;
     case 'je':
       return <PlaceholderTab title="🔍 Journal Entry 시스템" desc="개발 준비 중입니다 — 분개장 전수 검토(JE Test): 회사 분개장을 올려 결산·수동·라운드 금액·주말 전표 같은 위험 지표를 걸러 보는 자리가 될 예정입니다." />;
+    // 일반업무관리 › 팀결산 경비 귀속(2026-10-19)
+    case 'expense':
+      return <ExpenseTab />;
     case 'vacation':
       return <PlaceholderTab title="🌴 휴가관리" desc="설계 예정" />;
     case 'estimate':

@@ -82,6 +82,7 @@ export const MENU_PERMS: Record<string, MenuPerm> = {
     note: '완전 삭제·휴지통 되살리기는 최고관리자',
   },
   'doc-status': { write: READ_ONLY },
+  'expense': { use: { all: '일부: 정우철·조현규·김준성·송현주만' }, write: { all: '일부: 정우철·조현규·김준성·송현주만' }, note: '확정은 줄마다 사람이' },
   'evidence': { write: { ...SU_AC_TL, team_member: '일부: 올리기 + 본인 자료만 고치기', per_head_accountant: '일부: 올리기 + 본인 자료만 고치기' } },
   'vacation': { use: { all: '준비 중' }, write: READ_ONLY },
   'estimate': { use: { all: '준비 중' }, write: READ_ONLY },
