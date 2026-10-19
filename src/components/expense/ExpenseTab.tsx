@@ -1,26 +1,42 @@
-// 일반업무관리 › 💳 팀결산 경비 귀속 — ERP 지출결의서를 올려 줄마다 업무/개인을 정한다(사용자 2026-10-19).
+// 일반업무관리 › 📊 팀결산보고시스템 › 💳 경비귀속처리 — ERP 지출결의서를 올려 줄마다 업무/개인을 정한다(사용자 2026-10-19).
 //
 // 해마다 엑셀(ERP경비반영분_정리_FY{연도}년_{이름}_…)로 하던 일을 옮겼다.
 //   · 바구니(예산집단): 정우철(송현주 포함) · 조현규 · 김준성. 송현주 결산은 정우철 결산에 속한다.
 //   · 줄마다 클라이언트(거래처명 · 기장 · 기타) + 업무 금액. 「기장」 업무 = 기장비용 안분, 그 밖의 업무 = 3인 공동, 나머지 = 개인.
+//   · 화면은 **올리는 사람(작성자) 한 명씩** 본다 — 산출물도 사람마다 「ERP경비반영분_정리_FY{끝나는 해}년_{이름}_…xlsx」.
+//   · 기간은 연도 대신 「2025.07.01 ~ 2026.06.30」으로만 적는다(사용자 2026-10-19 — FY 표기가 헷갈린다).
 //   · **적요로 「제안」만 채운다. 확정은 사람이 줄마다(또는 직접 고른 줄만) 누른다** — 적요와 실제가 다른 일이 많다.
 // 보는 사람: 정우철 · 조현규 · 김준성 · 송현주(서버 expense_member_name 과 같은 선).
 import { useEffect, useMemo, useState } from 'react';
 import Empty from '../common/Empty';
 import { confirmDanger } from '../common/DangerConfirm';
 import { useAuth } from '../../context/AuthContext';
-import { parseExpenseFile, fyRange, defaultFy, basketOf, type ParsedExpense } from '../../lib/expenseParse';
+import { parseExpenseFile, fyRange, defaultFy, basketOf, periodLabel, type ParsedExpense } from '../../lib/expenseParse';
+import { exportWriterXlsx } from '../../lib/expenseExport';
 import { personalOf, summarize, type ClientRef } from '../../lib/expenseSuggest';
 import {
   listExpenseLines, listExpenseYears, loadClientRefs, saveExpenseUpload, updateExpenseLine,
-  confirmExpenseLines, unconfirmExpenseLine, resuggest, type ExpenseLine, type LinePatch,
+  confirmExpenseLines, unconfirmExpenseLine, resuggest, listExpenseVouchers, saveExpenseVouchers, type ExpenseLine, type LinePatch,
 } from '../../lib/expenseApi';
 
-const BASKETS = ['정우철', '조현규', '김준성'] as const;
+const MEMBERS = ['정우철', '송현주', '조현규', '김준성'] as const;
 const won = (n: number) => Math.round(n).toLocaleString();
 const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
   미분류: { bg: '#F3F4F6', fg: '#6B7280' }, 제안: { bg: '#FEF3C7', fg: '#92400E' }, 확정: { bg: '#DCFCE7', fg: '#166534' },
 };
+
+/** 금액 칸 — 세 자리마다 쉼표(사용자 2026-10-19). 고칠 때만 숫자로 풀고, 나가면 다시 쉼표. */
+function MoneyInput({ value, onCommit, width = 96 }: { value: number | null; onCommit: (v: number | null) => void; width?: number }) {
+  const [txt, setTxt] = useState(value == null ? '' : won(value));
+  useEffect(() => { setTxt(value == null ? '' : won(value)); }, [value]);
+  return (
+    <input inputMode="numeric" value={txt}
+      onFocus={() => setTxt(value == null ? '' : String(value))}
+      onChange={(e) => setTxt(e.target.value.replace(/[^0-9-]/g, ''))}
+      onBlur={() => { const v = txt.trim() === '' ? null : Number(txt.replace(/,/g, '')); setTxt(v == null ? '' : won(v)); if (v !== value) onCommit(v); }}
+      style={{ width, textAlign: 'right', fontFamily: 'inherit', fontSize: 'var(--fs-1)', padding: '2px 4px', border: '1px solid var(--rule)', borderRadius: 3 }} />
+  );
+}
 
 type Preview = { rows: ParsedExpense[]; outside: ParsedExpense[]; fileName: string; writer: string; basket: string; sheet: string; priorCount: number };
 
@@ -31,8 +47,8 @@ export default function ExpenseTab() {
   const [years, setYears] = useState<number[]>([]);
   const [lines, setLines] = useState<ExpenseLine[]>([]);
   const [clients, setClients] = useState<ClientRef[]>([]);
-  const [basket, setBasket] = useState<string>(basketOf(profileName) ?? '정우철');
-  const [writerF, setWriterF] = useState<string | null>(null);
+  const [writer, setWriter] = useState<string>((MEMBERS as readonly string[]).includes(profileName) ? profileName : '정우철');
+  const [guide, setGuide] = useState(false);
   const [statusF, setStatusF] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -57,13 +73,13 @@ export default function ExpenseTab() {
   }, []);
   useEffect(() => { setSel(new Set()); void reload(fy); }, [fy]);
 
-  const inBasket = useMemo(() => lines.filter((l) => l.basket === basket), [lines, basket]);
-  const writers = useMemo(() => [...new Set(inBasket.map((l) => l.writer))], [inBasket]);
+  const inBasket = useMemo(() => lines.filter((l) => l.writer === writer), [lines, writer]);
+  const owner = basketOf(writer) ?? writer;
   const shown = useMemo(() => {
     const k = q.trim().toLowerCase();
-    return inBasket.filter((l) => (!writerF || l.writer === writerF) && (!statusF || l.status === statusF)
+    return inBasket.filter((l) => (!statusF || l.status === statusF)
       && (!k || `${l.description} ${l.vendor ?? ''} ${l.account ?? ''} ${l.client ?? ''} ${l.exjunpyo_no} ${l.memo ?? ''}`.toLowerCase().includes(k)));
-  }, [inBasket, writerF, statusF, q]);
+  }, [inBasket, statusF, q]);
   const sum = useMemo(() => summarize(inBasket), [inBasket]);
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(null), 4000); };
   const clientOptions = useMemo(() => ['기장', '기타', ...[...new Set([...lines.map((l) => l.client).filter(Boolean) as string[], ...clients.map((c) => c.name)])].filter((x) => x !== '기장' && x !== '기타').sort((a, b) => a.localeCompare(b, 'ko'))], [lines, clients]);
@@ -71,13 +87,19 @@ export default function ExpenseTab() {
   async function onFile(f: File) {
     setErr(null); setBusy(true);
     try {
-      const { rows, sheet } = await parseExpenseFile(f);
+      const parsed = await parseExpenseFile(f);
+      if (parsed.kind === 'list') {
+        const n = await saveExpenseVouchers(parsed.vouchers);
+        flash(`② 지출결의서번호별리스트 ${n}건을 저장했습니다 — 산출물 첫 시트의 자금집행예정일자·결재진행상태에 씁니다.`);
+        return;
+      }
+      const { rows, sheet } = parsed;
       const { from, to } = fyRange(fy);
       const inside = rows.filter((r) => !r.evidDate || (r.evidDate >= from && r.evidDate <= to));
       const outside = rows.filter((r) => r.evidDate && (r.evidDate < from || r.evidDate > to));
       const ws = [...new Set(inside.map((r) => r.writer).filter(Boolean))];
-      const writer = ws.length === 1 ? ws[0] : (profileName || '');
-      setPreview({ rows: inside, outside, fileName: f.name, writer, basket: basketOf(writer) ?? '정우철', sheet, priorCount: inside.filter((r) => r.prior).length });
+      const w = ws.length === 1 ? ws[0] : writer;
+      setPreview({ rows: inside, outside, fileName: f.name, writer: w, basket: basketOf(w) ?? '정우철', sheet, priorCount: inside.filter((r) => r.prior).length });
     } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); } finally { setBusy(false); }
   }
   async function savePreview() {
@@ -85,7 +107,7 @@ export default function ExpenseTab() {
     setBusy(true); setErr(null);
     try {
       const r = await saveExpenseUpload(fy, preview.writer, preview.basket, preview.rows, preview.fileName, profileName, clients, lines);
-      setPreview(null); setBasket(preview.basket); await reload(); setYears(await listExpenseYears());
+      setPreview(null); setWriter(preview.writer); await reload(); setYears(await listExpenseYears());
       flash(`새 줄 ${r.inserted} · 이미 있던 줄 ${r.updated}(판단 유지${r.reset ? ` · 금액이 바뀌어 확정 푼 줄 ${r.reset}` : ''})`);
     } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } finally { setBusy(false); }
   }
@@ -109,15 +131,9 @@ export default function ExpenseTab() {
     catch (e) { setErr(e instanceof Error ? e.message : '실패했습니다.'); } finally { setBusy(false); }
   }
   async function exportXlsx() {
-    const XLSX = await import('xlsx');
-    const head = ['지출결의서번호', '라인', '증빙일자', '작성자', '지출내역', '계정과목', '거래처명', '공급가액', '세액', '합계', '거래전표번호', '회계전표번호', '전자결재번호', '개인/법카', '클라이언트명', '업무사용', '개인사용', '김준성', '조현규', '결산제외', '상태', '확정자', '메모', '제안 근거'];
-    const rows = inBasket.map((l) => [l.exjunpyo_no, l.line_no, l.evid_date, l.writer, l.description, l.account, l.vendor, l.supply, l.vat, l.total, l.inv_slip, l.acct_slip, l.wf_no, l.card_type, l.client, l.excluded ? 0 : l.work_amount, l.excluded ? 0 : personalOf(l), l.split_kjs || '', l.split_jhg || '', l.excluded ? 'Y' : '', l.status, l.decided_name, l.memo, l.suggest_reason]);
-    const tail = [[], ['', '', '', '', '집계'], ['', '', '', '', '공급가액 합계', '', '', sum.supply], ['', '', '', '', '기장 업무 → 기장비용으로 안분', '', '', sum.bookkeeping], ['', '', '', '', '그 밖의 업무 → 3인 공동', '', '', sum.team], ['', '', '', '', `개인 → ${basket} 귀속`, '', '', sum.personal], ['', '', '', '', '김준성 몫', '', '', sum.kjs], ['', '', '', '', '조현규 몫', '', '', sum.jhg], ['', '', '', '', '결산 제외', '', '', sum.excluded], ['', '', '', '', '미정', '', '', sum.unset]];
-    const ws = XLSX.utils.aoa_to_sheet([head, ...rows, ...tail]);
-    ws['!cols'] = [14, 5, 11, 7, 36, 12, 18, 11, 9, 11, 13, 13, 13, 7, 18, 11, 11, 9, 9, 6, 6, 7, 30, 30].map((wch) => ({ wch }));
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '지출결의서 상세');
-    const { from, to } = fyRange(fy);
-    XLSX.writeFile(wb, `ERP경비반영분_정리_FY${fy}년_${basket}바구니_${from.replace(/-/g, '')}~${to.replace(/-/g, '')}_JAYTAX.xlsx`);
+    setBusy(true);
+    try { await exportWriterXlsx(fy, writer, inBasket, await listExpenseVouchers([...new Set(inBasket.map((l) => l.exjunpyo_no))])); }
+    catch (e) { setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'); } finally { setBusy(false); }
   }
 
   if (loading) return <div className="card">불러오는 중…</div>;
@@ -125,28 +141,50 @@ export default function ExpenseTab() {
   const selRows = shown.filter((l) => sel.has(l.id));
   const yearsShown = [...new Set([defaultFy(), ...years])].sort((a, b) => b - a);
   const { from, to } = fyRange(fy);
-  const numIn = { width: 92, textAlign: 'right' as const, fontFamily: 'inherit', fontSize: 'var(--fs-1)', padding: '2px 4px', border: '1px solid var(--rule)', borderRadius: 3 };
 
   return (
     <div>
       <div className="card">
-        <div className="chdr">💳 팀결산 경비 귀속
-          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>FY{fy} · 지출일 {from} ~ {to}</span>
+        <div className="chdr">💳 경비귀속처리
+          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>팀결산보고시스템 · {writer} · 지출일 {periodLabel(fy)}</span>
         </div>
         <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
           ERP 지출결의서를 올리면 줄마다 <b>클라이언트·업무 금액을 제안</b>합니다. 제안은 적요로 만든 것이라 <b>실제와 다를 수 있습니다 — 확정은 줄마다 직접</b> 누르세요.
           「기장」 업무는 기장비용으로 안분, 그 밖의 업무는 3인 공동, 나머지는 바구니 주인 개인입니다. <b>송현주 결의서는 정우철 바구니</b>에 들어갑니다.
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
-          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>정산연도</span>
-          {yearsShown.map((y) => <button key={y} style={chip(y === fy)} onClick={() => setFy(y)}>FY{y}</button>)}
-          <span style={{ marginLeft: 12, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>바구니</span>
-          {BASKETS.map((b) => (
-            <button key={b} style={chip(b === basket)} onClick={() => { setBasket(b); setWriterF(null); setSel(new Set()); }}>
-              {b}{b === '정우철' ? '(송현주 포함)' : ''} <span style={{ opacity: 0.6 }}>{lines.filter((l) => l.basket === b).length}</span>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>지출일 기간</span>
+          {yearsShown.map((y) => <button key={y} style={chip(y === fy)} onClick={() => setFy(y)}>{periodLabel(y)}</button>)}
+          <span style={{ marginLeft: 12, fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>작성자</span>
+          {MEMBERS.map((w) => (
+            <button key={w} style={chip(w === writer)} onClick={() => { setWriter(w); setSel(new Set()); }}>
+              {w}{w === '송현주' ? ' (정우철 바구니)' : ''} <span style={{ opacity: 0.6 }}>{lines.filter((l) => l.writer === w).length}</span>
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="card" style={{ padding: '10px 14px' }}>
+        <button className="btn-sm" onClick={() => setGuide(!guide)}>{guide ? '▲' : '▼'} ERP에서 어떤 파일을 받아 올리나요?</button>
+        {guide && (
+          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.8, marginTop: 8 }}>
+            <b>결의서를 쓴 사람 본인 계정</b>으로 인덕 ERP(induk.ibcenter.kr)에 로그인합니다 — 지출결의서는 작성자 본인 것만 보입니다.
+            <div style={{ margin: '8px 0 4px', fontWeight: 700, color: 'var(--navy)' }}>① 지출결의서 상세 (꼭 필요)</div>
+            <ol style={{ margin: 0, paddingLeft: 20 }}>
+              <li>상단 <b>회계관리</b> 메뉴 › <b>지출결의서</b> › <b>검색</b></li>
+              <li><b>작성자</b> 칸에 본인 이름(예: 송현주)</li>
+              <li>아래 상세검색 칸의 <b>지출일자</b>를 <b>{from} ~ {to}</b> 로</li>
+              <li><b>[상세검색]</b> 단추 → 「검색결과 지출결의서 상세리스트」 화면 오른쪽 위 <b>엑셀 아이콘</b>으로 내려받기</li>
+              <li>받은 파일을 아래 점선 상자에 끌어다 놓기 → 미리보기 확인 후 <b>저장</b></li>
+            </ol>
+            <div style={{ margin: '8px 0 4px', fontWeight: 700, color: 'var(--navy)' }}>② 지출결의서번호별리스트 (산출물 첫 시트용, 있으면 좋음)</div>
+            <ol style={{ margin: 0, paddingLeft: 20 }}>
+              <li><b>회계관리</b> › <b>지출결의서</b> › <b>리스트</b> → 엑셀 아이콘</li>
+              <li>같은 점선 상자에 올리면 자금집행예정일자·결재진행상태를 산출물 첫 시트에 씁니다(없으면 상세에서 만들어 채웁니다).</li>
+            </ol>
+            <div style={{ marginTop: 8, color: 'var(--ink-3)' }}>작년 정리 파일(클라이언트명·업무사용 칸이 있는 것)을 올려도 됩니다 — 그 판단은 <b>제안</b>으로만 가져옵니다.</div>
+          </div>
+        )}
       </div>
 
       {err && <div className="alert-w">{err}</div>}
@@ -155,10 +193,9 @@ export default function ExpenseTab() {
       {canWrite && !preview && (
         <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) void onFile(f); }}
           style={{ display: 'block', border: '2px dashed #c9b98a', borderRadius: 8, background: '#fdfaf3', padding: '12px 16px', textAlign: 'center', cursor: 'pointer', margin: '0 0 10px' }}>
-          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>ERP 지출결의서 상세 엑셀을 끌어다 놓으세요</div>
+          <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: 'var(--navy)' }}>ERP 엑셀(① 상세 또는 ② 리스트)을 끌어다 놓으세요</div>
           <div style={{ fontSize: 'var(--fs-1)', color: '#777', lineHeight: 1.7, marginTop: 4 }}>
-            결의서 <b>작성자 본인 계정</b>으로 ERP ▸ 지출결의서 ▸ 검색 ▸ 작성자 이름 · <b>지출일자 {from} ~ {to}</b> ▸ 「상세검색」 ▸ 엑셀.
-            작년 정리 파일(클라이언트·업무사용 칸이 있는 것)을 올리면 그 판단을 <b>제안으로</b> 가져옵니다. 다시 올려도 이미 정한 줄은 그대로 둡니다.
+            지출일 <b>{periodLabel(fy)}</b> 기간 밖의 줄은 넣지 않습니다. 받는 방법은 위 「ERP에서 어떤 파일을…」을 펼쳐 보세요. 다시 올려도 이미 정한 줄은 그대로 둡니다.
           </div>
           <input type="file" accept=".xls,.xlsx" style={{ display: 'none' }} disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onFile(f); }} />
         </label>
@@ -185,7 +222,7 @@ export default function ExpenseTab() {
 
       <div className="card" style={{ padding: '10px 14px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
-          {([['공급가액', sum.supply, 'var(--ink-1)'], ['기장 → 기장비용', sum.bookkeeping, '#2F7BD8'], ['3인 공동 업무', sum.team, '#7C3AED'], [`개인 → ${basket}`, sum.personal, '#B45309'], ['김준성·조현규 몫', sum.kjs + sum.jhg, '#0F766E'], ['결산 제외', sum.excluded, '#6B7280'], ['아직 정하지 않음', sum.unset, '#DC2626']] as const).map(([k, v, c]) => (
+          {([['공급가액', sum.supply, 'var(--ink-1)'], ['기장 → 기장비용', sum.bookkeeping, '#2F7BD8'], ['3인 공동 업무', sum.team, '#7C3AED'], [`개인 → ${owner}`, sum.personal, '#B45309'], ['김준성·조현규 몫', sum.kjs + sum.jhg, '#0F766E'], ['결산 제외', sum.excluded, '#6B7280'], ['아직 정하지 않음', sum.unset, '#DC2626']] as const).map(([k, v, c]) => (
             <div key={k} style={{ border: '1px solid var(--rule)', borderRadius: 6, padding: '6px 10px' }}>
               <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{k}</div>
               <div style={{ fontSize: 'var(--fs-3)', fontWeight: 700, color: c }}>{won(v)}</div>
@@ -200,9 +237,6 @@ export default function ExpenseTab() {
 
       <div className="card">
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
-          <button style={chip(!writerF)} onClick={() => setWriterF(null)}>작성자 전체</button>
-          {writers.map((w) => <button key={w} style={chip(writerF === w)} onClick={() => setWriterF(writerF === w ? null : w)}>{w}</button>)}
-          <span style={{ width: 10 }} />
           {(['미분류', '제안', '확정'] as const).map((s) => <button key={s} style={chip(statusF === s)} onClick={() => setStatusF(statusF === s ? null : s)}>{s} {inBasket.filter((l) => l.status === s).length}</button>)}
           <input placeholder="🔍 적요·가맹점·클라이언트·결의서" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: '1 1 160px', minWidth: 140, fontFamily: 'inherit', fontSize: 'var(--fs-2)', padding: '3px 8px', border: '1px solid var(--rule)', borderRadius: 4 }} />
           <label style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={showSplit} onChange={(e) => setShowSplit(e.target.checked)} /> 김준성·조현규 몫 칸</label>
@@ -211,7 +245,7 @@ export default function ExpenseTab() {
           {canWrite && selRows.length > 0 && <button className="btn-sm btn-sm-navy" disabled={busy} onClick={() => void confirmRows(selRows)}>고른 {selRows.length}줄 확정</button>}
         </div>
         <datalist id="exp-clients">{clientOptions.map((c) => <option key={c} value={c} />)}</datalist>
-        {inBasket.length === 0 ? <Empty text={`FY${fy} ${basket} 바구니에 올린 지출결의서가 없습니다`} hint="위 점선 상자에 ERP 지출결의서 상세 엑셀을 올리세요." /> : shown.length === 0 ? <Empty text="거른 조건에 맞는 줄이 없습니다" action={{ label: '거르기 풀기', onClick: () => { setWriterF(null); setStatusF(null); setQ(''); } }} /> : (
+        {inBasket.length === 0 ? <Empty text={`${writer} — 지출일 ${periodLabel(fy)} 에 올린 지출결의서가 없습니다`} hint="위 「ERP에서 어떤 파일을…」 안내대로 받아 점선 상자에 올리세요." /> : shown.length === 0 ? <Empty text="거른 조건에 맞는 줄이 없습니다" action={{ label: '거르기 풀기', onClick: () => { setStatusF(null); setQ(''); } }} /> : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--fs-1)', minWidth: 1100 }}>
               <thead>
@@ -239,7 +273,7 @@ export default function ExpenseTab() {
                         <input list="exp-clients" defaultValue={l.client ?? ''} key={`c${l.id}${l.client}`} onBlur={(e) => { const v = e.target.value.trim() || null; if (v !== l.client) void patch(l, { client: v }); }} style={{ width: 130, fontFamily: 'inherit', fontSize: 'var(--fs-1)', padding: '2px 4px', border: '1px solid var(--rule)', borderRadius: 3 }} />)}</td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>{locked ? (l.work_amount == null ? '' : won(l.work_amount)) : (
                         <span>
-                          <input type="number" defaultValue={l.work_amount ?? ''} key={`w${l.id}${l.work_amount}`} onBlur={(e) => { const v = e.target.value === '' ? null : Number(e.target.value); if (v !== l.work_amount) void patch(l, { work_amount: v }); }} style={numIn} />
+                          <MoneyInput value={l.work_amount} onCommit={(v) => void patch(l, { work_amount: v })} />
                           <div style={{ display: 'flex', gap: 3, marginTop: 2 }}>
                             <button className="btn-sm" style={{ padding: '0 5px' }} onClick={() => void patch(l, { work_amount: l.supply - l.split_kjs - l.split_jhg })}>업무</button>
                             <button className="btn-sm" style={{ padding: '0 5px' }} onClick={() => void patch(l, { work_amount: 0 })}>개인</button>
@@ -247,7 +281,7 @@ export default function ExpenseTab() {
                         </span>)}</td>
                       <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap', color: '#B45309' }}>{l.excluded || l.work_amount == null ? '' : won(personalOf(l))}</td>
                       {showSplit && (['split_kjs', 'split_jhg'] as const).map((k) => (
-                        <td key={k} style={td}>{locked ? (l[k] ? won(l[k]) : '') : <input type="number" defaultValue={l[k] || ''} key={`${k}${l.id}${l[k]}`} onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== l[k]) void patch(l, { [k]: v } as LinePatch); }} style={{ ...numIn, width: 80 }} />}</td>
+                        <td key={k} style={td}>{locked ? (l[k] ? won(l[k]) : '') : <MoneyInput value={l[k] || null} width={84} onCommit={(v) => void patch(l, { [k]: v ?? 0 } as LinePatch)} />}</td>
                       ))}
                       <td style={td}><input type="checkbox" checked={l.excluded} disabled={locked} onChange={(e) => void patch(l, { excluded: e.target.checked, ...(e.target.checked ? { work_amount: 0, client: l.client ?? '기타' } : {}) })} title="비용이 아닌 줄(결산 제외)" /></td>
                       <td style={td}>{locked ? (l.memo ?? '') : <input defaultValue={l.memo ?? ''} key={`m${l.id}${l.memo}`} onBlur={(e) => { const v = e.target.value.trim() || null; if (v !== l.memo) void patch(l, { memo: v }); }} style={{ width: 150, fontFamily: 'inherit', fontSize: 'var(--fs-1)', padding: '2px 4px', border: '1px solid var(--rule)', borderRadius: 3 }} />}</td>

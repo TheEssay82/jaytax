@@ -197,3 +197,33 @@ export async function resuggest(lines: ExpenseLine[], all: ExpenseLine[], client
   }
   return n;
 }
+
+// ── 결의서 머리(ERP 지출결의서번호별리스트) ─────────────────────────
+export interface ExpenseVoucher {
+  exjunpyo_no: string; plan_date: string | null; writer: string | null; dept: string | null; title: string | null;
+  vendor_summary: string | null; amount: number; inv_slip: string | null; acct_slip: string | null;
+  approval: string | null; wf_no: string | null; approval_status: string | null;
+}
+
+export async function listExpenseVouchers(nos: string[]): Promise<Map<string, ExpenseVoucher>> {
+  const m = new Map<string, ExpenseVoucher>();
+  for (let i = 0; i < nos.length; i += 200) {
+    const { data, error } = await supabase.from('expense_voucher').select('*').in('exjunpyo_no', nos.slice(i, i + 200));
+    if (error) throw new Error(error.message);
+    for (const r of (data ?? []) as Record<string, unknown>[]) m.set(String(r.exjunpyo_no), { ...(r as unknown as ExpenseVoucher), amount: Number(r.amount) || 0 });
+  }
+  return m;
+}
+
+export async function saveExpenseVouchers(rows: import('./expenseParse').ParsedVoucher[]): Promise<number> {
+  const body = rows.map((v) => ({
+    exjunpyo_no: v.exjunpyoNo, plan_date: v.planDate, writer: v.writer || null, dept: v.dept || null, title: v.title || null,
+    vendor_summary: v.vendorSummary || null, amount: v.amount, inv_slip: v.invSlip || null, acct_slip: v.acctSlip || null,
+    approval: v.approval || null, wf_no: v.wfNo || null, approval_status: v.approvalStatus || null, updated_at: new Date().toISOString(),
+  }));
+  for (let i = 0; i < body.length; i += 500) {
+    const { error } = await supabase.from('expense_voucher').upsert(body.slice(i, i + 500), { onConflict: 'exjunpyo_no' });
+    if (error) throw new Error(error.message);
+  }
+  return body.length;
+}

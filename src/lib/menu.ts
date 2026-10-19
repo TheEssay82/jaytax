@@ -122,8 +122,15 @@ export const MENU_GROUPS: MenuGroup[] = [
         ],
       },
       { id: 'evidence', label: '📁 자료실' },
-      // 팀결산 경비 귀속 — ERP 지출결의서를 줄마다 업무/개인으로(2026-10-19). 개인 지출이라 네 사람만(서버 expense_member_name 과 같은 선).
-      { id: 'expense', label: '💳 팀결산 경비 귀속', onlyFor: ['정우철', '조현규', '김준성', '송현주'] },
+      // 팀결산보고시스템 › 경비귀속처리 — ERP 지출결의서를 줄마다 업무/개인으로(2026-10-19). 개인 지출이라 네 사람만(서버 expense_member_name 과 같은 선).
+      {
+        id: 'team-settle',
+        label: '📊 팀결산보고시스템',
+        onlyFor: ['정우철', '조현규', '김준성', '송현주'],
+        children: [
+          { id: 'expense', label: '💳 경비귀속처리', onlyFor: ['정우철', '조현규', '김준성', '송현주'] },
+        ],
+      },
       { id: 'vacation', label: '🌴 휴가관리' },
       { id: 'estimate', label: '🧮 견적산출 시스템' },
     ],

@@ -101,20 +101,50 @@ export function parseExpenseRows(raw: unknown[][]): ParsedExpense[] | null {
   return out;
 }
 
-/** 엑셀 파일 → 줄. 「지출내역·공급가액」 머리글이 있는 첫 시트를 쓴다. */
-export async function parseExpenseFile(file: File): Promise<{ rows: ParsedExpense[]; sheet: string }> {
+export interface ParsedVoucher {
+  exjunpyoNo: string; planDate: string | null; writer: string; dept: string; title: string; vendorSummary: string;
+  amount: number; invSlip: string; acctSlip: string; approval: string; wfNo: string; approvalStatus: string;
+}
+
+/** ERP 「지출결의서번호별리스트」(결의서 머리 — 자금집행예정일자·결재진행상태). 머리글을 못 찾으면 null. */
+export function parseVoucherRows(raw: unknown[][]): ParsedVoucher[] | null {
+  const hi = raw.findIndex((r) => r.some((c) => t(c) === '자금집행예정일자') && r.some((c) => /지출결의서\s*번호/.test(t(c))));
+  if (hi < 0) return null;
+  const h = raw[hi].map(t);
+  const at = (re: RegExp) => h.findIndex((x) => re.test(x));
+  const c = { no: at(/지출결의서\s*번호/), plan: at(/자금집행예정일자/), writer: at(/^작성자$/), dept: at(/작성부서/), title: at(/^제목$/), vendor: at(/거래처명/), amt: at(/^금액$/), inv: at(/거래전표번호/), slip: at(/회계전표번호/), appr: at(/^결재여부$/), wf: at(/전자결재번호/), st: at(/결재진행상태/) };
+  const out: ParsedVoucher[] = [];
+  for (const r of raw.slice(hi + 1)) {
+    const no = t(r[c.no]);
+    if (!/^\d{2}-\d{4}-\d{4}$/.test(no)) continue;
+    const g = (i: number) => (i >= 0 ? t(r[i]) : '');
+    out.push({ exjunpyoNo: no, planDate: c.plan >= 0 ? toDate(r[c.plan]) : null, writer: g(c.writer), dept: g(c.dept), title: g(c.title), vendorSummary: g(c.vendor), amount: c.amt >= 0 ? n(r[c.amt]) : 0, invSlip: g(c.inv), acctSlip: g(c.slip), approval: g(c.appr), wfNo: g(c.wf), approvalStatus: g(c.st) });
+  }
+  return out;
+}
+
+/** 엑셀 파일 → 상세 줄 또는 결의서 목록. 맞는 머리글이 있는 첫 시트를 쓴다. */
+export async function parseExpenseFile(file: File): Promise<
+  { kind: 'detail'; rows: ParsedExpense[]; sheet: string } | { kind: 'list'; vouchers: ParsedVoucher[]; sheet: string }> {
   const XLSX = await import('xlsx');
   const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
   for (const name of wb.SheetNames) {
     const raw = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, defval: '', raw: true });
     const rows = parseExpenseRows(raw);
-    if (rows && rows.length) return { rows, sheet: name };
+    if (rows && rows.length) return { kind: 'detail', rows, sheet: name };
   }
-  throw new Error('「지출내역」·「공급가액」 머리글이 있는 지출결의서 상세 시트를 찾지 못했습니다. ERP ▸ 지출결의서 검색 ▸ 상세검색 결과 엑셀을 올려 주세요.');
+  for (const name of wb.SheetNames) {
+    const raw = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, defval: '', raw: true });
+    const v = parseVoucherRows(raw);
+    if (v && v.length) return { kind: 'list', vouchers: v, sheet: name };
+  }
+  throw new Error('지출결의서 엑셀이 아닌 것 같습니다. 안내에 있는 ① 상세검색 결과 엑셀 또는 ② 지출결의서번호별리스트 엑셀을 올려 주세요.');
 }
 
 /** 정산기간: fy = 끝나는 해. FY2026 = 2025-07-01 ~ 2026-06-30 */
 export const fyRange = (fy: number) => ({ from: `${fy - 1}-07-01`, to: `${fy}-06-30` });
+/** 화면 표기 — 연도 없이 기간만(사용자 2026-10-19). */
+export const periodLabel = (fy: number) => `${fy - 1}.07.01 ~ ${fy}.06.30`;
 /** 오늘 기준 기본 연도 — 가장 최근에 끝난 정산기간(10월이면 그해 6월 끝난 기간). */
 export const defaultFy = (today = new Date()) => (today.getMonth() + 1 >= 7 ? today.getFullYear() : today.getFullYear() - 1);
 /** 작성자 → 바구니. 송현주는 정우철 바구니(사용자 2026-10-19). */
