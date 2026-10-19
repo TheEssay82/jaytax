@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.62.2',
+    date: '2026-10-19',
+    title: '경비귀속처리 산출물 파일 이름 — 기간만',
+    highlights: [
+      '내려받는 엑셀 이름에서 연도(FY) 표기를 뺐습니다 — 「ERP경비반영분_정리_송현주_20250701~20260630_날짜.xlsx」처럼 작성자와 지출일 기간만 넣습니다.',
+    ],
+  },
+  {
     version: '3.62.1',
     date: '2026-10-19',
     title: '팀결산보고시스템 › 경비귀속처리',

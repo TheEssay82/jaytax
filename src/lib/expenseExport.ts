@@ -1,4 +1,4 @@
-// 팀결산 경비 귀속 — 산출물 엑셀. 작성자 한 사람마다 「ERP경비반영분_정리_FY{끝나는 해}년_{이름}_{시작}~{끝}_{yymmdd}.xlsx」.
+// 팀결산 경비 귀속 — 산출물 엑셀. 작성자 한 사람마다 「ERP경비반영분_정리_{이름}_{시작}~{끝}_{yymmdd}.xlsx」(연도 표기 없이 기간만).
 // 모양은 지금까지 팀결산에 내던 파일(2026-10-19 송현주 정리본)과 같다:
 //   시트1 지출결의서번호별리스트 · 시트2 검색결과 지출결의서 상세리스트(+ 개인/법카 · 클라이언트명 · 업무사용 · 개인사용 · 비고) · 아래 기장 집계.
 import { FONT, FONT_BOLD, FONT_TITLE, FILL_HEADER, FILL_TOTAL, BORDER_ALL, setWidths, saveWorkbook } from './confirmExcelStyle';
@@ -18,7 +18,8 @@ const NUM = '#,##0';
 export function exportFileName(fy: number, writer: string, today = new Date()) {
   const { from, to } = fyRange(fy);
   const d = `${String(today.getFullYear()).slice(2)}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-  return `ERP경비반영분_정리_FY${fy}년_${writer}_${from.replace(/-/g, '')}~${to.replace(/-/g, '')}_${d}.xlsx`;
+  // 연도(FY) 표기는 넣지 않는다 — 기간만(사용자 2026-10-19).
+  return `ERP경비반영분_정리_${writer}_${from.replace(/-/g, '')}~${to.replace(/-/g, '')}_${d}.xlsx`;
 }
 
 export async function exportWriterXlsx(fy: number, writer: string, lines: ExpenseLine[], vouchers: Map<string, ExpenseVoucher>): Promise<void> {
