@@ -34,10 +34,12 @@ export interface ConsultResult {
  *
  * 2026-09-09 에 **한 세대 올렸다** — 4.6/4.8 을 쓰고 있었는데 지금 최신은 5 계열이다.
  * 「AI 답변이 쓸 만하지 않다」는 지적의 첫 번째 원인이었다.
+ * 2026-10-19 세 단계로 — 사용자 지정으로 기본은 Opus 5.5.
  */
 export const CONSULT_MODELS = [
-  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 (기본 · 빠름)' },
-  { id: 'claude-opus-5', label: 'Claude Opus 5 (고품질 · 느림)' },
+  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (기본 · 고품질)' },
+  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (빠름)' },
+  { id: 'claude-fable-5-1', label: 'Claude Fable 5.1 (최고 등급 · 가장 느림)' },
 ] as const;
 export const DEFAULT_CONSULT_MODEL = CONSULT_MODELS[0].id;
 
@@ -48,7 +50,7 @@ export const DEFAULT_CONSULT_MODEL = CONSULT_MODELS[0].id;
  *   서버가 유사도 임계값으로 동적 선택(고정 개수 제한 없음).
  * @param opts.lawRefs 함께 인용할 세법 조문 근거(수동 첨부, 선택).
  * @param opts.includeTaxLaw 세법 조문 자동근거(법제처 조문 자동 조회). 기본 true.
- * @param opts.model 회신 작성 모델(allowlist). 미지정/허용 밖이면 서버 기본(Sonnet).
+ * @param opts.model 회신 작성 모델(allowlist). 미지정/허용 밖이면 서버 기본(Opus 5.5).
  */
 export async function runConsult(
   question: string,
@@ -130,11 +132,11 @@ export function modelLabel(id: string | null | undefined): string {
     'claude-haiku-4-5-20251001': 'Anthropic Claude Haiku 4.5',
   };
   // claude-<family>-<major> (5 계열처럼 소수점 없는 것)
-  const m5 = id.match(/^claude-(opus|sonnet|haiku)-(\d+)$/);
+  const m5 = id.match(/^claude-(opus|sonnet|haiku|fable)-(\d+)$/);
   if (m5) return `Anthropic Claude ${m5[1][0].toUpperCase()}${m5[1].slice(1)} ${m5[2]}`;
   if (map[id]) return map[id];
   // claude-<family>-<ver> 패턴 일반화
-  const m = id.match(/^claude-(opus|sonnet|haiku)-(\d+)-(\d+)/);
+  const m = id.match(/^claude-(opus|sonnet|haiku|fable)-(\d+)-(\d+)/);
   if (m) return `Anthropic Claude ${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}`;
   return id;
 }

@@ -26,16 +26,17 @@ function hasResidentNo(text: string): boolean {
 // 회신 작성 모델: 프런트에서 선택(기본 Sonnet, 고품질 Opus). allowlist 밖이면 기본으로.
 // 2026-09-09 에 **한 세대 올렸다**. 4.6/4.8 을 쓰고 있었는데 지금 최신은 5 계열이다 —
 // 「AI 답변이 쓸 만하지 않다」는 지적의 첫째 원인이었다.
-const DEFAULT_MODEL = 'claude-sonnet-5';
-const ALLOWED_MODELS = new Set(['claude-sonnet-5', 'claude-opus-5']);
-const TAG_MODEL = 'claude-haiku-4-5-20251001'; // 키워드·검색어 추출(저비용) — 품질에 덜 민감
+// 2026-10-19 다시 올렸다 — 기본 Opus 5.5(사용자 지정), 빠른 Sonnet 5.5, 최고 등급 Fable 5.1 세 단계.
+const DEFAULT_MODEL = 'claude-opus-5-5';
+const ALLOWED_MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-fable-5-1']);
+const TAG_MODEL = 'claude-haiku-5-5'; // 키워드·검색어 추출(저비용) — 품질에 덜 민감
 /**
  * **조문 선별 전용 모델.** 태그 뽑기와 같은 저비용 모델을 쓰고 있었는데, 이 일은
  * 성격이 다르다 — 법인세법 수백 조의 **제목 목록에서 결론을 좌우할 조문을 고르는 일**이라
  * 여기서 놓치면 근거가 통째로 비고 답이 [확인 불가]로 무너진다.
  * 실제로 「장애인고용부담금 손금」 회신은 근거 0건으로 나갔다.
  */
-const SELECT_MODEL = 'claude-sonnet-5';
+const SELECT_MODEL = 'claude-sonnet-5-5';
 
 // 원문/자료실 RAG 근거 선택 — 고정 top-N 대신 '유사도 임계값 + 넉넉한 상한'으로 동적 선택.
 // (질문마다 관련 근거 수가 달라, 고정 6개는 넓은 법령형 질문에서 정작 필요한 조문을 잘라냈다.
@@ -178,7 +179,8 @@ ${grounding}`;
     },
     body: JSON.stringify({
       model,
-      max_tokens: 8000,
+      // Opus 5.5 는 먼저 생각(thinking)하고 쓰는데 그 몫도 이 한도에서 나간다 — 8000이면 긴 회신이 잘릴 수 있다.
+      max_tokens: 16000,
       system: SYSTEM,
       messages: [{ role: 'user', content: user }],
     }),

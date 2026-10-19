@@ -18,6 +18,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.67.0',
+    date: '2026-10-19',
+    title: '상담 — AI 모델을 최신으로: 기본 Opus 5.5, 빠른 Sonnet 5.5, 최고 등급 Fable 5.1',
+    highlights: [
+      '회신 작성 모델을 세 단계로 고릅니다 — Claude Opus 5.5(기본 · 고품질), Sonnet 5.5(빠름), Fable 5.1(최고 등급 · 가장 느림). 이전 Sonnet 5 · Opus 5 는 목록에서 뺐습니다(지난 상담기록의 모델 표기는 그대로).',
+      '보조 작업도 올렸습니다 — 근거 조문 고르기는 Sonnet 5.5, 해시태그·검색어 뽑기는 Haiku 5.5.',
+      'Opus 5.5 는 먼저 생각하고 쓰기 때문에 회신 길이 한도를 두 배로 늘려 긴 회신이 잘리지 않게 했습니다.',
+    ],
+  },
+  {
     version: '3.66.0',
     date: '2026-10-19',
     title: '상담 — 회계감사기준(2026년 7월 개정) 전문을 근거로 씁니다',
