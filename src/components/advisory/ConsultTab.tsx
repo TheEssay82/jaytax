@@ -1,7 +1,7 @@
 // 상담진행 — 질문 → consult Edge(회계기준 RAG + 세법 조문 자동근거 + Claude 회신) → 검토·편집 → 상담기록 저장.
 //  분야(회계/세무/공통)로 근거 조회 범위를 정하고, '형식을 갖춘 질문'을 켜면 규격 필드로 입력한다.
 //  최종 판단·서명은 담당 회계사·세무사가 한다(근거 밖은 [확인 불가]).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   runConsult,
   createConsultation,
@@ -18,14 +18,23 @@ import { TagEditor } from './TagsField';
 import ConsultDoc from './ConsultDoc';
 import ConsultSlides from './ConsultSlides';
 import { useAuth } from '../../context/AuthContext';
-import { useClients } from '../../hooks/useClients';
+import { listEntityIndex, type EntityIndexRow } from '../../lib/bizRegistryApi';
+import EntityPicker from './EntityPicker';
 
 type Domain = '공통' | '회계' | '세무';
 type Target = '공통' | '법인' | '개인';
 
 export default function ConsultTab() {
   const { readonly } = useAuth();
-  const { clients, loading: clientsLoading } = useClients();
+  // 거래처 후보 = 거래처관리(biz_entity) 전체. 옛 청구 거래처(clients)는 일부만 있어 쓰지 않는다.
+  const [clients, setClients] = useState<EntityIndexRow[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(true);
+  useEffect(() => {
+    listEntityIndex()
+      .then((rows) => setClients(rows.sort((a, b) => a.display.localeCompare(b.display, 'ko'))))
+      .catch(() => setClients([]))
+      .finally(() => setClientsLoading(false));
+  }, []);
   const [question, setQuestion] = useState('');
   // 구분(필수): '' = 미선택 → 생성/저장 막힘. 'general' 일반 | 'client' 거래처.
   const [clientType, setClientType] = useState<'' | ConsultClientType>('');
@@ -140,8 +149,8 @@ export default function ConsultTab() {
         llmModel: model || null,
         status: 'draft',
         clientType: clientType || 'general',
-        clientId: clientType === 'client' ? clientId : null,
-        clientName: clientType === 'client' ? selClient?.companyName ?? null : null,
+        entityId: clientType === 'client' ? clientId : null,
+        clientName: clientType === 'client' ? selClient?.display ?? null : null,
       });
       setSaved(true);
     } catch (err) {
@@ -235,16 +244,12 @@ export default function ConsultTab() {
           {clientType === 'client' && (
             <div style={{ flex: '1 1 260px' }}>
               <label className="fl">거래처 <span style={{ color: '#c0392b' }}>*</span></label>
-              <select
+              <EntityPicker
+                entities={clients}
+                loading={clientsLoading}
                 value={clientId}
-                onChange={(e) => { setClientId(e.target.value); setSaved(false); }}
-                disabled={clientsLoading}
-              >
-                <option value="">{clientsLoading ? '불러오는 중…' : '거래처 선택'}</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>{c.companyName}</option>
-                ))}
-              </select>
+                onChange={(id) => { setClientId(id); setSaved(false); }}
+              />
             </div>
           )}
         </div>

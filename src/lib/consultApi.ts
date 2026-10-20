@@ -156,6 +156,8 @@ export interface Consultation {
   clientType: ConsultClientType;
   /** 연결된 거래처 id(구분=거래처일 때). 거래처 삭제 시 null이 될 수 있음. */
   clientId: string | null;
+  /** 연결된 거래처관리(biz_entity) id. 옛 기록은 clientId(청구 거래처)만 있을 수 있음. */
+  entityId: string | null;
   /** 저장 시점 거래처명 스냅샷(거래처 삭제·개명 후에도 표시·검색용). */
   clientName: string;
   title: string;
@@ -182,6 +184,7 @@ interface ConsultRow {
   author_email: string | null;
   client_type: string | null;
   client_id: string | null;
+  entity_id: string | null;
   client_name: string | null;
   title: string | null;
   question: string;
@@ -205,6 +208,7 @@ function rowToConsultation(r: ConsultRow): Consultation {
     authorName: r.author_email || '',
     clientType: (r.client_type as ConsultClientType) || 'general',
     clientId: r.client_id,
+    entityId: r.entity_id,
     clientName: r.client_name || '',
     title: r.title || '',
     question: r.question || '',
@@ -252,6 +256,8 @@ export interface ConsultInput {
   status?: ConsultStatus;
   clientType?: ConsultClientType;
   clientId?: string | null;
+  /** 거래처관리(biz_entity) id — 새 기록의 거래처 연결은 이것으로. */
+  entityId?: string | null;
   clientName?: string | null;
 }
 
@@ -272,6 +278,7 @@ export async function createConsultation(input: ConsultInput): Promise<Consultat
       status: input.status ?? 'draft',
       client_type: input.clientType ?? 'general',
       client_id: input.clientType === 'client' ? input.clientId ?? null : null,
+      entity_id: input.clientType === 'client' ? input.entityId ?? null : null,
       client_name: input.clientType === 'client' ? input.clientName ?? null : null,
     })
     .select('*')

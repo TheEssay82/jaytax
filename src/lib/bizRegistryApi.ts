@@ -238,11 +238,11 @@ const toRelation = (r: any): BizRelation => ({
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** Ctrl+K 용 가벼운 색인 — 이름·코드·사업자번호만. 전체 조립(listBizEntities)은 여섯 테이블을 읽어 무겁다. */
-export interface EntityIndexRow { id: string; code: string; name: string; kind: string; places: { name: string; bizRegNo: string }[] }
+export interface EntityIndexRow { id: string; code: string; name: string; display: string; kind: string; places: { name: string; bizRegNo: string }[] }
 
 export async function listEntityIndex(): Promise<EntityIndexRow[]> {
   const [ent, plc] = await Promise.all([
-    supabase.from('biz_entity').select('id, code, name, kind').order('code'),
+    supabase.from('biz_entity').select('id, code, name, kind, corp_form, corp_form_position').order('code'),
     supabase.from('biz_place').select('entity_id, place_name, biz_reg_no'),
   ]);
   for (const r of [ent, plc]) if (r.error) throw new Error(r.error.message);
@@ -255,6 +255,7 @@ export async function listEntityIndex(): Promise<EntityIndexRow[]> {
   }
   return ((ent.data as any[]) ?? []).map((e) => ({
     id: e.id, code: e.code || '', name: e.name || '', kind: e.kind || '',
+    display: corpDisplayName(e.name || '', e.corp_form, e.corp_form_position),
     places: byEnt.get(e.id) ?? [],
   }));
   /* eslint-enable @typescript-eslint/no-explicit-any */

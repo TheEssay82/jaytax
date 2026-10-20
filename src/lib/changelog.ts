@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.67.2',
+    date: '2026-10-20',
+    title: '상담진행 — 거래처 선택에 거래처관리 전체, 입력해서 찾기',
+    highlights: [
+      '거래처 선택 후보가 세무조정 청구 거래처(74곳)뿐이던 것을 거래처관리에 등록된 거래처 전체(188곳)로 넓혔습니다.',
+      '거래처명·거래처코드·사업장명·사업자번호를 입력하면 바로 좁혀지고, ↑↓·Enter 로도 고를 수 있습니다.',
+    ],
+  },
+  {
     version: '3.67.1',
     date: '2026-10-20',
     title: '기장배분 — 사람이 고른 세무조정 구분·담당을 다음 해로 이어받기',
