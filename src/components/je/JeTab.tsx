@@ -16,10 +16,11 @@ import {
   type BsBalance, type CheckResult, type ScenarioCode,
 } from '../../lib/jeChecks';
 import {
-  ensureJob, saveJob, listUploads, uploadJournal, uploadBalances, saveBalances, loadLines, loadTb, listPicks, savePick, jobSummaries,
+  ensureJob, saveJob, listUploads, uploadJournal, uploadBalances, saveBalances, loadLines, loadTb, listPicks, savePick, savePicks, jobSummaries, priorAccounts,
   type JeJob, type JeUpload, type JePick,
 } from '../../lib/jeApi';
-import { exportJeWorkbook, performed } from '../../lib/jeExport';
+import { exportJeWorkbook, exportRequestWorkbook, performed } from '../../lib/jeExport';
+import { buildCandidates, docsFor, parseReply, pickSummary, VOUCHER_SCENARIOS } from '../../lib/jeSample';
 import { exportBalanceTemplate } from '../../lib/jeTemplate';
 
 const won = (n: number) => Math.round(n).toLocaleString();
@@ -116,7 +117,8 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [step, setStepState] = useState<Step>(() => { try { const v = localStorage.getItem(STEP_KEY); if (v === 'data' || v === 'check' || v === 'gap') return v; } catch { /* 저장소 없음 */ } return 'data'; });
+  const [prior, setPrior] = useState<Map<string, string> | null>(null);
+  const [step, setStepState] = useState<Step>(() => { try { const v = localStorage.getItem(STEP_KEY); if (v === 'data' || v === 'check' || v === 'gap' || v === 'sample') return v; } catch { /* 저장소 없음 */ } return 'data'; });
   const setStep = (s: Step) => { setStepState(s); try { localStorage.setItem(STEP_KEY, s); } catch { /* 저장소 없음 */ } };
   const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(null), 8000); };
 
@@ -126,6 +128,7 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
       const j = await ensureJob(eng.id, profileName);
       const ups = await listUploads(eng.id);
       setJob(j); setUploads(ups); setPicks(await listPicks(eng.id));
+      setPrior(await priorAccounts(eng.entityId, eng.fy, eng.scope).catch(() => null));
       const jr = ups.find((u) => u.kind === 'journal' && u.current), tb = ups.find((u) => u.kind === 'tb' && u.current);
       if (jr) {
         setBusy('분개장을 불러오는 중…');
@@ -141,7 +144,7 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
   const codes = useMemo(() => new Set((bal?.length ? bal : ledgerTb).map((r) => r.acctCode).filter(Boolean)), [bal, ledgerTb]);
   const codeOf = useMemo(() => (c: string) => parentCode(c, codes), [codes]);
   const balances = useMemo<BsBalance[] | null>(() => (bal?.length ? bal : ledgerTb.length ? balancesFromTb(ledgerTb) : null), [bal, ledgerTb]);
-  const results = useMemo<CheckResult[]>(() => (job && lines.length ? runAll({ lines, balances, coa: codes.size ? codes : null, from, to, bench: job.bench, params: job.params, codeOf }) : []), [job, lines, balances, codes, codeOf, from, to]);
+  const results = useMemo<CheckResult[]>(() => (job && lines.length ? runAll({ lines, balances, coa: codes.size ? codes : null, from, to, bench: job.bench, params: job.params, codeOf, priorAccounts: prior }) : []), [job, lines, balances, codes, codeOf, from, to, prior]);
 
   async function patchJob(p: Partial<JeJob>) {
     if (!job) return;
@@ -182,8 +185,8 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
       {msg && <div className="card" style={{ color: 'var(--good)', padding: '8px 14px' }}>{msg}</div>}
       {busy && <div className="card" style={{ padding: '8px 14px', color: 'var(--ink-2)' }}>⏳ {busy}</div>}
       <div style={{ display: 'flex', gap: 2, borderBottom: '2px solid var(--navy)', margin: '0 0 10px', alignItems: 'flex-end' }}>
-        {([['data', '① 기본정보 · 자료'], ['check', `② 검토${results.length ? ` (예외 ${exc})` : ''}`], ['gap', '③ 보완할 점'], ['sample', '④ 증빙요청 · 결과(2차)']] as [Step, string][]).map(([k, l]) => (
-          <button key={k} style={{ ...chip(step === k), opacity: k === 'sample' ? 0.5 : 1 }} disabled={k === 'sample'} onClick={() => setStep(k)}>{l}</button>
+        {([['data', '① 기본정보 · 자료'], ['check', `② 검토${results.length ? ` (예외 ${exc})` : ''}`], ['gap', '③ 보완할 점'], ['sample', `④ 선정 · 증빙요청 · 결과${picks.some((p) => p.selected) ? ` (${pickSummary(picks).total})` : ''}`]] as [Step, string][]).map(([k, l]) => (
+          <button key={k} style={chip(step === k)} onClick={() => setStep(k)}>{l}</button>
         ))}
         <button className="btn-sm btn-sm-navy" style={{ marginLeft: 'auto', marginBottom: 4 }} disabled={!results.length} onClick={() => void onExport()} title="표지 · 총괄 · 시나리오별 시트 — audit tool 업로드용">📥 조서 엑셀</button>
       </div>
@@ -194,6 +197,9 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
         onTemplate={() => void exportBalanceTemplate(eng.entityName, eng.fy, lines, balances)} />}
       {step === 'check' && (lines.length ? <CheckStep job={job} results={results} lines={lines} picks={picks} canWrite={canWrite} patchJob={patchJob}
         onPick={async (p) => { setPicks((ps) => [...ps.filter((x) => !(x.vdate === p.vdate && x.vno === p.vno)), p]); try { await savePick(eng.id, p, profileName); } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } }} /> : <div className="card"><Empty text="분개장을 먼저 올려 주세요" hint="① 기본정보 · 자료에서 올립니다." /></div>)}
+      {step === 'sample' && (lines.length ? <SampleStep eng={eng} job={job} results={results} lines={lines} picks={picks} canWrite={canWrite}
+        onSave={async (ps) => { setPicks((cur) => { const m = new Map(cur.map((p) => [`${p.vdate}|${p.vno}`, p])); for (const p of ps) m.set(`${p.vdate}|${p.vno}`, p); return [...m.values()]; }); try { await savePicks(eng.id, ps, profileName); } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } }}
+        flash={flash} setErr={setErr} /> : <div className="card"><Empty text="분개장을 먼저 올려 주세요" /></div>)}
       {step === 'gap' && <GapStep eng={eng} job={job} results={results} hasBal={!!balances?.length} hasJournal={!!journal} canWrite={canWrite} patchJob={patchJob} />}
     </div>
   );
@@ -389,6 +395,133 @@ function CheckStep({ job, results, lines, picks, canWrite, patchJob, onPick }: {
         </div>
       );
     })}
+  </>);
+}
+
+// ── ④ 선정 · 증빙요청 · 결과 ──────────────────────────────────────────────────
+
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, setErr }: {
+  eng: Engagement; job: JeJob; results: CheckResult[]; lines: JeLine[]; picks: JePick[]; canWrite: boolean;
+  onSave: (ps: JePick[]) => Promise<void>; flash: (m: string) => void; setErr: (m: string | null) => void;
+}) {
+  const { profileName } = useAuth();
+  const cands = useMemo(() => buildCandidates(results, lines, (r) => performed(job, r)), [results, lines, job]);
+  const pmap = useMemo(() => new Map(picks.map((p) => [`${p.vdate}|${p.vno}`, p])), [picks]);
+  const [f, setF] = useState<{ scen: string; min: number; q: string; topN: number }>({ scen: '', min: 0, q: '', topN: 20 });
+  const titleOf = (c: string) => results.find((r) => r.code === c)?.title ?? c;
+  const shown = cands.filter((c) => (!f.scen || c.scenarios.includes(f.scen)) && (!f.min || c.amount >= f.min) && (!f.q || `${c.mainAcct} ${c.memo} ${c.cpName} ${c.no}`.includes(f.q)));
+  const asPick = (c: (typeof cands)[number], selected: boolean): JePick => {
+    const cur = pmap.get(c.key);
+    return {
+      evidence: null, answer: null, result: null, note: null, ...(cur ?? {}),
+      vdate: c.date, vno: c.no, scenarios: c.scenarios, amount: c.amount, reason: c.scenarios.map(titleOf).join(' · '), selected, reqDocs: cur?.reqDocs ?? docsFor(c.scenarios),
+    };
+  };
+  const sel = picks.filter((p) => p.selected).sort((a, b) => (a.reqNo ?? 99999) - (b.reqNo ?? 99999) || a.vdate.localeCompare(b.vdate) || a.vno.localeCompare(b.vno, 'en', { numeric: true }));
+  const sum = pickSummary(picks);
+  const scenUsed = [...new Set(cands.flatMap((c) => c.scenarios))].sort();
+
+  async function request() {
+    // 요청 번호가 없는 선정 전표에 번호를 매긴다(이미 보낸 번호는 그대로).
+    let n = Math.max(0, ...picks.map((p) => p.reqNo ?? 0));
+    const d = today();
+    const next = sel.map((p) => (p.reqNo ? p : { ...p, reqNo: ++n, requestedAt: d }));
+    const fresh = next.filter((p, i) => p !== sel[i]);
+    if (fresh.length) await onSave(fresh);
+    await exportRequestWorkbook(eng.entityName, eng.fy, next, lines, d);
+    flash(`증빙요청 엑셀을 내려받았습니다 — 전표 ${next.length}장(새로 번호 매김 ${fresh.length}장).`);
+  }
+  async function onReply(file: File) {
+    setErr(null);
+    try {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(await file.arrayBuffer());
+      const sh = wb.SheetNames.find((x) => /증빙요청/.test(x)) ?? wb.SheetNames[0];
+      const rows = parseReply(XLSX.utils.sheet_to_json(wb.Sheets[sh], { header: 1, defval: '', raw: true }) as unknown[][]);
+      const d = today();
+      const upd: JePick[] = [];
+      const miss: string[] = [];
+      for (const r of rows) {
+        const p = pmap.get(`${r.date}|${r.no}`);
+        if (!p) { miss.push(`${r.date} ${r.no}`); continue; }
+        upd.push({ ...p, answer: r.answer ?? p.answer, replyDocs: r.docs ?? p.replyDocs, repliedAt: d, result: p.result ?? '확인중' });
+      }
+      if (upd.length) await onSave(upd);
+      flash(`회신 ${rows.length}줄 중 ${upd.length}장을 반영했습니다${miss.length ? ` — 선정 전표가 아닌 ${miss.length}줄은 건너뜀(${miss.slice(0, 3).join(', ')})` : ''}.`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); }
+  }
+  const setOne = (p: JePick, patch: Partial<JePick>) => void onSave([{ ...p, ...patch, checkedBy: 'result' in patch || 'evidence' in patch ? profileName : p.checkedBy }]);
+  const cell = (p: JePick, k: 'reqDocs' | 'answer' | 'replyDocs' | 'evidence' | 'note', w: number) => (
+    <td style={td}><input defaultValue={p[k] ?? ''} key={`${k}${p[k] ?? ''}`} disabled={!canWrite} onBlur={(e) => { if ((e.target.value || null) !== (p[k] ?? null)) setOne(p, { [k]: e.target.value || null }); }} style={{ ...inp, width: w }} /></td>
+  );
+
+  return (<>
+    <div className="card">
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <b style={{ color: 'var(--navy)' }}>후보 전표</b>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>수행한 시나리오({VOUCHER_SCENARIOS.filter((c) => scenUsed.includes(c)).join(' · ') || '없음'})가 추출한 전표 {cands.length.toLocaleString()}장 — 여러 시나리오에 걸린 전표는 한 줄. 고른 전표만 회사에 증빙을 요청합니다.</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '8px 0', fontSize: 'var(--fs-1)' }}>
+        <select value={f.scen} onChange={(e) => setF({ ...f, scen: e.target.value })} style={inp}><option value="">시나리오 전체</option>{scenUsed.map((c) => <option key={c} value={c}>{c} {titleOf(c)}</option>)}</select>
+        <label>금액 ≥ <MoneyInput value={f.min} width={120} onCommit={(v) => setF({ ...f, min: v ?? 0 })} /></label>
+        <input placeholder="🔍 계정 · 적요 · 거래처" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} style={{ ...inp, width: 160 }} />
+        <span style={{ color: 'var(--ink-3)' }}>{shown.length.toLocaleString()}장</span>
+        {canWrite && <>
+          <button className="btn-sm" onClick={() => void onSave(shown.filter((c) => !pmap.get(c.key)?.selected).map((c) => asPick(c, true)))}>보이는 것 모두 선정</button>
+          <label>금액 상위 <input type="number" value={f.topN} onChange={(e) => setF({ ...f, topN: Number(e.target.value) || 0 })} style={{ ...inp, width: 50 }} />장</label>
+          <button className="btn-sm" onClick={() => void onSave([...shown].sort((a, b) => b.amount - a.amount).slice(0, f.topN).filter((c) => !pmap.get(c.key)?.selected).map((c) => asPick(c, true)))}>선정</button>
+          <button className="btn-sm" onClick={() => void onSave(shown.filter((c) => pmap.get(c.key)?.selected && !pmap.get(c.key)?.reqNo).map((c) => asPick(c, false)))} title="이미 요청한 전표는 남깁니다">보이는 선정 해제</button>
+        </>}
+      </div>
+      <div style={{ overflow: 'auto', maxHeight: 380, border: '1px solid var(--rule)', borderRadius: 4 }}>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
+          <thead><tr>{['선정', '전표일자', '번호', '시나리오', '전표금액', '주요 계정', '적요', '거래처'].map((h) => <th key={h} style={{ ...th, textAlign: h === '전표금액' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+          <tbody>{shown.slice(0, 1500).map((c) => { const p = pmap.get(c.key); return (
+            <tr key={c.key} style={{ background: p?.selected ? 'var(--navy-bg)' : undefined }}>
+              <td style={td}><input type="checkbox" checked={!!p?.selected} disabled={!canWrite || !!p?.reqNo} onChange={(e) => void onSave([asPick(c, e.target.checked)])} title={p?.reqNo ? '이미 요청한 전표' : undefined} /></td>
+              <td style={td}>{c.date}</td><td style={td}>{c.no}</td><td style={td}>{c.scenarios.join(' ')}</td><td style={tdr}>{won(c.amount)}</td>
+              <td style={td}>{c.mainAcct}</td><td style={{ ...td, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.memo}>{c.memo}</td><td style={td}>{c.cpName}</td>
+            </tr>
+          ); })}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div className="card">
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <b style={{ color: 'var(--navy)' }}>선정 전표 {sum.total}장</b>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>이상없음 {sum.ok} · <span style={{ color: sum.exc ? 'var(--bad)' : undefined }}>예외 {sum.exc}</span> · 미완료 {sum.pending}</span>
+        {canWrite && <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button className="btn-sm btn-sm-navy" disabled={!sel.length} onClick={() => void request().catch((e) => setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'))} title="번호 없는 선정 전표에 요청 번호를 매기고 회사용 엑셀을 내려받습니다">📤 증빙요청 엑셀</button>
+          <label className="btn-sm" style={{ cursor: 'pointer' }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const fl = e.dataTransfer.files?.[0]; if (fl) void onReply(fl); }}>
+            📥 회신 엑셀 올리기<input type="file" accept=".xls,.xlsx" style={{ display: 'none' }} onChange={(e) => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) void onReply(fl); }} />
+          </label>
+        </span>}
+      </div>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', margin: '4px 0 6px' }}>
+        회사는 증빙요청 엑셀의 노란 칸(회사 설명 · 증빙 파일명)만 채워 그대로 돌려보내면 됩니다. 증빙 파일 이름은 「요청No_전표일자_전표번호」. 결과는 조서 C01_선정전표검토로 나갑니다.
+      </div>
+      {sel.length > 0 && (
+        <div style={{ overflow: 'auto', maxHeight: 520, border: '1px solid var(--rule)', borderRadius: 4 }}>
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
+            <thead><tr>{['No', '전표', '시나리오', '금액', '요청 증빙', '회사 설명', '회신 증빙', '확인한 증빙(REF)', '결과', '비고'].map((h) => <th key={h} style={{ ...th, textAlign: h === '금액' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+            <tbody>{sel.map((p) => (
+              <tr key={`${p.vdate}|${p.vno}`} style={{ background: p.result === '예외' ? '#FEF2F2' : p.result === '이상없음' ? '#F0FDF4' : undefined }}>
+                <td style={td}>{p.reqNo ?? '—'}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }}>{p.vdate} {p.vno}</td>
+                <td style={td}>{p.scenarios.join(' ')}</td>
+                <td style={tdr}>{won(p.amount)}</td>
+                {cell(p, 'reqDocs', 180)}{cell(p, 'answer', 200)}{cell(p, 'replyDocs', 130)}{cell(p, 'evidence', 130)}
+                <td style={td}><select value={p.result ?? ''} disabled={!canWrite} onChange={(e) => setOne(p, { result: (e.target.value || null) as JePick['result'] })} style={inp}><option value="">—</option><option>이상없음</option><option>예외</option><option>확인중</option></select></td>
+                {cell(p, 'note', 140)}
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </div>
   </>);
 }
 

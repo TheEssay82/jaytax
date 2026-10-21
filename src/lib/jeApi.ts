@@ -209,16 +209,55 @@ export async function loadTb(uploadId: string): Promise<(TbRow & { group: string
   return (data ?? []).map((r) => ({ acctCode: r.acct_code, acctName: r.acct_name, open: num(r.open_bal), dr: num(r.dr), cr: num(r.cr), close: num(r.close_bal), group: r.grp ?? null, side: (r.side ?? null) as 1 | -1 | null }));
 }
 
-// ── 선정 전표 · 검토 기록(B01 등) ─────────────────────────────────────────
-export interface JePick { vdate: string; vno: string; scenarios: string[]; amount: number; reason: string | null; selected: boolean; evidence: string | null; answer: string | null; result: '이상없음' | '예외' | '확인중' | null; note: string | null }
+// ── 선정 전표 · 증빙요청 · 결과(je_pick, 마이그 0181 · 0186) ─────────────────────────
+export interface JePick {
+  vdate: string; vno: string; scenarios: string[]; amount: number; reason: string | null; selected: boolean;
+  /** 감사인이 확인한 증빙 · REF 조서 */ evidence: string | null;
+  /** 회사 설명(회신) */ answer: string | null;
+  result: '이상없음' | '예외' | '확인중' | null; note: string | null;
+  reqNo?: number | null; reqDocs?: string | null; requestedAt?: string | null; replyDocs?: string | null; repliedAt?: string | null; checkedBy?: string | null;
+}
+
+const toPick = (r: Record<string, unknown>): JePick => ({
+  vdate: r.vdate as string, vno: r.vno as string, scenarios: (r.scenarios as string[]) ?? [], amount: num(r.amount), reason: (r.reason as string) ?? null,
+  selected: !!r.selected, evidence: (r.evidence as string) ?? null, answer: (r.answer as string) ?? null, result: (r.result as JePick['result']) ?? null, note: (r.note as string) ?? null,
+  reqNo: (r.req_no as number) ?? null, reqDocs: (r.req_docs as string) ?? null, requestedAt: (r.requested_at as string) ?? null,
+  replyDocs: (r.reply_docs as string) ?? null, repliedAt: (r.replied_at as string) ?? null, checkedBy: (r.checked_by as string) ?? null,
+});
+const fromPick = (engagementId: string, p: JePick, byName: string) => ({
+  engagement_id: engagementId, vdate: p.vdate, vno: p.vno, scenarios: p.scenarios, amount: p.amount, reason: p.reason, selected: p.selected,
+  evidence: p.evidence, answer: p.answer, result: p.result, note: p.note,
+  req_no: p.reqNo ?? null, req_docs: p.reqDocs ?? null, requested_at: p.requestedAt ?? null, reply_docs: p.replyDocs ?? null, replied_at: p.repliedAt ?? null, checked_by: p.checkedBy ?? null,
+  updated_name: byName,
+});
 
 export async function listPicks(engagementId: string): Promise<JePick[]> {
   const { data, error } = await supabase.from('je_pick').select('*').eq('engagement_id', engagementId);
   if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => ({ vdate: r.vdate, vno: r.vno, scenarios: r.scenarios ?? [], amount: num(r.amount), reason: r.reason, selected: !!r.selected, evidence: r.evidence, answer: r.answer, result: r.result, note: r.note }));
+  return (data ?? []).map(toPick);
 }
 
 export async function savePick(engagementId: string, p: JePick, byName: string): Promise<void> {
-  const { error } = await supabase.from('je_pick').upsert({ engagement_id: engagementId, vdate: p.vdate, vno: p.vno, scenarios: p.scenarios, amount: p.amount, reason: p.reason, selected: p.selected, evidence: p.evidence, answer: p.answer, result: p.result, note: p.note, updated_name: byName }, { onConflict: 'engagement_id,vdate,vno' });
+  const { error } = await supabase.from('je_pick').upsert(fromPick(engagementId, p, byName), { onConflict: 'engagement_id,vdate,vno' });
   if (error) throw new Error(error.message);
+}
+
+export async function savePicks(engagementId: string, ps: JePick[], byName: string): Promise<void> {
+  for (let i = 0; i < ps.length; i += 500) {
+    const { error } = await supabase.from('je_pick').upsert(ps.slice(i, i + 500).map((p) => fromPick(engagementId, p, byName)), { onConflict: 'engagement_id,vdate,vno' });
+    if (error) throw new Error(error.message);
+  }
+}
+
+/** 전기 분개장 계정(같은 회사 · 앞 사업연도 · 같은 별도/연결 건의 현재 판). 없으면 null. */
+export async function priorAccounts(entityId: string, fy: number, scope: string): Promise<Map<string, string> | null> {
+  const { data: e, error } = await supabase.from('dsd_engagement').select('id').eq('entity_id', entityId).eq('fy', fy - 1).eq('scope', scope).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!e) return null;
+  const { data: u, error: e2 } = await supabase.from('je_upload').select('id').eq('engagement_id', e.id).eq('kind', 'journal').eq('current', true).maybeSingle();
+  if (e2) throw new Error(e2.message);
+  if (!u) return null;
+  const { data: a, error: e3 } = await supabase.rpc('je_accounts', { p_upload: u.id });
+  if (e3) throw new Error(e3.message);
+  return new Map(((a ?? []) as { acct_code: string; acct_name: string }[]).map((x) => [x.acct_code, x.acct_name]));
 }

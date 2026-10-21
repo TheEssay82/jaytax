@@ -9,6 +9,8 @@ import type { Cell, Worksheet, Workbook } from 'exceljs';
 import { FONT, FONT_BOLD, FILL_HEADER, FILL_INPUT, BORDER_ALL, saveWorkbook } from './confirmExcelStyle';
 import { SCENARIOS, benchThreshold, type CheckResult } from './jeChecks';
 import type { JeJob, JeUpload, JePick } from './jeApi';
+import type { JeLine } from './jeParse';
+import { pickSummary } from './jeSample';
 
 async function loadExcelJS() {
   const mod = await import('exceljs');
@@ -237,9 +239,11 @@ function writeSummary(wb: Workbook, inp: ExportInput) {
   put(ws, `B${row}`, '회사시스템', { bold: true }); row++; put(ws, `C${row}`, `${job.erp} ERP`); row += 2;
   put(ws, `B${row}`, '분석방법', { bold: true }); row++; put(ws, `C${row}`, 'JAYTAX Journal Entry 시스템(분개장 전수 로드 · 규칙 기반 추출)'); row += 2;
   if (job.relaxed) { put(ws, `B${row}`, '완화된 절차', { bold: true }); row++; for (const l of (job.relaxedNote ?? '').split('\n')) { put(ws, `C${row}`, l); row++; } row++; }
+  const ps = pickSummary(inp.picks.filter((p) => p.reqNo != null || p.result));
+  if (ps.total) { put(ws, `B${row}`, '선정 전표 검토', { bold: true }); row++; put(ws, `C${row}`, `선정 ${ps.total}장 — 이상없음 ${ps.ok} · 예외 ${ps.exc} · 미완료 ${ps.pending} (C01_선정전표검토 참조)`); row += 2; }
   put(ws, `B${row}`, '결론', { bold: true }); row++;
   const exc = inp.results.filter((r) => performed(job, r) && r.status === '예외');
-  put(ws, `C${row}`, exc.length ? `추출된 예외 · 검토 대상은 각 시나리오 조서에서 검토하였음(${exc.map((r) => r.code).join(', ')})` : '검토결과, 예외사항이 발견되지 아니함');
+  put(ws, `C${row}`, ps.exc ? `선정 전표 검토에서 예외 ${ps.exc}장이 있어 C01 에 처리 내용을 기재함` : exc.length ? `추출된 검토 대상은 각 시나리오 조서와 선정 전표 검토에서 확인하였으며, 예외사항이 발견되지 아니함(${exc.map((r) => r.code).join(', ')})` : '검토결과, 예외사항이 발견되지 아니함');
   if (job.memo) { row++; put(ws, `C${row}`, job.memo); }
   ws.pageSetup = { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 }
@@ -260,6 +264,67 @@ export async function buildJeWorkbook(inp: ExportInput): Promise<Workbook> {
     // 자료가 없어 못 한 것 · 끈 것은 총괄 각주로만(시트는 만들지 않는다). 필수는 늘 시트를 만든다.
     if (r.kind === 'Mandatory' || performed(inp.job, r)) writeScenario(wb, r, inp);
   }
+  const sel = inp.picks.filter((p) => p.selected && (p.reqNo != null || p.result || p.answer));
+  if (sel.length) writePicks(wb, sel, inp);
   return wb;
 }
 
+
+/** C01_선정전표검토 — 고른 전표마다 요청 증빙 · 회사 설명 · 확인한 증빙 · 결과. */
+function writePicks(wb: Workbook, picks: JePick[], inp: ExportInput) {
+  const ws = wb.addWorksheet('C01_선정전표검토', { views: [{ showGridLines: false }] });
+  ws.properties.tabColor = FILL_DONE_TAB;
+  put(ws, 'A1', 'C01', { bold: true }); put(ws, 'B1', '선정 전표 검토(증빙 확인)', { bold: true, size: 12 });
+  put(ws, 'F1', `회사명: ${inp.companyName}`); put(ws, 'F2', `결산일: ${inp.periodTo}`); put(ws, 'H1', '조서번호: C01', { bold: true });
+  const s = pickSummary(picks);
+  put(ws, 'A3', 'C01.1 방법', { bold: true });
+  put(ws, 'B4', '시나리오별로 추출된 전표 중 검토 대상을 선정하여 회사에 증빙을 요청하고, 회신된 증빙과 설명으로 거래의 실재성 · 정확성 · 기간귀속을 확인함');
+  put(ws, 'A6', 'C01.2 결과', { bold: true });
+  put(ws, 'B7', `선정 ${s.total}장 — 이상없음 ${s.ok} · 예외 ${s.exc} · 미완료 ${s.pending}`, { color: 'FF1F3864' });
+  const sorted = [...picks].sort((a, b) => (a.reqNo ?? 9999) - (b.reqNo ?? 9999) || a.vdate.localeCompare(b.vdate));
+  table(ws, 9, 1, ['요청No', '전표일자', '전표번호', '시나리오', '전표금액', '선정사유', '요청 증빙', '회사 설명', '회신 증빙', '확인한 증빙(REF)', '결과', '비고'],
+    sorted.map((p) => [p.reqNo ?? null, p.vdate, p.vno, p.scenarios.join(', '), p.amount, p.reason ?? '', p.reqDocs ?? '', p.answer ?? '', p.replyDocs ?? '', p.evidence ?? '', p.result ?? '', p.note ?? '']));
+  ws.columns = [{ width: 7 }, { width: 11 }, { width: 9 }, { width: 12 }, { width: 16 }, { width: 22 }, { width: 28 }, { width: 34 }, { width: 22 }, { width: 22 }, { width: 9 }, { width: 22 }];
+  ws.views = [{ state: 'frozen', ySplit: 9, showGridLines: false }];
+  ws.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '9:9' };
+}
+
+/**
+ * 회사에 보낼 증빙요청 엑셀 — 「증빙요청」(전표 한 장이 한 줄, 노란 칸에 회사 설명 · 증빙 파일명) + 「전표내역」(고른 전표의 모든 줄).
+ * 증빙 파일 이름 규칙 「요청No_전표일자_전표번호」를 안내해 회신을 짝짓기 쉽게 한다. 회신은 이 파일 그대로 올리면 jeSample.parseReply 가 읽는다.
+ */
+export async function exportRequestWorkbook(company: string, fy: number, picks: JePick[], lines: JeLine[], requestedAt: string): Promise<void> {
+  const ExcelJS = await loadExcelJS();
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('증빙요청');
+  put(ws, 'A1', `${company} FY${fy} 분개 테스트 — 증빙 요청`, { bold: true, size: 13 });
+  put(ws, 'A2', `요청일 ${requestedAt} · 노란 칸에 거래 설명과 첨부한 증빙 파일명을 적어 이 파일 그대로 회신해 주십시오. 증빙 파일 이름은 「요청No_전표일자_전표번호」(예: 3_2025-12-31_135)로 해 주시면 됩니다.`, { color: 'FF7F7F7F' });
+  const head = ['요청No', '전표일자', '전표번호', '주요 계정', '전표금액', '적요', '거래처', '요청 증빙', '회사 설명', '증빙 파일명'];
+  head.forEach((h, i) => { const c = ws.getCell(4, i + 1); c.value = h; c.font = FONT_BOLD; c.fill = FILL_HEADER; c.border = BORDER_ALL; c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; });
+  const byKey = new Map<string, JeLine[]>();
+  for (const l of lines) { const k = `${l.date}|${l.no}`; const a = byKey.get(k) ?? []; a.push(l); byKey.set(k, a); }
+  const sorted = [...picks].sort((a, b) => (a.reqNo ?? 0) - (b.reqNo ?? 0));
+  sorted.forEach((p, i) => {
+    const ls = byKey.get(`${p.vdate}|${p.vno}`) ?? [];
+    const top = [...ls].sort((a, b) => Math.max(Math.abs(b.dr), Math.abs(b.cr)) - Math.max(Math.abs(a.dr), Math.abs(a.cr)))[0];
+    [p.reqNo, p.vdate, p.vno, top?.acctName ?? '', p.amount, top?.memo ?? '', ls.find((l) => l.cpName)?.cpName ?? '', p.reqDocs ?? '', p.answer ?? '', p.replyDocs ?? ''].forEach((v, ci) => {
+      const c = ws.getCell(5 + i, ci + 1); c.value = v as Cell['value']; c.font = FONT; c.border = BORDER_ALL; c.alignment = { vertical: 'middle', wrapText: ci >= 7 };
+      if (ci === 4) c.numFmt = ACC;
+      if (ci >= 8) c.fill = FILL_INPUT;
+    });
+  });
+  ws.columns = [{ width: 7 }, { width: 11 }, { width: 9 }, { width: 18 }, { width: 15 }, { width: 30 }, { width: 18 }, { width: 28 }, { width: 40 }, { width: 24 }];
+  ws.views = [{ state: 'frozen', ySplit: 4 }];
+  ws.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '4:4' };
+
+  const wd = wb.addWorksheet('전표내역');
+  ['요청No', '전표일자', '전표번호', '계정코드', '계정과목', '차변', '대변', '거래처', '적요'].forEach((h, i) => { const c = wd.getCell(1, i + 1); c.value = h; c.font = FONT_BOLD; c.fill = FILL_HEADER; c.border = BORDER_ALL; });
+  let r = 2;
+  for (const p of sorted) for (const l of byKey.get(`${p.vdate}|${p.vno}`) ?? []) {
+    [p.reqNo, l.date, l.no, l.acctCode, l.acctName, Math.round(l.dr), Math.round(l.cr), l.cpName ?? '', l.memo].forEach((v, ci) => { const c = wd.getCell(r, ci + 1); c.value = v as Cell['value']; c.font = FONT; c.border = BORDER_ALL; if (ci === 5 || ci === 6) c.numFmt = ACC; });
+    r++;
+  }
+  wd.columns = [{ width: 7 }, { width: 11 }, { width: 9 }, { width: 10 }, { width: 22 }, { width: 16 }, { width: 16 }, { width: 20 }, { width: 40 }];
+  wd.views = [{ state: 'frozen', ySplit: 1 }];
+  await saveWorkbook(wb, `JET_증빙요청_${company}_FY${fy}_${requestedAt.replace(/-/g, '')}.xlsx`);
+}

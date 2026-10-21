@@ -65,10 +65,11 @@ export const SCENARIOS = [
   { no: 15, code: 'B11', sheet: '15_라운드금액', title: '라운드 금액 · 9999', kind: 'Option', desc: '단위의 배수인 큰 금액, 「9999」가 들어간 금액' },
   { no: 16, code: 'B12', sheet: '16_적요', title: '모호한 적요 · 적요 없음', kind: 'Option', desc: '수정 · 대체 · 오류 · 가지급 등 낱말, 적요 없는 전표' },
   { no: 17, code: 'B13', sheet: '17_음수금액', title: '음수 금액(역분개 · 취소)', kind: 'Option', desc: '차변 · 대변에 음수 금액이 있는 전표' },
+  { no: 18, code: 'B14', sheet: '18_신규계정', title: '당기 신규 계정 사용 전표', kind: 'Option', desc: '전기 분개장에 없던 계정을 쓴 전표(가이드라인 2.9)' },
 ] as const;
 export type ScenarioCode = (typeof SCENARIOS)[number]['code'];
 /** 기본으로 켜는 시나리오 — 실물 조서(나래 · 세원)가 한 것 + 결산분개(240.32 (2)). */
-export const DEFAULT_ON: ScenarioCode[] = ['A01', 'A02', 'A03', 'A04', 'B01', 'B02', 'B03', 'B07', 'B09'];
+export const DEFAULT_ON: ScenarioCode[] = ['A01', 'A02', 'A03', 'A04', 'B01', 'B02', 'B03', 'B07', 'B09', 'B14'];
 /** 더존 · 영림원 내보내기로는 할 수 없는 것(작성자 · 승인자 · 입력일). */
 export const NEEDS_USER_DATA: ScenarioCode[] = ['B04', 'B05', 'B06'];
 
@@ -332,6 +333,17 @@ export function scenMemo(vs: Voucher[], p: JeParams): CheckResult {
     (v) => [v.lines.map((l) => re.exec(l.memo)?.[0]).filter(Boolean).slice(0, 3).join(', ') || '(적요 없음)']);
 }
 
+/** B14 당기 신규 계정 — 전기 분개장(JAYTAX 에 올린 전년 건)의 계정 목록에 없는 계정을 쓴 전표. */
+export function scenNewAccounts(lines: JeLine[], vs: Voucher[], prior: Map<string, string> | null): CheckResult {
+  if (!prior?.size) return noData('B14', '전기 분개장이 JAYTAX 에 없어 수행하지 못함(전년 건에 분개장을 올리면 대조)');
+  const fresh = new Map<string, string>();
+  for (const l of lines) if (!prior.has(l.acctCode)) fresh.set(l.acctCode, l.acctName);
+  const keys = new Set(lines.filter((l) => fresh.has(l.acctCode)).map(vkey));
+  return pick('B14', vs.filter((v) => keys.has(v.key)), `당기 신규 계정(${[...fresh.values()].slice(0, 5).join(' · ')}${fresh.size > 5 ? ' 외' : ''})을 사용한`,
+    [`전기 분개장의 계정(${prior.size}개)과 대조하여 당기에 처음 쓴 계정 ${fresh.size}개의 분개를 추출함`], ['신규 계정'],
+    (v) => [[...new Set(v.lines.filter((l) => fresh.has(l.acctCode)).map((l) => l.acctName))].join(', ')]);
+}
+
 export const scenNegative = (vs: Voucher[]) => pick('B13', vs.filter((v) => v.lines.some((l) => l.dr < 0 || l.cr < 0)), '음수 금액이 있는', ['차변 · 대변에 음수 금액이 있는 전표(역분개 · 취소)를 추출함']);
 
 export interface RunInput {
@@ -343,9 +355,10 @@ export interface RunInput {
   params: JeParams & { matExclude?: string[]; matSide?: '양쪽' | '차변만' };
   codeOf?: (c: string) => string;
   /** 분개장에 작성자 등이 있는가(더존 · 영림원은 없다) */ hasUser?: boolean;
+  /** 전기 분개장 계정(코드 → 이름) — B14 */ priorAccounts?: Map<string, string> | null;
 }
 
-/** 전체 검사. 결과는 조서 순서(1 → 17). */
+/** 전체 검사. 결과는 조서 순서(1 → 18). */
 export function runAll(inp: RunInput): CheckResult[] {
   const codeOf = inp.codeOf ?? ((c: string) => c);
   const vs = vouchers(inp.lines);
@@ -368,6 +381,7 @@ export function runAll(inp: RunInput): CheckResult[] {
     scenRound(vs, inp.params),
     scenMemo(vs, inp.params),
     scenNegative(vs),
+    scenNewAccounts(inp.lines, vs, inp.priorAccounts ?? null),
   ];
 }
 
