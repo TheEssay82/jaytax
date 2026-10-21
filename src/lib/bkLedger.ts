@@ -8,7 +8,7 @@
 // 원본 엑셀은 이 일을 입금 줄마다 손으로 했다(기장24 시트 F~J열·A열).
 
 export type Dept = '기장팀' | '감사팀';
-export interface LedgerLine { acct: string; slip: string; code: string; name: string; dr: number; cr: number; sum?: string }
+export interface LedgerLine { acct: string; slip: string; code: string; name: string; dr: number; cr: number; sum?: string; staff?: string }
 export interface ClientAgg {
   dept: Dept; code: string; name: string;
   cash: number; cash_bk: number; cash_adv: number; cash_tax: number; cash_other: number;
@@ -34,7 +34,7 @@ export function readLedgerWorkbook(wb: { SheetNames: string[]; Sheets: Record<st
       if (!slip || slip === '이월액' || /^(월계|누계|합계)/.test(slip)) continue;
       const dr = n(r[at('차변금액')]), cr = n(r[at('대변금액')]);
       if (!dr && !cr) continue;
-      out.push({ acct, slip, code: t(r[at('거래처코드')]), name: t(r[at('거래처')]), dr, cr, sum: t(r[at('적 요')] ?? r[at('적요')]) });
+      out.push({ acct, slip, code: t(r[at('거래처코드')]), name: t(r[at('거래처')]), dr, cr, sum: t(r[at('적 요')] ?? r[at('적요')]), staff: at('사원명') >= 0 ? t(r[at('사원명')]) : undefined });
     }
   }
   return out;
@@ -280,4 +280,60 @@ export function applyWriteoffs<T extends ClientAgg>(rows: T[], flow: ArFlow, wo:
     const pt = part('tax'), po = part('other'), pb = w - pt - po;
     return { ...r, writeoff: w, cash: r.cash - w, cash_bk: r.cash_bk - pb, cash_tax: r.cash_tax - pt, cash_other: r.cash_other - po };
   });
+}
+
+// ── 기장팀 비용(ERP 실제 발생분) ───────────────────────────────────────────────
+// 부서별원장의 비용 계정을 계정 · 소분류 · 사원으로 모은다. 결산 엑셀(급여_연도 · (FY연도) 기장팀 칸)과 나란히 대 보려는 것.
+// 자산 · 부채 · 수입 계정과 대손상각비(② 거래처 입금의 대손으로 따로 셈)는 비용이 아니다.
+const NOT_COST = /^(외상매출금|부가세|본지점|미지급금|미수금|선급|선수|예수금|가지급금|가수금|보통예금|현금|차량운반구|비품|감가상각누계액|임차보증금|잡이익|유형자산처분|대손상각비)|수입/;
+export const isCostAcct = (a: string) => !NOT_COST.test(a);
+
+export interface ErpCostLine { slip: string; sum: string; amount: number }
+export interface ErpCost { acct: string; sub: string; staff: string; amount: number; n: number; lines: ErpCostLine[] }
+
+/** 계정 안에서 비용 항목이 갈리는 것만 소분류로 나눈다(4대보험 / 주민세, 퇴직연금수수료 / CMS, 노트북 / 소모품 …). */
+export function costSub(acct: string, sum: string): string {
+  if (acct === '세금과공과금') {
+    if (/\(본인\)/.test(sum)) return '4대보험(본인분)';
+    if (/정산/.test(sum) && /보험/.test(sum)) return '4대보험 정산';
+    if (/\(법인\)|산재|고용보험|국민연금|건강보험|장기요양/.test(sum)) return '4대보험';
+    if (/주민세/.test(sum)) return '주민세 종업원분';
+    if (/인지세/.test(sum)) return '인지세';
+    return '';
+  }
+  if (acct === '지급수수료') {
+    if (/퇴직연금/.test(sum)) return '퇴직연금수수료';
+    if (/CMS|카드결제/i.test(sum)) return 'CMS · 카드결제 수수료';
+    if (/텍스넷/.test(sum)) return '텍스넷 사용료';
+    return '';
+  }
+  if (acct === '소모품비' && /노트북|컴퓨터|모니터|데스크탑|PC/i.test(sum)) return '자산(노트북 등)';
+  if (acct === '인력개발비' && /내일채움/.test(sum)) return '내일채움공제';
+  return '';
+}
+
+/**
+ * 비용 줄을 모은다. from · to(YYYY-MM-DD) 밖의 전표는 뺀다(전표번호 앞 「YY-MMDD」 = 전표일).
+ * 사원명이 팀 이름(「기장24팀」)이면 팀 공통(''). 적요에 원장에 나오는 다른 사원 이름이 있으면 그 사람 몫(퇴사자 보험 정산 등).
+ */
+export function aggregateCosts(lines: LedgerLine[], from: string, to: string): { rows: ErpCost[]; outside: number } {
+  const cost = lines.filter((x) => isCostAcct(x.acct));
+  const people = new Set(cost.map((x) => x.staff ?? '').filter((s) => s && !/팀$/.test(s)));
+  const m = new Map<string, ErpCost>();
+  let outside = 0;
+  for (const x of cost) {
+    const d = /^(\d{2})-(\d{2})(\d{2})/.exec(x.slip);
+    const day = d ? `20${d[1]}-${d[2]}-${d[3]}` : '';
+    if (day && (day < from || day > to)) { outside++; continue; }
+    const sum = x.sum ?? '';
+    let staff = /팀$/.test(x.staff ?? '') ? '' : (x.staff ?? '');
+    for (const p of people) if (p !== staff && sum.includes(p)) { staff = p; break; }
+    const sub = costSub(x.acct, sum);
+    const k = `${x.acct}|${sub}|${staff}`;
+    const r = m.get(k) ?? { acct: x.acct, sub, staff, amount: 0, n: 0, lines: [] };
+    const amount = x.dr - x.cr;
+    r.amount += amount; r.n++; r.lines.push({ slip: x.slip, sum: sum.replace(/\s*\(거래#:[^)]*\)/, ''), amount });
+    m.set(k, r);
+  }
+  return { rows: [...m.values()], outside };
 }

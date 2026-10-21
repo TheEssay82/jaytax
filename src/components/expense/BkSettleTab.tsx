@@ -10,10 +10,10 @@ import MoneyInput from '../common/MoneyInput';
 import { useAuth } from '../../context/AuthContext';
 import { defaultFy, periodLabel } from '../../lib/expenseParse';
 import {
-  BK_STAFF, CPAS, COST_ITEMS, CPA_FIELDS, CPA_FIELD_LABEL, VAT_INCLUDED, STATES, computeSettle,
-  type CellState, type CostCell, type CpaField, type CpaResult, type CpaRow, type SettleBundle,
+  BK_STAFF, CPAS, COST_ITEMS, CPA_FIELDS, CPA_FIELD_LABEL, VAT_INCLUDED, STATES, computeSettle, erpCostByCell, erpCostItem,
+  type CellState, type CostCell, type CpaField, type CpaResult, type CpaRow, type ErpCostRow, type SettleBundle,
 } from '../../lib/bkSettle';
-import { listSettleYears, loadSettle, createEstimate, refreshFromApp, updateSettle, saveCpaCell, saveCostCell, listClients, importErpFiles, updateClient, fillCpaFromClients } from '../../lib/bkSettleApi';
+import { listSettleYears, loadSettle, createEstimate, refreshFromApp, updateSettle, saveCpaCell, saveCostCell, listClients, importErpFiles, importErpCosts, listCostErp, updateClient, fillCpaFromClients } from '../../lib/bkSettleApi';
 import { sumByCpa, type ClientRow } from '../../lib/bkLedger';
 import { exportSettleXlsx } from '../../lib/bkSettleExport';
 
@@ -44,6 +44,8 @@ export default function BkSettleTab() {
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientRow[]>([]);
+  const [erp, setErp] = useState<(ErpCostRow & { source: string | null })[]>([]);
+  const [erpOpen, setErpOpen] = useState<string | null>(null);
   const [cf, setCf] = useState<{ dept: string; cpa: string; q: string }>({ dept: '', cpa: '', q: '' });
   const [tab, setTabState] = useState<TabKey>(() => {
     try { const v = localStorage.getItem(TAB_KEY); if (v === 'income' || v === 'clients' || v === 'cost' || v === 'result') return v; } catch { /* 저장소 없음 */ }
@@ -54,8 +56,8 @@ export default function BkSettleTab() {
   async function reload(y = fy) {
     setErr(null);
     try {
-      const [ys, cur, p, cl] = await Promise.all([listSettleYears(), loadSettle(y), loadSettle(y - 1), listClients(y)]);
-      setYears(ys); setB(cur); setPrev(p); setClients(cl);
+      const [ys, cur, p, cl, ec] = await Promise.all([listSettleYears(), loadSettle(y), loadSettle(y - 1), listClients(y), listCostErp(y)]);
+      setYears(ys); setB(cur); setPrev(p); setClients(cl); setErp(ec);
     } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); } finally { setLoading(false); }
   }
   useEffect(() => { void reload(fy); }, [fy]);
@@ -64,6 +66,8 @@ export default function BkSettleTab() {
   const locked = readonly || b?.settle.status === '확정';
   const res = useMemo(() => (b ? computeSettle(b.settle, b.cpas, b.costs) : null), [b]);
   const prevRes = useMemo(() => (prev ? computeSettle(prev.settle, prev.cpas, prev.costs) : null), [prev]);
+  const erpCell = useMemo(() => erpCostByCell(erp), [erp]);
+  const erpTotal = erp.reduce((s, r) => s + r.amount, 0);
 
   async function run(f: () => Promise<string[] | void>, done?: string) {
     setBusy(true); setErr(null);
@@ -283,7 +287,7 @@ export default function BkSettleTab() {
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--fs-1)', minWidth: 820 }}>
-                <thead><tr>{['항목', '직원', '금액', '상태', '출처', '메모', ...(prev ? ['지난해'] : [])].map((h) => <th key={h} style={{ ...th, textAlign: h === '금액' || h === '지난해' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+                <thead><tr>{['항목', '직원', '금액', '상태', ...(erp.length ? ['ERP 발생', '차이'] : []), '출처', '메모', ...(prev ? ['지난해'] : [])].map((h) => <th key={h} style={{ ...th, textAlign: ['금액', '지난해', 'ERP 발생', '차이'].includes(h) ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
                 <tbody>
                   {COST_ITEMS.flatMap((it) => {
                     const staffs = it.perStaff ? [...new Set([...BK_STAFF, ...b.costs.filter((c) => c.item === it.key && c.staff).map((c) => c.staff)])] : [''];
@@ -297,6 +301,18 @@ export default function BkSettleTab() {
                           <td style={td}>{sf}</td>
                           <td style={tdr}><MoneyInput value={c.amount} disabled={locked} width={120} onCommit={(v) => void setCost({ ...c, amount: v ?? 0, state: c.state === '작년값' ? '추정' : c.state, source: '직접 입력' })} /></td>
                           <td style={td}>{exists ? <StateChip state={c.state} disabled={locked} onClick={() => void setCost({ ...c, state: nextState(c.state) })} /> : <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                          {erp.length > 0 && (() => {
+                            const e = erpCell.get(`${it.key}|${sf}`);
+                            const d = Math.round(e === undefined ? 0 : c.amount - e);
+                            return (<>
+                              <td style={tdr}>{e === undefined ? <span style={{ color: 'var(--ink-4)' }}>—</span> : <>
+                                {won(e)}
+                                {!locked && d !== 0 && <button className="btn-sm" style={{ marginLeft: 4, padding: '0 5px' }} title="ERP 발생값으로 바꿉니다(상태 확정)"
+                                  onClick={() => void setCost({ ...c, amount: Math.round(e), state: '확정', source: erp[0]?.source ?? 'ERP 부서별원장(기장24팀)' })}>←</button>}
+                              </>}</td>
+                              <td style={{ ...tdr, color: d ? 'var(--bad)' : 'var(--ink-4)', fontWeight: d ? 700 : 400 }}>{e === undefined ? '' : won(d)}</td>
+                            </>);
+                          })()}
                           <td style={{ ...td, color: 'var(--ink-3)' }}>{c.source ?? ''}</td>
                           <td style={td}>{locked ? (c.memo ?? '') : <input defaultValue={c.memo ?? ''} key={`m${it.key}${sf}${c.memo}`} onBlur={(e) => { const v = e.target.value.trim() || null; if (v !== c.memo) void setCost({ ...c, memo: v }); }} style={{ width: 180, fontFamily: 'inherit', fontSize: 'var(--fs-1)', padding: '2px 4px', border: '1px solid var(--rule)', borderRadius: 3 }} />}</td>
                           {prev && <td style={{ ...tdr, color: 'var(--ink-3)' }}>{p ? won(p) : ''}</td>}
@@ -305,7 +321,9 @@ export default function BkSettleTab() {
                     });
                   })}
                   <tr style={{ background: 'var(--surface-3)', fontWeight: 700 }}>
-                    <td style={td} colSpan={2}>합계</td><td style={tdr}>{won(res?.costTotal ?? 0)}</td><td style={td} colSpan={3} />
+                    <td style={td} colSpan={2}>합계</td><td style={tdr}>{won(res?.costTotal ?? 0)}</td><td style={td} />
+                    {erp.length > 0 && <><td style={tdr}>{won(erpTotal)}</td><td style={{ ...tdr, color: 'var(--bad)' }}>{won((res?.costTotal ?? 0) - erpTotal)}</td></>}
+                    <td style={td} colSpan={2} />
                     {prev && <td style={tdr}>{won(prevRes?.costTotal ?? 0)}</td>}
                   </tr>
                 </tbody>
@@ -316,6 +334,51 @@ export default function BkSettleTab() {
                 지난해 칸에는 퇴사자 비용이 빠져 있습니다: {[...new Set(prev.costs.filter((c) => c.staff && !BK_STAFF.includes(c.staff)).map((c) => c.staff))].map((s) => `${s} ${won(prev.costs.filter((c) => c.staff === s).reduce((a, c) => a + c.amount, 0))}`).join(', ')} (합계에는 들어 있음).
               </div>
             )}
+            {!locked && (
+              <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files?.length) { const fs = [...e.dataTransfer.files]; void run(() => importErpCosts(b.settle.fy, fs, profileName)); } }}
+                style={{ display: 'block', border: '2px dashed #c9b98a', borderRadius: 8, background: '#fdfaf3', padding: '8px 14px', textAlign: 'center', cursor: 'pointer', marginTop: 10 }}>
+                <b style={{ color: 'var(--navy)' }}>{busy ? '읽는 중…' : `ERP 부서별원장(기장24팀, ${periodLabel(b.settle.fy)})을 끌어다 놓으면 실제 발생 비용이 「ERP 발생」 칸에 들어옵니다`}</b>
+                <div style={{ fontSize: 'var(--fs-1)', color: '#777', marginTop: 2 }}>달마다 받은 파일은 한꺼번에 놓으세요. 거래처 입금은 건드리지 않습니다(② 탭에 원장을 놓아도 함께 채워집니다). 결산 칸을 바꾸려면 줄마다 「←」.</div>
+                <input type="file" multiple accept=".xls,.xlsx" style={{ display: 'none' }} disabled={busy} onChange={(e) => { const fs = e.target.files ? [...e.target.files] : []; e.target.value = ''; if (fs.length) void run(() => importErpCosts(b.settle.fy, fs, profileName)); }} />
+              </label>
+            )}
+            {erp.length > 0 && (() => {
+              const groups = COST_ITEMS.map((it) => ({ item: it.key, rows: erp.filter((r) => erpCostItem(r.acct, r.sub) === it.key).sort((x, y) => x.acct.localeCompare(y.acct, 'ko') || x.sub.localeCompare(y.sub, 'ko') || x.staff.localeCompare(y.staff, 'ko')) })).filter((g) => g.rows.length);
+              return (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                    <b style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)' }}>ERP 발생 — 계정별</b>
+                    <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{erp[0]?.source} · 줄을 누르면 원장 줄이 펼쳐집니다</span>
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--fs-1)', minWidth: 640 }}>
+                      <thead><tr>{['항목', '계정', '소분류', '사원', '줄', '금액'].map((h) => <th key={h} style={{ ...th, textAlign: h === '금액' || h === '줄' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {groups.flatMap((g) => g.rows.flatMap((r, i) => {
+                          const k = `${r.acct}|${r.sub}|${r.staff}`;
+                          return [
+                            <tr key={k} onClick={() => setErpOpen(erpOpen === k ? null : k)} style={{ cursor: 'pointer', background: erpOpen === k ? 'var(--surface-3)' : undefined }}>
+                              <td style={{ ...td, borderTop: i ? 'none' : td.borderTop, fontWeight: 600 }}>{i === 0 ? `${g.item} · ${won(g.rows.reduce((s, x) => s + x.amount, 0))}` : ''}</td>
+                              <td style={td}>{r.acct}</td><td style={td}>{r.sub}</td><td style={td}>{r.staff || <span style={{ color: 'var(--ink-4)' }}>팀 공통</span>}</td>
+                              <td style={tdr}>{r.n}</td><td style={tdr}>{won(r.amount)}</td>
+                            </tr>,
+                            ...(erpOpen === k ? r.lines.map((l, j) => (
+                              <tr key={`${k}#${j}`} style={{ background: '#FAFAF7', color: 'var(--ink-2)' }}>
+                                <td style={td} /><td style={td} colSpan={4}>{l.slip} · {l.sum}</td><td style={tdr}>{won(l.amount)}</td>
+                              </tr>
+                            )) : []),
+                          ];
+                        }))}
+                        <tr style={{ background: 'var(--surface-3)', fontWeight: 700 }}><td style={td} colSpan={5}>합계</td><td style={tdr}>{won(erpTotal)}</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 6, lineHeight: 1.7 }}>
+                    8) 정우철/송현주 카드는 기장24팀 원장에 없습니다(경비귀속처리 「기장」에서 옴). 대손상각비는 비용이 아니라 ② 거래처 입금의 대손으로 셉니다.
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 

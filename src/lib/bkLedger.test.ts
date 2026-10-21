@@ -1,7 +1,8 @@
 // 기장배분 — 원장 모으기(선입선출로 입금 성격 정하기) 시험. 숫자는 2026-10-19 감사팀 원장의 모양을 줄여 만든 것.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateLedger, sumByCpa, type LedgerLine } from './bkLedger';
+import { aggregateCosts, aggregateLedger, sumByCpa, type LedgerLine } from './bkLedger';
+import { erpCostByCell } from './bkSettle';
 
 const L = (acct: string, slip: string, dr: number, cr: number, code = 'A', name = '가회사'): LedgerLine => ({ acct, slip, code, name, dr, cr });
 
@@ -59,4 +60,38 @@ test('미수금대장 — invoiceNo 는 원장 적요의 거래#, 감사 계약 
   ];
   const [c] = applyWriteoffs(aggregateArFlow(flow, '감사팀', () => '02183', new Map(), slipKindsByName(lines)), flow, writeoffsByName(lines));
   assert.deepEqual([c.cash_tax, c.cash_other, c.billed_tax, c.erp_cpa], [4400000, 5698000, 4000000, '조현규']);
+});
+
+test('기장팀 비용 — 비용 계정만, 4대보험·주민세 소분류, 팀 이름은 공통, 적요의 퇴사자 이름은 그 사람 몫, 기간 밖은 뺀다', () => {
+  const S = (acct: string, slip: string, dr: number, sum: string, staff: string, cr = 0): LedgerLine => ({ acct, slip, code: '', name: '', dr, cr, sum, staff });
+  const lines = [
+    S('직원급여', '25-0725-0001', 3800000, '', '정남지'),
+    S('상여금', '26-0625-0001', 3920000, '', '정남지'),
+    S('세금과공과금', '25-0725-0005', 132260, '건강보험(법인)', '정남지'),
+    S('세금과공과금', '25-0710-0227', 18000, '주민세종업원할', '정남지'),
+    S('세금과공과금', '25-0811-0010', 103410, '중도퇴사 안지연 건강보험 정산분', '정남지'),
+    S('세금과공과금', '25-0710-0227', 13100, '주민세종업원할', '안지연'),
+    S('지급임차료', '25-0731-0001', 690273, '', '기장24팀'),
+    S('지급수수료', '25-0731-0002', 122060, '퇴직연금수수료(운용&자산)', '정남지'),
+    S('소모품비', '26-0301-0001', 1970000, '품목:에스디정보기술_노트북구매 (거래#:26-0301-0009)', '김동주'),
+    S('대손상각비', '26-0630-0001', 3714000, '', ''),
+    S('외상매출금', '25-0725-0003', 0, '', '', 1000),
+    S('직원급여', '26-0725-0001', 4120000, '', '정남지'),   // 다음 해
+  ];
+  const { rows, outside } = aggregateCosts(lines, '2025-07-01', '2026-06-30');
+  assert.equal(outside, 1);
+  const get = (a: string, sub: string, st: string) => rows.find((r) => r.acct === a && r.sub === sub && r.staff === st)?.amount;
+  assert.equal(get('세금과공과금', '4대보험', '정남지'), 132260);
+  assert.equal(get('세금과공과금', '4대보험 정산', '안지연'), 103410);
+  assert.equal(get('세금과공과금', '주민세 종업원분', '정남지'), 18000);
+  assert.equal(get('지급임차료', '', ''), 690273);
+  assert.equal(rows.find((r) => r.sub === '자산(노트북 등)')?.lines[0].sum, '품목:에스디정보기술_노트북구매');
+  assert.ok(!rows.some((r) => r.acct === '대손상각비' || r.acct === '외상매출금'));
+  const cell = erpCostByCell(rows);
+  assert.equal(cell.get('1) 급여+상여|정남지'), 7720000);
+  assert.equal(cell.get('4) 복리후생비(4대보험)|안지연'), 103410);
+  assert.equal(cell.get('5) 임대료 등|'), 690273);
+  assert.equal(cell.get('6) 자산구입|'), 1970000);
+  assert.equal(cell.get('12) 퇴직연금수수료|'), 122060);
+  assert.equal(cell.get('9) 기타|'), 31100);
 });

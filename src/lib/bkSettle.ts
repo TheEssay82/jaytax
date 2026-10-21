@@ -118,3 +118,34 @@ export function rollCosts(prev: CostCell[]): CostCell[] {
   return prev.filter((c) => !c.staff || BK_STAFF.includes(c.staff))
     .map((c) => ({ ...c, state: '작년값' as const, source: '지난해 값', memo: null }));
 }
+
+// ── ERP 실제 발생분 → 비용 항목 ─────────────────────────────────────────────────
+// 결산 엑셀의 항목과 ERP 부서별원장(기장24팀) 계정을 잇는다(2026-10-21, FY2026 원장으로 대 봄 — 급여·퇴직급여·내일채움·퇴직연금수수료는 원 단위까지 같다).
+//   · 7) 카드·경비 = 복리후생비 · 여비교통비 · 통신비 · 도서인쇄비 · 소모품비 · 운반비 · 교육훈련비 — 엑셀 「법인개인카드지급(기장팀)」과 거의 같다.
+//   · 8) 정우철/송현주 카드는 기장24팀 원장에 없다(경비귀속처리 「기장」). 13) 현금시재도 원장에 없다.
+//   · 그 밖(주민세 종업원분 · 인지세 · 잡급 · CMS · 텍스넷 · 등기 · 감가상각비)은 9) 기타 — 엑셀에는 없는 돈이라 차이로 드러난다.
+export interface ErpCostRow { acct: string; sub: string; staff: string; amount: number; n: number; lines: { slip: string; sum: string; amount: number }[] }
+
+export function erpCostItem(acct: string, sub: string): string {
+  if (acct === '직원급여' || acct === '상여금') return '1) 급여+상여';
+  if (acct === '퇴직급여') return '3) 퇴직급여';
+  if (acct === '세금과공과금' && sub.startsWith('4대보험')) return '4) 복리후생비(4대보험)';
+  if (acct === '지급임차료') return '5) 임대료 등';
+  if (sub === '자산(노트북 등)') return '6) 자산구입';
+  if (sub === '내일채움공제') return '11) 내일채움공제';
+  if (sub === '퇴직연금수수료') return '12) 퇴직연금수수료';
+  if (/^(복리후생비|여비교통비|통신비|도서인쇄비|소모품비|운반비|교육훈련비)$/.test(acct)) return '7) 법인/개인카드(기장분)';
+  return '9) 기타';
+}
+
+/** 항목(직원별 항목은 직원까지)마다 ERP 발생 합계. 키 = `항목|직원`(직원 안 나누는 항목은 `항목|`). */
+export function erpCostByCell(rows: ErpCostRow[]): Map<string, number> {
+  const per = new Map(COST_ITEMS.map((it) => [it.key, it.perStaff]));
+  const m = new Map<string, number>();
+  for (const r of rows) {
+    const item = erpCostItem(r.acct, r.sub);
+    const k = `${item}|${per.get(item) ? r.staff : ''}`;
+    m.set(k, (m.get(k) ?? 0) + r.amount);
+  }
+  return m;
+}
