@@ -1,7 +1,7 @@
 // JET 2차 — 후보 전표 · 회신 읽기 · 신규 계정 시험.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCandidates, docsFor, parseReply, pickSummary, plainReason, recommendPicks } from './jeSample';
+import { buildCandidates, coverage, docsFor, parseReply, pickSummary, plainReason, recommendPicks } from './jeSample';
 import { runAll, defaultParams, scenNewAccounts, vouchers } from './jeChecks';
 import type { JeLine } from './jeParse';
 
@@ -64,4 +64,12 @@ test('질문 메모 기본 문장 — 작성일 · 담당자', async () => {
   const { defaultMemo } = await import('./jeExport');
   assert.match(defaultMemo({ preparedOn: '2026-02-26', contacts: [{ name: '김재무', dept: '재무팀장', phone: '', email: '' }] }), /^2026-02-26 회사의 재무보고 관여자\(김재무 재무팀장\)에게 .*240 문단 32 \(1\)/);
   assert.match(defaultMemo({ preparedOn: null, contacts: [] }), /^\(작성일\) .*\(재무 담당자\)/);
+});
+
+test('확인 현황 — 추출 전표 = REF + 회사 증빙 + 그 밖', () => {
+  const r = (code: string, rows: string[][]) => ({ code, status: '예외', rows } as unknown as import('./jeChecks').CheckResult);
+  const res = [r('B01', [['2025-12-31', '1'], ['2025-12-31', '2']]), r('B09', [['2025-12-31', '2'], ['2025-12-31', '3'], ['2025-12-31', '4']]), r('B10', [['2025-12-31', '9']])];
+  const P = (vno: string, selected: boolean, evidence: string | null) => ({ vdate: '2025-12-31', vno, selected, evidence, result: null });
+  const c = coverage(res, () => true, [P('1', false, '4100'), P('3', true, null)]);
+  assert.deepEqual({ total: c.total, ref: c.ref, sel: c.sel, left: c.left, by: c.leftBy }, { total: 4, ref: 1, sel: 1, left: 2, by: { B01: 1, B09: 2 } });
 });

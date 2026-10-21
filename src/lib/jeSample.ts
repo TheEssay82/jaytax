@@ -43,8 +43,34 @@ export const ALWAYS_ASK = ['B07', 'B14'];
  * 확인 방법은 둘이다 — 계정 조서에서 이미 본 전표는 REF(조서 번호)로, 나머지는 회사 증빙으로.
  * 회사 증빙을 받을 전표 = 금액 ≥ 기준(기본 B01 중요성 기준) 이거나 ALWAYS_ASK 시나리오에 걸린 전표, 단 REF 가 이미 적힌 전표는 뺀다.
  */
-export function recommendPicks<T extends { key: string; amount: number; scenarios: string[] }>(cands: T[], threshold: number, hasRef: (key: string) => boolean): T[] {
-  return cands.filter((c) => !hasRef(c.key) && ((threshold > 0 && c.amount >= threshold) || c.scenarios.some((s) => ALWAYS_ASK.includes(s))));
+export function recommendPicks<T extends { key: string; amount: number; scenarios: string[] }>(cands: T[], threshold: number, hasRef: (key: string) => boolean, always: string[] = ALWAYS_ASK): T[] {
+  return cands.filter((c) => !hasRef(c.key) && ((threshold > 0 && c.amount >= threshold) || c.scenarios.some((s) => always.includes(s))));
+}
+
+/** 계정 조서 REF 로 끝낸 전표 — ② 검토 B01 표에서 적은 줄(④ 선정 아님). */
+export const isRefDone = (p: { selected: boolean; evidence: string | null; result: string | null } | undefined) => !!p && !p.selected && !!(p.evidence || p.result);
+
+/**
+ * 확인 현황(사용자 2026-10-22 「권장만 고르면 되나」) — 켜 둔 시나리오가 추출한 전표 **전부**를
+ * REF(계정 조서) · 회사 증빙(④ 선정) · 남음으로 나눈다. 남은 전표는 더 고르거나 사유를 남겨야 한다.
+ */
+export function coverage(results: CheckResult[], performed: (r: CheckResult) => boolean, picks: { vdate: string; vno: string; selected: boolean; evidence: string | null; result: string | null }[]) {
+  const keys = new Map<string, string[]>();
+  for (const r of results) {
+    if (!(VOUCHER_SCENARIOS as readonly string[]).includes(r.code) || !performed(r) || r.status !== '예외') continue;
+    for (const row of r.rows) { const k = `${row[0]}|${row[1]}`; const a = keys.get(k) ?? []; if (!a.includes(r.code)) a.push(r.code); keys.set(k, a); }
+  }
+  const pm = new Map(picks.map((p) => [`${p.vdate}|${p.vno}`, p]));
+  let ref = 0, sel = 0;
+  const leftBy: Record<string, number> = {};
+  const left: string[] = [];
+  for (const [k, codes] of keys) {
+    const p = pm.get(k);
+    if (p?.selected) sel++;
+    else if (isRefDone(p)) ref++;
+    else { left.push(k); for (const c of codes) leftBy[c] = (leftBy[c] ?? 0) + 1; }
+  }
+  return { total: keys.size, ref, sel, left: left.length, leftKeys: new Set(left), leftBy };
 }
 
 export interface Candidate {

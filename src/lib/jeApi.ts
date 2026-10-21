@@ -19,7 +19,7 @@ export interface JeJob {
   relaxed: boolean;
   relaxedNote: string | null;
   bench: Bench;
-  params: JeParams & { matExclude: string[]; matSide: '양쪽' | '차변만' };
+  params: JeParams & { matExclude: string[]; matSide: '양쪽' | '차변만'; /** B09 도 금액 무관 권장 */ askB09: boolean; /** 확인 방법이 없는 추출 전표의 처리 사유 */ leftNote: string };
   scenarios: Partial<Record<ScenarioCode, ScenarioState>>;
   contacts: Contact[];
   preparer: string | null; reviewer: string | null; preparedOn: string | null; reviewedOn: string | null;
@@ -53,6 +53,8 @@ function toJob(r: Record<string, unknown>): JeJob {
       ...(Array.isArray(p.holidays) ? { holidays: p.holidays as string[] } : {}),
       matExclude: Array.isArray(p.matExclude) ? (p.matExclude as string[]) : [],
       matSide: p.matSide === '차변만' ? '차변만' : '양쪽',
+      askB09: p.askB09 === true,
+      leftNote: typeof p.leftNote === 'string' ? p.leftNote : '',
     },
     scenarios: { ...defaultScenarios(), ...((r.scenarios ?? {}) as JeJob['scenarios']) },
     contacts: (r.contacts as Contact[]) ?? [],
@@ -88,13 +90,13 @@ export async function ensureJob(eng: { id: string; entityId: string; fy: number;
   const prev = pid ? await loadJob(pid) : null;
   const row: Record<string, unknown> = { engagement_id: eng.id, scenarios: defaultScenarios(), updated_name: byName };
   if (prev) {
-    const { matExclude, matSide, ...rest } = prev.params;
+    const { matExclude, matSide, leftNote: _left, ...rest } = prev.params; void _left;
     Object.assign(row, {
       erp: prev.erp, listed: prev.listed, relaxed: prev.relaxed, relaxed_note: prev.relaxedNote,
       params: { ...rest, matExclude, matSide, benchName: prev.bench.name, benchAmount: 0, benchRate: prev.bench.rate, benchReason: prev.bench.reason },
       scenarios: Object.fromEntries(Object.entries(prev.scenarios).map(([k, v]) => [k, { on: !!v?.on, ...(v?.reason ? { reason: v.reason } : {}) }])),
       contacts: prev.contacts, preparer: prev.preparer, reviewer: prev.reviewer,
-      memo: `FY${eng.fy - 1} JET 설정을 이어받음`,
+      memo: null,
     });
   }
   const { data, error } = await supabase.from('je_job').insert(row).select('*').single();

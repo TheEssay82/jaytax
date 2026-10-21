@@ -20,7 +20,7 @@ import {
   type JeJob, type JeUpload, type JePick,
 } from '../../lib/jeApi';
 import { exportJeWorkbook, exportListWorkbook, exportRequestWorkbook, memoOf, performed } from '../../lib/jeExport';
-import { ALWAYS_ASK, buildCandidates, docsFor, parseReply, pickSummary, plainReason, recommendPicks, VOUCHER_SCENARIOS } from '../../lib/jeSample';
+import { ALWAYS_ASK, buildCandidates, coverage, isRefDone, docsFor, parseReply, pickSummary, plainReason, recommendPicks, VOUCHER_SCENARIOS } from '../../lib/jeSample';
 import { exportBalanceTemplate } from '../../lib/jeTemplate';
 
 const won = (n: number) => Math.round(n).toLocaleString();
@@ -221,7 +221,7 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
         onTemplate={() => void exportBalanceTemplate(eng.entityName, eng.fy, lines, balances)} onFromWtb={() => void onFromWtb()} />}
       {step === 'check' && (lines.length ? <CheckStep job={job} results={results} lines={lines} picks={picks} canWrite={canWrite} patchJob={patchJob}
         onPick={async (p) => { setPicks((ps) => [...ps.filter((x) => !(x.vdate === p.vdate && x.vno === p.vno)), p]); try { await savePick(eng.id, p, profileName); } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } }} /> : <div className="card"><Empty text="분개장을 먼저 올려 주세요" hint="① 기본정보 · 자료에서 올립니다." /></div>)}
-      {step === 'sample' && (lines.length ? <SampleStep eng={eng} job={job} results={results} lines={lines} picks={picks} canWrite={canWrite}
+      {step === 'sample' && (lines.length ? <SampleStep eng={eng} job={job} results={results} lines={lines} picks={picks} canWrite={canWrite} patchJob={patchJob}
         onSave={async (ps) => { setPicks((cur) => { const m = new Map(cur.map((p) => [`${p.vdate}|${p.vno}`, p])); for (const p of ps) m.set(`${p.vdate}|${p.vno}`, p); return [...m.values()]; }); try { await savePicks(eng.id, ps, profileName); } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } }}
         flash={flash} setErr={setErr} /> : <div className="card"><Empty text="분개장을 먼저 올려 주세요" /></div>)}
       {step === 'gap' && <GapStep eng={eng} job={job} results={results} hasBal={!!balances?.length} hasJournal={!!journal} canWrite={canWrite} patchJob={patchJob} />}
@@ -587,23 +587,25 @@ const StepHead = ({ n, title, hint }: { n: string; title: string; hint: string }
   </div>
 );
 
-function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, setErr }: {
-  eng: Engagement; job: JeJob; results: CheckResult[]; lines: JeLine[]; picks: JePick[]; canWrite: boolean;
+function SampleStep({ eng, job, results, lines, picks, canWrite, patchJob, onSave, flash, setErr }: {
+  eng: Engagement; job: JeJob; results: CheckResult[]; lines: JeLine[]; picks: JePick[]; canWrite: boolean; patchJob: (p: Partial<JeJob>) => Promise<void>;
   onSave: (ps: JePick[]) => Promise<void>; flash: (m: string) => void; setErr: (m: string | null) => void;
 }) {
   const { profileName } = useAuth();
   const cands = useMemo(() => buildCandidates(results, lines, (r) => performed(job, r)), [results, lines, job]);
   const pmap = useMemo(() => new Map(picks.map((p) => [`${p.vdate}|${p.vno}`, p])), [picks]);
   const thr = benchThreshold(job.bench);
-  const [f, setF] = useState<{ scen: string; min: number; q: string; topN: number }>({ scen: '', min: 0, q: '', topN: 20 });
+  const [f, setF] = useState<{ scen: string; min: number; q: string; topN: number; left: boolean }>({ scen: '', min: 0, q: '', topN: 20, left: false });
   // ② 검토 B01 표에서 계정 조서 REF · 결과로 이미 끝낸 전표 — 회사 증빙을 또 받지 않는다.
-  const hasRef = (k: string) => { const p = pmap.get(k); return !!p && !p.selected && !!(p.evidence || p.result); };
-  const rec = useMemo(() => recommendPicks(cands, thr, hasRef), [cands, thr, pmap]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hasRef = (k: string) => isRefDone(pmap.get(k));
+  const always = job.params.askB09 ? [...ALWAYS_ASK, 'B09'] : ALWAYS_ASK;
+  const rec = useMemo(() => recommendPicks(cands, thr, hasRef, always), [cands, thr, pmap, job.params.askB09]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cov = useMemo(() => coverage(results, (r) => performed(job, r), picks), [results, job, picks]);
   const recNew = rec.filter((c) => !pmap.get(c.key)?.selected);
   const refN = cands.filter((c) => hasRef(c.key)).length;
   const [stateF, setStateF] = useState<PickState | ''>('');
   const titleOf = (c: string) => results.find((r) => r.code === c)?.title ?? c;
-  const shown = cands.filter((c) => (!f.scen || c.scenarios.includes(f.scen)) && (!f.min || c.amount >= f.min) && (!f.q || `${c.mainAcct} ${c.memo} ${c.cpName} ${c.no}`.includes(f.q)));
+  const shown = cands.filter((c) => (!f.left || cov.leftKeys.has(c.key)) && (!f.scen || c.scenarios.includes(f.scen)) && (!f.min || c.amount >= f.min) && (!f.q || `${c.mainAcct} ${c.memo} ${c.cpName} ${c.no}`.includes(f.q)));
   const asPick = (c: (typeof cands)[number], selected: boolean): JePick => {
     const cur = pmap.get(c.key);
     return {
@@ -676,14 +678,33 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
       <div style={{ fontSize: 'var(--fs-2)', lineHeight: 1.75, marginTop: 4 }}>
         <div>원칙: 켜 둔 시나리오가 뽑은 전표는 <b>모두 확인</b>합니다. 확인 방법은 두 가지입니다.</div>
         <div>① <b>계정 조서에서 이미 본 전표</b> — ② 검토의 B01 표 「검토(REF 조서)」 칸에 조서 번호(예: 4100 매출)와 결과를 적으면 끝입니다. 회사 증빙을 따로 받지 않습니다. {refN > 0 && <span style={{ color: 'var(--ink-3)' }}>(지금 {refN}장)</span>}</div>
-        <div>② <b>나머지는 여기서 회사 증빙으로</b> — 권장 기준: 금액이 <b>중요성 기준 {won(thr)}원 이상</b>인 전표 + 금액과 상관없이 <b>{ALWAYS_ASK.map((c) => `${c} ${titleOf(c)}`).join(' · ')}</b>에 걸린 전표 전부(성격 자체가 위험 신호). 기준 아래 B09 결산조정 등은 계정 조서에서 보거나, 필요하면 직접 더 고릅니다.</div>
+        <div>② <b>나머지는 여기서 회사 증빙으로</b> — 권장 기준: 금액이 <b>중요성 기준 {won(thr)}원 이상</b>인 전표 + 금액과 상관없이 <b>{ALWAYS_ASK.map((c) => `${c} ${titleOf(c)}`).join(' · ')}</b>에 걸린 전표 전부(성격 자체가 위험 신호){job.params.askB09 ? ' + B09 결산조정 전부' : ''}.</div>
+        <div>③ <b>권장 대상만 고르면 끝이 아닙니다</b> — 권장에서 빠진 전표(특히 B09 결산조정: 감사기준 240 문단 32 (1)(나)가 기말 분개 검사를 직접 요구)는 ① REF 로 끝내거나, 여기서 더 고르거나, 아래 「그 밖 전표 처리 사유」를 남깁니다.</div>
         <div style={{ color: 'var(--ink-3)' }}>표본 수를 줄이고 싶으면 「금액 ≥」를 높이거나 상위 N장만 고르되, 줄인 이유를 C01 비고나 ③ 메모에 남깁니다.</div>
       </div>
       {canWrite && <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, fontSize: 'var(--fs-1)' }}>
+        <label title="결산조정 분개가 적거나 계정 조서에서 보지 않는 회사"><input type="checkbox" checked={job.params.askB09} onChange={(e) => void patchJob({ params: { ...job.params, askB09: e.target.checked } })} /> B09 도 금액과 상관없이 권장에 넣기</label>
         <button className="btn-sm btn-sm-navy" disabled={!recNew.length} onClick={() => add(recNew)}>권장 기준으로 고르기{recNew.length ? ` (${recNew.length}장 더)` : ''}</button>
         {!recNew.length && <span style={{ color: '#B45309' }}>{rec.length ? '권장 대상은 이미 모두 골랐습니다.' : `권장 기준에 걸리는 전표가 없습니다 — 중요성 ${won(thr)}원 이상 전표도, ${ALWAYS_ASK.join(' · ')} 추출도 없음. 필요하면 아래에서 직접 고릅니다.`}</span>}
-        <span style={{ color: 'var(--ink-3)' }}>권장 대상 {rec.length}장 = 금액 기준 {rec.filter((c) => c.amount >= thr).length} + {ALWAYS_ASK.join(' · ')} {rec.filter((c) => c.amount < thr).length}{refN ? ` · REF 로 끝낸 ${refN}장 제외` : ''}</span>
+        <span style={{ color: 'var(--ink-3)' }}>권장 대상 {rec.length}장 = 금액 기준 {rec.filter((c) => c.amount >= thr).length} + {always.join(' · ')} {rec.filter((c) => c.amount < thr).length}{refN ? ` · REF 로 끝낸 ${refN}장 제외` : ''}</span>
       </div>}
+    </div>
+
+    <div className="card" style={{ borderColor: cov.left ? '#FCD34D' : '#86EFAC' }}>
+      <b style={{ color: 'var(--navy)' }}>추출 전표 확인 현황</b> <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>켜 둔 시나리오가 뽑은 전표 전부가 어떻게 확인되는지 — 조서 총괄에 그대로 들어갑니다.</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, marginTop: 6, fontSize: 'var(--fs-1)' }}>
+        {([['추출 전표', cov.total, 'var(--rule)'], ['계정 조서 REF', cov.ref, '#86EFAC'], ['회사 증빙(선정)', cov.sel, '#93C5FD'], ['그 밖(확인 방법 없음)', cov.left, cov.left ? '#FCD34D' : '#86EFAC']] as [string, number, string][]).map(([k, v, c]) => (
+          <div key={k} style={{ ...box, borderColor: c }}><div style={{ color: 'var(--ink-3)' }}>{k}</div><b style={{ fontSize: 'var(--fs-3)' }}>{v.toLocaleString()}장</b></div>
+        ))}
+      </div>
+      {cov.left > 0 ? <>
+        <Todo>{`그 밖 ${cov.left}장(${Object.entries(cov.leftBy).map(([c, n]) => `${c} ${n}`).join(' · ')}) — ② 검토에서 REF 를 적거나, 아래 1단계에서 고르거나, 처리 사유를 남기세요.`}</Todo>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 'var(--fs-1)' }}>
+          <button className={f.left ? 'btn-sm btn-sm-navy' : 'btn-sm'} onClick={() => setF({ ...f, left: !f.left })}>{f.left ? '✓ ' : ''}그 밖 전표만 보기</button>
+        </div>
+        <textarea defaultValue={job.params.leftNote} key={job.params.leftNote} disabled={!canWrite} onBlur={(e) => { if (e.target.value !== job.params.leftNote) void patchJob({ params: { ...job.params, leftNote: e.target.value } }); }} rows={2}
+          placeholder="그 밖 전표 처리 사유 — 예: B09 결산조정 분개는 감가상각 · 충당금 · 미지급비용 등 각 계정 조서(4100 · 5200 …)에서 계산 근거로 재계산하여 확인함" style={{ ...inp, width: '100%', marginTop: 6 }} />
+      </> : cov.total > 0 && <div style={{ fontSize: 'var(--fs-1)', color: '#15803D', marginTop: 4 }}>추출 전표가 모두 REF 또는 회사 증빙으로 확인 대상에 들어 있습니다.</div>}
     </div>
 
     <div className="card">

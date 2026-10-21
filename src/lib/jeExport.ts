@@ -10,7 +10,7 @@ import { FONT, FONT_BOLD, FILL_HEADER, FILL_INPUT, BORDER_ALL, saveWorkbook } fr
 import { SCENARIOS, benchThreshold, type CheckResult } from './jeChecks';
 import type { JeJob, JeUpload, JePick } from './jeApi';
 import type { JeLine } from './jeParse';
-import { pickSummary, plainReason } from './jeSample';
+import { coverage, pickSummary, plainReason } from './jeSample';
 
 /** ③ 질문 · 종합 메모의 기본 문장(감사기준 240 문단 32 (1)). 날짜는 작성일, 상대는 회사 담당자 첫 줄. */
 export function defaultMemo(job: Pick<JeJob, 'preparedOn' | 'contacts'>): string {
@@ -267,6 +267,13 @@ function writeSummary(wb: Workbook, inp: ExportInput) {
     put(ws, `B${row}`, '선정 전표 검토', { bold: true }); row++;
     if (byRef.length) { put(ws, `C${row}`, `계정 조서에서 확인(REF) ${byRef.length}줄 — 이상없음 ${byRef.filter((p) => p.result === '이상없음').length} · 예외 ${byRef.filter((p) => p.result === '예외').length} (각 시나리오 시트 REF 칸 참조)`); row++; }
     if (ps.total) { put(ws, `C${row}`, `회사 증빙 확인 ${ps.total}장 — 이상없음 ${ps.ok} · 예외 ${ps.exc} · 미완료 ${ps.pending} (C01_선정전표검토 참조)`); row++; }
+    row++;
+  }
+  const cov = coverage(inp.results, (r) => performed(job, r), inp.picks);
+  if (cov.total) {
+    put(ws, `B${row}`, '추출 전표 확인 현황', { bold: true }); row++;
+    put(ws, `C${row}`, `선택 시나리오가 추출한 전표 ${cov.total}장 = 계정 조서 REF ${cov.ref}장 + 회사 증빙 ${cov.sel}장 + 그 밖 ${cov.left}장`); row++;
+    if (cov.left) { put(ws, `C${row}`, `그 밖 ${cov.left}장(${Object.entries(cov.leftBy).map(([c, n]) => `${c} ${n}`).join(' · ')}) 처리: ${job.params.leftNote?.trim() || '(사유 미기재 — ④ 화면에서 적어 주십시오)'}`); row++; }
     row++;
   }
   put(ws, `B${row}`, '결론', { bold: true }); row++;
