@@ -1,0 +1,448 @@
+// 감사업무관리 › 🔍 Journal Entry 시스템(JET) — 1차(사용자 2026-10-21).
+//
+// ① 기본정보 · 자료(분개장 · 잔액표 올리기, 판이 쌓여 재요청 경과가 남는다) → ② 검토(필수 A01~A04 + 선택 B01~, 켜고 끄기 · 기준값 · 결론)
+// → ③ 보완할 점(회사에 다시 요청할 것 · 미수행 사유 · 완화절차 · 질문서) → 조서 엑셀(audit tool 업로드용).
+// 2차: ④ 샘플링 증빙요청 · ⑤ 결과 입력(je_pick 칸은 이미 있다 — 1차는 B01 줄마다 REF · 결과 · 비고만).
+// 분개장 줄은 DB(감사팀만 읽음). 검사는 브라우저에서 돈다(6만 줄도 0.2초).
+import { useEffect, useMemo, useState } from 'react';
+import Empty from '../common/Empty';
+import MoneyInput from '../common/MoneyInput';
+import { useAuth } from '../../context/AuthContext';
+import { listEngagements, type Engagement } from '../../lib/dsdApi';
+import { takePickedEngagement } from '../gwp/WtbTab';
+import { parentCode, type JeLine } from '../../lib/jeParse';
+import {
+  NEEDS_USER_DATA, runAll, guessSide, balancesFromTb, salesTotal, benchThreshold, isBsCode,
+  type BsBalance, type CheckResult, type ScenarioCode,
+} from '../../lib/jeChecks';
+import {
+  ensureJob, saveJob, listUploads, uploadJournal, uploadBalances, saveBalances, loadLines, loadTb, listPicks, savePick, jobSummaries,
+  type JeJob, type JeUpload, type JePick,
+} from '../../lib/jeApi';
+import { exportJeWorkbook, performed } from '../../lib/jeExport';
+import { exportBalanceTemplate } from '../../lib/jeTemplate';
+
+const won = (n: number) => Math.round(n).toLocaleString();
+const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
+  통과: { bg: '#DCFCE7', fg: '#166534' }, 예외: { bg: '#FEF3C7', fg: '#92400E' }, 자료없음: { bg: '#F3F4F6', fg: '#6B7280' }, 미수행: { bg: '#F3F4F6', fg: '#6B7280' },
+};
+type Step = 'data' | 'check' | 'gap' | 'sample';
+const STEP_KEY = 'jaytax:jeStep';
+
+export default function JeTab() {
+  const { readonly, sandbox, role } = useAuth();
+  const canWrite = !readonly && (role === 'superuser' || role === 'accountant' || role === 'per_head_accountant');
+  const [engs, setEngs] = useState<Engagement[]>([]);
+  const [sum, setSum] = useState<Map<string, { journal: boolean; tb: boolean }>>(new Map());
+  const [fyAt, setFyAt] = useState<number | null>(null);
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const [listOpen, setListOpen] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [list, s] = await Promise.all([listEngagements(), jobSummaries()]);
+        const real = list.filter((e) => !e.isDemo || sandbox);
+        setEngs(real); setSum(s);
+        const want = takePickedEngagement();
+        if (want && real.some((e) => e.id === want)) { setPickedId(want); setListOpen(false); }
+      } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); } finally { setLoading(false); }
+    })();
+  }, []);
+
+  const years = useMemo(() => [...new Set(engs.map((e) => e.fy))].sort((a, b) => b - a), [engs]);
+  const fy = fyAt ?? years[0];
+  const inYear = useMemo(() => engs.filter((e) => e.fy === fy).sort((a, b) => a.entityName.localeCompare(b.entityName, 'ko')), [engs, fy]);
+  const picked = engs.find((e) => e.id === pickedId) ?? null;
+  if (loading) return <div className="card">불러오는 중…</div>;
+  const shown = picked && !listOpen ? inYear.filter((e) => e.id === picked.id) : inYear;
+
+  return (
+    <div>
+      <div className="card">
+        <div className="chdr">🔍 Journal Entry 시스템
+          <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>{picked ? `${picked.entityName} · FY${picked.fy} ${picked.scope}` : '회사를 고르세요'}</span>
+        </div>
+        <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
+          회사 분개장(더존 · 영림원)을 올리면 <b>필수 검증</b>(유효성 · 필수필드 · 차대 · <b>기초잔액 대사</b>)과 <b>중요성 기준 이상 손익 분개</b> 등 시나리오를 돌리고,
+          회사에 다시 요청할 것을 정리해 <b>조서 엑셀</b>(표지 · 총괄 · 시나리오별 시트)로 내려받습니다. 근거: 인덕 JE Test 가이드라인 · 감사기준 240 문단 32.
+        </div>
+      </div>
+      {err && <div className="card" style={{ color: 'var(--bad)', background: 'var(--bad-bg)' }}>{err}</div>}
+      <div className="card" style={{ padding: '10px 12px 12px' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 9 }}>
+          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>사업연도</span>
+          {years.map((y) => (
+            <button key={y} onClick={() => { setFyAt(y); setListOpen(true); }} style={{ cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--fs-1)', border: `1px solid ${y === fy ? 'var(--navy)' : 'var(--rule)'}`, background: y === fy ? 'var(--navy)' : '#fff', color: y === fy ? '#fff' : 'var(--ink-2)', fontWeight: y === fy ? 700 : 400, borderRadius: 999, padding: '3px 11px' }}>
+              FY{y}<span style={{ opacity: 0.7, marginLeft: 6, fontWeight: 400 }}>· {engs.filter((e) => e.fy === y).length}건</span>
+            </button>
+          ))}
+          {picked && <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setListOpen(!listOpen)}>{listOpen ? '목록 접기 ▲' : `다른 회사 고르기 ▼ (${inYear.length - 1})`}</button>}
+        </div>
+        {inYear.length === 0 ? <Empty text="작업 건이 없습니다" hint="일반조서 관리 또는 주석·DSD 관리의 「새 건 만들기」로 만듭니다." /> : (
+          <div style={{ border: '1px solid var(--rule)', borderRadius: 'var(--r-sm)', overflow: 'hidden' }}>
+            {shown.map((e, i) => {
+              const s = sum.get(e.id), on = e.id === pickedId;
+              return (
+                <button key={e.id} onClick={() => { setPickedId(e.id); setListOpen(false); }} style={{ display: 'grid', gridTemplateColumns: '6px minmax(0, 1fr) auto auto', gap: 10, alignItems: 'center', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', border: 0, borderTop: i ? '1px solid var(--rule)' : 0, background: on ? 'var(--navy-bg)' : '#fff', padding: '7px 10px 7px 0' }}>
+                  <span style={{ alignSelf: 'stretch', background: s?.journal && s?.tb ? '#12A38A' : s?.journal ? '#D97706' : '#D1D5DB' }} />
+                  <span style={{ minWidth: 0 }}><span style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: 'var(--navy)' }}>{e.entityName}</span><span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginLeft: 8 }}>{e.scope}</span></span>
+                  <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{s?.journal ? `분개장 ✓${s.tb ? ' · 잔액표 ✓' : ''}` : '자료 없음'}</span>
+                  <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>{on ? '●' : '›'}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {picked ? <Workspace key={picked.id} eng={picked} canWrite={canWrite && (!sandbox || picked.isDemo)} onChanged={() => void jobSummaries().then(setSum)} /> : <div className="card"><Empty text="위에서 회사를 고르세요." /></div>}
+    </div>
+  );
+}
+
+// ── 한 회사의 JET ───────────────────────────────────────────────────────────
+
+function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: boolean; onChanged: () => void }) {
+  const { profileName } = useAuth();
+  const from = eng.periodFrom ?? `${eng.fy}-01-01`, to = eng.periodTo ?? `${eng.fy}-12-31`;
+  const [job, setJob] = useState<JeJob | null>(null);
+  const [uploads, setUploads] = useState<JeUpload[]>([]);
+  const [lines, setLines] = useState<JeLine[]>([]);
+  const [ledgerTb, setLedgerTb] = useState<Awaited<ReturnType<typeof loadTb>>>([]);
+  const [bal, setBal] = useState<BsBalance[] | null>(null);
+  const [picks, setPicks] = useState<JePick[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [step, setStepState] = useState<Step>(() => { try { const v = localStorage.getItem(STEP_KEY); if (v === 'data' || v === 'check' || v === 'gap') return v; } catch { /* 저장소 없음 */ } return 'data'; });
+  const setStep = (s: Step) => { setStepState(s); try { localStorage.setItem(STEP_KEY, s); } catch { /* 저장소 없음 */ } };
+  const flash = (m: string) => { setMsg(m); setTimeout(() => setMsg(null), 8000); };
+
+  async function reload() {
+    setErr(null);
+    try {
+      const j = await ensureJob(eng.id, profileName);
+      const ups = await listUploads(eng.id);
+      setJob(j); setUploads(ups); setPicks(await listPicks(eng.id));
+      const jr = ups.find((u) => u.kind === 'journal' && u.current), tb = ups.find((u) => u.kind === 'tb' && u.current);
+      if (jr) {
+        setBusy('분개장을 불러오는 중…');
+        const [ls, lt] = await Promise.all([loadLines(jr.id, (n) => setBusy(`분개장을 불러오는 중… ${n.toLocaleString()}줄`)), loadTb(jr.id)]);
+        setLines(ls); setLedgerTb(lt);
+      } else { setLines([]); setLedgerTb([]); }
+      if (tb) { const t = await loadTb(tb.id); setBal(t.map((r) => ({ acctCode: r.acctCode, acctName: r.acctName, open: r.open, close: r.close, group: r.group, side: r.side }))); }
+      else setBal(null);
+    } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); } finally { setBusy(null); }
+  }
+  useEffect(() => { void reload(); }, [eng.id]);
+
+  const codes = useMemo(() => new Set((bal?.length ? bal : ledgerTb).map((r) => r.acctCode).filter(Boolean)), [bal, ledgerTb]);
+  const codeOf = useMemo(() => (c: string) => parentCode(c, codes), [codes]);
+  const balances = useMemo<BsBalance[] | null>(() => (bal?.length ? bal : ledgerTb.length ? balancesFromTb(ledgerTb) : null), [bal, ledgerTb]);
+  const results = useMemo<CheckResult[]>(() => (job && lines.length ? runAll({ lines, balances, coa: codes.size ? codes : null, from, to, bench: job.bench, params: job.params, codeOf }) : []), [job, lines, balances, codes, codeOf, from, to]);
+
+  async function patchJob(p: Partial<JeJob>) {
+    if (!job) return;
+    const next = { ...job, ...p };
+    setJob(next);
+    try { await saveJob(next, profileName); } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); }
+  }
+  async function onJournal(f: File) {
+    const note = uploads.some((u) => u.kind === 'journal') ? window.prompt('다시 받은 분개장입니다. 재요청 사유를 적어 주세요(조서 1_데이터유효성에 남습니다).', '1차 자료 보완 요청') : null;
+    setBusy('분개장을 읽는 중…'); setErr(null);
+    try {
+      const r = await uploadJournal(eng.id, f, note, profileName, (m) => setBusy(m));
+      flash(`${r.erp} 분개장 ${r.upload.lines.toLocaleString()}줄 · 전표 ${r.upload.vouchers.toLocaleString()}장(${r.upload.dateFrom} ~ ${r.upload.dateTo})을 ${r.upload.version}차로 저장했습니다${r.upload.masked ? ` — 주민번호 꼴 ${r.upload.masked}칸을 지웠습니다` : ''}.`);
+      onChanged(); await reload();
+    } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); setBusy(null); }
+  }
+  async function onBalances(f: File) {
+    setBusy('잔액표를 읽는 중…'); setErr(null);
+    try { const n = await uploadBalances(eng.id, f, null, profileName); flash(`잔액표 ${n}줄을 저장했습니다.`); onChanged(); await reload(); }
+    catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); setBusy(null); }
+  }
+  async function onExport() {
+    if (!job) return;
+    try {
+      const f = ['전표일자', '전표번호', ...(job.erp === '더존' ? ['구분'] : ['결의일자', '결의번호']), '계정코드', '계정과목', '차변', '대변', ...(job.erp === '영림원' ? ['거래처코드'] : []), '거래처', '적요'];
+      await exportJeWorkbook({ companyName: eng.entityName, fy: eng.fy, periodFrom: from, periodTo: to, job, results, uploads, picks, fields: f });
+    } catch (e) { setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'); }
+  }
+
+  if (!job) return <div className="card">{busy ?? '불러오는 중…'}{err && <div style={{ color: 'var(--bad)' }}>{err}</div>}</div>;
+  const journal = uploads.find((u) => u.kind === 'journal' && u.current);
+  const chip = (on: boolean) => ({ cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--fs-2)', fontWeight: on ? 700 : 500, padding: '7px 16px', border: '1px solid var(--rule)', borderBottom: 'none', borderRadius: '6px 6px 0 0', background: on ? 'var(--navy)' : '#fff', color: on ? '#fff' : 'var(--ink-2)' } as const);
+  const exc = results.filter((r) => performed(job, r) && r.status === '예외').length;
+
+  return (
+    <div>
+      {err && <div className="alert-w">{err}</div>}
+      {msg && <div className="card" style={{ color: 'var(--good)', padding: '8px 14px' }}>{msg}</div>}
+      {busy && <div className="card" style={{ padding: '8px 14px', color: 'var(--ink-2)' }}>⏳ {busy}</div>}
+      <div style={{ display: 'flex', gap: 2, borderBottom: '2px solid var(--navy)', margin: '0 0 10px', alignItems: 'flex-end' }}>
+        {([['data', '① 기본정보 · 자료'], ['check', `② 검토${results.length ? ` (예외 ${exc})` : ''}`], ['gap', '③ 보완할 점'], ['sample', '④ 증빙요청 · 결과(2차)']] as [Step, string][]).map(([k, l]) => (
+          <button key={k} style={{ ...chip(step === k), opacity: k === 'sample' ? 0.5 : 1 }} disabled={k === 'sample'} onClick={() => setStep(k)}>{l}</button>
+        ))}
+        <button className="btn-sm btn-sm-navy" style={{ marginLeft: 'auto', marginBottom: 4 }} disabled={!results.length} onClick={() => void onExport()} title="표지 · 총괄 · 시나리오별 시트 — audit tool 업로드용">📥 조서 엑셀</button>
+      </div>
+
+      {step === 'data' && <DataStep eng={eng} job={job} uploads={uploads} journal={journal ?? null} lines={lines} balances={balances} fromLedger={!bal?.length && !!ledgerTb.length}
+        canWrite={canWrite} busy={!!busy} onJournal={onJournal} onBalances={onBalances} patchJob={patchJob}
+        onSaveBal={async (rows) => { setBusy('잔액표 저장 중…'); try { await saveBalances(eng.id, rows, '화면에서 고침', '묶음 · 방향 수정', profileName); flash('잔액표를 새 판으로 저장했습니다.'); await reload(); } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); setBusy(null); } }}
+        onTemplate={() => void exportBalanceTemplate(eng.entityName, eng.fy, lines, balances)} />}
+      {step === 'check' && (lines.length ? <CheckStep job={job} results={results} lines={lines} picks={picks} canWrite={canWrite} patchJob={patchJob}
+        onPick={async (p) => { setPicks((ps) => [...ps.filter((x) => !(x.vdate === p.vdate && x.vno === p.vno)), p]); try { await savePick(eng.id, p, profileName); } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } }} /> : <div className="card"><Empty text="분개장을 먼저 올려 주세요" hint="① 기본정보 · 자료에서 올립니다." /></div>)}
+      {step === 'gap' && <GapStep eng={eng} job={job} results={results} hasBal={!!balances?.length} hasJournal={!!journal} canWrite={canWrite} patchJob={patchJob} />}
+    </div>
+  );
+}
+
+// ── ① 기본정보 · 자료 ──────────────────────────────────────────────────────
+
+function Drop({ label, hint, onFile, disabled }: { label: string; hint: string; onFile: (f: File) => void; disabled?: boolean }) {
+  return (
+    <label onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f && !disabled) onFile(f); }}
+      style={{ display: 'block', border: '2px dashed #c9b98a', borderRadius: 8, background: '#fdfaf3', padding: '10px 14px', textAlign: 'center', cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.6 : 1 }}>
+      <b style={{ color: 'var(--navy)' }}>{label}</b>
+      <div style={{ fontSize: 'var(--fs-1)', color: '#777', marginTop: 2 }}>{hint}</div>
+      <input type="file" accept=".xls,.xlsx" style={{ display: 'none' }} disabled={disabled} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); }} />
+    </label>
+  );
+}
+
+const inp = { fontFamily: 'inherit', fontSize: 'var(--fs-1)', padding: '3px 6px', border: '1px solid var(--rule)', borderRadius: 4 } as const;
+const th = { padding: '5px 8px', textAlign: 'left' as const, whiteSpace: 'nowrap' as const, fontWeight: 600, background: 'var(--surface-3)', borderBottom: '1px solid var(--rule)', position: 'sticky' as const, top: 0 };
+const td = { padding: '4px 8px', borderTop: '1px solid var(--rule)', verticalAlign: 'middle' as const };
+const tdr = { ...td, textAlign: 'right' as const, whiteSpace: 'nowrap' as const };
+
+function DataStep({ job, uploads, journal, lines, balances, fromLedger, canWrite, busy, onJournal, onBalances, patchJob, onSaveBal, onTemplate }: {
+  eng: Engagement; job: JeJob; uploads: JeUpload[]; journal: JeUpload | null; lines: JeLine[]; balances: BsBalance[] | null; fromLedger: boolean;
+  canWrite: boolean; busy: boolean; onJournal: (f: File) => void; onBalances: (f: File) => void; patchJob: (p: Partial<JeJob>) => Promise<void>;
+  onSaveBal: (rows: BsBalance[]) => Promise<void>; onTemplate: () => void;
+}) {
+  const [edit, setEdit] = useState<BsBalance[] | null>(null);
+  const rows = edit ?? balances ?? [];
+  return (<>
+    <div className="card">
+      <b style={{ color: 'var(--navy)' }}>기본정보</b>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 10, marginTop: 8, fontSize: 'var(--fs-1)' }}>
+        <label>ERP <select value={job.erp} disabled={!canWrite} onChange={(e) => void patchJob({ erp: e.target.value as JeJob['erp'] })} style={inp}><option>더존</option><option>영림원</option></select> <span style={{ color: 'var(--ink-4)' }}>분개장을 올리면 자동</span></label>
+        <label><input type="checkbox" checked={job.listed} disabled={!canWrite} onChange={(e) => void patchJob({ listed: e.target.checked })} /> 상장회사</label>
+        <label>작성자 <input defaultValue={job.preparer ?? ''} disabled={!canWrite} onBlur={(e) => void patchJob({ preparer: e.target.value || null })} style={{ ...inp, width: 90 }} /> <input type="date" defaultValue={job.preparedOn ?? ''} disabled={!canWrite} onBlur={(e) => void patchJob({ preparedOn: e.target.value || null })} style={inp} /></label>
+        <label>검토자 <input defaultValue={job.reviewer ?? ''} disabled={!canWrite} onBlur={(e) => void patchJob({ reviewer: e.target.value || null })} style={{ ...inp, width: 90 }} /> <input type="date" defaultValue={job.reviewedOn ?? ''} disabled={!canWrite} onBlur={(e) => void patchJob({ reviewedOn: e.target.value || null })} style={inp} /></label>
+      </div>
+      <div style={{ marginTop: 10, fontSize: 'var(--fs-1)' }}>
+        <b>회사 담당자</b> <span style={{ color: 'var(--ink-4)' }}>(총괄 시트)</span>
+        {(job.contacts.length ? job.contacts : [{ name: '', dept: '', phone: '', email: '' }]).map((c, i) => (
+          <div key={i} style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+            {(['name', 'dept', 'phone', 'email'] as const).map((k) => (
+              <input key={k} placeholder={{ name: '성명', dept: '부서&직급', phone: '전화번호', email: '메일주소' }[k]} defaultValue={c[k]} disabled={!canWrite} style={{ ...inp, width: k === 'email' ? 200 : 120 }}
+                onBlur={(e) => { const list = [...(job.contacts.length ? job.contacts : [c])]; list[i] = { ...list[i], [k]: e.target.value }; void patchJob({ contacts: list }); }} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div className="card">
+      <b style={{ color: 'var(--navy)' }}>분개장</b> <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>더존(전표일자 · 전표번호 · 구분 · 계정 · 차변 · 대변 · 거래처 · 적요) · 영림원(구 분[기표] 두 줄 머리, 같은 파일의 계정별원장으로 잔액표도 만듦)</span>
+      {journal && <div style={{ fontSize: 'var(--fs-2)', margin: '6px 0' }}>
+        <b>{journal.version}차</b> {journal.fileName} — {journal.erp} · {journal.lines.toLocaleString()}줄 · 전표 {journal.vouchers.toLocaleString()}장 · {journal.dateFrom} ~ {journal.dateTo} · 차변 {won(journal.drTotal)} / 대변 {won(journal.crTotal)}
+        {lines.length !== journal.lines && <span style={{ color: 'var(--bad)' }}> (불러온 줄 {lines.length.toLocaleString()})</span>}
+      </div>}
+      {canWrite && <Drop label={journal ? '다시 받은 분개장을 끌어다 놓기(새 판 — 재요청 경과가 남습니다)' : '분개장 엑셀을 끌어다 놓기'} hint="주민번호 꼴은 올릴 때 지웁니다. 줄은 서버에 저장되고 감사팀만 봅니다." onFile={onJournal} disabled={busy} />}
+      {uploads.filter((u) => u.kind === 'journal').length > 1 && (
+        <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 6 }}>지난 판: {uploads.filter((u) => u.kind === 'journal' && !u.current).map((u) => `${u.version}차 ${u.fileName}(${u.lines.toLocaleString()}줄, ${u.createdAt.slice(0, 10)}${u.note ? `, ${u.note}` : ''})`).join(' · ')}</div>
+      )}
+    </div>
+
+    <div className="card">
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <b style={{ color: 'var(--navy)' }}>회사 제시 잔액표(기초 · 기말)</b>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>4_기초잔액검토 — 재무상태표 계정. {fromLedger ? '영림원 계정별원장에서 만들었습니다.' : '더존은 양식을 내려받아 전기말 · 당기말 재무상태표 금액을 붙여 넣어 올려 주세요.'}</span>
+        <button className="btn-sm" style={{ marginLeft: 'auto' }} disabled={!lines.length} onClick={onTemplate}>잔액표 양식 내려받기</button>
+      </div>
+      {canWrite && <div style={{ marginTop: 6 }}><Drop label="잔액표를 끌어다 놓기" hint="묶음 칸: 원장 계정 하나가 공시과목 여럿이면(감가상각누계액 → 건물 · 기계장치 …) 같은 이름을 적습니다. 차대 칸: 차 / 대." onFile={onBalances} disabled={busy} /></div>}
+      {rows.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginBottom: 4 }}>
+            {rows.length}줄 · 묶음 · 잔액방향을 고칠 수 있습니다.
+            {edit && canWrite && <> <button className="btn-sm btn-sm-navy" onClick={() => void onSaveBal(edit).then(() => setEdit(null))}>새 판으로 저장</button> <button className="btn-sm" onClick={() => setEdit(null)}>취소</button></>}
+          </div>
+          <div style={{ overflow: 'auto', maxHeight: 360, border: '1px solid var(--rule)', borderRadius: 4 }}>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
+              <thead><tr>{['묶음', '계정코드', '계정명', '차대', '전기말(기초)', '당기말(기말)'].map((h) => <th key={h} style={{ ...th, textAlign: /기/.test(h) ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+              <tbody>{rows.map((r, i) => (
+                <tr key={i}>
+                  <td style={td}><input value={r.group ?? ''} disabled={!canWrite} onChange={(e) => { const n = [...rows]; n[i] = { ...r, group: e.target.value || null }; setEdit(n); }} style={{ ...inp, width: 90 }} /></td>
+                  <td style={td}>{r.acctCode}</td><td style={td}>{r.acctName}</td>
+                  <td style={td}><select value={r.side ?? guessSide(r.acctCode, r.acctName)} disabled={!canWrite} onChange={(e) => { const n = [...rows]; n[i] = { ...r, side: Number(e.target.value) as 1 | -1 }; setEdit(n); }} style={inp}><option value={1}>차</option><option value={-1}>대</option></select></td>
+                  <td style={tdr}>{won(r.open)}</td><td style={tdr}>{won(r.close)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  </>);
+}
+
+// ── ② 검토 ────────────────────────────────────────────────────────────────
+
+function CheckStep({ job, results, lines, picks, canWrite, patchJob, onPick }: {
+  job: JeJob; results: CheckResult[]; lines: JeLine[]; picks: JePick[]; canWrite: boolean;
+  patchJob: (p: Partial<JeJob>) => Promise<void>; onPick: (p: JePick) => Promise<void>;
+}) {
+  const [open, setOpen] = useState<string | null>('A04');
+  const sales = useMemo(() => salesTotal(lines), [lines]);
+  const plAccts = useMemo(() => {
+    const th = benchThreshold(job.bench);
+    const m = new Map<string, { name: string; n: number }>();
+    for (const l of lines) if (!isBsCode(l.acctCode) && th > 0 && Math.abs(l.dr - l.cr) >= th) { const a = m.get(l.acctCode) ?? { name: l.acctName, n: 0 }; a.n++; m.set(l.acctCode, a); }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [lines, job.bench]);
+  const setScen = (code: ScenarioCode, p: Partial<{ on: boolean; reason: string; conclusion: string }>) => void patchJob({ scenarios: { ...job.scenarios, [code]: { ...(job.scenarios[code] ?? { on: false }), ...p } } });
+  const pickMap = new Map(picks.map((p) => [`${p.vdate}|${p.vno}`, p]));
+  const pr = job.params;
+
+  return (<>
+    <div className="card">
+      <b style={{ color: 'var(--navy)' }}>중요성(5_일정금액이상)</b>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginTop: 6, fontSize: 'var(--fs-1)' }}>
+        <label>BENCHMARK <select value={job.bench.name} disabled={!canWrite} onChange={(e) => void patchJob({ bench: { ...job.bench, name: e.target.value } })} style={inp}>{['매출', '세전이익', '총자산', '순자산', '비용'].map((x) => <option key={x}>{x}</option>)}</select></label>
+        <label>금액 <MoneyInput value={job.bench.amount} disabled={!canWrite} width={150} onCommit={(v) => void patchJob({ bench: { ...job.bench, amount: v ?? 0 } })} /></label>
+        {job.bench.name === '매출' && canWrite && <button className="btn-sm" onClick={() => void patchJob({ bench: { ...job.bench, amount: Math.round(sales) } })} title="분개장의 매출 계정 대변 − 차변">분개장 매출 {won(sales)} 넣기</button>}
+        <label>적용률 <input type="number" step="0.1" defaultValue={Math.round(job.bench.rate * 1000) / 10} key={job.bench.rate} disabled={!canWrite} onBlur={(e) => void patchJob({ bench: { ...job.bench, rate: Number(e.target.value) / 100 } })} style={{ ...inp, width: 60, textAlign: 'right' }} /> %</label>
+        <b>= 중요성 기준 {won(benchThreshold(job.bench))}원</b>
+      </div>
+      <input placeholder="BENCHMARK 선택 사유(예: 세전이익 변동성이 커 매출을 지표로 선정)" defaultValue={job.bench.reason} disabled={!canWrite} onBlur={(e) => void patchJob({ bench: { ...job.bench, reason: e.target.value } })} style={{ ...inp, width: '100%', marginTop: 6 }} />
+      {plAccts.length > 0 && (
+        <div style={{ marginTop: 8, fontSize: 'var(--fs-1)' }}>
+          <span style={{ color: 'var(--ink-3)' }}>기준 이상 손익 계정 — 다른 조서에서 검토하는 계정은 빼세요(예: 매출 · 원가대체):</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+            {plAccts.map(([c, a]) => { const off = pr.matExclude.includes(c); return (
+              <button key={c} disabled={!canWrite} onClick={() => void patchJob({ params: { ...pr, matExclude: off ? pr.matExclude.filter((x) => x !== c) : [...pr.matExclude, c] } })}
+                style={{ ...inp, cursor: 'pointer', background: off ? '#F3F4F6' : '#EEF4FF', color: off ? 'var(--ink-4)' : 'var(--navy)', textDecoration: off ? 'line-through' : 'none' }}>{c} {a.name} {a.n}</button>
+            ); })}
+          </div>
+        </div>
+      )}
+      <details style={{ marginTop: 8, fontSize: 'var(--fs-1)' }}>
+        <summary style={{ cursor: 'pointer', color: 'var(--ink-2)' }}>그 밖의 기준값</summary>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6 }}>
+          <label>저빈도 <input type="number" defaultValue={pr.rareCount} disabled={!canWrite} onBlur={(e) => void patchJob({ params: { ...pr, rareCount: Number(e.target.value) || 0 } })} style={{ ...inp, width: 60 }} />건 이하</label>
+          <label>라운드 단위 <MoneyInput value={pr.roundUnit} disabled={!canWrite} width={110} onCommit={(v) => void patchJob({ params: { ...pr, roundUnit: v || 1_000_000 } })} /></label>
+          <label>결산분개 <input type="number" defaultValue={pr.closingDays} disabled={!canWrite} onBlur={(e) => void patchJob({ params: { ...pr, closingDays: Number(e.target.value) || 0 } })} style={{ ...inp, width: 50 }} />일 전부터</label>
+        </div>
+        <label style={{ display: 'block', marginTop: 6 }}>적요 낱말 <input defaultValue={pr.memoWords} disabled={!canWrite} onBlur={(e) => void patchJob({ params: { ...pr, memoWords: e.target.value } })} style={{ ...inp, width: '70%' }} /></label>
+        <label style={{ display: 'block', marginTop: 6 }}>매출 정상 상대계정 <input defaultValue={pr.salesPartnerRe} disabled={!canWrite} onBlur={(e) => void patchJob({ params: { ...pr, salesPartnerRe: e.target.value } })} style={{ ...inp, width: '70%' }} /></label>
+      </details>
+    </div>
+
+    {results.map((r) => {
+      const st = job.scenarios[r.code as ScenarioCode];
+      const on = !!st?.on, isOpen = open === r.code, s = STATUS_STYLE[r.status];
+      const userless = NEEDS_USER_DATA.includes(r.code as ScenarioCode);
+      return (
+        <div key={r.code} className="card" style={{ padding: '8px 12px', opacity: on || r.kind === 'Mandatory' ? 1 : 0.75 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label title={r.kind === 'Mandatory' ? '필수' : '수행 여부'}><input type="checkbox" checked={on} disabled={!canWrite || userless} onChange={(e) => setScen(r.code as ScenarioCode, { on: e.target.checked })} /></label>
+            <b style={{ color: 'var(--navy)', minWidth: 40 }}>{r.code}</b>
+            <span style={{ fontWeight: 600 }}>{r.no}. {r.title}</span>
+            <span style={{ background: s.bg, color: s.fg, borderRadius: 999, padding: '1px 9px', fontSize: 'var(--fs-1)', fontWeight: 700 }}>{r.status}</span>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', flex: 1, minWidth: 200 }}>{r.summary}</span>
+            {(r.rows.length > 0 || r.code === 'A04') && <button className="btn-sm" onClick={() => setOpen(isOpen ? null : r.code)}>{isOpen ? '접기' : `펼치기 (${r.rows.length.toLocaleString()})`}</button>}
+          </div>
+          {!on && <input placeholder="미수행 사유(총괄 각주)" defaultValue={st?.reason ?? ''} disabled={!canWrite} onBlur={(e) => setScen(r.code as ScenarioCode, { reason: e.target.value })} style={{ ...inp, width: '100%', marginTop: 6 }} />}
+          {isOpen && (
+            <div style={{ marginTop: 8 }}>
+              <textarea placeholder={`결론(비우면 기본 문장): ${r.summary}`} defaultValue={st?.conclusion ?? ''} disabled={!canWrite} onBlur={(e) => setScen(r.code as ScenarioCode, { conclusion: e.target.value })} rows={2} style={{ ...inp, width: '100%', resize: 'vertical' }} />
+              <div style={{ overflow: 'auto', maxHeight: 460, border: '1px solid var(--rule)', borderRadius: 4, marginTop: 6 }}>
+                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
+                  <thead><tr>{r.head.map((h) => <th key={h} style={th}>{h}</th>)}{r.code === 'B01' && ['검토(REF 조서)', '결과', '비고'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                  <tbody>{r.rows.slice(0, 1500).map((row, i) => {
+                    const grpDiff = r.code === 'A04' && row[8] !== 0;
+                    const p = r.code === 'B01' ? pickMap.get(`${row[0]}|${row[1]}`) : undefined;
+                    return (
+                      <tr key={i} style={{ background: grpDiff ? '#FFF7E6' : undefined }}>
+                        {row.map((v, ci) => <td key={ci} style={typeof v === 'number' ? tdr : { ...td, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={typeof v === 'string' ? v : undefined}>{typeof v === 'number' ? won(v) : v}</td>)}
+                        {r.code === 'B01' && (() => {
+                          const base: JePick = p ?? { vdate: String(row[0]), vno: String(row[1]), scenarios: ['B01'], amount: Number(row[5]) || 0, reason: '중요성 기준 이상 손익 분개', selected: true, evidence: null, answer: null, result: null, note: null };
+                          return (<>
+                            <td style={td}><input defaultValue={base.evidence ?? ''} disabled={!canWrite} onBlur={(e) => { if ((e.target.value || null) !== base.evidence) void onPick({ ...base, evidence: e.target.value || null }); }} style={{ ...inp, width: 120 }} /></td>
+                            <td style={td}><select value={base.result ?? ''} disabled={!canWrite} onChange={(e) => void onPick({ ...base, result: (e.target.value || null) as JePick['result'] })} style={inp}><option value="">—</option><option>이상없음</option><option>예외</option><option>확인중</option></select></td>
+                            <td style={td}><input defaultValue={base.note ?? ''} disabled={!canWrite} onBlur={(e) => { if ((e.target.value || null) !== base.note) void onPick({ ...base, note: e.target.value || null }); }} style={{ ...inp, width: 140 }} /></td>
+                          </>);
+                        })()}
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </div>
+              {r.rows.length > 1500 && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 4 }}>화면에는 1,500줄까지 — 조서 엑셀에는 3,000줄까지 들어갑니다.</div>}
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </>);
+}
+
+// ── ③ 보완할 점 ────────────────────────────────────────────────────────────
+
+const RELAX_TEMPLATE = [
+  '비상장회사로서 아래 사항을 검토한 결과 부정위험으로 인한 중요왜곡표시위험이 크지 않다고 판단하여 완화된 절차(기말 · 결산조정 분개 중심)를 적용함',
+  '① 재무제표 작성 및 분개 입력의 자동화 정도: ',
+  '② 계정의 성격과 복잡성: ',
+  '③ 분개 · 조정사항에 대한 내부통제: ',
+  '④ 통제무력화를 막는 전사 수준 통제와 통제환경: ',
+  '보완절차: 재무보고 관여자에게 부적합 · 비경상 분개 여부를 질문하고 그 내용을 문서화함',
+].join('\n');
+
+function GapStep({ eng, job, results, hasBal, hasJournal, canWrite, patchJob }: { eng: Engagement; job: JeJob; results: CheckResult[]; hasBal: boolean; hasJournal: boolean; canWrite: boolean; patchJob: (p: Partial<JeJob>) => Promise<void> }) {
+  const by = (c: string) => results.find((r) => r.code === c);
+  // text = 우리가 보는 설명, ask = 회사에 보낼 문장(없으면 요청문에 안 넣는다).
+  const items: { kind: '자료요청' | '질의' | '판단'; text: string; ask?: string }[] = [];
+  if (!hasJournal) items.push({ kind: '자료요청', text: '분개장이 아직 없습니다.', ask: '회계기간 전체 분개장(엑셀) — 전표일자 · 전표번호 · 계정코드 · 계정과목 · 차변 · 대변 · 거래처 · 적요' });
+  if (!hasBal) items.push({ kind: '자료요청', text: '회사 제시 잔액(기초 · 기말)이 없어 A04 기초잔액 대사를 못 합니다 — 잔액표 양식에 재무상태표 금액을 붙여 넣어 올리세요.', ask: '전기말 · 당기말 재무상태표(계정별 금액, 엑셀)' });
+  items.push({ kind: '자료요청', text: '분개장에 작성자 · 승인자 · 입력일시가 없어 B04 · B05 · B06을 못 합니다. 회사가 포함해서 출력할 수 있으면 받고(더존은 대부분 안 됨), 안 되면 미수행 사유로 남깁니다.', ask: '가능하시면 분개장을 작성자 · 승인자 · 입력일시가 포함되도록 다시 출력해 주십시오(시스템에서 안 되면 회신만 주시면 됩니다).' });
+  if (by('A01')?.status === '예외') items.push({ kind: '자료요청', text: `분개장 유효성 예외 — ${by('A01')!.summary}`, ask: '분개장에 회계기간 밖 일자 또는 차변 · 대변이 함께 적힌 줄이 있어 확인 후 다시 출력해 주십시오.' });
+  if (by('A03')?.status === '예외') items.push({ kind: '자료요청', text: `차대 불일치 — ${by('A03')!.summary}`, ask: '차변과 대변 합계가 맞지 않는 전표가 있어 확인 후 다시 출력해 주십시오.' });
+  if (by('A04')?.status === '예외') items.push({ kind: '질의', text: `기초잔액 대사 차이 — ${by('A04')!.summary}. 재분류 · 공시과목 나눔이면 묶음으로 정리, 아니면 회사 질의` });
+  if (by('B10')?.status === '예외') items.push({ kind: '질의', text: `전표번호 결번 — ${by('B10')!.summary}`, ask: '전표번호에 빈 번호가 있는 날이 있습니다 — 삭제 · 취소된 전표인지 알려 주십시오(목록 별첨).' });
+  if (by('B07')?.status === '예외') items.push({ kind: '질의', text: `매출 상대계정 — ${by('B07')!.summary}`, ask: '매출의 상대계정이 현금 · 채권이 아닌 전표가 있습니다 — 거래 내용을 알려 주십시오(목록 별첨).' });
+  if (!job.listed) items.push({ kind: '판단', text: '비상장회사 — 완화된 절차를 적용할지 판단하고, 적용하면 사유(4요소)와 결론을 아래에 남깁니다.' });
+  items.push({ kind: '판단', text: '재무보고 관여자 질문(감사기준 240 문단 32 (1)) — 부적합 · 비경상 분개나 조정이 있었는지 질문하고 답변을 남깁니다.' });
+  const letter = [
+    `${eng.entityName} 담당자님께`, '', `FY${eng.fy} 기말감사 분개 테스트(JET)를 위해 아래 자료를 요청드립니다.`, '',
+    ...items.filter((i) => i.ask).map((i, n) => `${n + 1}. ${i.ask}`), '', '감사합니다.',
+  ].join('\n');
+  return (<>
+    <div className="card">
+      <b style={{ color: 'var(--navy)' }}>보완할 점</b>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--fs-1)', marginTop: 6 }}>
+        <tbody>{items.map((i, n) => <tr key={n}><td style={{ ...td, width: 70 }}><b style={{ color: i.kind === '자료요청' ? '#2F7BD8' : i.kind === '질의' ? '#B45309' : '#7C3AED' }}>{i.kind}</b></td><td style={td}>{i.text}</td></tr>)}</tbody>
+      </table>
+    </div>
+    <div className="card">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><b style={{ color: 'var(--navy)' }}>회사에 보낼 요청문</b><button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => void navigator.clipboard.writeText(letter)}>복사</button></div>
+      <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 'var(--fs-1)', background: 'var(--surface-3)', padding: 10, borderRadius: 6, marginTop: 6 }}>{letter}</pre>
+    </div>
+    <div className="card">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <b style={{ color: 'var(--navy)' }}>완화된 절차</b>
+        <label style={{ fontSize: 'var(--fs-1)' }}><input type="checkbox" checked={job.relaxed} disabled={!canWrite || job.listed} onChange={(e) => void patchJob({ relaxed: e.target.checked, relaxedNote: e.target.checked && !job.relaxedNote ? RELAX_TEMPLATE : job.relaxedNote })} /> 적용(비상장만)</label>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>총괄 시트에 사유가 들어갑니다.</span>
+      </div>
+      {job.relaxed && <textarea defaultValue={job.relaxedNote ?? RELAX_TEMPLATE} key={job.relaxed ? 'on' : 'off'} disabled={!canWrite} onBlur={(e) => void patchJob({ relaxedNote: e.target.value })} rows={7} style={{ ...inp, width: '100%', marginTop: 6 }} />}
+    </div>
+    <div className="card">
+      <b style={{ color: 'var(--navy)' }}>질문 · 종합 메모</b> <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>재무보고 관여자 질문 답변 등 — 총괄 결론 아래에 들어갑니다.</span>
+      <textarea defaultValue={job.memo ?? ''} disabled={!canWrite} onBlur={(e) => void patchJob({ memo: e.target.value || null })} rows={4} placeholder="예: 2026-02-26 재무팀장에게 부적합 · 비경상 분개 여부를 질문하였으며 해당 사항 없다는 답변을 받음" style={{ ...inp, width: '100%', marginTop: 6 }} />
+    </div>
+  </>);
+}
+

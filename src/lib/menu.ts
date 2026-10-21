@@ -101,8 +101,8 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'gwp', label: '📘 일반조서 관리', cap: 'viewAuditPapers' },
       // 감사 건마다 이슈를 아이템으로 쌓고 경과를 남기는 자리(2026-10-14, 옛 엑셀 ISSUELOG). 우리 내부용 — 감사팀만.
       { id: 'issue', label: '📝 감사이슈 LOG', cap: 'viewAuditPapers' },
-      // 분개장 전수 검토(JE Test) — 개발 준비 중(사용자 2026-10-05). 일반조서와 같은 감사팀 자리.
-      { id: 'je', label: '🔍 Journal Entry 시스템 (개발중)', cap: 'viewAuditPapers' },
+      // 분개장 전수 검토(JE Test) — 1차(사용자 2026-10-21): 분개장 · 잔액표 올리기 → 필수 검증 · 시나리오 → 보완할 점 → 조서 엑셀. 감사팀만.
+      { id: 'je', label: '🔍 Journal Entry 시스템', cap: 'viewAuditPapers' },
     ],
   },
   {
