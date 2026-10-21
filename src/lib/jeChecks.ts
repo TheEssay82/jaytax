@@ -292,7 +292,7 @@ const pick = (code: ScenarioCode, list: Voucher[], why: string, method: string[]
 const noData = (code: ScenarioCode, why: string): CheckResult => ({ ...base(code), status: '자료없음', summary: why, method: [], head: VHEAD, rows: [] });
 
 export function scenCoa(lines: JeLine[], vs: Voucher[], coa: Set<string> | null, codeOf: (c: string) => string): CheckResult {
-  if (!coa?.size) return noData('B02', '계정과목표(시산표)가 없어 수행하지 못함');
+  if (!coa?.size) return noData('B02', '손익 계정까지 있는 계정과목표(시산표)가 없어 수행하지 못함(더존 분개장 · 재무상태표 잔액표만으로는 대조 불가)');
   const bad = new Set(lines.filter((l) => !coa.has(codeOf(l.acctCode))).map(vkey));
   return pick('B02', vs.filter((v) => bad.has(v.key)), '계정과목표에 없는 계정을 사용한', ['분개장의 계정코드를 계정과목표(시산표)와 대조함']);
 }

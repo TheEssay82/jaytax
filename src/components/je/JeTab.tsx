@@ -26,9 +26,6 @@ import { exportBalanceTemplate } from '../../lib/jeTemplate';
 const won = (n: number) => Math.round(n).toLocaleString();
 /** YYYY-MM-DD 가 든 달의 말일. */
 const monthEnd = (d: string) => { const [y, m] = d.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
-const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
-  통과: { bg: '#DCFCE7', fg: '#166534' }, 예외: { bg: '#FEF3C7', fg: '#92400E' }, 자료없음: { bg: '#F3F4F6', fg: '#6B7280' }, 미수행: { bg: '#F3F4F6', fg: '#6B7280' },
-};
 type Step = 'data' | 'check' | 'gap' | 'sample';
 const STEP_KEY = 'jaytax:jeStep';
 
@@ -149,10 +146,13 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
   const asOf = journalTo ? monthEnd(journalTo) : yearEnd;
   const to = asOf < yearEnd ? asOf : yearEnd;
   const interim = to < yearEnd;
-  const codes = useMemo(() => new Set((bal?.length ? bal : ledgerTb).map((r) => r.acctCode).filter(Boolean)), [bal, ledgerTb]);
+  // 본 계정 코드(하위 계정 → 본 계정 짝짓기용) — 잔액표 + 원장 시산표.
+  const codes = useMemo(() => new Set([...(bal ?? []), ...ledgerTb].map((r) => r.acctCode).filter(Boolean)), [bal, ledgerTb]);
+  // 계정과목표(B02)는 손익 계정까지 있는 시산표(영림원 원장)에서만 — 잔액표 · 정산표는 재무상태표 계정뿐이라 손익 전표가 모두 걸린다(제이 FY26 1,269장).
+  const coa = useMemo(() => (ledgerTb.length ? new Set(ledgerTb.map((r) => r.acctCode)) : null), [ledgerTb]);
   const codeOf = useMemo(() => (c: string) => parentCode(c, codes), [codes]);
   const balances = useMemo<BsBalance[] | null>(() => (bal?.length ? bal : ledgerTb.length ? balancesFromTb(ledgerTb) : null), [bal, ledgerTb]);
-  const results = useMemo<CheckResult[]>(() => (job && lines.length ? runAll({ lines, balances, coa: codes.size ? codes : null, from, to, bench: job.bench, params: job.params, codeOf, priorAccounts: prior }) : []), [job, lines, balances, codes, codeOf, from, to, prior]);
+  const results = useMemo<CheckResult[]>(() => (job && lines.length ? runAll({ lines, balances, coa, from, to, bench: job.bench, params: job.params, codeOf, priorAccounts: prior }) : []), [job, lines, balances, coa, codeOf, from, to, prior]);
 
   async function patchJob(p: Partial<JeJob>) {
     if (!job) return;
@@ -199,7 +199,8 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
   if (!job) return <div className="card">{busy ?? '불러오는 중…'}{err && <div style={{ color: 'var(--bad)' }}>{err}</div>}</div>;
   const journal = uploads.find((u) => u.kind === 'journal' && u.current);
   const chip = (on: boolean) => ({ cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--fs-2)', fontWeight: on ? 700 : 500, padding: '7px 16px', border: '1px solid var(--rule)', borderBottom: 'none', borderRadius: '6px 6px 0 0', background: on ? 'var(--navy)' : '#fff', color: on ? '#fff' : 'var(--ink-2)' } as const);
-  const exc = results.filter((r) => performed(job, r) && r.status === '예외').length;
+  // 탭 머리: 필수 검증 불일치 수(빨강이어야 할 것)만 — 선택 시나리오의 「추출」은 오류가 아니다.
+  const exc = results.filter((r) => r.kind === 'Mandatory' && r.status === '예외').length;
 
   return (
     <div>
@@ -208,7 +209,7 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
       {busy && <div className="card" style={{ padding: '8px 14px', color: 'var(--ink-2)' }}>⏳ {busy}</div>}
       {interim && <div className="card" style={{ padding: '8px 14px', background: '#EEF4FF', color: 'var(--navy)', fontSize: 'var(--fs-2)' }}>🕒 <b>중간감사</b> — 분개장이 {journalTo}까지라 기준일 <b>{to}</b>로 봅니다. 기초잔액 대사는 {to} 기준 정산표(중간 이월) · 잔액표와, 결산분개(B09)는 {to} 월말 전표로 합니다.</div>}
       <div style={{ display: 'flex', gap: 2, borderBottom: '2px solid var(--navy)', margin: '0 0 10px', alignItems: 'flex-end' }}>
-        {([['data', '① 기본정보 · 자료'], ['check', `② 검토${results.length ? ` (예외 ${exc})` : ''}`], ['gap', '③ 보완할 점'], ['sample', `④ 선정 · 증빙요청 · 결과${picks.some((p) => p.selected) ? ` (${pickSummary(picks).total})` : ''}`]] as [Step, string][]).map(([k, l]) => (
+        {([['data', '① 기본정보 · 자료'], ['check', `② 검토${results.length ? (exc ? ` (불일치 ${exc})` : ' ✓') : ''}`], ['gap', '③ 보완할 점'], ['sample', `④ 선정 · 증빙요청 · 결과${picks.some((p) => p.selected) ? ` (${pickSummary(picks).total})` : ''}`]] as [Step, string][]).map(([k, l]) => (
           <button key={k} style={chip(step === k)} onClick={() => setStep(k)}>{l}</button>
         ))}
         <button className="btn-sm btn-sm-navy" style={{ marginLeft: 'auto', marginBottom: 4 }} disabled={!results.length} onClick={() => void onExport()} title="표지 · 총괄 · 시나리오별 시트 — audit tool 업로드용">📥 조서 엑셀</button>
@@ -328,7 +329,8 @@ function CheckStep({ job, results, lines, picks, canWrite, patchJob, onPick }: {
   job: JeJob; results: CheckResult[]; lines: JeLine[]; picks: JePick[]; canWrite: boolean;
   patchJob: (p: Partial<JeJob>) => Promise<void>; onPick: (p: JePick) => Promise<void>;
 }) {
-  const [open, setOpen] = useState<string | null>('A04');
+  const [open, setOpen] = useState<string | null>(null);
+  const [showRef, setShowRef] = useState(false);
   const sales = useMemo(() => salesTotal(lines), [lines]);
   const plAccts = useMemo(() => {
     const th = benchThreshold(job.bench);
@@ -386,53 +388,183 @@ function CheckStep({ job, results, lines, picks, canWrite, patchJob, onPick }: {
       </details>
     </div>
 
-    {results.map((r) => {
-      const st = job.scenarios[r.code as ScenarioCode];
-      const on = !!st?.on, isOpen = open === r.code, s = STATUS_STYLE[r.status];
-      const userless = NEEDS_USER_DATA.includes(r.code as ScenarioCode);
+    {SECTIONS.map((sec) => {
+      const list = results.filter((r) => sec.codes.includes(r.code));
+      if (!list.length) return null;
+      const folded = sec.key === 'ref' && !showRef;
+      const onCount = list.filter((r) => job.scenarios[r.code as ScenarioCode]?.on).length;
       return (
-        <div key={r.code} className="card" style={{ padding: '8px 12px', opacity: on || r.kind === 'Mandatory' ? 1 : 0.75 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label title={r.kind === 'Mandatory' ? '필수' : '수행 여부'}><input type="checkbox" checked={on} disabled={!canWrite || userless} onChange={(e) => setScen(r.code as ScenarioCode, { on: e.target.checked })} /></label>
-            <b style={{ color: 'var(--navy)', minWidth: 40 }}>{r.code}</b>
-            <span style={{ fontWeight: 600 }}>{r.no}. {r.title}</span>
-            <span style={{ background: s.bg, color: s.fg, borderRadius: 999, padding: '1px 9px', fontSize: 'var(--fs-1)', fontWeight: 700 }}>{r.status}</span>
-            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', flex: 1, minWidth: 200 }}>{r.summary}</span>
-            {(r.rows.length > 0 || r.code === 'A04') && <button className="btn-sm" onClick={() => setOpen(isOpen ? null : r.code)}>{isOpen ? '접기' : `펼치기 (${r.rows.length.toLocaleString()})`}</button>}
+        <div key={sec.key} style={{ marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '12px 2px 6px' }}>
+            <b style={{ color: 'var(--navy)', fontSize: 'var(--fs-3)' }}>{sec.title}</b>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{sec.hint}</span>
+            {sec.key === 'ref' && <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setShowRef(!showRef)}>{showRef ? '접기 ▲' : `펼치기 ▼ (${list.length}개 · 켠 것 ${onCount})`}</button>}
           </div>
-          {!on && <input placeholder="미수행 사유(총괄 각주)" defaultValue={st?.reason ?? ''} disabled={!canWrite} onBlur={(e) => setScen(r.code as ScenarioCode, { reason: e.target.value })} style={{ ...inp, width: '100%', marginTop: 6 }} />}
-          {isOpen && (
-            <div style={{ marginTop: 8 }}>
-              <textarea placeholder={`결론(비우면 기본 문장): ${r.summary}`} defaultValue={st?.conclusion ?? ''} disabled={!canWrite} onBlur={(e) => setScen(r.code as ScenarioCode, { conclusion: e.target.value })} rows={2} style={{ ...inp, width: '100%', resize: 'vertical' }} />
-              <div style={{ overflow: 'auto', maxHeight: 460, border: '1px solid var(--rule)', borderRadius: 4, marginTop: 6 }}>
-                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
-                  <thead><tr>{r.head.map((h) => <th key={h} style={th}>{h}</th>)}{r.code === 'B01' && ['검토(REF 조서)', '결과', '비고'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
-                  <tbody>{r.rows.slice(0, 1500).map((row, i) => {
-                    const grpDiff = r.code === 'A04' && row[8] !== 0;
-                    const p = r.code === 'B01' ? pickMap.get(`${row[0]}|${row[1]}`) : undefined;
-                    return (
-                      <tr key={i} style={{ background: grpDiff ? '#FFF7E6' : undefined }}>
-                        {row.map((v, ci) => <td key={ci} style={typeof v === 'number' ? tdr : { ...td, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={typeof v === 'string' ? v : undefined}>{typeof v === 'number' ? won(v) : v}</td>)}
-                        {r.code === 'B01' && (() => {
-                          const base: JePick = p ?? { vdate: String(row[0]), vno: String(row[1]), scenarios: ['B01'], amount: Number(row[5]) || 0, reason: '중요성 기준 이상 손익 분개', selected: true, evidence: null, answer: null, result: null, note: null };
-                          return (<>
-                            <td style={td}><input defaultValue={base.evidence ?? ''} disabled={!canWrite} onBlur={(e) => { if ((e.target.value || null) !== base.evidence) void onPick({ ...base, evidence: e.target.value || null }); }} style={{ ...inp, width: 120 }} /></td>
-                            <td style={td}><select value={base.result ?? ''} disabled={!canWrite} onChange={(e) => void onPick({ ...base, result: (e.target.value || null) as JePick['result'] })} style={inp}><option value="">—</option><option>이상없음</option><option>예외</option><option>확인중</option></select></td>
-                            <td style={td}><input defaultValue={base.note ?? ''} disabled={!canWrite} onBlur={(e) => { if ((e.target.value || null) !== base.note) void onPick({ ...base, note: e.target.value || null }); }} style={{ ...inp, width: 140 }} /></td>
-                          </>);
-                        })()}
-                      </tr>
-                    );
-                  })}</tbody>
-                </table>
+          {!folded && list.map((r) => {
+            const st = job.scenarios[r.code as ScenarioCode];
+            const on = !!st?.on, isOpen = open === r.code;
+            const userless = NEEDS_USER_DATA.includes(r.code as ScenarioCode);
+            const chipTxt = chipLabel(r), cs = CHIP_STYLE[chipTxt.kind];
+            return (
+              <div key={r.code} className="card" style={{ padding: '8px 12px', opacity: on || r.kind === 'Mandatory' ? 1 : 0.7, marginBottom: 6 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <label title={r.kind === 'Mandatory' ? '필수' : '수행 여부 — 끄면 조서 총괄에 X 와 미수행 사유'}><input type="checkbox" checked={on} disabled={!canWrite || userless} onChange={(e) => setScen(r.code as ScenarioCode, { on: e.target.checked })} /></label>
+                  <b style={{ color: 'var(--navy)', minWidth: 40 }}>{r.code}</b>
+                  <span style={{ fontWeight: 600 }}>{r.no}. {r.title}</span>
+                  <span style={{ background: cs.bg, color: cs.fg, borderRadius: 999, padding: '1px 9px', fontSize: 'var(--fs-1)', fontWeight: 700 }}>{chipTxt.text}</span>
+                  <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', flex: 1, minWidth: 200 }}>{r.summary}</span>
+                  {(r.rows.length > 0 || r.code === 'A04') && <button className="btn-sm" onClick={() => setOpen(isOpen ? null : r.code)}>{isOpen ? '접기' : `펼치기 (${r.rows.length.toLocaleString()})`}</button>}
+                </div>
+                {on && <div style={{ fontSize: 'var(--fs-1)', color: '#7C5A00', marginTop: 4 }}>👉 {todoOf(r)}</div>}
+                {!on && <input placeholder="미수행 사유(조서 총괄 각주)" defaultValue={st?.reason ?? ''} disabled={!canWrite} onBlur={(e) => setScen(r.code as ScenarioCode, { reason: e.target.value })} style={{ ...inp, width: '100%', marginTop: 6 }} />}
+                {isOpen && (
+                  <div style={{ marginTop: 8 }}>
+                    <textarea placeholder={`결론(비우면 기본 문장): ${r.summary}`} defaultValue={st?.conclusion ?? ''} disabled={!canWrite} onBlur={(e) => setScen(r.code as ScenarioCode, { conclusion: e.target.value })} rows={2} style={{ ...inp, width: '100%', resize: 'vertical' }} />
+                    {r.code === 'A04' ? <OpeningView r={r} /> : (
+                      <div style={{ overflow: 'auto', maxHeight: 460, border: '1px solid var(--rule)', borderRadius: 4, marginTop: 6 }}>
+                        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
+                          <thead><tr>{r.head.map((h) => <th key={h} style={th}>{h}</th>)}{r.code === 'B01' && ['검토(REF 조서)', '결과', '비고'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                          <tbody>{r.rows.slice(0, 1500).map((row, i) => {
+                            const p = r.code === 'B01' ? pickMap.get(`${row[0]}|${row[1]}`) : undefined;
+                            return (
+                              <tr key={i}>
+                                {row.map((v, ci) => <td key={ci} style={typeof v === 'number' ? tdr : { ...td, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={typeof v === 'string' ? v : undefined}>{typeof v === 'number' ? won(v) : v}</td>)}
+                                {r.code === 'B01' && (() => {
+                                  const base: JePick = p ?? { vdate: String(row[0]), vno: String(row[1]), scenarios: ['B01'], amount: Number(row[5]) || 0, reason: '중요성 기준 이상 손익 분개', selected: true, evidence: null, answer: null, result: null, note: null };
+                                  return (<>
+                                    <td style={td}><input defaultValue={base.evidence ?? ''} disabled={!canWrite} onBlur={(e) => { if ((e.target.value || null) !== base.evidence) void onPick({ ...base, evidence: e.target.value || null }); }} style={{ ...inp, width: 120 }} /></td>
+                                    <td style={td}><select value={base.result ?? ''} disabled={!canWrite} onChange={(e) => void onPick({ ...base, result: (e.target.value || null) as JePick['result'] })} style={inp}><option value="">—</option><option>이상없음</option><option>예외</option><option>확인중</option></select></td>
+                                    <td style={td}><input defaultValue={base.note ?? ''} disabled={!canWrite} onBlur={(e) => { if ((e.target.value || null) !== base.note) void onPick({ ...base, note: e.target.value || null }); }} style={{ ...inp, width: 140 }} /></td>
+                                  </>);
+                                })()}
+                              </tr>
+                            );
+                          })}</tbody>
+                        </table>
+                      </div>
+                    )}
+                    {r.rows.length > 1500 && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 4 }}>화면에는 1,500줄까지 — 조서 엑셀에는 3,000줄까지 들어갑니다.</div>}
+                  </div>
+                )}
               </div>
-              {r.rows.length > 1500 && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginTop: 4 }}>화면에는 1,500줄까지 — 조서 엑셀에는 3,000줄까지 들어갑니다.</div>}
-            </div>
-          )}
+            );
+          })}
         </div>
       );
     })}
   </>);
+}
+
+// ── 카드 묶음 · 칩 · 할 일 ───────────────────────────────────────────────────
+
+/** 세 묶음 — 필수 검증 / 실물 조서의 주요 절차 / 참고(기본 접힘). */
+const SECTIONS: { key: string; title: string; hint: string; codes: string[] }[] = [
+  { key: 'must', title: '① 필수 검증', hint: '받은 분개장이 믿을 만한가 — 넷 다 「일치」여야 아래 절차가 의미가 있습니다', codes: ['A01', 'A02', 'A03', 'A04'] },
+  { key: 'main', title: '② 주요 절차', hint: '실물 조서(나래 · 세원)가 한 절차 + 보고기간말 분개(감사기준 240 문단 32)', codes: ['B01', 'B02', 'B03', 'B09'] },
+  { key: 'ref', title: '③ 참고 시나리오', hint: '필요한 회사만 켭니다 — 끈 것은 조서 총괄에 X 와 사유로 남습니다', codes: ['B07', 'B08', 'B10', 'B11', 'B12', 'B13', 'B14', 'B04', 'B05', 'B06'] },
+];
+
+type ChipKind = 'ok' | 'bad' | 'pick' | 'none';
+const CHIP_STYLE: Record<ChipKind, { bg: string; fg: string }> = {
+  ok: { bg: '#DCFCE7', fg: '#166534' }, bad: { bg: '#FEE2E2', fg: '#B91C1C' }, pick: { bg: '#E0EAFF', fg: '#1E3A8A' }, none: { bg: '#F3F4F6', fg: '#6B7280' },
+};
+/** A(필수)는 일치 / 불일치, B(선택)는 「추출 n건」 — 추출은 오류가 아니라 검토 대상이다. */
+function chipLabel(r: CheckResult): { text: string; kind: ChipKind } {
+  if (r.status === '자료없음' || r.status === '미수행') return { text: '자료 없음', kind: 'none' };
+  if (r.kind === 'Mandatory') return r.status === '통과' ? { text: '일치', kind: 'ok' } : { text: '불일치', kind: 'bad' };
+  return r.status === '통과' ? { text: '추출 0건', kind: 'ok' } : { text: `추출 ${r.rows.length.toLocaleString()}건`, kind: 'pick' };
+}
+
+/** 카드마다 「무엇을 하면 되는지」. */
+function todoOf(r: CheckResult): string {
+  if (r.status === '자료없음' || r.status === '미수행') return '자료가 없어 수행할 수 없습니다 — 체크를 끄면 조서 총괄에 X 와 사유(이 문장)가 각주로 남습니다.';
+  const pass = r.status === '통과';
+  switch (r.code) {
+    case 'A01': return pass ? '할 일 없음 — 결론 문장이 조서에 들어갑니다.' : '기간 밖 · 차대 동시 기재 줄을 펼쳐 보고, 파일 문제면 ③ 보완할 점의 요청문으로 다시 받습니다.';
+    case 'A02': return pass ? '할 일 없음.' : '빈 칸이 있는 필드를 확인하고 회사에 다시 출력을 요청합니다.';
+    case 'A03': return pass ? '할 일 없음.' : '차대가 안 맞는 전표를 펼쳐 원인(소수점 · 데이터 오류)을 결론 칸에 적습니다.';
+    case 'A04': return pass ? '펼쳐서 「어떻게 맞았나」를 확인하세요 — 묶음(재분류 · 손익 미대체)으로 맞춘 줄은 내용이 맞는지 봅니다.' : '펼쳐서 「남은 차이」 묶음을 확인합니다. 공시과목 나눔 · 재분류면 ① 잔액표의 묶음 칸에 같은 이름을 적고, 아니면 회사에 질의합니다.';
+    case 'B01': return pass ? '할 일 없음.' : '줄마다 어느 조서에서 검토했는지(REF) · 결과를 적습니다. 증빙이 필요한 전표는 ④ 탭에서 회사에 요청합니다.';
+    case 'B02': return pass ? '할 일 없음.' : '계정과목표에 없는 계정의 전표를 회사에 질의합니다.';
+    case 'B03': return pass ? '할 일 없음.' : '계정마다 REF 칸에 검토한 조서 번호를 적습니다(엑셀에서 G열).';
+    case 'B09': return pass ? '할 일 없음.' : '결산 · 기준일 전표의 내용이 결산조정으로 적정한지 훑고, 큰 것은 ④에서 증빙을 요청합니다.';
+    case 'B10': return pass ? '할 일 없음.' : '빈 번호가 삭제 · 취소 전표인지 회사에 질의합니다(③ 요청문에 포함).';
+    case 'B07': return pass ? '할 일 없음.' : '매출 상대계정이 현금 · 채권이 아닌 전표의 거래 내용을 확인합니다.';
+    default: return pass ? '할 일 없음.' : '목록을 훑어 이상한 전표만 ④에서 고릅니다. 필요 없으면 체크를 끄고 사유를 적습니다.';
+  }
+}
+
+/** A04 기초잔액 — 「어떻게 맞았나」를 한눈에: 그대로 일치 / 묶음으로 상쇄(이유별) / 남은 차이, 그리고 표(차이 있는 줄만 보기). */
+function OpeningView({ r }: { r: CheckResult }) {
+  const [onlyDiff, setOnlyDiff] = useState(true);
+  type Row = { group: string; code: string; name: string; jdr: number; jcr: number; close: number; calc: number; open: number; diff: number; side: string };
+  const rows: Row[] = r.rows.map((x) => ({ group: String(x[0] || x[1] || x[2]), code: String(x[1]), name: String(x[2]), jdr: Number(x[3]), jcr: Number(x[4]), close: Number(x[5]), calc: Number(x[6]), open: Number(x[7]), diff: Number(x[8]), side: String(x[9]) }));
+  const groups = new Map<string, Row[]>();
+  for (const x of rows) groups.set(x.group, [...(groups.get(x.group) ?? []), x]);
+  const exact = rows.filter((x) => x.diff === 0 && (groups.get(x.group)?.length ?? 0) === 1).length;
+  const multi = [...groups.entries()].filter(([, xs]) => xs.length > 1 || xs.some((x) => x.diff !== 0));
+  const offset = multi.filter(([, xs]) => Math.round(xs.reduce((s, x) => s + x.diff, 0)) === 0 && xs.some((x) => x.diff !== 0));
+  const left = multi.filter(([, xs]) => Math.round(xs.reduce((s, x) => s + x.diff, 0)) !== 0);
+  /** 묶음 이름 — 계정코드로만 묶인 것(같은 계정이 공시과목 여럿)은 계정 이름으로 보인다. */
+  const label = (g: string, xs: Row[]) => (g.startsWith('재분류:') ? g : xs.every((x) => x.code === g) ? `같은 계정 「${xs[0].name}」` : `묶음 「${g}」`);
+  const why = (g: string, xs: Row[]) => (g.startsWith('재분류:') ? (xs.some((x) => x.name.startsWith('당기순이익')) ? '반대 금액 짝 + 손익 미대체' : '반대 금액 짝(회사 재무제표의 재분류) — 자동')
+    : xs.some((x) => x.name.startsWith('당기순이익')) ? '손익 미대체(이익잉여금에 당기순이익이 아직 안 넘어감)' : '같은 묶음(공시과목 나눔 · 같은 이름)');
+  const shown = onlyDiff ? rows.filter((x) => (groups.get(x.group)?.length ?? 0) > 1 || x.diff !== 0) : rows;
+  const box = { border: '1px solid var(--rule)', borderRadius: 6, padding: '8px 10px', fontSize: 'var(--fs-1)', lineHeight: 1.7 } as const;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ ...box, background: '#F8FAFC' }}>
+        <b>어떻게 대사하나</b> — 분개장에는 전기이월 전표가 없으므로, <b>회사 제시 기말잔액에서 올해 분개장 증감을 빼서 기초를 거꾸로 구하고</b>(역산 기초),
+        그것이 <b>전기말 감사받은 잔액</b>과 같은지 봅니다. 같으면 「분개장이 빠짐없이 들어왔고 전기 잔액이 그대로 이월됐다」는 뜻입니다.
+        <div style={{ color: 'var(--ink-3)' }}>역산 기초 = 회사제시 기말 − 차변합계 + 대변합계(자산 · 차감계정) / 회사제시 기말 + 차변합계 − 대변합계(부채 · 자본) · 차이 = 역산 기초 − 전기말 잔액</div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8, marginTop: 8 }}>
+        <div style={{ ...box, borderColor: '#86EFAC' }}><div style={{ color: 'var(--ink-3)' }}>그대로 일치</div><b style={{ fontSize: 'var(--fs-3)' }}>{exact}줄</b></div>
+        <div style={{ ...box, borderColor: '#93C5FD' }}><div style={{ color: 'var(--ink-3)' }}>묶음으로 상쇄</div><b style={{ fontSize: 'var(--fs-3)' }}>{offset.length}묶음</b> <span style={{ color: 'var(--ink-3)' }}>({offset.reduce((s, [, xs]) => s + xs.length, 0)}줄)</span></div>
+        <div style={{ ...box, borderColor: left.length ? '#FCA5A5' : 'var(--rule)' }}><div style={{ color: 'var(--ink-3)' }}>남은 차이</div><b style={{ fontSize: 'var(--fs-3)', color: left.length ? 'var(--bad)' : undefined }}>{left.length}묶음</b></div>
+      </div>
+      {[...offset, ...left].length > 0 && (
+        <div style={{ ...box, marginTop: 8 }}>
+          <b>묶음 풀이</b> <span style={{ color: 'var(--ink-3)' }}>— 한 줄만 보면 차이가 있어도, 같은 묶음의 차이를 더해 0이면 상쇄된 것입니다.</span>
+          {[...left, ...offset].map(([g, xs]) => {
+            const sum = Math.round(xs.reduce((s, x) => s + x.diff, 0));
+            return (
+              <div key={g} style={{ marginTop: 6, padding: '6px 8px', borderRadius: 4, background: sum ? '#FEF2F2' : '#EFF6FF' }}>
+                <b>{label(g, xs)}</b> <span style={{ color: 'var(--ink-3)' }}>· {why(g, xs)}</span>
+                <div>{xs.map((x) => <span key={x.code + x.name} style={{ marginRight: 14, whiteSpace: 'nowrap' }}>{x.name} <b style={{ color: x.diff ? (x.diff > 0 ? '#1D4ED8' : '#B91C1C') : 'var(--ink-3)' }}>{x.diff > 0 ? '+' : ''}{won(x.diff)}</b></span>)}
+                  <span style={{ whiteSpace: 'nowrap' }}>→ 합계 <b style={{ color: sum ? 'var(--bad)' : 'var(--good)' }}>{won(sum)}</b> {sum ? '— 원인 확인 필요' : '✓ 상쇄'}</span>
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ color: 'var(--ink-3)', marginTop: 6 }}>
+            묶음을 바꾸려면 ① 기본정보 · 자료의 잔액표에서 「묶음」 칸에 같은 이름을 적고 저장합니다. 「재분류: A ↔ B」는 차이가 정확히 반대인 두 줄을 앱이 짝지은 것이라 내용(실제 재분류인지)을 확인하세요.
+          </div>
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0 4px', fontSize: 'var(--fs-1)' }}>
+        <label><input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} /> 묶음 · 차이 있는 줄만 보기</label>
+        <span style={{ color: 'var(--ink-3)' }}>{shown.length} / {rows.length}줄</span>
+      </div>
+      <div style={{ overflow: 'auto', maxHeight: 420, border: '1px solid var(--rule)', borderRadius: 4 }}>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
+          <thead><tr>{['묶음', '계정코드', '계정명', '분개장 차변', '분개장 대변', '회사제시 기말', '역산 기초', '전기말 잔액', '차이', '방향'].map((h) => <th key={h} style={{ ...th, textAlign: /차변|대변|기말|기초|잔액|차이/.test(h) && h !== '방향' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+          <tbody>{shown.map((x, i) => {
+            const grouped = (groups.get(x.group)?.length ?? 0) > 1;
+            return (
+              <tr key={i} style={{ background: x.diff && !grouped ? '#FEF2F2' : grouped ? '#EFF6FF' : undefined }}>
+                <td style={{ ...td, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={x.group}>{grouped ? label(x.group, groups.get(x.group)!) : ''}</td>
+                <td style={td}>{x.code}</td><td style={td}>{x.name}</td>
+                <td style={tdr}>{won(x.jdr)}</td><td style={tdr}>{won(x.jcr)}</td><td style={tdr}>{won(x.close)}</td><td style={tdr}>{won(x.calc)}</td><td style={tdr}>{won(x.open)}</td>
+                <td style={{ ...tdr, fontWeight: x.diff ? 700 : 400, color: x.diff ? (x.diff > 0 ? '#1D4ED8' : '#B91C1C') : 'var(--ink-4)' }}>{won(x.diff)}</td>
+                <td style={td}>{x.side}</td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 // ── ④ 선정 · 증빙요청 · 결과 ──────────────────────────────────────────────────
