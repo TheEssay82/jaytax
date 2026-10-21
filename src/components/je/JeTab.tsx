@@ -568,8 +568,24 @@ function OpeningView({ r }: { r: CheckResult }) {
 }
 
 // ── ④ 선정 · 증빙요청 · 결과 ──────────────────────────────────────────────────
+// ② 검토 화면과 같은 틀(2026-10-21): 흐름 설명 + 진행 숫자 → 1단계 고르기 · 2단계 요청 · 회신 · 3단계 결과, 단계마다 👉 할 일, 전표마다 상태 칩.
 
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+type PickState = '요청 전' | '요청함' | '회신 받음' | '이상없음' | '예외' | '확인중';
+const pickState = (p: JePick): PickState => (p.result === '이상없음' || p.result === '예외' ? p.result : p.repliedAt || p.answer || p.replyDocs ? (p.result === '확인중' ? '확인중' : '회신 받음') : p.reqNo ? '요청함' : '요청 전');
+const PICK_STYLE: Record<PickState, { bg: string; fg: string }> = {
+  '요청 전': { bg: '#F3F4F6', fg: '#6B7280' }, 요청함: { bg: '#FEF3C7', fg: '#92400E' }, '회신 받음': { bg: '#E0EAFF', fg: '#1E3A8A' },
+  확인중: { bg: '#E0EAFF', fg: '#1E3A8A' }, 이상없음: { bg: '#DCFCE7', fg: '#166534' }, 예외: { bg: '#FEE2E2', fg: '#B91C1C' },
+};
+const Chip = ({ s }: { s: PickState }) => <span style={{ background: PICK_STYLE[s].bg, color: PICK_STYLE[s].fg, borderRadius: 999, padding: '1px 8px', fontSize: 'var(--fs-1)', fontWeight: 700, whiteSpace: 'nowrap' }}>{s}</span>;
+const Todo = ({ children }: { children: React.ReactNode }) => <div style={{ fontSize: 'var(--fs-1)', color: '#7C5A00', margin: '4px 0 6px' }}>👉 {children}</div>;
+const StepHead = ({ n, title, hint }: { n: string; title: string; hint: string }) => (
+  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+    <b style={{ color: 'var(--navy)', fontSize: 'var(--fs-3)' }}>{n} {title}</b>
+    <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>{hint}</span>
+  </div>
+);
 
 function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, setErr }: {
   eng: Engagement; job: JeJob; results: CheckResult[]; lines: JeLine[]; picks: JePick[]; canWrite: boolean;
@@ -579,6 +595,7 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
   const cands = useMemo(() => buildCandidates(results, lines, (r) => performed(job, r)), [results, lines, job]);
   const pmap = useMemo(() => new Map(picks.map((p) => [`${p.vdate}|${p.vno}`, p])), [picks]);
   const [f, setF] = useState<{ scen: string; min: number; q: string; topN: number }>({ scen: '', min: 0, q: '', topN: 20 });
+  const [stateF, setStateF] = useState<PickState | ''>('');
   const titleOf = (c: string) => results.find((r) => r.code === c)?.title ?? c;
   const shown = cands.filter((c) => (!f.scen || c.scenarios.includes(f.scen)) && (!f.min || c.amount >= f.min) && (!f.q || `${c.mainAcct} ${c.memo} ${c.cpName} ${c.no}`.includes(f.q)));
   const asPick = (c: (typeof cands)[number], selected: boolean): JePick => {
@@ -589,8 +606,11 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
     };
   };
   const sel = picks.filter((p) => p.selected).sort((a, b) => (a.reqNo ?? 99999) - (b.reqNo ?? 99999) || a.vdate.localeCompare(b.vdate) || a.vno.localeCompare(b.vno, 'en', { numeric: true }));
-  const sum = pickSummary(picks);
+  const count = (s: PickState) => sel.filter((p) => pickState(p) === s).length;
+  const notSent = count('요청 전'), sent = sel.filter((p) => p.reqNo).length, replied = sel.filter((p) => p.repliedAt || p.answer || p.replyDocs).length;
+  const done = count('이상없음') + count('예외');
   const scenUsed = [...new Set(cands.flatMap((c) => c.scenarios))].sort();
+  const selShown = stateF ? sel.filter((p) => pickState(p) === stateF) : sel;
 
   async function request() {
     // 요청 번호가 없는 선정 전표에 번호를 매긴다(이미 보낸 번호는 그대로).
@@ -600,7 +620,7 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
     const fresh = next.filter((p, i) => p !== sel[i]);
     if (fresh.length) await onSave(fresh);
     await exportRequestWorkbook(eng.entityName, eng.fy, next, lines, d);
-    flash(`증빙요청 엑셀을 내려받았습니다 — 전표 ${next.length}장(새로 번호 매김 ${fresh.length}장).`);
+    flash(`증빙요청 엑셀을 내려받았습니다 — 전표 ${next.length}장(새로 번호 매김 ${fresh.length}장). 회사에 보내 주세요.`);
   }
   async function onReply(file: File) {
     setErr(null);
@@ -615,81 +635,103 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
       for (const r of rows) {
         const p = pmap.get(`${r.date}|${r.no}`);
         if (!p) { miss.push(`${r.date} ${r.no}`); continue; }
-        upd.push({ ...p, answer: r.answer ?? p.answer, replyDocs: r.docs ?? p.replyDocs, repliedAt: d, result: p.result ?? '확인중' });
+        upd.push({ ...p, answer: r.answer ?? p.answer, replyDocs: r.docs ?? p.replyDocs, repliedAt: d });
       }
       if (upd.length) await onSave(upd);
-      flash(`회신 ${rows.length}줄 중 ${upd.length}장을 반영했습니다${miss.length ? ` — 선정 전표가 아닌 ${miss.length}줄은 건너뜀(${miss.slice(0, 3).join(', ')})` : ''}.`);
+      flash(`회신 ${rows.length}줄 중 ${upd.length}장을 반영했습니다${miss.length ? ` — 선정 전표가 아닌 ${miss.length}줄은 건너뜀(${miss.slice(0, 3).join(', ')})` : ''}. 3단계에서 증빙을 보고 결과를 고르세요.`);
     } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); }
   }
   const setOne = (p: JePick, patch: Partial<JePick>) => void onSave([{ ...p, ...patch, checkedBy: 'result' in patch || 'evidence' in patch ? profileName : p.checkedBy }]);
-  const cell = (p: JePick, k: 'reqDocs' | 'answer' | 'replyDocs' | 'evidence' | 'note', w: number) => (
-    <td style={td}><input defaultValue={p[k] ?? ''} key={`${k}${p[k] ?? ''}`} disabled={!canWrite} onBlur={(e) => { if ((e.target.value || null) !== (p[k] ?? null)) setOne(p, { [k]: e.target.value || null }); }} style={{ ...inp, width: w }} /></td>
+  const cell = (p: JePick, k: 'reqDocs' | 'answer' | 'replyDocs' | 'evidence' | 'note', w: number, ph = '') => (
+    <td style={td}><input defaultValue={p[k] ?? ''} key={`${k}${p[k] ?? ''}`} placeholder={ph} disabled={!canWrite} onBlur={(e) => { if ((e.target.value || null) !== (p[k] ?? null)) setOne(p, { [k]: e.target.value || null }); }} style={{ ...inp, width: w }} /></td>
   );
+  const box = { border: '1px solid var(--rule)', borderRadius: 6, padding: '6px 10px' } as const;
 
   return (<>
     <div className="card">
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <b style={{ color: 'var(--navy)' }}>후보 전표</b>
-        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>수행한 시나리오({VOUCHER_SCENARIOS.filter((c) => scenUsed.includes(c)).join(' · ') || '없음'})가 추출한 전표 {cands.length.toLocaleString()}장 — 여러 시나리오에 걸린 전표는 한 줄. 고른 전표만 회사에 증빙을 요청합니다.</span>
+      <div style={{ fontSize: 'var(--fs-2)', lineHeight: 1.7, background: '#F8FAFC', border: '1px solid var(--rule)', borderRadius: 6, padding: '8px 10px' }}>
+        <b>무엇을 하는 곳인가</b> — ② 검토에서 뽑힌 전표 가운데 <b>증빙으로 확인할 전표를 골라</b> 회사에 요청하고, 회신을 받아 <b>전표마다 결과</b>를 남깁니다. 결과는 조서 <b>C01_선정전표검토</b> 시트가 됩니다.
+        <div style={{ color: 'var(--ink-3)' }}>B01 처럼 다른 조서에서 이미 본 줄은 ② 검토의 REF · 결과 칸으로 끝내도 됩니다 — 여기는 <b>회사 증빙이 필요한 전표</b>만.</div>
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '8px 0', fontSize: 'var(--fs-1)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginTop: 8, fontSize: 'var(--fs-1)' }}>
+        {([['후보', cands.length, 'var(--rule)'], ['선정', sel.length, '#93C5FD'], ['요청함', sent, '#FCD34D'], ['회신 받음', replied, '#93C5FD'], ['결과 완료', done, '#86EFAC']] as [string, number, string][]).map(([k, v, c], i) => (
+          <div key={k} style={{ ...box, borderColor: c }}><div style={{ color: 'var(--ink-3)' }}>{i ? '→ ' : ''}{k}</div><b style={{ fontSize: 'var(--fs-3)' }}>{v.toLocaleString()}장</b>
+            {k === '결과 완료' && done > 0 && <div style={{ color: 'var(--ink-3)' }}>이상없음 {count('이상없음')} · <span style={{ color: count('예외') ? 'var(--bad)' : undefined }}>예외 {count('예외')}</span></div>}</div>
+        ))}
+      </div>
+    </div>
+
+    <div className="card">
+      <StepHead n="1단계" title="후보에서 고르기" hint={`② 검토의 주요 · 참고 시나리오(${VOUCHER_SCENARIOS.filter((c) => scenUsed.includes(c)).join(' · ') || '없음'})가 뽑은 전표 ${cands.length.toLocaleString()}장 — 여러 시나리오에 걸린 전표는 한 줄`} />
+      <Todo>{sel.length ? `${sel.length}장 골랐습니다. 더 고르거나 2단계로 갑니다.` : '금액이 크거나 성격이 이상한 전표를 고릅니다 — 「금액 상위 N장」이 빠릅니다.'}</Todo>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 8px', fontSize: 'var(--fs-1)' }}>
         <select value={f.scen} onChange={(e) => setF({ ...f, scen: e.target.value })} style={inp}><option value="">시나리오 전체</option>{scenUsed.map((c) => <option key={c} value={c}>{c} {titleOf(c)}</option>)}</select>
         <label>금액 ≥ <MoneyInput value={f.min} width={120} onCommit={(v) => setF({ ...f, min: v ?? 0 })} /></label>
         <input placeholder="🔍 계정 · 적요 · 거래처" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} style={{ ...inp, width: 160 }} />
         <span style={{ color: 'var(--ink-3)' }}>{shown.length.toLocaleString()}장</span>
         {canWrite && <>
-          <button className="btn-sm" onClick={() => void onSave(shown.filter((c) => !pmap.get(c.key)?.selected).map((c) => asPick(c, true)))}>보이는 것 모두 선정</button>
           <label>금액 상위 <input type="number" value={f.topN} onChange={(e) => setF({ ...f, topN: Number(e.target.value) || 0 })} style={{ ...inp, width: 50 }} />장</label>
-          <button className="btn-sm" onClick={() => void onSave([...shown].sort((a, b) => b.amount - a.amount).slice(0, f.topN).filter((c) => !pmap.get(c.key)?.selected).map((c) => asPick(c, true)))}>선정</button>
-          <button className="btn-sm" onClick={() => void onSave(shown.filter((c) => pmap.get(c.key)?.selected && !pmap.get(c.key)?.reqNo).map((c) => asPick(c, false)))} title="이미 요청한 전표는 남깁니다">보이는 선정 해제</button>
+          <button className="btn-sm btn-sm-navy" onClick={() => void onSave([...shown].sort((a, b) => b.amount - a.amount).slice(0, f.topN).filter((c) => !pmap.get(c.key)?.selected).map((c) => asPick(c, true)))}>고르기</button>
+          <button className="btn-sm" onClick={() => void onSave(shown.filter((c) => !pmap.get(c.key)?.selected).map((c) => asPick(c, true)))}>보이는 것 모두</button>
+          <button className="btn-sm" onClick={() => void onSave(shown.filter((c) => pmap.get(c.key)?.selected && !pmap.get(c.key)?.reqNo).map((c) => asPick(c, false)))} title="이미 요청한 전표는 남깁니다">보이는 것 빼기</button>
         </>}
       </div>
-      <div style={{ overflow: 'auto', maxHeight: 380, border: '1px solid var(--rule)', borderRadius: 4 }}>
+      <div style={{ overflow: 'auto', maxHeight: 340, border: '1px solid var(--rule)', borderRadius: 4 }}>
         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
-          <thead><tr>{['선정', '전표일자', '번호', '시나리오', '전표금액', '주요 계정', '적요', '거래처'].map((h) => <th key={h} style={{ ...th, textAlign: h === '전표금액' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+          <thead><tr>{['선정', '전표일자', '번호', '뽑힌 이유', '전표금액', '주요 계정', '적요', '거래처'].map((h) => <th key={h} style={{ ...th, textAlign: h === '전표금액' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
           <tbody>{shown.slice(0, 1500).map((c) => { const p = pmap.get(c.key); return (
             <tr key={c.key} style={{ background: p?.selected ? 'var(--navy-bg)' : undefined }}>
               <td style={td}><input type="checkbox" checked={!!p?.selected} disabled={!canWrite || !!p?.reqNo} onChange={(e) => void onSave([asPick(c, e.target.checked)])} title={p?.reqNo ? '이미 요청한 전표' : undefined} /></td>
-              <td style={td}>{c.date}</td><td style={td}>{c.no}</td><td style={td}>{c.scenarios.join(' ')}</td><td style={tdr}>{won(c.amount)}</td>
+              <td style={td}>{c.date}</td><td style={td}>{c.no}</td>
+              <td style={td} title={c.scenarios.map(titleOf).join('\n')}>{c.scenarios.map((s) => <span key={s} style={{ background: '#EEF2F7', borderRadius: 4, padding: '0 5px', marginRight: 3 }}>{s}</span>)}</td>
+              <td style={tdr}>{won(c.amount)}</td>
               <td style={td}>{c.mainAcct}</td><td style={{ ...td, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.memo}>{c.memo}</td><td style={td}>{c.cpName}</td>
             </tr>
           ); })}</tbody>
         </table>
       </div>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', marginTop: 4 }}>「뽑힌 이유」에 마우스를 올리면 시나리오 이름이 보입니다. 요청을 보낸 전표는 빼지 못합니다.</div>
     </div>
 
     <div className="card">
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <b style={{ color: 'var(--navy)' }}>선정 전표 {sum.total}장</b>
-        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>이상없음 {sum.ok} · <span style={{ color: sum.exc ? 'var(--bad)' : undefined }}>예외 {sum.exc}</span> · 미완료 {sum.pending}</span>
-        {canWrite && <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button className="btn-sm btn-sm-navy" disabled={!sel.length} onClick={() => void request().catch((e) => setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'))} title="번호 없는 선정 전표에 요청 번호를 매기고 회사용 엑셀을 내려받습니다">📤 증빙요청 엑셀</button>
-          <label className="btn-sm" style={{ cursor: 'pointer' }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const fl = e.dataTransfer.files?.[0]; if (fl) void onReply(fl); }}>
-            📥 회신 엑셀 올리기<input type="file" accept=".xls,.xlsx" style={{ display: 'none' }} onChange={(e) => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) void onReply(fl); }} />
-          </label>
-        </span>}
-      </div>
-      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', margin: '4px 0 6px' }}>
-        회사는 증빙요청 엑셀의 노란 칸(회사 설명 · 증빙 파일명)만 채워 그대로 돌려보내면 됩니다. 증빙 파일 이름은 「요청No_전표일자_전표번호」. 결과는 조서 C01_선정전표검토로 나갑니다.
-      </div>
-      {sel.length > 0 && (
+      <StepHead n="2단계" title="회사에 증빙 요청 · 회신 받기" hint="회사는 엑셀의 노란 칸(회사 설명 · 증빙 파일명)만 채워 그대로 돌려보내면 됩니다" />
+      <Todo>{!sel.length ? '1단계에서 먼저 고르세요.' : notSent ? `요청 전 ${notSent}장 — 「📤 증빙요청 엑셀」로 번호를 매기고 내려받아 회사에 보냅니다.` : replied < sent ? `요청한 ${sent}장 중 회신 ${replied}장 — 회사가 돌려준 엑셀을 「📥 회신 올리기」로 올립니다.` : '회신을 다 받았습니다 — 3단계에서 결과를 고릅니다.'}</Todo>
+      {canWrite && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button className="btn-sm btn-sm-navy" disabled={!sel.length} onClick={() => void request().catch((e) => setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'))}>📤 증빙요청 엑셀{notSent ? ` (새로 ${notSent}장)` : ''}</button>
+        <label className="btn-sm" style={{ cursor: 'pointer' }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const fl = e.dataTransfer.files?.[0]; if (fl) void onReply(fl); }}>
+          📥 회신 올리기<input type="file" accept=".xls,.xlsx" style={{ display: 'none' }} onChange={(e) => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) void onReply(fl); }} />
+        </label>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>엑셀: 「증빙요청」 시트(전표 한 장 = 한 줄, 요청 증빙 미리 적힘) + 「전표내역」 시트(고른 전표의 모든 줄). 증빙 파일 이름은 「요청No_전표일자_전표번호」.</span>
+      </div>}
+    </div>
+
+    <div className="card">
+      <StepHead n="3단계" title="결과 입력" hint="회신 설명 · 증빙을 보고 전표마다 결과를 고릅니다 — 조서 C01 로 나갑니다" />
+      <Todo>{!sel.length ? '고른 전표가 없습니다.' : done === sel.length ? `모두 끝났습니다 — 이상없음 ${count('이상없음')} · 예외 ${count('예외')}. 예외는 비고에 처리 내용을 적으세요.` : `결과가 남은 전표 ${sel.length - done}장 — 「확인한 증빙(REF)」에 본 증빙 · 조서를 적고 결과를 고릅니다.`}</Todo>
+      {sel.length > 0 && <>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '2px 0 6px', fontSize: 'var(--fs-1)' }}>
+          <button className={stateF === '' ? 'btn-sm btn-sm-navy' : 'btn-sm'} onClick={() => setStateF('')}>전체 {sel.length}</button>
+          {(['요청 전', '요청함', '회신 받음', '확인중', '이상없음', '예외'] as PickState[]).filter((s) => count(s)).map((s) => (
+            <button key={s} className={stateF === s ? 'btn-sm btn-sm-navy' : 'btn-sm'} onClick={() => setStateF(s)}>{s} {count(s)}</button>
+          ))}
+        </div>
         <div style={{ overflow: 'auto', maxHeight: 520, border: '1px solid var(--rule)', borderRadius: 4 }}>
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)' }}>
-            <thead><tr>{['No', '전표', '시나리오', '금액', '요청 증빙', '회사 설명', '회신 증빙', '확인한 증빙(REF)', '결과', '비고'].map((h) => <th key={h} style={{ ...th, textAlign: h === '금액' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
-            <tbody>{sel.map((p) => (
+            <thead><tr>{['상태', 'No', '전표', '금액', '요청 증빙', '회사 설명', '회신 증빙', '확인한 증빙(REF)', '결과', '비고'].map((h) => <th key={h} style={{ ...th, textAlign: h === '금액' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+            <tbody>{selShown.map((p) => (
               <tr key={`${p.vdate}|${p.vno}`} style={{ background: p.result === '예외' ? '#FEF2F2' : p.result === '이상없음' ? '#F0FDF4' : undefined }}>
+                <td style={td}><Chip s={pickState(p)} /></td>
                 <td style={td}>{p.reqNo ?? '—'}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap' }}>{p.vdate} {p.vno}</td>
-                <td style={td}>{p.scenarios.join(' ')}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }} title={p.reason ?? ''}>{p.vdate} {p.vno} <span style={{ color: 'var(--ink-4)' }}>{p.scenarios.join(' ')}</span></td>
                 <td style={tdr}>{won(p.amount)}</td>
-                {cell(p, 'reqDocs', 180)}{cell(p, 'answer', 200)}{cell(p, 'replyDocs', 130)}{cell(p, 'evidence', 130)}
+                {cell(p, 'reqDocs', 170)}{cell(p, 'answer', 200, '회신 엑셀에서')}{cell(p, 'replyDocs', 120, '회신 엑셀에서')}{cell(p, 'evidence', 130, '예: 세금계산서 · 4100')}
                 <td style={td}><select value={p.result ?? ''} disabled={!canWrite} onChange={(e) => setOne(p, { result: (e.target.value || null) as JePick['result'] })} style={inp}><option value="">—</option><option>이상없음</option><option>예외</option><option>확인중</option></select></td>
                 {cell(p, 'note', 140)}
               </tr>
             ))}</tbody>
           </table>
         </div>
-      )}
+      </>}
     </div>
   </>);
 }
