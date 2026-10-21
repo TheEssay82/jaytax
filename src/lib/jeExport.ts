@@ -28,6 +28,7 @@ export interface ExportInput {
   fy: number;
   periodFrom: string;
   periodTo: string;
+  /** 회계기간 말(결산일). periodTo 가 이보다 앞이면 중간감사 기준일. */ yearEnd?: string;
   job: JeJob;
   results: CheckResult[];
   uploads: JeUpload[];
@@ -68,7 +69,7 @@ function sheetHead(ws: Worksheet, r: CheckResult, inp: ExportInput) {
   ws.getCell('A1').value = { formula: `총괄!B${15 + r.no}`, result: r.no } as Cell['value'];
   ws.getCell('B1').value = { formula: `총괄!C${15 + r.no}`, result: r.title } as Cell['value'];
   ws.getCell('A1').font = FONT_BOLD; ws.getCell('B1').font = { ...FONT_BOLD, size: 12 };
-  put(ws, 'F1', `회사명: ${inp.companyName}`); put(ws, 'F2', `결산일: ${inp.periodTo}`); put(ws, 'H1', `조서번호: ${r.code}`, { bold: true });
+  put(ws, 'F1', `회사명: ${inp.companyName}`); put(ws, 'F2', `${inp.yearEnd && inp.periodTo < inp.yearEnd ? '기준일(중간)' : '결산일'}: ${inp.periodTo}`); put(ws, 'H1', `조서번호: ${r.code}`, { bold: true });
 }
 
 function writeScenario(wb: Workbook, r: CheckResult, inp: ExportInput) {
@@ -179,7 +180,8 @@ function writeCover(wb: Workbook, inp: ExportInput) {
   ws.mergeCells('A2:K3'); f('A2', '(JET. 분개 테스트 — Journal Entry Test)', { align: 'center' });
   const under = { bottom: thin };
   const job = inp.job;
-  ([['A4:B4', '회 사 명', 'C4:E4', inp.companyName], ['A5:B5', '결 산 일', 'C5:E5', inp.periodTo]] as const).forEach(([l, lt, v, vt]) => { ws.mergeCells(l); f(l.split(':')[0], lt, { size: 11.5 }); ws.mergeCells(v); const c = f(v.split(':')[0], vt, { size: 11.5, align: 'center' }); c.border = under; });
+  const interim = !!inp.yearEnd && inp.periodTo < inp.yearEnd;
+  ([['A4:B4', '회 사 명', 'C4:E4', inp.companyName], ['A5:B5', interim ? '기 준 일' : '결 산 일', 'C5:E5', interim ? `${inp.periodTo}(중간)` : inp.periodTo]] as const).forEach(([l, lt, v, vt]) => { ws.mergeCells(l); f(l.split(':')[0], lt, { size: 11.5 }); ws.mergeCells(v); const c = f(v.split(':')[0], vt, { size: 11.5, align: 'center' }); c.border = under; });
   ([['F4', '작성자', 'G4:H4', job.preparer ?? '', 'I4', 'J4:K4', job.preparedOn ?? ''], ['F5', '검토자', 'G5:H5', job.reviewer ?? '', 'I5', 'J5:K5', job.reviewedOn ?? '']] as const).forEach(([a, at, b, bt, c2, d, dt]) => {
     f(a, at, { size: 11.5 }); ws.mergeCells(b); f(b.split(':')[0], bt, { size: 11.5, align: 'center' }).border = under;
     f(c2, '일 자', { size: 11.5 }); ws.mergeCells(d); f(d.split(':')[0], dt, { size: 11.5, align: 'center' }).border = under;
@@ -213,7 +215,9 @@ function writeSummary(wb: Workbook, inp: ExportInput) {
   const ws = wb.addWorksheet('총괄', { views: [{ showGridLines: false }] });
   ws.columns = [{ width: 2 }, { width: 8 }, { width: 34 }, { width: 30 }, { width: 30 }, { width: 12 }, { width: 10 }, { width: 12 }];
   const job = inp.job;
-  put(ws, 'B2', `회사명: ${inp.companyName}`, { bold: true }); put(ws, 'B3', `작성자: ${job.preparer ?? ''}   검토자: ${job.reviewer ?? ''}`); put(ws, 'B4', `회계일: ${inp.periodTo}  (회계기간 ${inp.periodFrom} ~ ${inp.periodTo})`);
+  const interim = !!inp.yearEnd && inp.periodTo < inp.yearEnd;
+  put(ws, 'B2', `회사명: ${inp.companyName}`, { bold: true }); put(ws, 'B3', `작성자: ${job.preparer ?? ''}   검토자: ${job.reviewer ?? ''}`);
+  put(ws, 'B4', interim ? `기준일: ${inp.periodTo}(중간감사)  (회계기간 ${inp.periodFrom} ~ ${inp.yearEnd} 중 ${inp.periodFrom} ~ ${inp.periodTo} 분개)` : `회계일: ${inp.periodTo}  (회계기간 ${inp.periodFrom} ~ ${inp.periodTo})`);
   put(ws, 'H2', 'Journal Entry Test', { bold: true, size: 12 }); put(ws, 'H3', job.preparedOn ?? '');
   put(ws, 'B6', '목적', { bold: true }); put(ws, 'C7', '재무제표의 완전성 및 정확성 검증'); put(ws, 'C8', '비정상적인 전표데이터 검토(경영진의 통제무력화 위험 대응, 감사기준 240 문단 32)');
   put(ws, 'B10', '회사담당자', { bold: true });

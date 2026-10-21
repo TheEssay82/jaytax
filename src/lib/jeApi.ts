@@ -336,19 +336,21 @@ export async function priorAccounts(entityId: string, fy: number, scope: string)
  * 📒 정산표에서 잔액표 채우기(더존 회사 — 분개장에 시산표가 없다). 같은 작업 건 자료함의 결산일 기준 정산표 WBS 에서
  * 전기말(작년 수정후) · 당기말(회사제시)을 읽어 분개장 계정과 잇는다. 찾는 차례: 수정전정산표 → 이월정산표(기말) → 확정 정산표.
  */
-export async function balancesFromWtb(engagementId: string, periodTo: string, accts: { code: string; name: string }[]): Promise<{ rows: BsBalance[]; file: EngFile }> {
+export async function balancesFromWtb(engagementId: string, asOf: string[], accts: { code: string; name: string }[]): Promise<{ rows: BsBalance[]; file: EngFile }> {
   const files = (await listFiles(engagementId)).filter((f) => !f.meta.void);
   const order = [
     ...files.filter((f) => f.kind === '수정전정산표'),
     ...files.filter((f) => f.kind === '이월정산표' && /_기말_/.test(f.fileName)),
     ...files.filter((f) => f.kind === '정산표'),
+    // 중간감사(기준월 말) — 분개장이 기준월까지일 때만 날짜가 맞는다.
+    ...files.filter((f) => f.kind === '이월정산표' && !/_기말_/.test(f.fileName)),
   ];
-  if (!order.length) throw new Error('이 작업 건의 자료함에 기말 정산표(수정전 · 이월 기말 · 확정)가 없습니다 — 📒 정산표 관리에서 기말 갱신을 하거나 일반조서 자료함에 올려 주세요.');
+  if (!order.length) throw new Error('이 작업 건의 자료함에 정산표(수정전 · 이월 중간 · 기말 · 확정)가 없습니다 — 📒 정산표 관리에서 만들거나 일반조서 자료함에 올려 주세요.');
   let last: unknown = null;
   for (const f of order) {
     try {
       const sheets = readWorkbook(await fileBytes(f.storagePath), (n) => /^WBS$/i.test(n.trim()));
-      return { rows: matchWbs(wbsBalances(sheets, periodTo), accts), file: f };
+      return { rows: matchWbs(wbsBalances(sheets, asOf), accts), file: f };
     } catch (e) { last = e; }
   }
   throw (last instanceof Error ? last : new Error('정산표를 읽지 못했습니다.'));

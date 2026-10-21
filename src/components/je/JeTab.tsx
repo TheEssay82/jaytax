@@ -24,6 +24,8 @@ import { buildCandidates, docsFor, parseReply, pickSummary, VOUCHER_SCENARIOS } 
 import { exportBalanceTemplate } from '../../lib/jeTemplate';
 
 const won = (n: number) => Math.round(n).toLocaleString();
+/** YYYY-MM-DD 가 든 달의 말일. */
+const monthEnd = (d: string) => { const [y, m] = d.split('-').map(Number); return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); };
 const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
   통과: { bg: '#DCFCE7', fg: '#166534' }, 예외: { bg: '#FEF3C7', fg: '#92400E' }, 자료없음: { bg: '#F3F4F6', fg: '#6B7280' }, 미수행: { bg: '#F3F4F6', fg: '#6B7280' },
 };
@@ -107,7 +109,7 @@ export default function JeTab() {
 
 function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: boolean; onChanged: () => void }) {
   const { profileName } = useAuth();
-  const from = eng.periodFrom ?? `${eng.fy}-01-01`, to = eng.periodTo ?? `${eng.fy}-12-31`;
+  const from = eng.periodFrom ?? `${eng.fy}-01-01`, yearEnd = eng.periodTo ?? `${eng.fy}-12-31`;
   const [job, setJob] = useState<JeJob | null>(null);
   const [uploads, setUploads] = useState<JeUpload[]>([]);
   const [lines, setLines] = useState<JeLine[]>([]);
@@ -142,6 +144,11 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
   }
   useEffect(() => { void reload(); }, [eng.id]);
 
+  // 기준일 — 분개장 마지막 날짜가 든 달의 말일. 결산일보다 앞이면 중간감사(사용자 2026-10-21 제이스튜디오 FY2026 중간).
+  const journalTo = uploads.find((u) => u.kind === 'journal' && u.current)?.dateTo ?? null;
+  const asOf = journalTo ? monthEnd(journalTo) : yearEnd;
+  const to = asOf < yearEnd ? asOf : yearEnd;
+  const interim = to < yearEnd;
   const codes = useMemo(() => new Set((bal?.length ? bal : ledgerTb).map((r) => r.acctCode).filter(Boolean)), [bal, ledgerTb]);
   const codeOf = useMemo(() => (c: string) => parentCode(c, codes), [codes]);
   const balances = useMemo<BsBalance[] | null>(() => (bal?.length ? bal : ledgerTb.length ? balancesFromTb(ledgerTb) : null), [bal, ledgerTb]);
@@ -174,7 +181,7 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
     setBusy('📒 정산표에서 읽는 중…'); setErr(null);
     try {
       const accts = [...new Map(lines.map((l) => [l.acctCode, l.acctName])).entries()].map(([code, name]) => ({ code, name }));
-      const { rows, file } = await balancesFromWtb(eng.id, to, accts);
+      const { rows, file } = await balancesFromWtb(eng.id, interim ? [to] : [yearEnd], accts);
       const { rows: withMeta, applied } = applyPriorMeta(rows, await priorBalanceMeta(eng));
       await saveBalances(eng.id, withMeta, file.fileName, `정산표 WBS(${file.kind})에서`, profileName);
       flash(`「${file.fileName}」 WBS 에서 ${rows.length}줄(분개장 계정과 이어진 것 ${rows.filter((r) => r.acctCode).length}줄)을 잔액표로 저장했습니다${applied ? ` — 전년 묶음 · 방향 ${applied}줄 이어받음` : ''}.`);
@@ -185,7 +192,7 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
     if (!job) return;
     try {
       const f = ['전표일자', '전표번호', ...(job.erp === '더존' ? ['구분'] : ['결의일자', '결의번호']), '계정코드', '계정과목', '차변', '대변', ...(job.erp === '영림원' ? ['거래처코드'] : []), '거래처', '적요'];
-      await exportJeWorkbook({ companyName: eng.entityName, fy: eng.fy, periodFrom: from, periodTo: to, job, results, uploads, picks, fields: f });
+      await exportJeWorkbook({ companyName: eng.entityName, fy: eng.fy, periodFrom: from, periodTo: to, yearEnd, job, results, uploads, picks, fields: f });
     } catch (e) { setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'); }
   }
 
@@ -199,6 +206,7 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
       {err && <div className="alert-w">{err}</div>}
       {msg && <div className="card" style={{ color: 'var(--good)', padding: '8px 14px' }}>{msg}</div>}
       {busy && <div className="card" style={{ padding: '8px 14px', color: 'var(--ink-2)' }}>⏳ {busy}</div>}
+      {interim && <div className="card" style={{ padding: '8px 14px', background: '#EEF4FF', color: 'var(--navy)', fontSize: 'var(--fs-2)' }}>🕒 <b>중간감사</b> — 분개장이 {journalTo}까지라 기준일 <b>{to}</b>로 봅니다. 기초잔액 대사는 {to} 기준 정산표(중간 이월) · 잔액표와, 결산분개(B09)는 {to} 월말 전표로 합니다.</div>}
       <div style={{ display: 'flex', gap: 2, borderBottom: '2px solid var(--navy)', margin: '0 0 10px', alignItems: 'flex-end' }}>
         {([['data', '① 기본정보 · 자료'], ['check', `② 검토${results.length ? ` (예외 ${exc})` : ''}`], ['gap', '③ 보완할 점'], ['sample', `④ 선정 · 증빙요청 · 결과${picks.some((p) => p.selected) ? ` (${pickSummary(picks).total})` : ''}`]] as [Step, string][]).map(([k, l]) => (
           <button key={k} style={chip(step === k)} onClick={() => setStep(k)}>{l}</button>

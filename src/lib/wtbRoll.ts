@@ -989,17 +989,19 @@ export function fsFromSheet(sh: SheetData, kind: 'BS' | 'PL' | 'MC', src?: strin
 export interface WbsBalance { name: string; fsli: string; open: number; close: number; side: 1 | -1 }
 
 /**
- * 기말 정산표(수정전 · 이월 기말 · 확정)의 WBS 에서 계정 줄마다 전기말 · 당기말을 뽑는다(JET A04, 사용자 2026-10-21).
- * 회사제시 열의 날짜가 결산일(periodTo)이어야 한다 — 중간 정산표(기준월 말)는 받지 않는다.
+ * 정산표 WBS 에서 계정 줄마다 전기말 · 당기말을 뽑는다(JET A04, 사용자 2026-10-21).
+ * 회사제시 열의 날짜가 받을 날짜(asOf — 결산일, 중간감사면 기준월 말) 가운데 하나여야 한다. 첫 날짜의 해로 전기 열을 찾는다.
  */
-export function wbsBalances(sheets: SheetData[], periodTo: string): WbsBalance[] {
+export function wbsBalances(sheets: SheetData[], asOf: string | string[]): WbsBalance[] {
+  const dates = Array.isArray(asOf) ? asOf : [asOf];
+  const periodTo = dates[0];
   const sh = sheets.find((s) => /^WBS$/i.test(s.name.trim()));
   if (!sh) throw new Error('정산표에 WBS 시트가 없습니다.');
   const L = readLayout(sh);
   if (!L) throw new Error('WBS 표의 모양(회사제시 · DR · CR 열)을 알아보지 못했습니다.');
   const serial = sh.cells.get(`${colName(L.cur)}${L.dateRow}`)?.num;
   const curDate = serial != null && serial > 20000 ? new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000).toISOString().slice(0, 10) : null;
-  if (curDate && curDate !== periodTo) throw new Error(`정산표 회사제시 열이 ${curDate} 기준입니다 — 결산일(${periodTo}) 기준 정산표(수정전 · 기말)가 필요합니다.`);
+  if (curDate && !dates.includes(curDate)) throw new Error(`정산표 회사제시 열이 ${curDate} 기준입니다 — ${dates.join(' 또는 ')} 기준 정산표가 필요합니다.`);
   const fy = Number(periodTo.slice(0, 4));
   const priorCol = L.history.get(fy - 1);
   if (priorCol == null) throw new Error(`WBS 에 전기(${fy - 1}) 열이 없습니다.`);
