@@ -78,9 +78,11 @@ function maskText(s: string, cnt: { n: number }): string {
 const norm = (s: unknown) => t(s).replace(/\s+/g, '');
 
 /** 시트의 줄들을 보고 어떤 ERP 분개장인지 · 머리 줄이 어디인지. */
-export function detectJournal(rows: unknown[][]): { erp: Erp; head: number } | null {
+export function detectJournal(rows: unknown[][]): { erp: Erp; head: number; kind?: '아마란스' } | null {
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
     const r = rows[i].map(norm);
+    // 더존 아마란스(제이스튜디오 FY2026 실물): 작성일 · 작성번호 · 계정과목코드(7자리) · 계정과목명 · 차변금액 · 차변계정과목 · 대변계정과목 · 대변금액 · 적요 · 거래처코드 · 거래처명 · 프로젝트명 · 사용부서명.
+    if (r.includes('작성일') && r.includes('작성번호') && r.includes('계정과목코드') && r.includes('차변금액') && r.includes('대변금액')) return { erp: '더존', head: i, kind: '아마란스' };
     if (r.includes('전표일자') && r.includes('전표번호') && r.includes('계정과목') && r.includes('차변') && r.includes('대변')) return { erp: '더존', head: i };
     if (r.some((x) => x.startsWith('구분[기표]')) && i + 1 < rows.length) {
       const r2 = rows[i + 1].map(norm);
@@ -88,6 +90,30 @@ export function detectJournal(rows: unknown[][]): { erp: Erp; head: number } | n
     }
   }
   return null;
+}
+
+/** 더존 아마란스 — 한 줄에 차변 또는 대변 금액(글자 숫자), 차변계정과목 칸이 차 있으면 차변 줄. 거래처코드가 있다. */
+function amaranth(rows: unknown[][], head: number, cnt: { n: number }): { lines: JeLine[]; skipped: number } {
+  const h = rows[head].map(norm);
+  const at = (name: string) => h.indexOf(name);
+  const cDate = at('작성일'), cNo = at('작성번호'), cCode = at('계정과목코드'), cName = at('계정과목명');
+  const cDr = at('차변금액'), cCr = at('대변금액'), cDrAcct = at('차변계정과목'), cMemo = at('적요'), cCpCode = at('거래처코드'), cCpName = at('거래처명');
+  const lines: JeLine[] = [];
+  let skipped = 0;
+  for (const r of rows.slice(head + 1)) {
+    const date = toDate(r[cDate]);
+    if (!date) { if (r.some((x) => t(x))) skipped++; continue; }
+    const dr = num(r[cDr]), cr = num(r[cCr]);
+    lines.push({
+      seq: lines.length + 1, date, no: t(r[cNo]),
+      acctCode: t(r[cCode]), acctName: t(r[cName]), dr, cr,
+      cpCode: cCpCode >= 0 ? (t(r[cCpCode]) || null) : null,
+      cpName: cCpName >= 0 ? (maskText(t(r[cCpName]), cnt) || null) : null,
+      memo: cMemo >= 0 ? maskText(t(r[cMemo]), cnt) : '',
+      side: cDrAcct >= 0 ? (t(r[cDrAcct]) ? '차변' : '대변') : (dr ? '차변' : '대변'), vtype: '일반',
+    });
+  }
+  return { lines, skipped };
 }
 
 function douzone(rows: unknown[][], head: number, cnt: { n: number }): { lines: JeLine[]; skipped: number } {
@@ -176,7 +202,7 @@ export function parseJournalWorkbook(wb: { SheetNames: string[]; Sheets: Record<
     const rows = toRows(wb.Sheets[sheet]);
     const d = detectJournal(rows);
     if (!d) continue;
-    const { lines, skipped } = d.erp === '더존' ? douzone(rows, d.head, cnt) : younglimwon(rows, d.head, cnt);
+    const { lines, skipped } = d.kind === '아마란스' ? amaranth(rows, d.head, cnt) : d.erp === '더존' ? douzone(rows, d.head, cnt) : younglimwon(rows, d.head, cnt);
     if (!lines.length) continue;
     let tb: TbRow[] | null = null;
     if (d.erp === '영림원') {
@@ -185,14 +211,15 @@ export function parseJournalWorkbook(wb: { SheetNames: string[]; Sheets: Record<
     }
     return { erp: d.erp, sheet, lines, tb, skipped, masked: cnt.n };
   }
-  throw new Error('분개장을 찾지 못했습니다 — 더존(전표일자 · 전표번호 · 계정과목 · 차변 · 대변) 또는 영림원(구 분[기표] 두 줄 머리) 형식이어야 합니다.');
+  throw new Error('분개장을 찾지 못했습니다 — 더존(전표일자 · 전표번호 · 계정과목 · 차변 · 대변), 더존 아마란스(작성일 · 작성번호 · 계정과목코드 · 차변금액 · 대변금액) 또는 영림원(구 분[기표] 두 줄 머리) 형식이어야 합니다.');
 }
 
 /** 영림원 분개장의 하위 계정(13101)을 원장의 상위 계정(13100)으로 — 원장 코드에 없으면 앞 3자리 + 00. */
 export function parentCode(code: string, tbCodes: Set<string>): string {
-  if (tbCodes.has(code) || code.length !== 5) return code;
-  const p = `${code.slice(0, 3)}00`;
-  return tbCodes.has(p) ? p : code;
+  if (tbCodes.has(code)) return code;
+  // 영림원 5자리(13101 → 13100), 더존 아마란스 7자리(1350001 「부가세대급금_일반전표」 → 1350000).
+  const p = code.length === 5 ? `${code.slice(0, 3)}00` : code.length === 7 ? `${code.slice(0, 3)}0000` : '';
+  return p && tbCodes.has(p) ? p : code;
 }
 
 /**

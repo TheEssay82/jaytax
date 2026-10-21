@@ -137,6 +137,8 @@ export interface OpenRecon { group: string; code: string; name: string; jdr: num
 export function guessSide(code: string, name = ''): 1 | -1 {
   if (/충당금|누계액|할인차금/.test(name) && !/충당부채/.test(name)) return 1;
   if (/^\d{3}$/.test(code)) return Number(code) <= 250 ? 1 : -1;
+  // 더존 아마란스 7자리(1030001 보통예금 · 2530000 미지급금)는 앞 3자리가 옛 더존 코드다.
+  if (/^\d{7}$/.test(code)) return Number(code.slice(0, 3)) <= 250 ? 1 : -1;
   return /^[12]/.test(code) ? 1 : /^3/.test(code) ? -1 : 1;
 }
 /** 잔액 방향 — 1 차변 계정, −1 대변 계정. 지정이 없으면 코드 · 이름으로 짐작. */
@@ -182,6 +184,27 @@ export function checkOpening(lines: JeLine[], bal: BsBalance[] | null, codeOf: (
   const method = ['전표에는 이월전표가 없으므로, 분개장의 계정별 차변 · 대변 합계와 회사 제시 기말잔액으로 기초잔액을 역산하고,', '역산한 기초잔액을 회사 제시 기초잔액(전기 감사받은 재무상태표)과 비교함(재무상태표 계정)'];
   if (!bal?.length) return { ...base('A04'), status: '자료없음', summary: '회사 제시 기초 · 기말 잔액이 없습니다 — 잔액표를 올리면 계정별로 대사합니다', method, head, rows: [] };
   const rows = reconOpening(lines, bal, codeOf);
+  // 미처분이익잉여금은 회사 제시 금액에 당기순이익이 들어 있는데 분개장에는 손익 대체 전표가 아직 없다(중간 · 결산 마감 전).
+  // 차이가 분개장 손익 합계(대변 − 차변)와 같으면 「당기순이익(분개장 손익 계정)」 줄을 같은 묶음에 넣어 상쇄로 보인다.
+  const ni = Math.round(lines.filter((l) => !isBsCode(codeOf(l.acctCode))).reduce((s, l) => s + l.cr - l.dr, 0));
+  const re = rows.find((r) => /이익잉여금|이월이익|미처분/.test(r.name) && r.diff !== 0 && Math.abs(r.diff - ni) <= Math.max(1, Math.abs(ni) * 0.001));
+  if (ni && re) rows.push({ group: re.group, code: '', name: '당기순이익(분개장 손익 계정, 미대체)', jdr: 0, jcr: 0, close: 0, calcOpen: -ni, open: 0, diff: -ni, side: -1 });
+  // 남은 차이가 정확히 반대인 묶음이 하나뿐이면 같은 묶음으로 — 회사 재무제표의 재분류(유동 ↔ 비유동 · 계정 간 대체). 실물 조서도 이렇게 묶어 표시했다.
+  let paired = 0;
+  for (;;) {
+    const gd = groupDiffs(rows);
+    const open = [...gd.entries()].filter(([, d]) => r0(d) !== 0);
+    let done = false;
+    for (const [ga, da] of open) {
+      const opp = open.filter(([gb, db]) => gb !== ga && r0(db) === -r0(da));
+      if (opp.length !== 1) continue;
+      const gb = opp[0][0];
+      const label = `재분류: ${rows.find((r) => r.group === ga)!.name} ↔ ${rows.find((r) => r.group === gb)!.name}`;
+      for (const r of rows) if (r.group === ga || r.group === gb) r.group = label;
+      paired++; done = true; break;
+    }
+    if (!done) break;
+  }
   const g = groupDiffs(rows);
   const offset = rows.filter((r) => r.diff !== 0 && r0(g.get(r.group) ?? 0) === 0).length;
   const left = [...g.entries()].filter(([, d]) => r0(d) !== 0);
@@ -189,7 +212,7 @@ export function checkOpening(lines: JeLine[], bal: BsBalance[] | null, codeOf: (
     ...base('A04'), status: left.length ? '예외' : '통과',
     summary: left.length
       ? `차이가 남는 묶음 ${left.length}개(합계 ${won(left.reduce((s, [, d]) => s + d, 0))}원) — 원인 확인 필요`
-      : `${rows.length}개 줄 모두 역산 기초와 회사 제시 기초가 일치(공시과목 나눔 · 재분류로 상쇄 ${offset}줄)하여 전기 기말잔액이 기초로 이상 없이 이월되었음을 확인하였음`,
+      : `${rows.length}개 줄 모두 역산 기초와 회사 제시 기초가 일치(공시과목 나눔 · 재분류로 상쇄 ${offset}줄${paired ? `, 그중 반대 금액 짝 ${paired}쌍은 자동으로 묶음 — 내용 확인` : ''})하여 전기 기말잔액이 기초로 이상 없이 이월되었음을 확인하였음`,
     method, head,
     rows: rows.map((r) => [r.group === r.code ? '' : r.group, r.code, r.name, r0(r.jdr), r0(r.jcr), r0(r.close), r0(r.calcOpen), r0(r.open), r.diff, r.side === 1 ? '차' : '대']),
     stats: { rows: rows.length, offset, left: left.length },
@@ -405,12 +428,16 @@ export function balancesFromTb(tb: TbRow[]): BsBalance[] {
  *   · 이름이 같은 계정이 여럿이거나 못 찾으면 코드를 비운다 — 대사 때 이름이 같은 계정을 모두 더하고, 같은 이름 줄끼리 묶음으로 본다.
  */
 export function matchWbs(rows: { name: string; open: number; close: number; side: 1 | -1 }[], accts: { code: string; name: string }[]): BsBalance[] {
-  const nm = (x: string) => x.replace(/[\s()]/g, '');
+  // 「정기예.적금」 = 「정기예적금」, 「부가세대급금_일반전표」 = 「부가세대급금」(아마란스 하위 계정).
+  const nm = (x: string) => x.replace(/_.*$/, '').replace(/[\s().·]/g, '');
   const byName = new Map<string, string[]>();
-  for (const a of accts) { const k = nm(a.name); byName.set(k, [...(byName.get(k) ?? []), a.code]); }
+  // 하위 계정(아마란스 1350001 · 영림원 13101)은 본 계정이 따로 있으면 이름 짝에서 뺀다 — 대사 때 parentCode 로 본 계정에 더해진다.
+  const codeSet = new Set(accts.map((a) => a.code));
+  const isSub = (c: string) => (c.length === 7 && !c.endsWith('0000') && codeSet.has(`${c.slice(0, 3)}0000`)) || (c.length === 5 && !c.endsWith('00') && codeSet.has(`${c.slice(0, 3)}00`));
+  for (const a of accts) { if (isSub(a.code)) continue; const k = nm(a.name); byName.set(k, [...(byName.get(k) ?? []), a.code]); }
   const CONTRA = /^(감가상각누계액|대손충당금|손상차손누계액|정부보조금|국고보조금|현재가치할인차금)[-_·:]?(.+)$/;
   const taken = new Set<string>();
-  return rows.map((r) => {
+  const out: BsBalance[] = rows.map((r) => {
     let code = '';
     const exact = byName.get(nm(r.name)) ?? [];
     if (exact.length === 1) code = exact[0];
@@ -425,4 +452,11 @@ export function matchWbs(rows: { name: string; open: number; close: number; side
     if (code) taken.add(code);
     return { acctCode: code, acctName: r.name, open: r.open, close: r.close, group: null, side: r.side };
   });
+  // 본 계정(비품 · 시설장치)이 분개장에 없어 짝을 못 찾은 차감 계정 — 남은 같은 이름 계정과 정산표 순서 = 코드 순서로 짝짓는다(더존은 자산 다음 코드가 그 누계액).
+  for (const base of ['감가상각누계액', '대손충당금', '손상차손누계액', '정부보조금', '국고보조금', '현재가치할인차금']) {
+    const left = (byName.get(base) ?? []).filter((c) => !taken.has(c)).sort();
+    const want = out.filter((b) => !b.acctCode && CONTRA.exec(nm(b.acctName))?.[1] === base);
+    if (left.length && left.length === want.length) want.forEach((b, i) => { b.acctCode = left[i]; taken.add(left[i]); });
+  }
+  return out;
 }

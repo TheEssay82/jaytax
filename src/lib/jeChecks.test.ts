@@ -105,3 +105,23 @@ test('정산표 WBS → 잔액표 — 이름 하나면 코드, 「감가상각�
   ], accts);
   assert.deepEqual(r.map((x) => x.acctCode), ['103', '209', '203', '', '']);
 });
+
+test('더존 아마란스 — 머리 알아보기, 7자리 하위 계정은 본 계정으로, 7자리 잔액 방향', async () => {
+  const { parentCode } = await import('./jeParse');
+  assert.deepEqual(detectJournal([['작성일', '작성번호', '계정과목코드', '계정과목명', '차변금액', '차변계정과목', '대변계정과목', '대변금액', '적요']]), { erp: '더존', head: 0, kind: '아마란스' });
+  assert.equal(parentCode('1350001', new Set(['1350000'])), '1350000');
+  assert.equal(parentCode('1030001', new Set(['1030001', '1030000'])), '1030001');
+  assert.deepEqual([guessSide('1030001'), guessSide('2530000'), guessSide('2020000')], [1, -1, 1]);
+});
+
+test('기초잔액 — 반대 금액 짝은 재분류로 묶고, 미처분이익잉여금 차이가 분개장 손익과 같으면 상쇄', () => {
+  const lines = [L('2026-03-01', '1', '4040000', '제품매출', 0, 1000), L('2026-03-01', '1', '1030001', '보통예금', 1000, 0)];
+  const r = checkOpening(lines, [
+    { acctCode: '1030001', acctName: '보통예금', open: 500, close: 1500 - 30, side: 1 },
+    { acctCode: '1030003', acctName: '기타예금', open: 0, close: 30, side: 1 },
+    { acctCode: '', acctName: '미처분이익잉여금', open: 200, close: 1200, side: -1 },
+  ]);
+  assert.equal(r.status, '통과');
+  assert.ok(r.rows.some((x) => String(x[0]).startsWith('재분류: 보통예금 ↔ 기타예금')));
+  assert.ok(r.rows.some((x) => String(x[2]).startsWith('당기순이익')));
+});
