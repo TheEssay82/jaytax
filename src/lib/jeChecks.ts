@@ -145,19 +145,23 @@ export const sideOf = (b: Pick<BsBalance, 'acctCode' | 'acctName' | 'side'>) => 
 export function reconOpening(lines: JeLine[], bal: BsBalance[], codeOf: (c: string) => string = (c) => c): OpenRecon[] {
   const agg = new Map<string, { dr: number; cr: number; name: string }>();
   for (const l of lines) { const c = codeOf(l.acctCode); if (!isBsCode(c)) continue; const a = agg.get(c) ?? { dr: 0, cr: 0, name: l.acctName }; a.dr += l.dr; a.cr += l.cr; agg.set(c, a); }
+  const nm = (x: string) => x.replace(/\s/g, '');
   const used = new Set<string>();
   const rows: OpenRecon[] = bal.map((b) => {
     // 같은 계정코드가 여러 줄(공시과목 여럿)이면 분개 합계는 첫 줄에만 둔다 — 실물(세원 감가상각누계액)과 같이.
-    // 코드가 비었으면 이름으로 찾는다(재무제표에서 붙여 넣은 줄).
-    const key = b.acctCode || [...agg.entries()].find(([, x]) => x.name.replace(/\s/g, '') === b.acctName.replace(/\s/g, ''))?.[0] || '';
-    const a = key && !used.has(key) ? agg.get(key) : undefined;
-    if (key) used.add(key);
+    // 코드가 비었으면 **이름이 같은 계정 전부**를 더한다(재무제표 · 정산표에서 온 줄 — 더존은 「감가상각누계액」이 자산마다 코드가 따로라 실물도 이름으로 피벗했다).
+    let a: { dr: number; cr: number } | undefined;
+    if (b.acctCode) { if (!used.has(b.acctCode)) a = agg.get(b.acctCode); used.add(b.acctCode); }
+    else {
+      const codes = [...agg.entries()].filter(([c, x]) => nm(x.name) === nm(b.acctName) && !used.has(c));
+      if (codes.length) { a = { dr: 0, cr: 0 }; for (const [c, x] of codes) { a.dr += x.dr; a.cr += x.cr; used.add(c); } }
+    }
     const jdr = a?.dr ?? 0, jcr = a?.cr ?? 0;
     // 방향을 안 적은 줄: 기말 − 기초가 (차 − 대)와 맞으면 차변, (대 − 차)와 맞으면 대변 계정으로 본다. 둘 다 아니면 코드로 짐작.
     let side = sideOf(b);
     if (b.side == null) { const d = r0(b.close - b.open); if (d === r0(jdr - jcr)) side = 1; else if (d === r0(jcr - jdr)) side = -1; }
     const calcOpen = side === 1 ? b.close - jdr + jcr : b.close + jdr - jcr;
-    return { group: b.group || b.acctCode, code: b.acctCode, name: b.acctName, jdr, jcr, close: b.close, calcOpen, open: b.open, diff: r0(calcOpen - b.open), side };
+    return { group: b.group || b.acctCode || b.acctName, code: b.acctCode, name: b.acctName, jdr, jcr, close: b.close, calcOpen, open: b.open, diff: r0(calcOpen - b.open), side };
   });
   for (const [c, a] of agg) if (!used.has(c)) {
     const side = guessSide(c, a.name), calcOpen = side === 1 ? a.cr - a.dr : a.dr - a.cr;
@@ -391,5 +395,34 @@ export function balancesFromTb(tb: TbRow[]): BsBalance[] {
     // 원장 잔액은 정상 방향 +: 차변 계정이면 기말 = 기초 + 차 − 대. 맞지 않으면 대변 계정.
     const side: 1 | -1 = r0(t.close - (t.open + t.dr - t.cr)) === 0 ? 1 : -1;
     return { acctCode: t.acctCode, acctName: t.acctName, open: t.open, close: t.close, side };
+  });
+}
+
+/**
+ * 정산표 WBS 줄(계정 이름 · 전기말 · 당기말 · 방향) → 잔액표 줄. 분개장 계정과 이름으로 잇는다.
+ *   · 이름이 같은 분개장 계정이 하나면 그 코드.
+ *   · 「감가상각누계액-건물」 「대손충당금-외상매출금」처럼 차감 계정은 본 계정(건물) 다음 코드 가운데 같은 이름(감가상각누계액)인 첫 계정 — 더존은 202 건물 · 203 감가상각누계액.
+ *   · 이름이 같은 계정이 여럿이거나 못 찾으면 코드를 비운다 — 대사 때 이름이 같은 계정을 모두 더하고, 같은 이름 줄끼리 묶음으로 본다.
+ */
+export function matchWbs(rows: { name: string; open: number; close: number; side: 1 | -1 }[], accts: { code: string; name: string }[]): BsBalance[] {
+  const nm = (x: string) => x.replace(/[\s()]/g, '');
+  const byName = new Map<string, string[]>();
+  for (const a of accts) { const k = nm(a.name); byName.set(k, [...(byName.get(k) ?? []), a.code]); }
+  const CONTRA = /^(감가상각누계액|대손충당금|손상차손누계액|정부보조금|국고보조금|현재가치할인차금)[-_·:]?(.+)$/;
+  const taken = new Set<string>();
+  return rows.map((r) => {
+    let code = '';
+    const exact = byName.get(nm(r.name)) ?? [];
+    if (exact.length === 1) code = exact[0];
+    else if (!exact.length) {
+      const m = CONTRA.exec(nm(r.name));
+      if (m) {
+        const assets = (byName.get(m[2]) ?? []).sort();
+        const bases = (byName.get(m[1]) ?? []).filter((c) => !taken.has(c)).sort();
+        for (const a of assets) { const c = bases.find((b) => b > a); if (c) { code = c; break; } }
+      }
+    }
+    if (code) taken.add(code);
+    return { acctCode: code, acctName: r.name, open: r.open, close: r.close, group: null, side: r.side };
   });
 }

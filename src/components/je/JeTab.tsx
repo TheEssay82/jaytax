@@ -16,7 +16,7 @@ import {
   type BsBalance, type CheckResult, type ScenarioCode,
 } from '../../lib/jeChecks';
 import {
-  ensureJob, saveJob, listUploads, uploadJournal, uploadBalances, saveBalances, loadLines, loadTb, listPicks, savePick, savePicks, jobSummaries, priorAccounts,
+  ensureJob, saveJob, listUploads, uploadJournal, uploadBalances, saveBalances, loadLines, loadTb, listPicks, savePick, savePicks, jobSummaries, priorAccounts, priorBalanceMeta, applyPriorMeta, balancesFromWtb, materialityFromGwp,
   type JeJob, type JeUpload, type JePick,
 } from '../../lib/jeApi';
 import { exportJeWorkbook, exportRequestWorkbook, performed } from '../../lib/jeExport';
@@ -125,7 +125,8 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
   async function reload() {
     setErr(null);
     try {
-      const j = await ensureJob(eng.id, profileName);
+      const { job: j, inherited } = await ensureJob(eng, profileName);
+      if (inherited) flash(`FY${eng.fy - 1} JET 설정(시나리오 · 기준값 · BENCHMARK 이름 · 적용률 · 사유 · 담당자)을 이어받았습니다 — BENCHMARK 금액은 새로 넣어 주세요.`);
       const ups = await listUploads(eng.id);
       setJob(j); setUploads(ups); setPicks(await listPicks(eng.id));
       setPrior(await priorAccounts(eng.entityId, eng.fy, eng.scope).catch(() => null));
@@ -163,8 +164,22 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
   }
   async function onBalances(f: File) {
     setBusy('잔액표를 읽는 중…'); setErr(null);
-    try { const n = await uploadBalances(eng.id, f, null, profileName); flash(`잔액표 ${n}줄을 저장했습니다.`); onChanged(); await reload(); }
-    catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); setBusy(null); }
+    try {
+      const meta = await priorBalanceMeta(eng);
+      const n = await uploadBalances(eng.id, f, null, profileName, (rows) => applyPriorMeta(rows, meta).rows);
+      flash(`잔액표 ${n}줄을 저장했습니다.`); onChanged(); await reload();
+    } catch (e) { setErr(e instanceof Error ? e.message : '읽지 못했습니다.'); setBusy(null); }
+  }
+  async function onFromWtb() {
+    setBusy('📒 정산표에서 읽는 중…'); setErr(null);
+    try {
+      const accts = [...new Map(lines.map((l) => [l.acctCode, l.acctName])).entries()].map(([code, name]) => ({ code, name }));
+      const { rows, file } = await balancesFromWtb(eng.id, to, accts);
+      const { rows: withMeta, applied } = applyPriorMeta(rows, await priorBalanceMeta(eng));
+      await saveBalances(eng.id, withMeta, file.fileName, `정산표 WBS(${file.kind})에서`, profileName);
+      flash(`「${file.fileName}」 WBS 에서 ${rows.length}줄(분개장 계정과 이어진 것 ${rows.filter((r) => r.acctCode).length}줄)을 잔액표로 저장했습니다${applied ? ` — 전년 묶음 · 방향 ${applied}줄 이어받음` : ''}.`);
+      onChanged(); await reload();
+    } catch (e) { setErr(e instanceof Error ? e.message : '정산표를 읽지 못했습니다.'); setBusy(null); }
   }
   async function onExport() {
     if (!job) return;
@@ -194,7 +209,7 @@ function Workspace({ eng, canWrite, onChanged }: { eng: Engagement; canWrite: bo
       {step === 'data' && <DataStep eng={eng} job={job} uploads={uploads} journal={journal ?? null} lines={lines} balances={balances} fromLedger={!bal?.length && !!ledgerTb.length}
         canWrite={canWrite} busy={!!busy} onJournal={onJournal} onBalances={onBalances} patchJob={patchJob}
         onSaveBal={async (rows) => { setBusy('잔액표 저장 중…'); try { await saveBalances(eng.id, rows, '화면에서 고침', '묶음 · 방향 수정', profileName); flash('잔액표를 새 판으로 저장했습니다.'); await reload(); } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); setBusy(null); } }}
-        onTemplate={() => void exportBalanceTemplate(eng.entityName, eng.fy, lines, balances)} />}
+        onTemplate={() => void exportBalanceTemplate(eng.entityName, eng.fy, lines, balances)} onFromWtb={() => void onFromWtb()} />}
       {step === 'check' && (lines.length ? <CheckStep job={job} results={results} lines={lines} picks={picks} canWrite={canWrite} patchJob={patchJob}
         onPick={async (p) => { setPicks((ps) => [...ps.filter((x) => !(x.vdate === p.vdate && x.vno === p.vno)), p]); try { await savePick(eng.id, p, profileName); } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); } }} /> : <div className="card"><Empty text="분개장을 먼저 올려 주세요" hint="① 기본정보 · 자료에서 올립니다." /></div>)}
       {step === 'sample' && (lines.length ? <SampleStep eng={eng} job={job} results={results} lines={lines} picks={picks} canWrite={canWrite}
@@ -223,10 +238,10 @@ const th = { padding: '5px 8px', textAlign: 'left' as const, whiteSpace: 'nowrap
 const td = { padding: '4px 8px', borderTop: '1px solid var(--rule)', verticalAlign: 'middle' as const };
 const tdr = { ...td, textAlign: 'right' as const, whiteSpace: 'nowrap' as const };
 
-function DataStep({ job, uploads, journal, lines, balances, fromLedger, canWrite, busy, onJournal, onBalances, patchJob, onSaveBal, onTemplate }: {
+function DataStep({ job, uploads, journal, lines, balances, fromLedger, canWrite, busy, onJournal, onBalances, patchJob, onSaveBal, onTemplate, onFromWtb }: {
   eng: Engagement; job: JeJob; uploads: JeUpload[]; journal: JeUpload | null; lines: JeLine[]; balances: BsBalance[] | null; fromLedger: boolean;
   canWrite: boolean; busy: boolean; onJournal: (f: File) => void; onBalances: (f: File) => void; patchJob: (p: Partial<JeJob>) => Promise<void>;
-  onSaveBal: (rows: BsBalance[]) => Promise<void>; onTemplate: () => void;
+  onSaveBal: (rows: BsBalance[]) => Promise<void>; onTemplate: () => void; onFromWtb: () => void;
 }) {
   const [edit, setEdit] = useState<BsBalance[] | null>(null);
   const rows = edit ?? balances ?? [];
@@ -267,8 +282,11 @@ function DataStep({ job, uploads, journal, lines, balances, fromLedger, canWrite
     <div className="card">
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
         <b style={{ color: 'var(--navy)' }}>회사 제시 잔액표(기초 · 기말)</b>
-        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>4_기초잔액검토 — 재무상태표 계정. {fromLedger ? '영림원 계정별원장에서 만들었습니다.' : '더존은 양식을 내려받아 전기말 · 당기말 재무상태표 금액을 붙여 넣어 올려 주세요.'}</span>
-        <button className="btn-sm" style={{ marginLeft: 'auto' }} disabled={!lines.length} onClick={onTemplate}>잔액표 양식 내려받기</button>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>4_기초잔액검토 — 재무상태표 계정. {fromLedger ? '영림원 계정별원장에서 만들었습니다.' : '더존은 「📒 정산표에서 채우기」(기말 정산표가 자료함에 있을 때) 또는 양식에 재무상태표 금액을 붙여 넣어 올립니다.'}</span>
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          {canWrite && <button className="btn-sm btn-sm-navy" disabled={!lines.length || busy} onClick={onFromWtb} title="이 작업 건 자료함의 기말 정산표(수정전 · 이월 기말 · 확정) WBS 에서 전기말(작년 수정후) · 당기말(회사제시)을 가져옵니다">📒 정산표에서 채우기</button>}
+          <button className="btn-sm" disabled={!lines.length} onClick={onTemplate}>잔액표 양식 내려받기</button>
+        </span>
       </div>
       {canWrite && <div style={{ marginTop: 6 }}><Drop label="잔액표를 끌어다 놓기" hint="묶음 칸: 원장 계정 하나가 공시과목 여럿이면(감가상각누계액 → 건물 · 기계장치 …) 같은 이름을 적습니다. 차대 칸: 차 / 대." onFile={onBalances} disabled={busy} /></div>}
       {rows.length > 0 && (
@@ -310,6 +328,15 @@ function CheckStep({ job, results, lines, picks, canWrite, patchJob, onPick }: {
     for (const l of lines) if (!isBsCode(l.acctCode) && th > 0 && Math.abs(l.dr - l.cr) >= th && (job.params.matSide === '양쪽' || l.dr > 0)) { const a = m.get(l.acctCode) ?? { name: l.acctName, n: 0 }; a.n++; m.set(l.acctCode, a); }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [lines, job.bench, job.params.matSide]);
+  const [gwpNote, setGwpNote] = useState<string | null>(null);
+  async function onGwp() {
+    try {
+      const g = await materialityFromGwp(job.engagementId);
+      if (!g) { setGwpNote('일반조서 2700A 에 중요성 금액이 아직 없습니다.'); return; }
+      await patchJob({ bench: { name: g.benchName, amount: g.amount, rate: g.rate, reason: g.reason } });
+      setGwpNote(`${g.code}: 중요성 ${won(g.materiality)}원${g.pm != null ? ` · 수행중요성 ${won(g.pm)}원` : ''}${g.trivial != null ? ` · 명백히 사소한 금액 ${won(g.trivial)}원` : ''} — JET 기준은 실물처럼 적용률을 낮춰(예 1%) 쓸 수 있습니다.`);
+    } catch (e) { setGwpNote(e instanceof Error ? e.message : '불러오지 못했습니다.'); }
+  }
   const setScen = (code: ScenarioCode, p: Partial<{ on: boolean; reason: string; conclusion: string }>) => void patchJob({ scenarios: { ...job.scenarios, [code]: { ...(job.scenarios[code] ?? { on: false }), ...p } } });
   const pickMap = new Map(picks.map((p) => [`${p.vdate}|${p.vno}`, p]));
   const pr = job.params;
@@ -321,10 +348,12 @@ function CheckStep({ job, results, lines, picks, canWrite, patchJob, onPick }: {
         <label>BENCHMARK <select value={job.bench.name} disabled={!canWrite} onChange={(e) => void patchJob({ bench: { ...job.bench, name: e.target.value } })} style={inp}>{['매출', '세전이익', '총자산', '순자산', '비용'].map((x) => <option key={x}>{x}</option>)}</select></label>
         <label>금액 <MoneyInput value={job.bench.amount} disabled={!canWrite} width={150} onCommit={(v) => void patchJob({ bench: { ...job.bench, amount: v ?? 0 } })} /></label>
         {job.bench.name === '매출' && canWrite && <button className="btn-sm" onClick={() => void patchJob({ bench: { ...job.bench, amount: Math.round(sales) } })} title="분개장의 매출 계정 대변 − 차변">분개장 매출 {won(sales)} 넣기</button>}
+        {canWrite && <button className="btn-sm" onClick={() => void onGwp()} title="일반조서 2700A(완결 → 수행 → 계획) 의 BENCHMARK · 금액 · 적용률 · 사유">📘 일반조서 중요성 불러오기</button>}
         <label>적용률 <input type="number" step="0.1" defaultValue={Math.round(job.bench.rate * 1000) / 10} key={job.bench.rate} disabled={!canWrite} onBlur={(e) => void patchJob({ bench: { ...job.bench, rate: Number(e.target.value) / 100 } })} style={{ ...inp, width: 60, textAlign: 'right' }} /> %</label>
         <b>= 중요성 기준 {won(benchThreshold(job.bench))}원</b>
         <label title="차변만: 차변 금액이 양수인 줄만 — 대체 분개의 맞은편(대변) 줄과 마이너스 역분개를 뺍니다">분개 <select value={pr.matSide} disabled={!canWrite} onChange={(e) => void patchJob({ params: { ...pr, matSide: e.target.value as '양쪽' | '차변만' } })} style={inp}><option>양쪽</option><option>차변만</option></select></label>
       </div>
+      {gwpNote && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)', marginTop: 4 }}>📘 {gwpNote}</div>}
       <input placeholder="BENCHMARK 선택 사유(예: 세전이익 변동성이 커 매출을 지표로 선정)" defaultValue={job.bench.reason} disabled={!canWrite} onBlur={(e) => void patchJob({ bench: { ...job.bench, reason: e.target.value } })} style={{ ...inp, width: '100%', marginTop: 6 }} />
       {plAccts.length > 0 && (
         <div style={{ marginTop: 8, fontSize: 'var(--fs-1)' }}>

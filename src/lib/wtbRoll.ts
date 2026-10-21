@@ -984,3 +984,33 @@ export function fsFromSheet(sh: SheetData, kind: 'BS' | 'PL' | 'MC', src?: strin
   }
   return out;
 }
+
+/** WBS 한 줄의 잔액(JET 기초잔액 대사용) — 전기말(작년 수정후 열) · 당기말(회사제시 열), 재무제표에 보이는 금액 그대로(차감 계정은 음수). */
+export interface WbsBalance { name: string; fsli: string; open: number; close: number; side: 1 | -1 }
+
+/**
+ * 기말 정산표(수정전 · 이월 기말 · 확정)의 WBS 에서 계정 줄마다 전기말 · 당기말을 뽑는다(JET A04, 사용자 2026-10-21).
+ * 회사제시 열의 날짜가 결산일(periodTo)이어야 한다 — 중간 정산표(기준월 말)는 받지 않는다.
+ */
+export function wbsBalances(sheets: SheetData[], periodTo: string): WbsBalance[] {
+  const sh = sheets.find((s) => /^WBS$/i.test(s.name.trim()));
+  if (!sh) throw new Error('정산표에 WBS 시트가 없습니다.');
+  const L = readLayout(sh);
+  if (!L) throw new Error('WBS 표의 모양(회사제시 · DR · CR 열)을 알아보지 못했습니다.');
+  const serial = sh.cells.get(`${colName(L.cur)}${L.dateRow}`)?.num;
+  const curDate = serial != null && serial > 20000 ? new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000).toISOString().slice(0, 10) : null;
+  if (curDate && curDate !== periodTo) throw new Error(`정산표 회사제시 열이 ${curDate} 기준입니다 — 결산일(${periodTo}) 기준 정산표(수정전 · 기말)가 필요합니다.`);
+  const fy = Number(periodTo.slice(0, 4));
+  const priorCol = L.history.get(fy - 1);
+  if (priorCol == null) throw new Error(`WBS 에 전기(${fy - 1}) 열이 없습니다.`);
+  const { sign } = rowSections(sh, L);
+  const txt = (c: number, r: number) => (sh.cells.get(`${colName(c)}${r}`)?.text ?? '').trim();
+  const val = (c: number, r: number) => sh.cells.get(`${colName(c)}${r}`)?.num ?? 0;
+  return L.accounts.map((r) => ({
+    name: txt(L.acct, r) || txt(L.headCol, r),
+    fsli: L.fsli != null ? txt(L.fsli, r) : '',
+    open: val(priorCol, r),
+    close: val(L.cur, r),
+    side: (sign.get(r) === -1 ? -1 : 1) as 1 | -1,
+  })).filter((b) => b.name && (b.open || b.close));
+}

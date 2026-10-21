@@ -2,7 +2,11 @@
 // 셈은 jeChecks.ts, 읽기는 jeParse.ts. 분개장 줄은 DB 에 저장한다(사용자 2026-10-21) — 감사팀만 읽는다(RLS is_audit_staff).
 import { supabase } from './supabase';
 import { parseJournalWorkbook, parseBalanceRows, type Erp, type JeLine, type TbRow } from './jeParse';
-import { DEFAULT_ON, NEEDS_USER_DATA, defaultParams, type Bench, type BsBalance, type JeParams, type ScenarioCode } from './jeChecks';
+import { DEFAULT_ON, NEEDS_USER_DATA, defaultParams, matchWbs, type Bench, type BsBalance, type JeParams, type ScenarioCode } from './jeChecks';
+import { listFiles, listPapers, type EngFile } from './gwpStageApi';
+import { fileBytes } from './gwpApi';
+import { readWorkbook } from './xlsxRead';
+import { wbsBalances } from './wtbRoll';
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
 
@@ -65,13 +69,79 @@ export async function loadJob(engagementId: string): Promise<JeJob | null> {
   return data ? toJob(data) : null;
 }
 
-export async function ensureJob(engagementId: string, byName: string): Promise<JeJob> {
-  const cur = await loadJob(engagementId);
-  if (cur) return cur;
-  const { data, error } = await supabase.from('je_job').insert({ engagement_id: engagementId, scenarios: defaultScenarios(), updated_name: byName }).select('*').single();
+/** 같은 회사 · 앞 사업연도 · 같은 별도/연결 작업 건. */
+export async function priorEngagementId(entityId: string, fy: number, scope: string): Promise<string | null> {
+  const { data, error } = await supabase.from('dsd_engagement').select('id').eq('entity_id', entityId).eq('fy', fy - 1).eq('scope', scope).maybeSingle();
   if (error) throw new Error(error.message);
-  return toJob(data);
+  return data?.id ?? null;
 }
+
+/**
+ * 감사 건의 JET 를 연다. 처음이면 **전년 JET 설정을 이어받는다**(사용자 2026-10-21 추천 1):
+ * ERP · 상장 · 완화절차와 사유 · 시나리오 켜기와 미수행 사유 · 기준값(제외 계정 · 양쪽/차변만 · 저빈도 · 공휴일 …) · BENCHMARK 이름 · 적용률 · 사유 · 회사 담당자 · 작성자 · 검토자.
+ * BENCHMARK 금액 · 결론 · 날짜 · 메모는 해마다 새로 정한다.
+ */
+export async function ensureJob(eng: { id: string; entityId: string; fy: number; scope: string }, byName: string): Promise<{ job: JeJob; inherited: boolean }> {
+  const cur = await loadJob(eng.id);
+  if (cur) return { job: cur, inherited: false };
+  const pid = await priorEngagementId(eng.entityId, eng.fy, eng.scope);
+  const prev = pid ? await loadJob(pid) : null;
+  const row: Record<string, unknown> = { engagement_id: eng.id, scenarios: defaultScenarios(), updated_name: byName };
+  if (prev) {
+    const { matExclude, matSide, ...rest } = prev.params;
+    Object.assign(row, {
+      erp: prev.erp, listed: prev.listed, relaxed: prev.relaxed, relaxed_note: prev.relaxedNote,
+      params: { ...rest, matExclude, matSide, benchName: prev.bench.name, benchAmount: 0, benchRate: prev.bench.rate, benchReason: prev.bench.reason },
+      scenarios: Object.fromEntries(Object.entries(prev.scenarios).map(([k, v]) => [k, { on: !!v?.on, ...(v?.reason ? { reason: v.reason } : {}) }])),
+      contacts: prev.contacts, preparer: prev.preparer, reviewer: prev.reviewer,
+      memo: `FY${eng.fy - 1} JET 설정을 이어받음`,
+    });
+  }
+  const { data, error } = await supabase.from('je_job').insert(row).select('*').single();
+  if (error) throw new Error(error.message);
+  return { job: toJob(data), inherited: !!prev };
+}
+
+/** 전년 잔액표의 묶음 · 잔액방향(계정코드 또는 이름 → 값). 새 해 잔액표에 비어 있는 칸만 채운다. */
+export async function priorBalanceMeta(eng: { entityId: string; fy: number; scope: string }): Promise<Map<string, { group: string | null; side: 1 | -1 | null }>> {
+  const pid = await priorEngagementId(eng.entityId, eng.fy, eng.scope);
+  const m = new Map<string, { group: string | null; side: 1 | -1 | null }>();
+  if (!pid) return m;
+  const { data: u, error } = await supabase.from('je_upload').select('id').eq('engagement_id', pid).eq('kind', 'tb').eq('current', true).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!u) return m;
+  for (const r of await loadTb(u.id)) if (r.group || r.side) m.set(r.acctCode ? `c:${r.acctCode}` : `n:${r.acctName.replace(/\s/g, '')}`, { group: r.group, side: r.side });
+  return m;
+}
+
+export function applyPriorMeta(rows: BsBalance[], meta: Map<string, { group: string | null; side: 1 | -1 | null }>): { rows: BsBalance[]; applied: number } {
+  let applied = 0;
+  const out = rows.map((r) => {
+    const p = meta.get(`c:${r.acctCode}`) ?? meta.get(`n:${r.acctName.replace(/\s/g, '')}`);
+    if (!p) return r;
+    const next = { ...r, group: r.group ?? p.group, side: r.side ?? p.side };
+    if (next.group !== r.group || next.side !== r.side) applied++;
+    return next;
+  });
+  return { rows: out, applied };
+}
+
+/** 📘 일반조서 중요성(2700A) — 완결 → 수행 → 계획 단계 중 금액이 있는 것. 금액은 백만원으로 적혀 있다. */
+export interface GwpMateriality { code: string; benchName: string; amount: number; rate: number; reason: string; materiality: number; pm: number | null; trivial: number | null }
+const BENCH_NAME: Record<string, string> = { 매출액: '매출', 세전계속사업이익: '세전이익', 총자산: '총자산', 순자산: '순자산' };
+export async function materialityFromGwp(engagementId: string): Promise<GwpMateriality | null> {
+  const papers = await listPapers(engagementId);
+  for (const code of ['2700A-4', '2700A-3', '2700A-2']) {
+    const d = papers.get(code)?.data as { bench?: string; rate?: number; amounts?: Record<string, number | null>; reason?: string; pmRate?: number; ctRate?: number } | undefined;
+    const amt = d?.bench ? d.amounts?.[d.bench] : null;
+    if (!d?.bench || amt == null || d.rate == null) continue;
+    const amount = Math.round(amt * 1e6), materiality = Math.round(amount * d.rate);
+    return { code, benchName: BENCH_NAME[d.bench] ?? d.bench, amount, rate: d.rate, reason: d.reason ?? '', materiality,
+      pm: d.pmRate != null ? Math.round(materiality * d.pmRate) : null, trivial: d.ctRate != null ? Math.round(materiality * d.ctRate) : null };
+  }
+  return null;
+}
+
 
 export async function saveJob(job: JeJob, byName: string): Promise<void> {
   const { matExclude, ...rest } = job.params;
@@ -165,7 +235,7 @@ export async function uploadJournal(engagementId: string, file: File, note: stri
 }
 
 /** 회사 제시 잔액표(기초 · 기말) 올리기 — 앱 양식(또는 같은 머리의 표). */
-export async function uploadBalances(engagementId: string, file: File, note: string | null, byName: string): Promise<number> {
+export async function uploadBalances(engagementId: string, file: File, note: string | null, byName: string, fill: (rows: BsBalance[]) => BsBalance[] = (r) => r): Promise<number> {
   const XLSX = await import('xlsx');
   const wb = XLSX.read(await file.arrayBuffer());
   let rows: ReturnType<typeof parseBalanceRows> | null = null;
@@ -174,7 +244,7 @@ export async function uploadBalances(engagementId: string, file: File, note: str
     try { rows = parseBalanceRows(XLSX.utils.sheet_to_json(wb.Sheets[s], { header: 1, defval: '', raw: true }) as unknown[][]); if (rows.length) break; } catch (e) { lastErr = e; }
   }
   if (!rows?.length) throw (lastErr instanceof Error ? lastErr : new Error('잔액표에 줄이 없습니다.'));
-  return saveBalances(engagementId, rows.map((r) => ({ acctCode: r.acctCode, acctName: r.acctName, open: r.open, close: r.close, group: r.group, side: r.side })), file.name, note, byName);
+  return saveBalances(engagementId, fill(rows.map((r) => ({ acctCode: r.acctCode, acctName: r.acctName, open: r.open, close: r.close, group: r.group, side: r.side }))), file.name, note, byName);
 }
 
 /** 잔액표를 새 판으로 저장(화면에서 고친 묶음 · 방향 포함). */
@@ -260,4 +330,26 @@ export async function priorAccounts(entityId: string, fy: number, scope: string)
   const { data: a, error: e3 } = await supabase.rpc('je_accounts', { p_upload: u.id });
   if (e3) throw new Error(e3.message);
   return new Map(((a ?? []) as { acct_code: string; acct_name: string }[]).map((x) => [x.acct_code, x.acct_name]));
+}
+
+/**
+ * 📒 정산표에서 잔액표 채우기(더존 회사 — 분개장에 시산표가 없다). 같은 작업 건 자료함의 결산일 기준 정산표 WBS 에서
+ * 전기말(작년 수정후) · 당기말(회사제시)을 읽어 분개장 계정과 잇는다. 찾는 차례: 수정전정산표 → 이월정산표(기말) → 확정 정산표.
+ */
+export async function balancesFromWtb(engagementId: string, periodTo: string, accts: { code: string; name: string }[]): Promise<{ rows: BsBalance[]; file: EngFile }> {
+  const files = (await listFiles(engagementId)).filter((f) => !f.meta.void);
+  const order = [
+    ...files.filter((f) => f.kind === '수정전정산표'),
+    ...files.filter((f) => f.kind === '이월정산표' && /_기말_/.test(f.fileName)),
+    ...files.filter((f) => f.kind === '정산표'),
+  ];
+  if (!order.length) throw new Error('이 작업 건의 자료함에 기말 정산표(수정전 · 이월 기말 · 확정)가 없습니다 — 📒 정산표 관리에서 기말 갱신을 하거나 일반조서 자료함에 올려 주세요.');
+  let last: unknown = null;
+  for (const f of order) {
+    try {
+      const sheets = readWorkbook(await fileBytes(f.storagePath), (n) => /^WBS$/i.test(n.trim()));
+      return { rows: matchWbs(wbsBalances(sheets, periodTo), accts), file: f };
+    } catch (e) { last = e; }
+  }
+  throw (last instanceof Error ? last : new Error('정산표를 읽지 못했습니다.'));
 }

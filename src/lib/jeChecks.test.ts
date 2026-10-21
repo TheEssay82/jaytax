@@ -95,3 +95,13 @@ test('중요성 — 차변만 고르면 대체 분개의 맞은편(대변) 줄�
   assert.equal(scenMateriality(lines, b).rows.length, 3);
   assert.equal(scenMateriality(lines, b, [], '차변만').rows.length, 2);
 });
+
+test('정산표 WBS → 잔액표 — 이름 하나면 코드, 「감가상각누계액-건물」은 건물 다음 코드의 누계액', async () => {
+  const { matchWbs } = await import('./jeChecks');
+  const accts = [{ code: '202', name: '건물' }, { code: '203', name: '감가상각누계액' }, { code: '208', name: '차량운반구' }, { code: '209', name: '감가상각누계액' }, { code: '103', name: '보통예금' }];
+  const r = matchWbs([
+    { name: '보통예금', open: 1, close: 2, side: 1 }, { name: '감가상각누계액-차량운반구', open: -5, close: -6, side: 1 },
+    { name: '감가상각누계액-건물', open: -3, close: -4, side: 1 }, { name: '감가상각누계액', open: 0, close: 0, side: 1 }, { name: '단기차입금', open: 9, close: 9, side: -1 },
+  ], accts);
+  assert.deepEqual(r.map((x) => x.acctCode), ['103', '209', '203', '', '']);
+});
