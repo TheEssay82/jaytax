@@ -613,6 +613,8 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
   };
   const sel = picks.filter((p) => p.selected).sort((a, b) => (a.reqNo ?? 99999) - (b.reqNo ?? 99999) || a.vdate.localeCompare(b.vdate) || a.vno.localeCompare(b.vno, 'en', { numeric: true }));
   const count = (s: PickState) => sel.filter((p) => pickState(p) === s).length;
+  // 요청은 했지만 회신 · 결과가 아직 없는 전표 — 요청을 되돌릴 수 있다(잘못 보냈거나 시험).
+  const undoable = sel.filter((p) => p.reqNo && !p.repliedAt && !p.answer && !p.replyDocs && !p.result);
   const notSent = count('요청 전'), sent = sel.filter((p) => p.reqNo).length, replied = sel.filter((p) => p.repliedAt || p.answer || p.replyDocs).length;
   const done = count('이상없음') + count('예외');
   const scenUsed = [...new Set(cands.flatMap((c) => c.scenarios))].sort();
@@ -651,6 +653,8 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
   const cell = (p: JePick, k: 'reqDocs' | 'answer' | 'replyDocs' | 'evidence' | 'note', w: number, ph = '') => (
     <td style={td}><input defaultValue={p[k] ?? ''} key={`${k}${p[k] ?? ''}`} placeholder={ph} disabled={!canWrite} onBlur={(e) => { if ((e.target.value || null) !== (p[k] ?? null)) setOne(p, { [k]: e.target.value || null }); }} style={{ ...inp, width: w }} /></td>
   );
+  // 고를 게 없으면 말없이 지나가지 않고 알려 준다(사용자 2026-10-21 「반응이 없어」).
+  const add = (cs: (typeof cands)[number][]) => { if (!cs.length) { flash('새로 고를 전표가 없습니다 — 보이는 전표는 이미 선정돼 있습니다.'); return; } void onSave(cs.map((c) => asPick(c, true))).then(() => flash(`${cs.length}장을 골랐습니다.`)); };
   const box = { border: '1px solid var(--rule)', borderRadius: 6, padding: '6px 10px' } as const;
 
   return (<>
@@ -676,7 +680,8 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
         <div style={{ color: 'var(--ink-3)' }}>표본 수를 줄이고 싶으면 「금액 ≥」를 높이거나 상위 N장만 고르되, 줄인 이유를 C01 비고나 ③ 메모에 남깁니다.</div>
       </div>
       {canWrite && <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, fontSize: 'var(--fs-1)' }}>
-        <button className="btn-sm btn-sm-navy" disabled={!recNew.length} onClick={() => void onSave(recNew.map((c) => asPick(c, true)))}>권장 기준으로 고르기{recNew.length ? ` (${recNew.length}장 더)` : ''}</button>
+        <button className="btn-sm btn-sm-navy" disabled={!recNew.length} onClick={() => add(recNew)}>권장 기준으로 고르기{recNew.length ? ` (${recNew.length}장 더)` : ''}</button>
+        {!recNew.length && <span style={{ color: '#B45309' }}>{rec.length ? '권장 대상은 이미 모두 골랐습니다.' : `권장 기준에 걸리는 전표가 없습니다 — 중요성 ${won(thr)}원 이상 전표도, ${ALWAYS_ASK.join(' · ')} 추출도 없음. 필요하면 아래에서 직접 고릅니다.`}</span>}
         <span style={{ color: 'var(--ink-3)' }}>권장 대상 {rec.length}장 = 금액 기준 {rec.filter((c) => c.amount >= thr).length} + {ALWAYS_ASK.join(' · ')} {rec.filter((c) => c.amount < thr).length}{refN ? ` · REF 로 끝낸 ${refN}장 제외` : ''}</span>
       </div>}
     </div>
@@ -692,8 +697,8 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
         <span style={{ color: 'var(--ink-3)' }}>{shown.length.toLocaleString()}장</span>
         {canWrite && <>
           <label>금액 상위 <input type="number" value={f.topN} onChange={(e) => setF({ ...f, topN: Number(e.target.value) || 0 })} style={{ ...inp, width: 50 }} />장</label>
-          <button className="btn-sm btn-sm-navy" onClick={() => void onSave([...shown].sort((a, b) => b.amount - a.amount).slice(0, f.topN).filter((c) => !pmap.get(c.key)?.selected).map((c) => asPick(c, true)))}>고르기</button>
-          <button className="btn-sm" onClick={() => void onSave(shown.filter((c) => !pmap.get(c.key)?.selected).map((c) => asPick(c, true)))}>보이는 것 모두</button>
+          <button className="btn-sm btn-sm-navy" onClick={() => add([...shown].sort((a, b) => b.amount - a.amount).slice(0, f.topN).filter((c) => !pmap.get(c.key)?.selected))}>고르기</button>
+          <button className="btn-sm" onClick={() => add(shown.filter((c) => !pmap.get(c.key)?.selected))}>보이는 것 모두</button>
           <button className="btn-sm" onClick={() => void onSave(shown.filter((c) => pmap.get(c.key)?.selected && !pmap.get(c.key)?.reqNo).map((c) => asPick(c, false)))} title="이미 요청한 전표는 남깁니다">보이는 것 빼기</button>
         </>}
       </div>
@@ -702,7 +707,7 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
           <thead><tr>{['선정', '전표일자', '번호', '뽑힌 이유', '전표금액', '주요 계정', '적요', '거래처'].map((h) => <th key={h} style={{ ...th, textAlign: h === '전표금액' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
           <tbody>{shown.slice(0, 1500).map((c) => { const p = pmap.get(c.key); return (
             <tr key={c.key} style={{ background: p?.selected ? 'var(--navy-bg)' : undefined }}>
-              <td style={td}><input type="checkbox" checked={!!p?.selected} disabled={!canWrite || !!p?.reqNo} onChange={(e) => void onSave([asPick(c, e.target.checked)])} title={p?.reqNo ? '이미 요청한 전표' : undefined} /></td>
+              <td style={td}><input type="checkbox" checked={!!p?.selected} disabled={!canWrite || !!p?.reqNo} onChange={(e) => void onSave([asPick(c, e.target.checked)])} title={p?.reqNo ? '이미 요청한 전표 — 빼려면 2단계 「요청 되돌리기」 먼저' : undefined} /></td>
               <td style={td}>{c.date}</td><td style={td}>{c.no}</td>
               <td style={td} title={`${c.scenarios.map(titleOf).join('\n')}\n회사에 보이는 이유: ${plainReason(c.scenarios)}`}>{c.scenarios.map((s) => <span key={s} style={{ background: '#EEF2F7', borderRadius: 4, padding: '0 5px', marginRight: 3 }}>{s}</span>)}{hasRef(c.key) && <span style={{ background: '#DCFCE7', borderRadius: 4, padding: '0 5px' }} title={`계정 조서에서 확인: ${pmap.get(c.key)?.evidence ?? ''}`}>REF</span>}</td>
               <td style={tdr}>{won(c.amount)}</td>
@@ -711,7 +716,7 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
           ); })}</tbody>
         </table>
       </div>
-      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', marginTop: 4 }}>「뽑힌 이유」에 마우스를 올리면 시나리오 이름과 회사 엑셀에 적히는 쉬운 말 이유가 보입니다. 초록 REF = 계정 조서에서 이미 확인. 요청을 보낸 전표는 빼지 못합니다.</div>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', marginTop: 4 }}>{sent > 0 && <b>요청 번호가 매겨진 전표 {sent}장은 잠겨 있습니다 — 빼려면 2단계 「요청 되돌리기」 먼저. </b>}「뽑힌 이유」에 마우스를 올리면 시나리오 이름과 회사 엑셀에 적히는 쉬운 말 이유가 보입니다. 초록 REF = 계정 조서에서 이미 확인. 요청을 보낸 전표는 빼지 못합니다.</div>
     </div>
 
     <div className="card">
@@ -722,6 +727,7 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
         <label className="btn-sm" style={{ cursor: 'pointer' }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const fl = e.dataTransfer.files?.[0]; if (fl) void onReply(fl); }}>
           📥 회신 올리기<input type="file" accept=".xls,.xlsx" style={{ display: 'none' }} onChange={(e) => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) void onReply(fl); }} />
         </label>
+        {undoable.length > 0 && <button className="btn-sm" onClick={() => { if (window.confirm(`회신 · 결과가 없는 요청 ${undoable.length}장의 요청 번호를 지우고 「요청 전」으로 되돌립니다. 회사에 이미 보냈다면 회사에도 알려야 합니다. 되돌릴까요?`)) void onSave(undoable.map((p) => ({ ...p, reqNo: null, requestedAt: null }))); }} title="잘못 보냈거나 시험으로 보낸 요청">↩ 요청 되돌리기 ({undoable.length}장)</button>}
         <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>엑셀: 「안내」(회사 담당자용 — 왜 · 무엇을 · 어떻게 · 기한 · 문의) + 「증빙요청」(전표 한 장 = 한 줄, 쉬운 말 요청 이유 · 요청 증빙 미리 적힘) + 「전표내역」(고른 전표의 모든 줄).</span>
       </div>}
     </div>

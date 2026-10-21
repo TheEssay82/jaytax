@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.74.1',
+    date: '2026-10-21',
+    title: 'JET ④ 요청 되돌리기 · 고를 게 없을 때 알림',
+    highlights: [
+      '2단계 「↩ 요청 되돌리기」 — 회신 · 결과가 없는 요청 전표의 번호를 지워 「요청 전」으로(잘못 보냈거나 시험). 요청 번호가 매겨진 전표는 잠겨 있다는 안내.',
+      '「고르기」 「보이는 것 모두」 「권장 기준으로 고르기」가 새로 고를 전표가 없으면 그렇다고 알림, 권장 대상이 없을 때 이유 표시.',
+    ],
+  },
+  {
     version: '3.74.0',
     date: '2026-10-21',
     title: 'JET 보완할 점 · 선정 기준 · 회사용 요청 안내',
