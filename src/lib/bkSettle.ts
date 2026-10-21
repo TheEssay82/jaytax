@@ -124,9 +124,11 @@ export function rollCosts(prev: CostCell[]): CostCell[] {
 //   · 7) 카드 = 기장팀 카드 결제액 전부(인지세 · 등기 · 택시 · 식대 · 소모품 … 무엇을 샀든) — 엑셀 「법인카드」 칸과 같다.
 //   · 5) 임대료는 엑셀 방식(관리비및임차료 × 3/7)을 따른다(사용자 2026-10-21) — ERP 는 3/8 이라 견주지 않는다(NO_ERP_ITEMS).
 //   · 8) 정우철/송현주 카드(경비귀속처리 「기장」) · 13) 현금시재는 기장24팀 원장에 없다.
-//   · 그 밖(주민세 종업원분 · 일용직 · CMS · 텍스넷 · 세무 서식 인쇄 · 우편 …)은 9) 기타 — 엑셀 기장배분안에는 없는 돈이라 차이로 드러난다.
+//   · 9) 기타 = 주민세 종업원분 · 일용직(잡급 + 일용직 4대보험) — 엑셀 기장배분안에 빠져 있던 것을 넣기로 함(사용자 2026-10-21).
+//   · 기장팀 비용이 아닌 것(엑셀처럼, 사용자 2026-10-21): CMS · 인쇄 · 우편 · 운반 = 공통비, 텍스넷 = 정우철 개인경비 → NOT_BK_ITEM.
 export interface ErpCostRow { acct: string; sub: string; staff: string; amount: number; n: number; lines: { slip: string; sum: string; amount: number }[] }
 export const NO_ERP_ITEMS = new Set(['5) 임대료 등', '8) 법인카드(정우철/송현주)', '13) 현금시재']);
+export const NOT_BK_ITEM = '(기장비용 아님) 공통비 · 개인 부담';
 
 export function erpCostItem(acct: string, sub: string): string {
   if (acct === '직원급여' || acct === '상여금') return '1) 급여+상여';
@@ -137,6 +139,7 @@ export function erpCostItem(acct: string, sub: string): string {
   if (acct === '법인카드 결제') return '7) 법인/개인카드(기장분)';
   if (sub === '내일채움공제') return '11) 내일채움공제';
   if (sub === '퇴직연금수수료') return '12) 퇴직연금수수료';
+  if (sub === 'CMS · 카드결제 수수료' || sub === '텍스넷 사용료' || /^(도서인쇄비|통신비|운반비)$/.test(acct)) return NOT_BK_ITEM;
   return '9) 기타';
 }
 
@@ -146,7 +149,7 @@ export function erpCostByCell(rows: ErpCostRow[]): Map<string, number> {
   const m = new Map<string, number>();
   for (const r of rows) {
     const item = erpCostItem(r.acct, r.sub);
-    if (NO_ERP_ITEMS.has(item)) continue;
+    if (NO_ERP_ITEMS.has(item) || item === NOT_BK_ITEM) continue;
     const k = `${item}|${per.get(item) ? r.staff : ''}`;
     m.set(k, (m.get(k) ?? 0) + r.amount);
   }

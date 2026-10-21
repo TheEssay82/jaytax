@@ -285,7 +285,7 @@ export function applyWriteoffs<T extends ClientAgg>(rows: T[], flow: ArFlow, wo:
 // ── 기장팀 비용(ERP, 현금주의) ─────────────────────────────────────────────────
 // 부서별원장의 비용 계정을 「돈이 나간 날」 기준으로 계정 · 소분류 · 사원별로 모은다(사용자 2026-10-21: 기장비용은 현금주의, VAT 포함).
 // 결산 엑셀((FY연도) 기장팀 칸)이 그렇게 셈한다 — 4대보험은 납부월(=전월분), 카드는 결제월, 거래처 청구는 지급일, 금액은 VAT 포함.
-//   · 급여 · 상여 · 퇴직급여: 급여 전표 날짜 그대로(엑셀도 급여대장 지급총액).
+//   · 급여 · 상여 · 퇴직급여 · 잡급(일용직): 급여 전표 날짜, 지급총액 그대로(엑셀도 급여대장 지급총액). 실지급액 미지급금은 따로 세지 않는다.
 //   · 카드: 미지급금(신용카드) 결제액(같은 결제 전표의 취소 환급 포함) → 「법인카드 결제」. 카드로 쓴 비용 줄은 결제 때 센다.
 //   · 미지급금으로 잡힌 비용(4대보험 법인분 · 노트북 · CMS · 텍스넷 · 일용직 급여 …): 미지급금을 갚은 날, 갚은 금액(VAT 포함)으로.
 //     갚은 줄 ↔ 청구 줄은 ① 거래# ② 같은 거래처 · 같은 금액 순으로 잇는다.
@@ -295,7 +295,7 @@ export function applyWriteoffs<T extends ClientAgg>(rows: T[], flow: ArFlow, wo:
 // 자산 · 부채 · 수입 계정과 대손상각비(② 거래처 입금의 대손으로 따로 셈)는 비용이 아니다.
 const NOT_COST = /^(외상매출금|부가세|본지점|미지급금|미수금|선급|선수|예수금|가지급금|가수금|보통예금|현금|차량운반구|비품|감가상각누계액|임차보증금|잡이익|유형자산처분|대손상각비)|수입/;
 export const isCostAcct = (a: string) => !NOT_COST.test(a);
-const PAYROLL = /^(직원급여|상여금|퇴직급여)$/;
+const PAYROLL = /^(직원급여|상여금|퇴직급여|잡급)$/;
 const NON_CASH = /^감가상각비$/;
 const GONGDAN = /국민건강보험공단|국민연금|고용보험|산재보험/;
 export const CARD_ACCT = '법인카드 결제';
@@ -375,7 +375,9 @@ export function aggregateCosts(lines: LedgerLine[], from: string, to: string): {
       const same = cost.filter((x) => !PAYROLL.test(x.acct) && x.name === p.name);
       const pair = same.filter((x) => x.staff === p.staff && x.dr - x.cr === p.cr - p.dr && !deferred.has(x)).slice(0, 1);
       const own = pair.length && same.length > 1 ? pair : same;
-      const parts = own.length || cash ? own : cost.filter((x) => !PAYROLL.test(x.acct));
+      // 일용직 실지급액처럼 급여 줄과 같은 거래처면 급여로 이미 셌다 — 이 청구는 비용 줄이 없다.
+      const payroll = cost.some((x) => PAYROLL.test(x.acct) && x.name === p.name);
+      const parts = own.length || cash || payroll ? own : cost.filter((x) => !PAYROLL.test(x.acct));
       for (const x of parts) deferred.add(x);
       bills.push({ slip, name: p.name, tx: txOf(p.sum ?? ''), amount: p.cr - p.dr, parts, used: false, gongdan: GONGDAN.test(p.name) });
     }
@@ -415,6 +417,7 @@ export function aggregateCosts(lines: LedgerLine[], from: string, to: string): {
       if (!hit.length) { const b = bills.filter((b) => !b.used && b.name === p.name && b.amount === p.dr && b.slip <= slip).pop(); if (b) hit = [b]; }
       if (hit.length) {
         hit.forEach((b) => { b.used = true; });
+        if (!hit.some((b) => b.parts.length)) continue;
         spread(hit.flatMap((b) => b.parts), p.dr, slip, p.sum ?? '');
         continue;
       }

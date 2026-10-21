@@ -10,7 +10,7 @@ import MoneyInput from '../common/MoneyInput';
 import { useAuth } from '../../context/AuthContext';
 import { defaultFy, periodLabel } from '../../lib/expenseParse';
 import {
-  BK_STAFF, CPAS, COST_ITEMS, CPA_FIELDS, CPA_FIELD_LABEL, VAT_INCLUDED, STATES, computeSettle, erpCostByCell, erpCostItem, NO_ERP_ITEMS,
+  BK_STAFF, CPAS, COST_ITEMS, CPA_FIELDS, CPA_FIELD_LABEL, VAT_INCLUDED, STATES, computeSettle, erpCostByCell, erpCostItem, NO_ERP_ITEMS, NOT_BK_ITEM,
   type CellState, type CostCell, type CpaField, type CpaResult, type CpaRow, type ErpCostRow, type SettleBundle,
 } from '../../lib/bkSettle';
 import { listSettleYears, loadSettle, createEstimate, refreshFromApp, updateSettle, saveCpaCell, saveCostCell, listClients, importErpFiles, importErpCosts, listCostErp, updateClient, fillCpaFromClients } from '../../lib/bkSettleApi';
@@ -347,7 +347,7 @@ export default function BkSettleTab() {
               </label>
             )}
             {erp.length > 0 && (() => {
-              const groups = COST_ITEMS.map((it) => ({ item: it.key, rows: erp.filter((r) => erpCostItem(r.acct, r.sub) === it.key).sort((x, y) => x.acct.localeCompare(y.acct, 'ko') || x.sub.localeCompare(y.sub, 'ko') || x.staff.localeCompare(y.staff, 'ko')) })).filter((g) => g.rows.length);
+              const groups = [...COST_ITEMS.map((it) => it.key), NOT_BK_ITEM].map((key) => ({ item: key, rows: erp.filter((r) => erpCostItem(r.acct, r.sub) === key).sort((x, y) => x.acct.localeCompare(y.acct, 'ko') || x.sub.localeCompare(y.sub, 'ko') || x.staff.localeCompare(y.staff, 'ko')) })).filter((g) => g.rows.length);
               return (
                 <div style={{ marginTop: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
