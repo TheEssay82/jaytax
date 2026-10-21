@@ -21,6 +21,32 @@ export const DEFAULT_DOCS: Record<string, string> = {
   B14: '계정 신설 사유 · 거래 증빙',
 };
 
+/** 회사 담당자에게 보이는 「왜 이 전표를 묻나」(쉬운 말). */
+export const PLAIN_REASON: Record<string, string> = {
+  B01: '금액이 큰 거래',
+  B02: '계정과목표에 없는 계정을 쓴 전표',
+  B07: '매출의 상대 계정이 현금 · 채권이 아닌 거래',
+  B08: '주말 · 공휴일에 기표된 전표',
+  B09: '결산(월말 · 기말) 조정 분개',
+  B11: '딱 떨어지는 큰 금액의 거래',
+  B12: '적요가 모호하거나 없는 전표',
+  B13: '취소 · 역분개된 전표',
+  B14: '올해 처음 쓴 계정의 전표',
+};
+export const plainReason = (scenarios: string[]) => [...new Set(scenarios.map((s) => PLAIN_REASON[s]).filter(Boolean))].join(' / ');
+
+/** 금액과 상관없이 증빙을 받는 시나리오 — 성격 자체가 위험 신호(매출 상대계정 · 신규 계정). */
+export const ALWAYS_ASK = ['B07', 'B14'];
+
+/**
+ * 권장 선정(사용자 2026-10-21 「샘플링 기준이 있었으면」). 지침 원칙은 시나리오에 걸린 전표를 **모두 확인**하는 것이고,
+ * 확인 방법은 둘이다 — 계정 조서에서 이미 본 전표는 REF(조서 번호)로, 나머지는 회사 증빙으로.
+ * 회사 증빙을 받을 전표 = 금액 ≥ 기준(기본 B01 중요성 기준) 이거나 ALWAYS_ASK 시나리오에 걸린 전표, 단 REF 가 이미 적힌 전표는 뺀다.
+ */
+export function recommendPicks<T extends { key: string; amount: number; scenarios: string[] }>(cands: T[], threshold: number, hasRef: (key: string) => boolean): T[] {
+  return cands.filter((c) => !hasRef(c.key) && ((threshold > 0 && c.amount >= threshold) || c.scenarios.some((s) => ALWAYS_ASK.includes(s))));
+}
+
 export interface Candidate {
   key: string;
   date: string;

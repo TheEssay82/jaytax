@@ -10,7 +10,23 @@ import { FONT, FONT_BOLD, FILL_HEADER, FILL_INPUT, BORDER_ALL, saveWorkbook } fr
 import { SCENARIOS, benchThreshold, type CheckResult } from './jeChecks';
 import type { JeJob, JeUpload, JePick } from './jeApi';
 import type { JeLine } from './jeParse';
-import { pickSummary } from './jeSample';
+import { pickSummary, plainReason } from './jeSample';
+
+/** ③ 질문 · 종합 메모의 기본 문장(감사기준 240 문단 32 (1)). 날짜는 작성일, 상대는 회사 담당자 첫 줄. */
+export function defaultMemo(job: Pick<JeJob, 'preparedOn' | 'contacts'>): string {
+  const c = job.contacts.find((x) => x.name);
+  const who = c ? [c.name, c.dept].filter(Boolean).join(' ') : '재무 담당자';
+  return `${job.preparedOn ?? '(작성일)'} 회사의 재무보고 관여자(${who})에게 재무보고 과정에서 부적합하거나 비경상적인 분개 및 기타 조정사항이 있었는지 질문하였으며, 해당 사항이 없다는 답변을 받음(감사기준 240 문단 32 (1)).`;
+}
+/** 메모가 비었으면 기본 문장. */
+export const memoOf = (job: JeJob) => (job.memo?.trim() ? job.memo : defaultMemo(job));
+
+/** 총괄의 「시나리오 선정 근거」 — 인덕 지침: 감사전략 · 회사 고유 사항을 고려해 회사별로 고른다. */
+export function scenarioBasis(job: JeJob, results: CheckResult[]): string {
+  const on = results.filter((r) => r.kind === 'Option' && performed(job, r)).map((r) => `${r.code} ${r.title.replace(/\(.*\)$/, '')}`);
+  const off = results.filter((r) => r.kind === 'Option' && !performed(job, r)).length;
+  return `감사기준 240 문단 32 와 인덕회계법인 JE Test 가이드라인에 따라 필수 검증(A01~A04)을 수행하고, 회사의 전산환경(${job.erp} ERP — 분개장에 작성자 · 승인자 · 입력일 없음)과 부정위험 평가(2301)를 고려하여 선택 시나리오 ${on.length}개(${on.join(', ')})를 선정함. 나머지 ${off}개는 총괄 각주의 사유로 수행하지 않음.`;
+}
 
 async function loadExcelJS() {
   const mod = await import('exceljs');
@@ -242,13 +258,23 @@ function writeSummary(wb: Workbook, inp: ExportInput) {
   row++;
   put(ws, `B${row}`, '회사시스템', { bold: true }); row++; put(ws, `C${row}`, `${job.erp} ERP`); row += 2;
   put(ws, `B${row}`, '분석방법', { bold: true }); row++; put(ws, `C${row}`, 'JAYTAX Journal Entry 시스템(분개장 전수 로드 · 규칙 기반 추출)'); row += 2;
+  put(ws, `B${row}`, '시나리오 선정 근거', { bold: true }); row++; put(ws, `C${row}`, scenarioBasis(job, inp.results)); row += 2;
   if (job.relaxed) { put(ws, `B${row}`, '완화된 절차', { bold: true }); row++; for (const l of (job.relaxedNote ?? '').split('\n')) { put(ws, `C${row}`, l); row++; } row++; }
   const ps = pickSummary(inp.picks.filter((p) => p.reqNo != null || p.result));
-  if (ps.total) { put(ws, `B${row}`, '선정 전표 검토', { bold: true }); row++; put(ws, `C${row}`, `선정 ${ps.total}장 — 이상없음 ${ps.ok} · 예외 ${ps.exc} · 미완료 ${ps.pending} (C01_선정전표검토 참조)`); row += 2; }
+  // ② 검토 B01 표에서 계정 조서 REF 로 끝낸 줄(④ 선정 아님) — 같은 결과 칸을 쓰므로 따로 센다.
+  const byRef = inp.picks.filter((p) => !p.selected && (p.result || p.evidence));
+  if (ps.total || byRef.length) {
+    put(ws, `B${row}`, '선정 전표 검토', { bold: true }); row++;
+    if (byRef.length) { put(ws, `C${row}`, `계정 조서에서 확인(REF) ${byRef.length}줄 — 이상없음 ${byRef.filter((p) => p.result === '이상없음').length} · 예외 ${byRef.filter((p) => p.result === '예외').length} (각 시나리오 시트 REF 칸 참조)`); row++; }
+    if (ps.total) { put(ws, `C${row}`, `회사 증빙 확인 ${ps.total}장 — 이상없음 ${ps.ok} · 예외 ${ps.exc} · 미완료 ${ps.pending} (C01_선정전표검토 참조)`); row++; }
+    row++;
+  }
   put(ws, `B${row}`, '결론', { bold: true }); row++;
   const exc = inp.results.filter((r) => performed(job, r) && r.status === '예외');
-  put(ws, `C${row}`, ps.exc ? `선정 전표 검토에서 예외 ${ps.exc}장이 있어 C01 에 처리 내용을 기재함` : exc.length ? `추출된 검토 대상은 각 시나리오 조서와 선정 전표 검토에서 확인하였으며, 예외사항이 발견되지 아니함(${exc.map((r) => r.code).join(', ')})` : '검토결과, 예외사항이 발견되지 아니함');
-  if (job.memo) { row++; put(ws, `C${row}`, job.memo); }
+  const excN = ps.exc + byRef.filter((p) => p.result === '예외').length;
+  put(ws, `C${row}`, excN ? `선정 전표 검토에서 예외 ${excN}건이 있어 비고에 처리 내용을 기재함` : exc.length ? `추출된 검토 대상은 각 시나리오 조서와 선정 전표 검토에서 확인하였으며, 예외사항이 발견되지 아니함(${exc.map((r) => r.code).join(', ')})` : '검토결과, 예외사항이 발견되지 아니함');
+  row += 2; put(ws, `B${row}`, '재무보고 관여자 질문 · 종합 메모', { bold: true });
+  for (const l of memoOf(job).split('\n')) { row++; put(ws, `C${row}`, l); }
   ws.pageSetup = { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 }
 
@@ -293,17 +319,52 @@ function writePicks(wb: Workbook, picks: JePick[], inp: ExportInput) {
   ws.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '9:9' };
 }
 
+/** ③ 요청문의 「목록 별첨」 — 결번 날짜 · 매출 상대계정 전표 목록을 회사에 보낼 엑셀 하나로. */
+export async function exportListWorkbook(company: string, fy: number, title: string, note: string, head: string[], rows: (string | number | null)[][]): Promise<void> {
+  const ExcelJS = await loadExcelJS();
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('목록');
+  put(ws, 'A1', `${company} FY${fy} — ${title}`, { bold: true, size: 13 });
+  put(ws, 'A2', note, { color: 'FF7F7F7F' });
+  table(ws, 4, 1, [...head, '회사 답변'], rows.map((r) => [...r, '']));
+  for (let i = 0; i < rows.length; i++) ws.getCell(5 + i, head.length + 1).fill = FILL_INPUT;
+  ws.columns = head.map(() => ({ width: 16 })).concat([{ width: 40 }]);
+  await saveWorkbook(wb, `JET_${title.replace(/\s/g, '')}_${company}_FY${fy}.xlsx`);
+}
+
 /**
  * 회사에 보낼 증빙요청 엑셀 — 「증빙요청」(전표 한 장이 한 줄, 노란 칸에 회사 설명 · 증빙 파일명) + 「전표내역」(고른 전표의 모든 줄).
  * 증빙 파일 이름 규칙 「요청No_전표일자_전표번호」를 안내해 회신을 짝짓기 쉽게 한다. 회신은 이 파일 그대로 올리면 jeSample.parseReply 가 읽는다.
  */
-export async function exportRequestWorkbook(company: string, fy: number, picks: JePick[], lines: JeLine[], requestedAt: string): Promise<void> {
+export async function exportRequestWorkbook(company: string, fy: number, picks: JePick[], lines: JeLine[], requestedAt: string, contact?: { preparer?: string | null }): Promise<void> {
   const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
+  // 회사 담당자가 처음 여는 시트 — 왜 · 무엇을 · 어떻게(사용자 2026-10-21 「이해하기 쉽게 안내」).
+  const g = wb.addWorksheet('안내', { views: [{ showGridLines: false }] });
+  g.columns = [{ width: 4 }, { width: 22 }, { width: 90 }];
+  const due = new Date(`${requestedAt}T00:00:00Z`); due.setUTCDate(due.getUTCDate() + 7);
+  const guide: [string, string][] = [
+    ['무엇인가요', `${company} FY${fy} 외부감사의 「분개 테스트」 절차입니다. 회계기간의 분개 가운데 일부 전표를 골라, 거래가 실제로 있었는지와 금액 · 시기가 맞는지 증빙으로 확인합니다. 회사에 문제가 있다는 뜻이 아니라 모든 감사에서 하는 표준 절차입니다.`],
+    ['무엇을 하시면 되나요', '① 「증빙요청」 시트의 전표마다 노란 칸 두 개만 채워 주세요 — 「회사 설명」(어떤 거래인지 한두 줄)과 「증빙 파일명」(보내 주시는 파일 이름).\n② 「요청 증빙」 칸에 적힌 서류(세금계산서 · 계약서 · 이체확인증 · 계산근거 등)를 PDF 나 사진으로 준비해 주세요. 같은 서류가 없으면 거래를 보여 주는 다른 서류도 괜찮습니다.\n③ 이 엑셀 파일과 증빙 파일들을 함께 회신해 주세요.'],
+    ['증빙 파일 이름', '「요청No_전표일자_전표번호」로 붙여 주세요. 예: 3_2025-12-31_135.pdf — 한 전표에 파일이 여럿이면 3_2025-12-31_135_1.pdf, _2.pdf 처럼 뒤에 번호를 붙이면 됩니다.'],
+    ['「전표내역」 시트', '요청한 전표의 분개 줄 전체입니다. 어느 전표인지 찾으실 때 참고만 하시면 되고 고치실 것은 없습니다.'],
+    ['회신 기한', `${due.toISOString().slice(0, 10)}까지(어려우시면 말씀해 주세요)`],
+    ['요청 이유', '「요청 이유」 칸은 이 전표를 고른 까닭입니다(금액이 큰 거래 · 결산 조정 분개 등). 대부분 확인만 하면 끝나는 일반적인 이유입니다.'],
+    ['문의', `${contact?.preparer ? `${contact.preparer} 회계사` : '담당 회계사'}에게 연락 주세요.`],
+  ];
+  put(g, 'B1', `${company} — 분개 테스트 증빙 요청 안내`, { bold: true, size: 14 });
+  put(g, 'B2', `요청일 ${requestedAt} · 요청 전표 ${picks.length}장`, { color: 'FF7F7F7F' });
+  guide.forEach(([k, v], i) => {
+    const r = 4 + i * 2;
+    put(g, `B${r}`, k, { bold: true });
+    const c = put(g, `C${r}`, v, { wrap: true });
+    c.alignment = { wrapText: true, vertical: 'top' };
+    g.getRow(r).height = Math.max(20, Math.ceil(v.length / 55) * 16 + (v.split('\n').length - 1) * 16);
+  });
   const ws = wb.addWorksheet('증빙요청');
   put(ws, 'A1', `${company} FY${fy} 분개 테스트 — 증빙 요청`, { bold: true, size: 13 });
-  put(ws, 'A2', `요청일 ${requestedAt} · 노란 칸에 거래 설명과 첨부한 증빙 파일명을 적어 이 파일 그대로 회신해 주십시오. 증빙 파일 이름은 「요청No_전표일자_전표번호」(예: 3_2025-12-31_135)로 해 주시면 됩니다.`, { color: 'FF7F7F7F' });
-  const head = ['요청No', '전표일자', '전표번호', '주요 계정', '전표금액', '적요', '거래처', '요청 증빙', '회사 설명', '증빙 파일명'];
+  put(ws, 'A2', `요청일 ${requestedAt} · 노란 칸(회사 설명 · 증빙 파일명)만 채워 이 파일 그대로 회신해 주십시오. 자세한 방법은 「안내」 시트를 보세요.`, { color: 'FF7F7F7F' });
+  const head = ['요청No', '전표일자', '전표번호', '요청 이유', '주요 계정', '전표금액', '적요', '거래처', '요청 증빙', '회사 설명', '증빙 파일명'];
   head.forEach((h, i) => { const c = ws.getCell(4, i + 1); c.value = h; c.font = FONT_BOLD; c.fill = FILL_HEADER; c.border = BORDER_ALL; c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; });
   const byKey = new Map<string, JeLine[]>();
   for (const l of lines) { const k = `${l.date}|${l.no}`; const a = byKey.get(k) ?? []; a.push(l); byKey.set(k, a); }
@@ -311,13 +372,13 @@ export async function exportRequestWorkbook(company: string, fy: number, picks: 
   sorted.forEach((p, i) => {
     const ls = byKey.get(`${p.vdate}|${p.vno}`) ?? [];
     const top = [...ls].sort((a, b) => Math.max(Math.abs(b.dr), Math.abs(b.cr)) - Math.max(Math.abs(a.dr), Math.abs(a.cr)))[0];
-    [p.reqNo, p.vdate, p.vno, top?.acctName ?? '', p.amount, top?.memo ?? '', ls.find((l) => l.cpName)?.cpName ?? '', p.reqDocs ?? '', p.answer ?? '', p.replyDocs ?? ''].forEach((v, ci) => {
-      const c = ws.getCell(5 + i, ci + 1); c.value = v as Cell['value']; c.font = FONT; c.border = BORDER_ALL; c.alignment = { vertical: 'middle', wrapText: ci >= 7 };
-      if (ci === 4) c.numFmt = ACC;
-      if (ci >= 8) c.fill = FILL_INPUT;
+    [p.reqNo, p.vdate, p.vno, plainReason(p.scenarios), top?.acctName ?? '', p.amount, top?.memo ?? '', ls.find((l) => l.cpName)?.cpName ?? '', p.reqDocs ?? '', p.answer ?? '', p.replyDocs ?? ''].forEach((v, ci) => {
+      const c = ws.getCell(5 + i, ci + 1); c.value = v as Cell['value']; c.font = FONT; c.border = BORDER_ALL; c.alignment = { vertical: 'middle', wrapText: ci === 3 || ci >= 8 };
+      if (ci === 5) c.numFmt = ACC;
+      if (ci >= 9) c.fill = FILL_INPUT;
     });
   });
-  ws.columns = [{ width: 7 }, { width: 11 }, { width: 9 }, { width: 18 }, { width: 15 }, { width: 30 }, { width: 18 }, { width: 28 }, { width: 40 }, { width: 24 }];
+  ws.columns = [{ width: 7 }, { width: 11 }, { width: 9 }, { width: 20 }, { width: 18 }, { width: 15 }, { width: 30 }, { width: 18 }, { width: 28 }, { width: 40 }, { width: 24 }];
   ws.views = [{ state: 'frozen', ySplit: 4 }];
   ws.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '4:4' };
 

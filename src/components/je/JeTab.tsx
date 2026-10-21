@@ -19,8 +19,8 @@ import {
   ensureJob, saveJob, listUploads, uploadJournal, uploadBalances, saveBalances, loadLines, loadTb, listPicks, savePick, savePicks, jobSummaries, priorAccounts, priorBalanceMeta, applyPriorMeta, balancesFromWtb, materialityFromGwp,
   type JeJob, type JeUpload, type JePick,
 } from '../../lib/jeApi';
-import { exportJeWorkbook, exportRequestWorkbook, performed } from '../../lib/jeExport';
-import { buildCandidates, docsFor, parseReply, pickSummary, VOUCHER_SCENARIOS } from '../../lib/jeSample';
+import { exportJeWorkbook, exportListWorkbook, exportRequestWorkbook, memoOf, performed } from '../../lib/jeExport';
+import { ALWAYS_ASK, buildCandidates, docsFor, parseReply, pickSummary, plainReason, recommendPicks, VOUCHER_SCENARIOS } from '../../lib/jeSample';
 import { exportBalanceTemplate } from '../../lib/jeTemplate';
 
 const won = (n: number) => Math.round(n).toLocaleString();
@@ -430,7 +430,7 @@ function CheckStep({ job, results, lines, picks, canWrite, patchJob, onPick }: {
                               <tr key={i}>
                                 {row.map((v, ci) => <td key={ci} style={typeof v === 'number' ? tdr : { ...td, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={typeof v === 'string' ? v : undefined}>{typeof v === 'number' ? won(v) : v}</td>)}
                                 {r.code === 'B01' && (() => {
-                                  const base: JePick = p ?? { vdate: String(row[0]), vno: String(row[1]), scenarios: ['B01'], amount: Number(row[5]) || 0, reason: '중요성 기준 이상 손익 분개', selected: true, evidence: null, answer: null, result: null, note: null };
+                                  const base: JePick = p ?? { vdate: String(row[0]), vno: String(row[1]), scenarios: ['B01'], amount: Number(row[5]) || 0, reason: '중요성 기준 이상 손익 분개', selected: false, evidence: null, answer: null, result: null, note: null };
                                   return (<>
                                     <td style={td}><input defaultValue={base.evidence ?? ''} disabled={!canWrite} onBlur={(e) => { if ((e.target.value || null) !== base.evidence) void onPick({ ...base, evidence: e.target.value || null }); }} style={{ ...inp, width: 120 }} /></td>
                                     <td style={td}><select value={base.result ?? ''} disabled={!canWrite} onChange={(e) => void onPick({ ...base, result: (e.target.value || null) as JePick['result'] })} style={inp}><option value="">—</option><option>이상없음</option><option>예외</option><option>확인중</option></select></td>
@@ -594,7 +594,13 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
   const { profileName } = useAuth();
   const cands = useMemo(() => buildCandidates(results, lines, (r) => performed(job, r)), [results, lines, job]);
   const pmap = useMemo(() => new Map(picks.map((p) => [`${p.vdate}|${p.vno}`, p])), [picks]);
+  const thr = benchThreshold(job.bench);
   const [f, setF] = useState<{ scen: string; min: number; q: string; topN: number }>({ scen: '', min: 0, q: '', topN: 20 });
+  // ② 검토 B01 표에서 계정 조서 REF · 결과로 이미 끝낸 전표 — 회사 증빙을 또 받지 않는다.
+  const hasRef = (k: string) => { const p = pmap.get(k); return !!p && !p.selected && !!(p.evidence || p.result); };
+  const rec = useMemo(() => recommendPicks(cands, thr, hasRef), [cands, thr, pmap]); // eslint-disable-line react-hooks/exhaustive-deps
+  const recNew = rec.filter((c) => !pmap.get(c.key)?.selected);
+  const refN = cands.filter((c) => hasRef(c.key)).length;
   const [stateF, setStateF] = useState<PickState | ''>('');
   const titleOf = (c: string) => results.find((r) => r.code === c)?.title ?? c;
   const shown = cands.filter((c) => (!f.scen || c.scenarios.includes(f.scen)) && (!f.min || c.amount >= f.min) && (!f.q || `${c.mainAcct} ${c.memo} ${c.cpName} ${c.no}`.includes(f.q)));
@@ -619,7 +625,7 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
     const next = sel.map((p) => (p.reqNo ? p : { ...p, reqNo: ++n, requestedAt: d }));
     const fresh = next.filter((p, i) => p !== sel[i]);
     if (fresh.length) await onSave(fresh);
-    await exportRequestWorkbook(eng.entityName, eng.fy, next, lines, d);
+    await exportRequestWorkbook(eng.entityName, eng.fy, next, lines, d, { preparer: job.preparer });
     flash(`증빙요청 엑셀을 내려받았습니다 — 전표 ${next.length}장(새로 번호 매김 ${fresh.length}장). 회사에 보내 주세요.`);
   }
   async function onReply(file: File) {
@@ -662,11 +668,26 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
     </div>
 
     <div className="card">
+      <b style={{ color: 'var(--navy)' }}>선정 기준</b> <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>— 인덕 JE Test 가이드라인 · 감사기준 240 문단 32</span>
+      <div style={{ fontSize: 'var(--fs-2)', lineHeight: 1.75, marginTop: 4 }}>
+        <div>원칙: 켜 둔 시나리오가 뽑은 전표는 <b>모두 확인</b>합니다. 확인 방법은 두 가지입니다.</div>
+        <div>① <b>계정 조서에서 이미 본 전표</b> — ② 검토의 B01 표 「검토(REF 조서)」 칸에 조서 번호(예: 4100 매출)와 결과를 적으면 끝입니다. 회사 증빙을 따로 받지 않습니다. {refN > 0 && <span style={{ color: 'var(--ink-3)' }}>(지금 {refN}장)</span>}</div>
+        <div>② <b>나머지는 여기서 회사 증빙으로</b> — 권장 기준: 금액이 <b>중요성 기준 {won(thr)}원 이상</b>인 전표 + 금액과 상관없이 <b>{ALWAYS_ASK.map((c) => `${c} ${titleOf(c)}`).join(' · ')}</b>에 걸린 전표 전부(성격 자체가 위험 신호). 기준 아래 B09 결산조정 등은 계정 조서에서 보거나, 필요하면 직접 더 고릅니다.</div>
+        <div style={{ color: 'var(--ink-3)' }}>표본 수를 줄이고 싶으면 「금액 ≥」를 높이거나 상위 N장만 고르되, 줄인 이유를 C01 비고나 ③ 메모에 남깁니다.</div>
+      </div>
+      {canWrite && <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, fontSize: 'var(--fs-1)' }}>
+        <button className="btn-sm btn-sm-navy" disabled={!recNew.length} onClick={() => void onSave(recNew.map((c) => asPick(c, true)))}>권장 기준으로 고르기{recNew.length ? ` (${recNew.length}장 더)` : ''}</button>
+        <span style={{ color: 'var(--ink-3)' }}>권장 대상 {rec.length}장 = 금액 기준 {rec.filter((c) => c.amount >= thr).length} + {ALWAYS_ASK.join(' · ')} {rec.filter((c) => c.amount < thr).length}{refN ? ` · REF 로 끝낸 ${refN}장 제외` : ''}</span>
+      </div>}
+    </div>
+
+    <div className="card">
       <StepHead n="1단계" title="후보에서 고르기" hint={`② 검토의 주요 · 참고 시나리오(${VOUCHER_SCENARIOS.filter((c) => scenUsed.includes(c)).join(' · ') || '없음'})가 뽑은 전표 ${cands.length.toLocaleString()}장 — 여러 시나리오에 걸린 전표는 한 줄`} />
-      <Todo>{sel.length ? `${sel.length}장 골랐습니다. 더 고르거나 2단계로 갑니다.` : '금액이 크거나 성격이 이상한 전표를 고릅니다 — 「금액 상위 N장」이 빠릅니다.'}</Todo>
+      <Todo>{sel.length ? `${sel.length}장 골랐습니다${recNew.length ? ` — 권장 기준 중 ${recNew.length}장이 아직 남았습니다` : ''}. 더 고르거나 2단계로 갑니다.` : '위 「권장 기준으로 고르기」를 누르면 기준대로 골라집니다. 직접 고르려면 아래 거르기를 씁니다.'}</Todo>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 8px', fontSize: 'var(--fs-1)' }}>
         <select value={f.scen} onChange={(e) => setF({ ...f, scen: e.target.value })} style={inp}><option value="">시나리오 전체</option>{scenUsed.map((c) => <option key={c} value={c}>{c} {titleOf(c)}</option>)}</select>
         <label>금액 ≥ <MoneyInput value={f.min} width={120} onCommit={(v) => setF({ ...f, min: v ?? 0 })} /></label>
+        <button className="btn-sm" onClick={() => setF({ ...f, min: thr })} title="B01 중요성 기준">= 중요성 {won(thr)}</button>
         <input placeholder="🔍 계정 · 적요 · 거래처" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} style={{ ...inp, width: 160 }} />
         <span style={{ color: 'var(--ink-3)' }}>{shown.length.toLocaleString()}장</span>
         {canWrite && <>
@@ -683,14 +704,14 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
             <tr key={c.key} style={{ background: p?.selected ? 'var(--navy-bg)' : undefined }}>
               <td style={td}><input type="checkbox" checked={!!p?.selected} disabled={!canWrite || !!p?.reqNo} onChange={(e) => void onSave([asPick(c, e.target.checked)])} title={p?.reqNo ? '이미 요청한 전표' : undefined} /></td>
               <td style={td}>{c.date}</td><td style={td}>{c.no}</td>
-              <td style={td} title={c.scenarios.map(titleOf).join('\n')}>{c.scenarios.map((s) => <span key={s} style={{ background: '#EEF2F7', borderRadius: 4, padding: '0 5px', marginRight: 3 }}>{s}</span>)}</td>
+              <td style={td} title={`${c.scenarios.map(titleOf).join('\n')}\n회사에 보이는 이유: ${plainReason(c.scenarios)}`}>{c.scenarios.map((s) => <span key={s} style={{ background: '#EEF2F7', borderRadius: 4, padding: '0 5px', marginRight: 3 }}>{s}</span>)}{hasRef(c.key) && <span style={{ background: '#DCFCE7', borderRadius: 4, padding: '0 5px' }} title={`계정 조서에서 확인: ${pmap.get(c.key)?.evidence ?? ''}`}>REF</span>}</td>
               <td style={tdr}>{won(c.amount)}</td>
               <td style={td}>{c.mainAcct}</td><td style={{ ...td, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.memo}>{c.memo}</td><td style={td}>{c.cpName}</td>
             </tr>
           ); })}</tbody>
         </table>
       </div>
-      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', marginTop: 4 }}>「뽑힌 이유」에 마우스를 올리면 시나리오 이름이 보입니다. 요청을 보낸 전표는 빼지 못합니다.</div>
+      <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-4)', marginTop: 4 }}>「뽑힌 이유」에 마우스를 올리면 시나리오 이름과 회사 엑셀에 적히는 쉬운 말 이유가 보입니다. 초록 REF = 계정 조서에서 이미 확인. 요청을 보낸 전표는 빼지 못합니다.</div>
     </div>
 
     <div className="card">
@@ -701,7 +722,7 @@ function SampleStep({ eng, job, results, lines, picks, canWrite, onSave, flash, 
         <label className="btn-sm" style={{ cursor: 'pointer' }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const fl = e.dataTransfer.files?.[0]; if (fl) void onReply(fl); }}>
           📥 회신 올리기<input type="file" accept=".xls,.xlsx" style={{ display: 'none' }} onChange={(e) => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) void onReply(fl); }} />
         </label>
-        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>엑셀: 「증빙요청」 시트(전표 한 장 = 한 줄, 요청 증빙 미리 적힘) + 「전표내역」 시트(고른 전표의 모든 줄). 증빙 파일 이름은 「요청No_전표일자_전표번호」.</span>
+        <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>엑셀: 「안내」(회사 담당자용 — 왜 · 무엇을 · 어떻게 · 기한 · 문의) + 「증빙요청」(전표 한 장 = 한 줄, 쉬운 말 요청 이유 · 요청 증빙 미리 적힘) + 「전표내역」(고른 전표의 모든 줄).</span>
       </div>}
     </div>
 
@@ -749,32 +770,59 @@ const RELAX_TEMPLATE = [
 
 function GapStep({ eng, job, results, hasBal, hasJournal, canWrite, patchJob }: { eng: Engagement; job: JeJob; results: CheckResult[]; hasBal: boolean; hasJournal: boolean; canWrite: boolean; patchJob: (p: Partial<JeJob>) => Promise<void> }) {
   const by = (c: string) => results.find((r) => r.code === c);
-  // text = 우리가 보는 설명, ask = 회사에 보낼 문장(없으면 요청문에 안 넣는다).
-  const items: { kind: '자료요청' | '질의' | '판단'; text: string; ask?: string }[] = [];
-  if (!hasJournal) items.push({ kind: '자료요청', text: '분개장이 아직 없습니다.', ask: '회계기간 전체 분개장(엑셀) — 전표일자 · 전표번호 · 계정코드 · 계정과목 · 차변 · 대변 · 거래처 · 적요' });
-  if (!hasBal) items.push({ kind: '자료요청', text: '회사 제시 잔액(기초 · 기말)이 없어 A04 기초잔액 대사를 못 합니다 — 잔액표 양식에 재무상태표 금액을 붙여 넣어 올리세요.', ask: '전기말 · 당기말 재무상태표(계정별 금액, 엑셀)' });
-  items.push({ kind: '자료요청', text: '분개장에 작성자 · 승인자 · 입력일시가 없어 B04 · B05 · B06을 못 합니다. 회사가 포함해서 출력할 수 있으면 받고(더존은 대부분 안 됨), 안 되면 미수행 사유로 남깁니다.', ask: '가능하시면 분개장을 작성자 · 승인자 · 입력일시가 포함되도록 다시 출력해 주십시오(시스템에서 안 되면 회신만 주시면 됩니다).' });
-  if (by('A01')?.status === '예외') items.push({ kind: '자료요청', text: `분개장 유효성 예외 — ${by('A01')!.summary}`, ask: '분개장에 회계기간 밖 일자 또는 차변 · 대변이 함께 적힌 줄이 있어 확인 후 다시 출력해 주십시오.' });
-  if (by('A03')?.status === '예외') items.push({ kind: '자료요청', text: `차대 불일치 — ${by('A03')!.summary}`, ask: '차변과 대변 합계가 맞지 않는 전표가 있어 확인 후 다시 출력해 주십시오.' });
-  if (by('A04')?.status === '예외') items.push({ kind: '질의', text: `기초잔액 대사 차이 — ${by('A04')!.summary}. 재분류 · 공시과목 나눔이면 묶음으로 정리, 아니면 회사 질의` });
-  if (by('B10')?.status === '예외') items.push({ kind: '질의', text: `전표번호 결번 — ${by('B10')!.summary}`, ask: '전표번호에 빈 번호가 있는 날이 있습니다 — 삭제 · 취소된 전표인지 알려 주십시오(목록 별첨).' });
-  if (by('B07')?.status === '예외') items.push({ kind: '질의', text: `매출 상대계정 — ${by('B07')!.summary}`, ask: '매출의 상대계정이 현금 · 채권이 아닌 전표가 있습니다 — 거래 내용을 알려 주십시오(목록 별첨).' });
-  if (!job.listed) items.push({ kind: '판단', text: '비상장회사 — 완화된 절차를 적용할지 판단하고, 적용하면 사유(4요소)와 결론을 아래에 남깁니다.' });
-  items.push({ kind: '판단', text: '재무보고 관여자 질문(감사기준 240 문단 32 (1)) — 부적합 · 비경상 분개나 조정이 있었는지 질문하고 답변을 남깁니다.' });
+  // 수행한(켜진) 시나리오의 예외만 — 꺼 둔 시나리오는 요청문에 넣지 않는다(사용자 2026-10-21: 제이스튜디오 B10 문장이 왜 나오나).
+  const exc = (c: string) => { const r = by(c); return r && performed(job, r) && r.status === '예외' ? r : undefined; };
+  const src = (c: string) => { const r = by(c); return r ? `${r.code} ${r.title} — ② 검토 › ${r.kind === 'Mandatory' ? '필수 검증' : '선택 시나리오'}` : c; };
+  // text = 우리가 보는 설명, ask = 회사에 보낼 문장(없으면 요청문에 안 넣는다), src = 어느 절차에서 나왔나, list = 별첨할 목록.
+  type Item = { kind: '자료요청' | '질의' | '판단'; text: string; ask?: string; src: string; list?: CheckResult };
+  const items: Item[] = [];
+  if (!hasJournal) items.push({ kind: '자료요청', src: '① 자료 › 분개장', text: '분개장이 아직 없습니다.', ask: '회계기간 전체 분개장(엑셀) — 전표일자 · 전표번호 · 계정코드 · 계정과목 · 차변 · 대변 · 거래처 · 적요가 나오도록 출력해 주십시오.' });
+  if (!hasBal) items.push({ kind: '자료요청', src: '① 자료 › 잔액표 (A04 기초잔액 대사에 씀)', text: '회사 제시 잔액(기초 · 기말)이 없어 A04 기초잔액 대사를 못 합니다 — 잔액표 양식에 재무상태표 금액을 붙여 넣어 올리세요.', ask: '전기말 · 당기말 재무상태표(계정별 금액, 엑셀)를 보내 주십시오.' });
+  items.push({ kind: '자료요청', src: 'B04 · B05 · B06 (작성자 · 승인자 · 입력일 시나리오)', text: '분개장에 작성자 · 승인자 · 입력일시가 없어 B04 · B05 · B06을 못 합니다. 회사가 포함해서 출력할 수 있으면 받고(더존은 대부분 안 됨), 안 되면 미수행 사유로 남깁니다.', ask: '가능하시면 분개장을 작성자 · 승인자 · 입력일시가 함께 나오도록 출력해 주십시오. 프로그램에서 안 되면 「안 된다」고만 회신해 주셔도 됩니다.' });
+  if (exc('A01')) items.push({ kind: '자료요청', src: src('A01'), text: `분개장 유효성 예외 — ${by('A01')!.summary}`, ask: '받은 분개장에 회계기간 밖 날짜 또는 차변 · 대변이 한 줄에 함께 적힌 줄이 있습니다. 출력 조건을 확인해 다시 보내 주십시오.' });
+  if (exc('A03')) items.push({ kind: '자료요청', src: src('A03'), text: `차대 불일치 — ${by('A03')!.summary}`, ask: '차변 합계와 대변 합계가 맞지 않는 전표가 있습니다. 출력이 잘렸는지 확인해 다시 보내 주십시오.' });
+  if (exc('A04')) items.push({ kind: '질의', src: src('A04'), text: `기초잔액 대사 차이 — ${by('A04')!.summary}. 재분류 · 공시과목 나눔이면 묶음으로 정리, 아니면 회사 질의` });
+  if (exc('B10')) items.push({ kind: '질의', src: src('B10'), list: by('B10'), text: `전표번호 결번 — ${by('B10')!.summary}`, ask: '같은 날짜 안에서 전표번호가 건너뛴 곳이 있습니다(예: 3번 다음이 5번). 지운 전표 · 취소한 전표인지, 프로그램이 번호를 건너뛴 것인지 별첨 목록에 적어 주십시오.' });
+  if (exc('B07')) items.push({ kind: '질의', src: src('B07'), list: by('B07'), text: `매출 상대계정 — ${by('B07')!.summary}`, ask: '매출을 기록하면서 상대 계정이 현금 · 외상매출금 · 선수금이 아닌 전표가 있습니다. 어떤 거래인지 별첨 목록에 한 줄씩 적어 주십시오.' });
+  if (!job.listed) items.push({ kind: '판단', src: '감사기준 240 A43 (비상장 완화)', text: '비상장회사 — 완화된 절차를 적용할지 판단하고, 적용하면 사유(4요소)와 결론을 아래에 남깁니다.' });
+  items.push({ kind: '판단', src: '감사기준 240 문단 32 (1)', text: '재무보고 관여자 질문 — 부적합 · 비경상 분개나 조정이 있었는지 질문하고 답변을 아래 「질문 · 종합 메모」에 남깁니다(기본 문장이 들어가 있음).' });
+  const asks = items.filter((i) => i.ask);
   const letter = [
-    `${eng.entityName} 담당자님께`, '', `FY${eng.fy} 기말감사 분개 테스트(JET)를 위해 아래 자료를 요청드립니다.`, '',
-    ...items.filter((i) => i.ask).map((i, n) => `${n + 1}. ${i.ask}`), '', '감사합니다.',
+    `${eng.entityName} 담당자님께`, '',
+    `안녕하세요. FY${eng.fy} 외부감사 가운데 「분개 테스트」 절차를 위해 아래 자료를 부탁드립니다.`,
+    '분개 테스트는 회계기간의 전표를 훑어 금액이 크거나 성격이 특이한 전표를 확인하는, 모든 감사에서 하는 표준 절차입니다. 회사에 문제가 있다는 뜻은 아닙니다.', '',
+    ...asks.map((i, n) => `${n + 1}. ${i.ask}`), '',
+    ...(asks.some((i) => i.list) ? ['「(별첨)」이 붙은 항목은 함께 보내 드리는 엑셀 목록의 노란 칸에 답을 적어 돌려주시면 됩니다.', ''] : []),
+    `회신은 ${(() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10); })()}까지 부탁드리며, 어려우시면 말씀해 주십시오.`,
+    `문의: ${job.preparer ? `${job.preparer} 회계사` : '담당 회계사'}`, '', '감사합니다.',
   ].join('\n');
+  async function attach(r: CheckResult) {
+    const note = r.code === 'B10' ? '같은 날짜 안에서 건너뛴 전표번호입니다. 오른쪽 노란 칸에 「삭제」 「취소」 「프로그램 자동 건너뜀」 등을 적어 주십시오.' : '매출 상대 계정이 일반적이지 않은 전표입니다. 오른쪽 노란 칸에 어떤 거래인지 적어 주십시오.';
+    await exportListWorkbook(eng.entityName, eng.fy, `${r.code === 'B10' ? '전표번호 결번' : '매출 상대계정'} 목록`, note, r.head, r.rows);
+  }
+  const kindColor = (k: Item['kind']) => (k === '자료요청' ? '#2F7BD8' : k === '질의' ? '#B45309' : '#7C3AED');
   return (<>
     <div className="card">
-      <b style={{ color: 'var(--navy)' }}>보완할 점</b>
+      <b style={{ color: 'var(--navy)' }}>보완할 점</b> <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>「나온 곳」은 그 줄을 만든 절차입니다 — ② 검토에서 켜 둔 시나리오의 예외만 여기에 옵니다.</span>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--fs-1)', marginTop: 6 }}>
-        <tbody>{items.map((i, n) => <tr key={n}><td style={{ ...td, width: 70 }}><b style={{ color: i.kind === '자료요청' ? '#2F7BD8' : i.kind === '질의' ? '#B45309' : '#7C3AED' }}>{i.kind}</b></td><td style={td}>{i.text}</td></tr>)}</tbody>
+        <thead><tr>{['구분', '내용', '나온 곳', '요청문'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+        <tbody>{items.map((i, n) => <tr key={n}>
+          <td style={{ ...td, width: 70 }}><b style={{ color: kindColor(i.kind) }}>{i.kind}</b></td>
+          <td style={td}>{i.text}</td>
+          <td style={{ ...td, color: 'var(--ink-3)', width: 230 }}>{i.src}</td>
+          <td style={{ ...td, width: 90 }}>{i.ask ? `${asks.indexOf(i) + 1}번` : '—'}{i.list && <button className="btn-sm" style={{ marginLeft: 4 }} onClick={() => void attach(i.list!)} title="회사에 보낼 목록 엑셀">별첨 ⬇</button>}</td>
+        </tr>)}</tbody>
       </table>
     </div>
     <div className="card">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><b style={{ color: 'var(--navy)' }}>회사에 보낼 요청문</b><button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => void navigator.clipboard.writeText(letter)}>복사</button></div>
-      <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 'var(--fs-1)', background: 'var(--surface-3)', padding: 10, borderRadius: 6, marginTop: 6 }}>{letter}</pre>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><b style={{ color: 'var(--navy)' }}>회사에 보낼 요청문</b><span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>번호마다 오른쪽에 나온 절차가 붙어 있습니다(복사할 때는 빠짐).</span><button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => void navigator.clipboard.writeText(letter)}>복사</button></div>
+      <div style={{ fontSize: 'var(--fs-1)', background: 'var(--surface-3)', padding: 10, borderRadius: 6, marginTop: 6, lineHeight: 1.7 }}>
+        {letter.split('\n').map((l, k) => {
+          const m = /^(\d+)\. /.exec(l);
+          const it = m ? asks[Number(m[1]) - 1] : undefined;
+          return <div key={k} style={{ minHeight: '1em' }}>{l}{it && <span style={{ marginLeft: 8, fontSize: 11, color: '#64748B', background: '#EEF2F7', borderRadius: 4, padding: '0 6px' }}>← {it.src}{it.list ? ' · 별첨' : ''}</span>}</div>;
+        })}
+      </div>
     </div>
     <div className="card">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -785,8 +833,9 @@ function GapStep({ eng, job, results, hasBal, hasJournal, canWrite, patchJob }: 
       {job.relaxed && <textarea defaultValue={job.relaxedNote ?? RELAX_TEMPLATE} key={job.relaxed ? 'on' : 'off'} disabled={!canWrite} onBlur={(e) => void patchJob({ relaxedNote: e.target.value })} rows={7} style={{ ...inp, width: '100%', marginTop: 6 }} />}
     </div>
     <div className="card">
-      <b style={{ color: 'var(--navy)' }}>질문 · 종합 메모</b> <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>재무보고 관여자 질문 답변 등 — 총괄 결론 아래에 들어갑니다.</span>
-      <textarea defaultValue={job.memo ?? ''} disabled={!canWrite} onBlur={(e) => void patchJob({ memo: e.target.value || null })} rows={4} placeholder="예: 2026-02-26 재무팀장에게 부적합 · 비경상 분개 여부를 질문하였으며 해당 사항 없다는 답변을 받음" style={{ ...inp, width: '100%', marginTop: 6 }} />
+      <b style={{ color: 'var(--navy)' }}>질문 · 종합 메모</b> <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>기본 문장(작성일 {job.preparedOn ?? '— 머리의 작성일을 넣으면 채워짐'})이 들어가 있습니다. 실제 답변에 맞게 고치세요 — 총괄 결론 아래에 들어갑니다.</span>
+      <textarea defaultValue={memoOf(job)} key={job.memo ? 'saved' : `def${job.preparedOn}${job.contacts[0]?.name ?? ''}`} disabled={!canWrite} onBlur={(e) => { const v = e.target.value.trim(); if (v !== memoOf(job).trim()) void patchJob({ memo: v || null }); }} rows={4} style={{ ...inp, width: '100%', marginTop: 6 }} />
+      {canWrite && job.memo && <button className="btn-sm" style={{ marginTop: 4 }} onClick={() => void patchJob({ memo: null })}>기본 문장으로 되돌리기</button>}
     </div>
   </>);
 }

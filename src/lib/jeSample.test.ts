@@ -1,7 +1,7 @@
 // JET 2차 — 후보 전표 · 회신 읽기 · 신규 계정 시험.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCandidates, docsFor, parseReply, pickSummary } from './jeSample';
+import { buildCandidates, docsFor, parseReply, pickSummary, plainReason, recommendPicks } from './jeSample';
 import { runAll, defaultParams, scenNewAccounts, vouchers } from './jeChecks';
 import type { JeLine } from './jeParse';
 
@@ -45,4 +45,23 @@ test('신규 계정 — 전기 계정에 없는 계정을 쓴 전표', () => {
 
 test('결과 집계', () => {
   assert.deepEqual(pickSummary([{ selected: true, result: '이상없음' }, { selected: true, result: '예외' }, { selected: true, result: null }, { selected: false, result: '예외' }]), { total: 3, ok: 1, exc: 1, pending: 1 });
+});
+
+test('권장 선정 — 중요성 이상 + B07 · B14 는 금액 무관, REF 로 끝낸 전표 제외', () => {
+  const c = [
+    { key: 'a', amount: 5_000_000, scenarios: ['B01'] },
+    { key: 'b', amount: 100, scenarios: ['B07'] },
+    { key: 'c', amount: 100, scenarios: ['B09'] },
+    { key: 'd', amount: 9_000_000, scenarios: ['B09'] },
+    { key: 'e', amount: 200, scenarios: ['B14', 'B09'] },
+  ];
+  assert.deepEqual(recommendPicks(c, 1_000_000, (k) => k === 'd').map((x) => x.key), ['a', 'b', 'e']);
+  assert.deepEqual(recommendPicks(c, 0, () => false).map((x) => x.key), ['b', 'e']);
+  assert.equal(plainReason(['B09', 'B01', 'B09']), '결산(월말 · 기말) 조정 분개 / 금액이 큰 거래');
+});
+
+test('질문 메모 기본 문장 — 작성일 · 담당자', async () => {
+  const { defaultMemo } = await import('./jeExport');
+  assert.match(defaultMemo({ preparedOn: '2026-02-26', contacts: [{ name: '김재무', dept: '재무팀장', phone: '', email: '' }] }), /^2026-02-26 회사의 재무보고 관여자\(김재무 재무팀장\)에게 .*240 문단 32 \(1\)/);
+  assert.match(defaultMemo({ preparedOn: null, contacts: [] }), /^\(작성일\) .*\(재무 담당자\)/);
 });
