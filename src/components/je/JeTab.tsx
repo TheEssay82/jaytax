@@ -301,9 +301,9 @@ function CheckStep({ job, results, lines, picks, canWrite, patchJob, onPick }: {
   const plAccts = useMemo(() => {
     const th = benchThreshold(job.bench);
     const m = new Map<string, { name: string; n: number }>();
-    for (const l of lines) if (!isBsCode(l.acctCode) && th > 0 && Math.abs(l.dr - l.cr) >= th) { const a = m.get(l.acctCode) ?? { name: l.acctName, n: 0 }; a.n++; m.set(l.acctCode, a); }
+    for (const l of lines) if (!isBsCode(l.acctCode) && th > 0 && Math.abs(l.dr - l.cr) >= th && (job.params.matSide === '양쪽' || l.dr > 0)) { const a = m.get(l.acctCode) ?? { name: l.acctName, n: 0 }; a.n++; m.set(l.acctCode, a); }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [lines, job.bench]);
+  }, [lines, job.bench, job.params.matSide]);
   const setScen = (code: ScenarioCode, p: Partial<{ on: boolean; reason: string; conclusion: string }>) => void patchJob({ scenarios: { ...job.scenarios, [code]: { ...(job.scenarios[code] ?? { on: false }), ...p } } });
   const pickMap = new Map(picks.map((p) => [`${p.vdate}|${p.vno}`, p]));
   const pr = job.params;
@@ -317,6 +317,7 @@ function CheckStep({ job, results, lines, picks, canWrite, patchJob, onPick }: {
         {job.bench.name === '매출' && canWrite && <button className="btn-sm" onClick={() => void patchJob({ bench: { ...job.bench, amount: Math.round(sales) } })} title="분개장의 매출 계정 대변 − 차변">분개장 매출 {won(sales)} 넣기</button>}
         <label>적용률 <input type="number" step="0.1" defaultValue={Math.round(job.bench.rate * 1000) / 10} key={job.bench.rate} disabled={!canWrite} onBlur={(e) => void patchJob({ bench: { ...job.bench, rate: Number(e.target.value) / 100 } })} style={{ ...inp, width: 60, textAlign: 'right' }} /> %</label>
         <b>= 중요성 기준 {won(benchThreshold(job.bench))}원</b>
+        <label title="차변만: 차변 금액이 양수인 줄만 — 대체 분개의 맞은편(대변) 줄과 마이너스 역분개를 뺍니다">분개 <select value={pr.matSide} disabled={!canWrite} onChange={(e) => void patchJob({ params: { ...pr, matSide: e.target.value as '양쪽' | '차변만' } })} style={inp}><option>양쪽</option><option>차변만</option></select></label>
       </div>
       <input placeholder="BENCHMARK 선택 사유(예: 세전이익 변동성이 커 매출을 지표로 선정)" defaultValue={job.bench.reason} disabled={!canWrite} onBlur={(e) => void patchJob({ bench: { ...job.bench, reason: e.target.value } })} style={{ ...inp, width: '100%', marginTop: 6 }} />
       {plAccts.length > 0 && (

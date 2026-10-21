@@ -15,7 +15,7 @@ export interface JeJob {
   relaxed: boolean;
   relaxedNote: string | null;
   bench: Bench;
-  params: JeParams & { matExclude: string[] };
+  params: JeParams & { matExclude: string[]; matSide: '양쪽' | '차변만' };
   scenarios: Partial<Record<ScenarioCode, ScenarioState>>;
   contacts: Contact[];
   preparer: string | null; reviewer: string | null; preparedOn: string | null; reviewedOn: string | null;
@@ -48,6 +48,7 @@ function toJob(r: Record<string, unknown>): JeJob {
       ...(p.closingDays != null ? { closingDays: num(p.closingDays) } : {}),
       ...(Array.isArray(p.holidays) ? { holidays: p.holidays as string[] } : {}),
       matExclude: Array.isArray(p.matExclude) ? (p.matExclude as string[]) : [],
+      matSide: p.matSide === '차변만' ? '차변만' : '양쪽',
     },
     scenarios: { ...defaultScenarios(), ...((r.scenarios ?? {}) as JeJob['scenarios']) },
     contacts: (r.contacts as Contact[]) ?? [],

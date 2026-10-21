@@ -88,3 +88,10 @@ test('읽기 — 더존 · 영림원 머리 알아보기, 날짜, 잔액표', ()
   const b = parseBalanceRows([['묶음', '계정코드', '계정명', '차대', '전기말(기초)', '당기말(기말)'], ['누계액', '203', '감가상각누계액(건물)', '차', '-1,000', '-1,200'], ['', '', '자산총계', '', 1, 1]]);
   assert.deepEqual(b, [{ acctCode: '203', acctName: '감가상각누계액(건물)', open: -1000, close: -1200, group: '누계액', side: 1 }]);
 });
+
+test('중요성 — 차변만 고르면 대체 분개의 맞은편(대변) 줄은 빠진다', () => {
+  const lines = [L('2025-01-31', '9', '501', '원재료비', 3_000_000, 0), L('2025-01-31', '9', '501', '원재료비', 0, 3_000_000), L('2025-01-31', '9', '454', '제조', 3_000_000, 0)];
+  const b = { name: '매출', amount: 100_000_000, rate: 0.01, reason: '' };
+  assert.equal(scenMateriality(lines, b).rows.length, 3);
+  assert.equal(scenMateriality(lines, b, [], '차변만').rows.length, 2);
+});

@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.69.1',
+    date: '2026-10-21',
+    title: 'JET — 일정금액이상(B01) 분개 「양쪽 / 차변만」 선택',
+    highlights: [
+      '「차변만」은 차변 금액이 양수인 줄만 봅니다 — 원가대체 같은 대체 분개의 맞은편 줄과 마이너스 역분개가 빠집니다. 나래 FY2025 실물 조서(40줄)와 계정별로 거의 같습니다(38줄).',
+    ],
+  },
+  {
     version: '3.69.0',
     date: '2026-10-21',
     title: 'Journal Entry 시스템(JET) 1차 — 분개장 올리기 · 필수 검증 · 시나리오 · 조서 엑셀',

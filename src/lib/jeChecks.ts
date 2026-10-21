@@ -200,16 +200,20 @@ export function salesTotal(lines: JeLine[]): number {
   return lines.filter((l) => !isBsCode(l.acctCode) && /매출/.test(l.acctName) && !/원가|할인|환입|에누리|채권/.test(l.acctName)).reduce((s, l) => s + l.cr - l.dr, 0);
 }
 
-export function scenMateriality(lines: JeLine[], b: Bench, exclude: string[] = []): CheckResult {
+/**
+ * side: 양쪽 = 차변 · 대변 줄 모두, 차변만 = 차변 금액이 양수인 줄만(대체 분개의 맞은편 줄 · 마이너스 역분개를 뺀다).
+ * 나래 FY2025 실물 40줄과 계정별로 견주면 차변만이 하자보수비(1 대 3) 말고 모두 같다 — 실물이 이렇게 봤다.
+ */
+export function scenMateriality(lines: JeLine[], b: Bench, exclude: string[] = [], side: '양쪽' | '차변만' = '양쪽'): CheckResult {
   const th = benchThreshold(b);
   const ex = new Set(exclude);
   const exNames = [...new Set(lines.filter((l) => ex.has(l.acctCode)).map((l) => l.acctName))];
-  const hit = th > 0 ? lines.filter((l) => !isBsCode(l.acctCode) && !ex.has(l.acctCode) && Math.abs(l.dr - l.cr) >= th).sort((x, y) => x.date.localeCompare(y.date) || x.no.localeCompare(y.no, 'en', { numeric: true }) || x.seq - y.seq) : [];
+  const hit = th > 0 ? lines.filter((l) => !isBsCode(l.acctCode) && !ex.has(l.acctCode) && Math.abs(l.dr - l.cr) >= th && (side === '양쪽' || l.dr > 0)).sort((x, y) => x.date.localeCompare(y.date) || x.no.localeCompare(y.no, 'en', { numeric: true }) || x.seq - y.seq) : [];
   return {
     ...base('B01'), title: `일정금액이상전표(손익 전표, ${won(th)}원 이상)`,
     status: th > 0 ? (hit.length ? '예외' : '통과') : '자료없음',
     summary: th > 0 ? `중요성 기준(${b.name} ${won(b.amount)} × ${Math.round(b.rate * 1000) / 10}% = ${won(th)}원) 이상 손익 분개 ${hit.length}줄` : 'BENCHMARK 금액을 넣어 주세요',
-    method: ['손익계산서 계정 분개 중 금액(절대값)이 중요성 기준 이상인 분개를 추출하여 검토함', `중요성 기준 = ${b.name}(BENCHMARK) × ${Math.round(b.rate * 1000) / 10}%`, ...(exNames.length ? [`다른 조서에서 검토하는 계정은 제외함(${exNames.slice(0, 8).join(' · ')}${exNames.length > 8 ? ' 외' : ''})`] : [])],
+    method: [`손익계산서 계정 분개${side === '차변만' ? '(차변)' : ''} 중 금액(절대값)이 중요성 기준 이상인 분개를 추출하여 검토함`, `중요성 기준 = ${b.name}(BENCHMARK) × ${Math.round(b.rate * 1000) / 10}%`, ...(exNames.length ? [`다른 조서에서 검토하는 계정은 제외함(${exNames.slice(0, 8).join(' · ')}${exNames.length > 8 ? ' 외' : ''})`] : [])],
     head: ['전표일자', '전표번호', '구분', '계정코드', '계정과목', '절대값', '차변(대변)', '차변금액', '대변금액', '적요', '거래처'],
     rows: hit.map((l) => [l.date, l.no, l.side ?? '', l.acctCode, l.acctName, r0(Math.abs(l.dr - l.cr)), r0(l.dr - l.cr), r0(l.dr), r0(l.cr), l.memo, l.cpName ?? '']),
     stats: { threshold: th, count: hit.length },
@@ -336,7 +340,7 @@ export interface RunInput {
   /** 계정과목표(코드 모음) — 시산표 · 원장 계정 */ coa: Set<string> | null;
   from: string; to: string;
   bench: Bench;
-  params: JeParams & { matExclude?: string[] };
+  params: JeParams & { matExclude?: string[]; matSide?: '양쪽' | '차변만' };
   codeOf?: (c: string) => string;
   /** 분개장에 작성자 등이 있는가(더존 · 영림원은 없다) */ hasUser?: boolean;
 }
@@ -351,7 +355,7 @@ export function runAll(inp: RunInput): CheckResult[] {
     checkRequired(inp.lines),
     checkBalance(vs),
     checkOpening(inp.lines, inp.balances, codeOf),
-    scenMateriality(inp.lines, inp.bench, inp.params.matExclude ?? []),
+    scenMateriality(inp.lines, inp.bench, inp.params.matExclude ?? [], inp.params.matSide ?? '양쪽'),
     scenCoa(inp.lines, vs, inp.coa, codeOf),
     scenRare(inp.lines, inp.params),
     noData('B04', user),
