@@ -282,58 +282,163 @@ export function applyWriteoffs<T extends ClientAgg>(rows: T[], flow: ArFlow, wo:
   });
 }
 
-// ── 기장팀 비용(ERP 실제 발생분) ───────────────────────────────────────────────
-// 부서별원장의 비용 계정을 계정 · 소분류 · 사원으로 모은다. 결산 엑셀(급여_연도 · (FY연도) 기장팀 칸)과 나란히 대 보려는 것.
+// ── 기장팀 비용(ERP, 현금주의) ─────────────────────────────────────────────────
+// 부서별원장의 비용 계정을 「돈이 나간 날」 기준으로 계정 · 소분류 · 사원별로 모은다(사용자 2026-10-21: 기장비용은 현금주의, VAT 포함).
+// 결산 엑셀((FY연도) 기장팀 칸)이 그렇게 셈한다 — 4대보험은 납부월(=전월분), 카드는 결제월, 거래처 청구는 지급일, 금액은 VAT 포함.
+//   · 급여 · 상여 · 퇴직급여: 급여 전표 날짜 그대로(엑셀도 급여대장 지급총액).
+//   · 카드: 미지급금(신용카드) 결제액(같은 결제 전표의 취소 환급 포함) → 「법인카드 결제」. 카드로 쓴 비용 줄은 결제 때 센다.
+//   · 미지급금으로 잡힌 비용(4대보험 법인분 · 노트북 · CMS · 텍스넷 · 일용직 급여 …): 미지급금을 갚은 날, 갚은 금액(VAT 포함)으로.
+//     갚은 줄 ↔ 청구 줄은 ① 거래# ② 같은 거래처 · 같은 금액 순으로 잇는다.
+//   · 4대보험(공단 미지급금)은 계상한 다음 달에 낸 것으로 본다 — 엑셀 칸이 그렇다(8~6월 납부분 = ERP 7~5월 계상분, 사원별로 원 단위까지 같음).
+//     첫 달(7월) 납부분의 계상(전년 6월) 원장이 없으면 납부액을 사원 구분 없이 넣는다.
+//   · 그 밖에 본지점(현금)으로 바로 나간 비용: 그 날짜. 감가상각비처럼 돈이 안 나간 비용은 뺀다.
 // 자산 · 부채 · 수입 계정과 대손상각비(② 거래처 입금의 대손으로 따로 셈)는 비용이 아니다.
 const NOT_COST = /^(외상매출금|부가세|본지점|미지급금|미수금|선급|선수|예수금|가지급금|가수금|보통예금|현금|차량운반구|비품|감가상각누계액|임차보증금|잡이익|유형자산처분|대손상각비)|수입/;
 export const isCostAcct = (a: string) => !NOT_COST.test(a);
+const PAYROLL = /^(직원급여|상여금|퇴직급여)$/;
+const NON_CASH = /^감가상각비$/;
+const GONGDAN = /국민건강보험공단|국민연금|고용보험|산재보험/;
+export const CARD_ACCT = '법인카드 결제';
 
 export interface ErpCostLine { slip: string; sum: string; amount: number }
 export interface ErpCost { acct: string; sub: string; staff: string; amount: number; n: number; lines: ErpCostLine[] }
 
-/** 계정 안에서 비용 항목이 갈리는 것만 소분류로 나눈다(4대보험 / 주민세, 퇴직연금수수료 / CMS, 노트북 / 소모품 …). */
+/** 계정 안에서 비용 항목이 갈리는 것만 소분류로 나눈다(4대보험 / 일용직 / 주민세, 퇴직연금수수료 / CMS, 노트북 / 소모품 …). */
 export function costSub(acct: string, sum: string): string {
   if (acct === '세금과공과금') {
-    if (/\(본인\)/.test(sum)) return '4대보험(본인분)';
-    if (/정산/.test(sum) && /보험/.test(sum)) return '4대보험 정산';
-    if (/\(법인\)|산재|고용보험|국민연금|건강보험|장기요양/.test(sum)) return '4대보험';
     if (/주민세/.test(sum)) return '주민세 종업원분';
+    if (/일용/.test(sum)) return '일용직 4대보험';
+    if (/정산/.test(sum) && /보험|요양/.test(sum)) return '4대보험 정산';
+    // 「건강보험(본인)」처럼 적요가 「본인」인 줄도 법인분이다(그 달 법인분 줄 대신 적힌 것 — 2025-11 · 2026-06).
+    if (/\(법인\)|\(본인\)|산재|고용보험|국민연금|건강보험|장기요양/.test(sum)) return '4대보험';
     if (/인지세/.test(sum)) return '인지세';
     return '';
   }
   if (acct === '지급수수료') {
     if (/퇴직연금/.test(sum)) return '퇴직연금수수료';
-    if (/CMS|카드결제/i.test(sum)) return 'CMS · 카드결제 수수료';
+    if (/CMS|카드결제|카드수금/i.test(sum)) return 'CMS · 카드결제 수수료';
     if (/텍스넷/.test(sum)) return '텍스넷 사용료';
     return '';
   }
   if (acct === '소모품비' && /노트북|컴퓨터|모니터|데스크탑|PC/i.test(sum)) return '자산(노트북 등)';
+  if (acct === '도서인쇄비' && /실무/.test(sum)) return '실무서';
   if (acct === '인력개발비' && /내일채움/.test(sum)) return '내일채움공제';
   return '';
 }
 
+const dayOf = (slip: string) => { const d = /^(\d{2})-(\d{2})(\d{2})/.exec(slip); return d ? `20${d[1]}-${d[2]}-${d[3]}` : ''; };
+const ymOf = (slip: string) => dayOf(slip).slice(0, 7);
+const nextYm = (ym: string) => { const [y, m] = ym.split('-').map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`; };
+const prevYm = (ym: string) => { const [y, m] = ym.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; };
+const txOf = (sum: string) => /거래#\s*:?\s*(\d{2}-\d{4}-\d{4})/.exec(sum)?.[1];
+const clean = (sum: string) => sum.replace(/\s*\(거래#:[^)]*\)/, '').replace(/\s*\[\s*지출결의서[^\]]*\]/, '').replace(/^품목:/, '').trim();
+
 /**
- * 비용 줄을 모은다. from · to(YYYY-MM-DD) 밖의 전표는 뺀다(전표번호 앞 「YY-MMDD」 = 전표일).
- * 사원명이 팀 이름(「기장24팀」)이면 팀 공통(''). 적요에 원장에 나오는 다른 사원 이름이 있으면 그 사람 몫(퇴사자 보험 정산 등).
+ * 현금주의로 모은다. from · to(YYYY-MM-DD) = 돈이 나간 날의 범위.
+ * 사원명이 팀 이름(「기장24팀」)이면 팀 공통(''). 적요에 원장의 다른 사원 이름이 있으면 그 사람 몫(퇴사자 보험 정산 등).
+ * notes: 잇지 못한 지급 · 전기 계상분이 없어 사원을 못 가른 공단 납부 등.
  */
-export function aggregateCosts(lines: LedgerLine[], from: string, to: string): { rows: ErpCost[]; outside: number } {
-  const cost = lines.filter((x) => isCostAcct(x.acct));
-  const people = new Set(cost.map((x) => x.staff ?? '').filter((s) => s && !/팀$/.test(s)));
+export function aggregateCosts(lines: LedgerLine[], from: string, to: string): { rows: ErpCost[]; outside: number; notes: string[] } {
+  const people = new Set(lines.filter((x) => isCostAcct(x.acct)).map((x) => x.staff ?? '').filter((s) => s && !/팀$/.test(s)));
+  const staffOf = (x: LedgerLine) => {
+    let s = /팀$/.test(x.staff ?? '') ? '' : (x.staff ?? '');
+    for (const p of people) if (p !== s && (x.sum ?? '').includes(p)) { s = p; break; }
+    return s;
+  };
+  const bySlip = new Map<string, LedgerLine[]>();
+  for (const x of lines) { const a = bySlip.get(x.slip) ?? []; a.push(x); bySlip.set(x.slip, a); }
+  const inRange = (slip: string) => { const d = dayOf(slip); return !d || (d >= from && d <= to); };
+
   const m = new Map<string, ErpCost>();
-  let outside = 0;
-  for (const x of cost) {
-    const d = /^(\d{2})-(\d{2})(\d{2})/.exec(x.slip);
-    const day = d ? `20${d[1]}-${d[2]}-${d[3]}` : '';
-    if (day && (day < from || day > to)) { outside++; continue; }
-    const sum = x.sum ?? '';
-    let staff = /팀$/.test(x.staff ?? '') ? '' : (x.staff ?? '');
-    for (const p of people) if (p !== staff && sum.includes(p)) { staff = p; break; }
-    const sub = costSub(x.acct, sum);
-    const k = `${x.acct}|${sub}|${staff}`;
-    const r = m.get(k) ?? { acct: x.acct, sub, staff, amount: 0, n: 0, lines: [] };
-    const amount = x.dr - x.cr;
-    r.amount += amount; r.n++; r.lines.push({ slip: x.slip, sum: sum.replace(/\s*\(거래#:[^)]*\)/, ''), amount });
+  const add = (acct: string, sub: string, staff: string, amount: number, slip: string, sum: string) => {
+    if (!amount) return;
+    const k = `${acct}|${sub}|${staff}`;
+    const r = m.get(k) ?? { acct, sub, staff, amount: 0, n: 0, lines: [] };
+    r.amount += amount; r.n++; r.lines.push({ slip, sum, amount });
     m.set(k, r);
+  };
+  const notes: string[] = [];
+  let outside = 0;
+
+  // 청구(미지급금 대변) — 거래처 이름 · 거래#별로. parts = 그 전표에서 같은 거래처의 비용 줄(VAT 는 지급액을 나눌 때 저절로 들어간다).
+  interface Bill { slip: string; name: string; tx?: string; amount: number; parts: LedgerLine[]; used: boolean; gongdan: boolean }
+  const bills: Bill[] = [];
+  const deferred = new Set<LedgerLine>();
+  for (const [slip, ls] of bySlip) {
+    const card = ls.some((x) => x.acct === '미지급금(신용카드)' && x.cr);
+    const cash = ls.some((x) => x.acct === '본지점' && x.cr);
+    const cost = ls.filter((x) => isCostAcct(x.acct));
+    if (card) for (const x of cost) deferred.add(x);
+    for (const p of ls.filter((x) => x.acct === '미지급금' && x.cr)) {
+      // 같은 거래처의 비용 줄이 이 청구. 그런 줄이 없고 현금도 안 나간 전표면 그 전표의 비용 줄 전부.
+      // 급여 전표처럼 같은 거래처 줄이 사원마다 있으면 같은 사원 · 같은 금액 줄과 짝짓는다.
+      const same = cost.filter((x) => !PAYROLL.test(x.acct) && x.name === p.name);
+      const pair = same.filter((x) => x.staff === p.staff && x.dr - x.cr === p.cr - p.dr && !deferred.has(x)).slice(0, 1);
+      const own = pair.length && same.length > 1 ? pair : same;
+      const parts = own.length || cash ? own : cost.filter((x) => !PAYROLL.test(x.acct));
+      for (const x of parts) deferred.add(x);
+      bills.push({ slip, name: p.name, tx: txOf(p.sum ?? ''), amount: p.cr - p.dr, parts, used: false, gongdan: GONGDAN.test(p.name) });
+    }
   }
-  return { rows: [...m.values()], outside };
+  const spread = (parts: LedgerLine[], amount: number, slip: string, sum: string) => {
+    const base = parts.reduce((s, x) => s + x.dr - x.cr, 0);
+    let left = amount;
+    parts.forEach((x, i) => {
+      const a = i === parts.length - 1 ? left : Math.round((amount * (x.dr - x.cr)) / (base || 1));
+      left -= a;
+      add(x.acct, costSub(x.acct, x.sum ?? ''), staffOf(x), a, slip, `${clean(sum)} ← ${x.slip} ${clean(x.sum ?? '')}`);
+    });
+  };
+
+  for (const [slip, ls] of bySlip) {
+    if (!inRange(slip)) { if (ls.some((x) => isCostAcct(x.acct) || /^미지급금/.test(x.acct))) outside++; continue; }
+    // 급여 · 상여 · 퇴직급여 — 전표 날짜 그대로.
+    for (const x of ls.filter((y) => PAYROLL.test(y.acct))) add(x.acct, costSub(x.acct, x.sum ?? ''), staffOf(x), x.dr - x.cr, slip, clean(x.sum ?? ''));
+    // 카드 결제 — 결제액 + 같은 전표의 비용 줄(취소 환급).
+    const cardPay = ls.filter((x) => x.acct === '미지급금(신용카드)' && x.dr);
+    if (cardPay.length) {
+      const extra = ls.filter((x) => isCostAcct(x.acct) && !deferred.has(x) && !PAYROLL.test(x.acct));
+      const amt = cardPay.reduce((s, x) => s + x.dr, 0) + extra.reduce((s, x) => s + x.dr - x.cr, 0);
+      add(CARD_ACCT, '', '', amt, slip, clean(cardPay[0].sum ?? ''));
+    }
+    // 미지급금 지급 — 청구에 잇는다.
+    for (const p of ls.filter((x) => x.acct === '미지급금' && x.dr)) {
+      if (GONGDAN.test(p.name)) {
+        // 공단 납부는 계상분을 다음 달로 옮겨 센다(아래). 전달 계상 원장이 없을 때만 납부액을 그대로.
+        if (bills.some((b) => b.gongdan && ymOf(b.slip) === prevYm(ymOf(slip)))) continue;
+        add('세금과공과금', '4대보험', '', p.dr, slip, `${clean(p.sum ?? '')} — 전달 계상 원장이 없어 사원을 못 가름`);
+        notes.push(`${slip} ${p.name} ${p.dr.toLocaleString('ko-KR')} — 전달(계상) 원장이 없어 사원을 가르지 못했습니다`);
+        continue;
+      }
+      const tx = txOf(p.sum ?? '');
+      let hit: Bill[] = tx ? bills.filter((b) => b.tx === tx && b.name === p.name) : [];
+      if (!hit.length) { const b = bills.filter((b) => !b.used && b.name === p.name && b.amount === p.dr && b.slip <= slip).pop(); if (b) hit = [b]; }
+      if (hit.length) {
+        hit.forEach((b) => { b.used = true; });
+        spread(hit.flatMap((b) => b.parts), p.dr, slip, p.sum ?? '');
+        continue;
+      }
+      // 이 파일들에 청구가 없다(지난해 청구 · 지난달 공단분 등) — 같은 거래처의 다른 청구 모양을 빌려 쓴다.
+      const like = bills.filter((b) => b.name === p.name && b.parts.length);
+      if (like.length) { spread(like[0].parts, p.dr, slip, `${p.sum ?? ''} (지난 청구분)`); continue; }
+      add('미지급금 지급', p.name, '', p.dr, slip, clean(p.sum ?? ''));
+      notes.push(`${slip} ${p.name} ${p.dr.toLocaleString('ko-KR')} — 청구 전표를 찾지 못했습니다`);
+    }
+    // 현금으로 바로 나간 비용.
+    if (!cardPay.length && ls.some((x) => x.acct === '본지점' && x.cr)) {
+      const vat = ls.filter((x) => x.acct === '부가세대급금').reduce((s, x) => s + x.dr - x.cr, 0);
+      const direct = ls.filter((x) => isCostAcct(x.acct) && !deferred.has(x) && !PAYROLL.test(x.acct) && !NON_CASH.test(x.acct));
+      if (direct.length) {
+        const base = direct.reduce((s, x) => s + x.dr - x.cr, 0);
+        spread(direct, base + vat, slip, '');
+      }
+    }
+  }
+  // 4대보험 — 계상한 다음 달 납부.
+  const [fromYm, toYm] = [from.slice(0, 7), to.slice(0, 7)];
+  for (const b of bills.filter((x) => x.gongdan)) {
+    const pay = nextYm(ymOf(b.slip));
+    if (pay >= fromYm && pay <= toYm) spread(b.parts, b.amount, b.slip, `${pay} 납부`);
+  }
+  return { rows: [...m.values()], outside, notes };
 }

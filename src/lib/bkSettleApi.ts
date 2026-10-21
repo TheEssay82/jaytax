@@ -340,7 +340,7 @@ export async function fillCpaFromClients(fy: number, byName: string): Promise<st
   return [`회계사별 수임료를 채웠습니다`, ...(loose.clients ? [`담당 없는 거래처 ${loose.clients}곳(입금 ${Math.round(loose.cash).toLocaleString()} · 대손 ${Math.round(loose.writeoff).toLocaleString()})은 빠졌습니다`] : [])];
 }
 
-// ── 기장팀 비용 — ERP 실제 발생분(bk_settle_cost_erp, 마이그 0180) ──────────────────
+// ── 기장팀 비용 — ERP 현금주의(bk_settle_cost_erp, 마이그 0180) ──────────────────
 
 export async function listCostErp(fy: number): Promise<(ErpCostRow & { source: string | null })[]> {
   const { data, error } = await supabase.from('bk_settle_cost_erp').select('*').eq('fy', fy);
@@ -349,10 +349,10 @@ export async function listCostErp(fy: number): Promise<(ErpCostRow & { source: s
 }
 
 /** 원장 줄에서 비용 계정만 모아 저장. 이번에 없는 칸은 0으로(지우지 않는다). */
-async function saveCostErp(fy: number, lines: LedgerLine[], byName: string): Promise<{ saved: number; total: number; outside: number }> {
-  const { rows, outside } = aggregateCosts(lines, `${fy - 1}-07-01`, `${fy}-06-30`);
-  if (!rows.length) return { saved: 0, total: 0, outside };
-  const source = `ERP 부서별원장(기장24팀) ${fy - 1}.07~${fy}.06`;
+async function saveCostErp(fy: number, lines: LedgerLine[], byName: string): Promise<{ saved: number; total: number; notes: string[] }> {
+  const { rows, notes } = aggregateCosts(lines, `${fy - 1}-07-01`, `${fy}-06-30`);
+  if (!rows.length) return { saved: 0, total: 0, notes };
+  const source = `ERP 부서별원장(기장24팀) ${fy - 1}.07~${fy}.06 현금주의`;
   const { data: old, error: e0 } = await supabase.from('bk_settle_cost_erp').select('acct, sub, staff').eq('fy', fy);
   if (e0) throw new Error(e0.message);
   const now = new Set(rows.map((r) => `${r.acct}|${r.sub}|${r.staff}`));
@@ -362,10 +362,10 @@ async function saveCostErp(fy: number, lines: LedgerLine[], byName: string): Pro
     ...zero,
   ], { onConflict: 'fy,acct,sub,staff' });
   if (error) throw new Error(error.message);
-  return { saved: rows.length, total: rows.reduce((a, r) => a + r.amount, 0), outside };
+  return { saved: rows.length, total: rows.reduce((a, r) => a + r.amount, 0), notes };
 }
 
-/** ③ 비용 탭에 놓은 부서별원장(기장24팀)으로 비용 발생분만 다시 모은다 — 거래처 입금은 건드리지 않는다. */
+/** ③ 비용 탭에 놓은 부서별원장(기장24팀)으로 비용(현금주의)만 다시 모은다 — 거래처 입금은 건드리지 않는다. 전년 6월 원장도 함께 놓으면 7월 납부 4대보험을 사원별로 가른다. */
 export async function importErpCosts(fy: number, files: File[], byName: string): Promise<string[]> {
   const XLSX = await import('xlsx');
   const toRows = (sh: unknown) => XLSX.utils.sheet_to_json(sh as never, { header: 1, defval: '' }) as unknown[][];
@@ -377,5 +377,8 @@ export async function importErpCosts(fy: number, files: File[], byName: string):
     lines.push(...got);
   }
   const r = await saveCostErp(fy, lines, byName);
-  return [`파일 ${files.length}개 — 비용 ${r.saved}칸, 합계 ${Math.round(r.total).toLocaleString('ko-KR')}원`, ...(r.outside ? [`기간 밖 전표 ${r.outside}줄은 뺐습니다`] : [])];
+  const gong = r.notes.filter((x) => /전달\(계상\)/.test(x)).length;
+  return [`파일 ${files.length}개 — 비용 ${r.saved}칸, 현금 합계 ${Math.round(r.total).toLocaleString('ko-KR')}원`,
+    ...(gong ? [`7월 납부 4대보험 ${gong}건은 전년 6월 원장이 없어 사원을 가르지 못했습니다 — 전년 6월 원장도 함께 놓으세요`] : []),
+    ...r.notes.filter((x) => !/전달\(계상\)/.test(x))];
 }
