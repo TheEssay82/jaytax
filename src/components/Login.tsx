@@ -46,10 +46,10 @@ export default function Login() {
       <style>{CSS}</style>
       <div className="login-card">
         <div className="login-media">
-          <video src="/promo/jaytax-intro.mp4" poster="/promo/jaytax-intro.jpg" controls preload="none" playsInline />
+          <video src="/promo/jaytax-intro.mp4?v=5" poster="/promo/jaytax-intro.jpg" controls preload="none" playsInline />
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 8, rowGap: 2, color: 'var(--navy)' }}>
             <b style={{ fontSize: 'var(--fs-2)', whiteSpace: 'nowrap' }}>JAYTAX 소개 영상</b>
-            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>3분 · 정산표 이월 · 주석·DSD 검증 · 일반조서 · 조회서</span>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>4분 · 정산표 이월 · 주석·DSD 검증 · 일반조서 · 조회서 · JET · 팀결산</span>
           </div>
         </div>
 

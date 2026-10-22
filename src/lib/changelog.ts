@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.75.1',
+    date: '2026-10-22',
+    title: '로그인 화면 소개 영상 새로 — JET · 감사이슈 LOG · 팀결산',
+    highlights: [
+      '소개 영상(4분)에 07 Journal Entry Test · 08 감사이슈 LOG · 09 팀결산(기장배분 · 경비 귀속) 장면을 더했습니다. 화면의 회사 · 사람 이름과 금액은 가상값입니다.',
+    ],
+  },
+  {
     version: '3.75.0',
     date: '2026-10-22',
     title: 'JET 추출 전표 확인 현황',
