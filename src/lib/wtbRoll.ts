@@ -290,8 +290,19 @@ function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], alias: Map<string,
     } else {
       // ① 계정 열 이름이 같은 줄
       const tries = [n, nb, n.replace(/_.*$/, ''), n.replace(/\(.*?\)/g, ''),
-        n === '자본금' ? '보통주자본금' : '', n === '이월이익잉여금' ? '미처분이익잉여금' : ''].filter(Boolean);
-      for (const k of tries) { cands = byCurrent(pool.filter((r) => norm(label(r)) === k || bare(label(r)) === k)); if (cands.length) break; }
+        n === '자본금' ? '보통주자본금' : '', /^(이월이익잉여금|미처리결손금|이월결손금)$/.test(n) ? '미처분이익잉여금' : ''].filter(Boolean);
+      // 「국고보조금(기 계)」 — 괄호 속 자산 이름이 든 줄(「국고보조금-기계장치」·과목 「국고보조금(건설)」). 괄호를 떼고 이름만 대면 한 줄에 몰린다(알티스트).
+      const paren = /^(.+?)\((.+)\)$/.exec(n);
+      if (paren && /보조금$|누계액$|충당금$/.test(paren[1])) {
+        const hit = (x: string) => { const s = norm(x); return s.startsWith(paren[1]) && s.slice(paren[1].length).includes(paren[2]); };
+        cands = pool.filter((r) => hit(label(r)) || hit(flabel(r)));
+      }
+      if (!cands.length) for (const k of tries) { cands = byCurrent(pool.filter((r) => norm(label(r)) === k || bare(label(r)) === k)); if (cands.length) break; }
+      // 이름은 같은데 유동·비유동이 다른 줄 하나뿐이고 전기 금액도 다르면 — 전기 금액이 같은 줄이 따로 있으면 그 줄(「임대보증금」 유동분 → 「임대보증금(유동)」).
+      if (cands.length === 1 && t.current != null && sec.get(cands[0])?.current !== t.current && t.prior && !samePrior(cands[0], t)) {
+        const same = rows.filter((r) => samePrior(r, t) && !sums.has(r) && sec.get(r)?.current === t.current);
+        if (same.length === 1) { cands = same; how = '전기 금액'; }
+      }
       // 후보가 여럿(아비즈 WPL 「기초제품재고액」 세 줄) — 전기 금액이 같은 줄. 전기 금액이 있는데 아무도 안 맞으면 이름은 버리고 아래 ②로.
       if (cands.length > 1 && t.prior) { const same = cands.filter((r) => samePrior(r, t)); cands = same.length ? same : []; }
       // ② 전기 금액이 작년 수정후와 같은 줄(아직 채우지 않은 줄 가운데 하나뿐일 때) — 세목 이름이 엉뚱하게 찍힌 ERP(아비즈)
@@ -956,7 +967,9 @@ export function wtbA500People(bytes: Uint8Array): { author: string | null; revie
  * 재무제표 금액은 성격대로 양수라서 시산표 부호(차변 − 대변)로 바꿔 bal 에 — 자산·비용은 그대로, 부채·자본·수익은 뒤집는다.
  * 제조원가명세서는 보이는 금액 그대로(정산표 WMS 도 양수로 적고 식에서 뺀다).
  */
-const CONTRA = /^(감가상각누계액|대손충당금|정부보조금|국고보조금|현재가치할인차금|손상차손누계액|퇴직연금운용자산|국민연금전환금|사채할인발행차금)$|감가상각누계액$|대손충당금$/;
+// 더존 재무상태표는 차감 계정도 양수로 적는다 — 이름으로 차감임을 안다. 알티스트(사용자 2026-10-28):
+// 「제품 평가 충당금」·「매도가능증권손상차손누계액」·「유형자산손상차손누계액」·「국고보조금(기 계)」·「전환권조정」(부채 차감)·「미처리결손금」(자본 차감).
+const CONTRA = /^(감가상각누계액|대손충당금|정부보조금|국고보조금|현재가치할인차금|손상차손누계액|퇴직연금운용자산|국민연금전환금|사채할인발행차금|전환권조정|신주인수권조정)$|감가상각누계액$|대손충당금$|손상차손누계액$|평가충당금$|^(국고|정부)보조금\(|결손금$/;
 /** 매출의 차감 계정 — 더존 손익계산서는 「매출액」 아래에 양수로 적고 합계에서 뺀다(알티스트 매출할인·상품매출에누리와환입, 사용자 2026-10-28). */
 const CONTRA_SALES = /매출(할인|에누리|환입)|에누리와?환입$/;
 const PAGE_HEAD = /^(재무상태표|대차대조표|손익계산서|포괄손익계산서|제조원가명세서|계정과목|과목|회계단위명.*|회사명.*|\(단위.*)$|^제\d+기/;

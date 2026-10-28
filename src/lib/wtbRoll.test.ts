@@ -70,6 +70,30 @@ test('손익계산서 — 매출액 아래 양수로 적힌 매출할인·에누
     [['상품매출', -7014930299], ['상품매출에누리와환입', 203008640], ['매출할인', 278652549], ['대손충당금환입', -5000]]);
 });
 
+test('더존 재무상태표 — 양수로 적힌 평가충당금·손상차손누계액·국고보조금(자산)·전환권조정·미처리결손금은 차감', async () => {
+  const { fsFromSheet } = await import('./wtbRoll');
+  const bs = new Map<string, { text?: string; num?: number }>([
+    ['A7', { text: '과    목' }], ['B7', { text: '제 13 (당)기' }], ['D7', { text: '제 12 (전)기' }],
+    ['A9', { text: ' 자             산 ' }], ['A10', { text: ' Ⅰ. 유  동    자  산  ' }], ['C10', { num: 1 }],
+    ['A11', { text: '      제    품' }], ['B11', { num: 1309767431 }],
+    ['A12', { text: '      제품 평가 충당금' }], ['B12', { num: 43089990 }], ['D12', { num: 43089990 }],
+    ['A13', { text: ' Ⅱ. 비  유  동  자  산  ' }], ['C13', { num: 1 }],
+    ['A14', { text: '      매도가능증권손상차손누계액' }], ['B14', { num: 27540000 }],
+    ['A15', { text: '      기 계 장 치' }], ['B15', { num: 1797943961 }],
+    ['A16', { text: '      국고보조금(기 계)' }], ['B16', { num: 35444573 }],
+    ['A20', { text: ' 부             채 ' }], ['A21', { text: ' Ⅰ. 유  동    부  채  ' }], ['C21', { num: 1 }],
+    ['A22', { text: '      전 환 사 채' }], ['B22', { num: 3166640000 }],
+    ['A23', { text: '      전 환 권 조 정' }], ['B23', { num: 2462348885 }],
+    ['A30', { text: ' 자             본 ' }], ['A31', { text: '      미 처 리 결 손 금' }], ['B31', { num: 24433582632 }],
+  ]);
+  assert.deepEqual(fsFromSheet({ name: '재무상태표', cells: bs } as unknown as SheetData, 'BS').filter((x) => !x.subtotal).map((x) => [x.name.replace(/\s/g, ''), x.bal, x.prior]), [
+    ['제품', 1309767431, undefined], ['제품평가충당금', -43089990, -43089990],
+    ['매도가능증권손상차손누계액', -27540000, undefined], ['기계장치', 1797943961, undefined], ['국고보조금(기계)', -35444573, undefined],
+    ['전환사채', -3166640000, undefined], ['전환권조정', 2462348885, undefined],
+    ['미처리결손금', 24433582632, undefined],
+  ]);
+});
+
 test('재무제표 시트 — 들여쓰기 없는 프로그램, VAT 같은 영문 계정 이름', async () => {
   const { fsFromSheet } = await import('./wtbRoll');
   const bs = new Map<string, { text?: string; num?: number }>([
