@@ -602,7 +602,7 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
 
   // ⑤ SCE — 전기 자본변동표를 올해 것으로.
   const sce = entries().find((e) => /^SCE/.test(e.name));
-  if (sce) files[sce.part] = enc(rollSce(dec(files[sce.part]), sharedStrings(files), report));
+  if (sce) files[sce.part] = enc(rollSce(dec(files[sce.part]), sharedStrings(files), report, o.prevEnd, o.closing));
 
   // ⑥ 보고서·현금흐름 머리 — 날짜·기수 한 해 앞으로.
   for (const e of entries()) {
@@ -738,6 +738,13 @@ export function refreshWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Ui
     report.tables.push({ sheet: L.sheet, insertedAt: '', prior: pc != null ? colName(pc) : '', company: `${C}열 → ${o.closing}`, zeroed, normalized: 0, hidden: '' });
   }
   if (!found) throw new Error('정산표 표(WBS·WPL — 머리 「과목」, 올해 묶음 「DR | CR」)를 찾지 못했습니다.');
+  // SCE 는 「(당기말)」 날짜·「BS일」 칸만 기준일로(2026.09.30 → 2026.12.31). 금액·식은 그대로.
+  const sce = sheetEntries(files).find((e) => /^SCE/.test(e.name));
+  if (sce) {
+    const x = dec(files[sce.part]);
+    const ed = sceDateEdits(x, sharedStrings(files), o.prevEnd, o.closing, 'cClose');
+    if (ed.length) files[sce.part] = enc(setCells(x, ed));
+  }
   dropCalcChain(files);
   forceRecalc(files);
   return { bytes: zipFn(files), report };
@@ -776,28 +783,58 @@ function bumpHeads(xml: string, sstr: string[] | null, dates: Record<number, num
   return edits.length ? setCells(xml, edits) : xml;
 }
 
-/**
- * SCE — 「(전기초)…(전기말)」 · 「(당기초)…(당기말)」 두 표.
- *   · B열 날짜(2024.01.01)는 한 해 앞으로.
- *   · 전기 사건 줄 = 같은 이름의 당기 사건 줄(링크는 보고서의 올해 열 → 전기 열, 그 밖의 링크는 값으로). 짝 없는 줄은 0.
- *   · 전기초 줄은 식이면 그대로(이미 한 해 앞으로 밀림), 값이면 작년 당기초 값.
- *   · 전기말·당기말 줄은 세로 합계 식으로.
- */
-function rollSce(xml0: string, sstr: string[] | null, report: WtbRollReport): string {
-  const xml = unshareFormulas(xml0);
-  const sh = readSheetXml(xml);
+/** SCE 줄 찾기 — B열 「(전기초)·(전기말)·(당기초)·(당기말)」. */
+function sceRows(xml: string, sstr: string[] | null) {
   const label = (r: number) => cellText(xml, `B${r}`, sstr);
   const find = (re: RegExp) => { for (let r = 1; r < 80; r++) if (re.test(label(r))) return r; return 0; };
-  const pOpen = find(/전기초/), pClose = find(/전기말/), cOpen = find(/당기초/), cClose = find(/당기말/);
+  return { label, pOpen: find(/전기초/), pClose: find(/전기말/), cOpen: find(/당기초/), cClose: find(/당기말/) };
+}
+
+/**
+ * SCE 날짜 — 줄 머리 「2025.01.01(전기초)」의 날짜와 머리의 「BS일 :」 칸을 작업 건 날짜로 **바로 적는다**.
+ * 한 해 더하기가 아니다 — 작년 정산표의 SCE 날짜가 한 해 늦은 채 남아 있었다(알티스트 FY25 Final 「2024.01.01(당기초)」, 사용자 2026-10-28).
+ * 전기초 = 작년 결산일 1년 전 다음 날, 전기말 = 작년 결산일, 당기초 = 작년 결산일 다음 날, 당기말 = 기준일(중간이면 기준월 말).
+ */
+function sceDateEdits(xml: string, sstr: string[] | null, prevEnd: string, closing: string, only?: 'cClose'): CellEdit[] {
+  const s = sceRows(xml, sstr);
+  const day = (iso: string, add: number) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + add); return d.toISOString().slice(0, 10); };
+  const yearBack = (iso: string) => `${Number(iso.slice(0, 4)) - 1}${iso.slice(4)}`;
+  const want: [number, string][] = only ? [[s.cClose, closing]] : [[s.pOpen, day(yearBack(prevEnd), 1)], [s.pClose, prevEnd], [s.cOpen, day(prevEnd, 1)], [s.cClose, closing]];
+  const edits: CellEdit[] = [];
+  for (const [r, iso] of want) {
+    if (!r) continue;
+    const t = s.label(r);
+    const m = /(?:19|20)\d{2}([.\-/])\d{1,2}\1\d{1,2}/.exec(t);
+    if (!m) continue;
+    const next = t.replace(m[0], iso.split('-').join(m[1]));
+    if (next !== t) edits.push({ ref: `B${r}`, text: next });
+  }
+  // 머리 「BS일 :」 옆 날짜 칸(값)
+  const sh = readSheetXml(xml);
+  for (const [ref, v] of sh) {
+    if (rowOf(ref) > 6 || v.formula || v.num == null || v.num < 20000 || v.num > 80000) continue;
+    const left = cellText(xml, `${colName(colNum(colOf(ref)) - 1)}${rowOf(ref)}`, sstr);
+    if (/BS일|기준일|결산일/.test(left.replace(/\s/g, ''))) edits.push({ ref, num: excelSerial(closing)! });
+  }
+  return edits;
+}
+
+/**
+ * SCE — 「(전기초)…(전기말)」 · 「(당기초)…(당기말)」 두 표.
+ *   · B열 날짜·머리 「BS일」은 작업 건 날짜로(sceDateEdits).
+ *   · 전기 사건 줄 = 같은 이름의 당기 사건 줄(링크는 보고서의 올해 열 → 전기 열, 그 밖의 링크는 값으로). 짝 없는 줄은 0.
+ *   · 전기초 줄은 식이면 그대로(이미 한 해 앞으로 밀림), 값이면 작년 당기초 값.
+ *   · 당기 사건 줄의 **손으로 적은 금액은 0** — 작년 것이다(알티스트 전환사채의상환 -42,948,330 이 남았다). 식(보고서 링크·=-E17)은 그대로.
+ *   · 전기말·당기말 줄은 세로 합계 식으로.
+ */
+function rollSce(xml0: string, sstr: string[] | null, report: WtbRollReport, prevEnd: string, closing: string): string {
+  const xml = unshareFormulas(xml0);
+  const sh = readSheetXml(xml);
+  const { label, pOpen, pClose, cOpen, cClose } = sceRows(xml, sstr);
   if (!pOpen || !pClose || !cOpen || !cClose) { report.notes.push('SCE: 「(전기초)·(전기말)·(당기초)·(당기말)」 줄을 찾지 못해 손대지 않았습니다.'); return xml0; }
   const cols: string[] = [];
   for (let c = 3; c <= 12; c++) { const ref = `${colName(c)}${pOpen - 1}`; if (cellText(xml, ref, sstr)) cols.push(colName(c)); }
-  const edits: CellEdit[] = [];
-  // 날짜 글자
-  for (let r = pOpen; r <= cClose; r++) {
-    const t = label(r);
-    if (/(19|20)\d{2}[.\-/]\d{1,2}[.\-/]\d{1,2}/.test(t)) edits.push({ ref: `B${r}`, text: t.replace(/(19|20)(\d{2})(?=[.\-/]\d)/g, (_m, c: string, y: string) => `${c}${String(Number(y) + 1).padStart(2, '0')}`) });
-  }
+  const edits: CellEdit[] = sceDateEdits(xml, sstr, prevEnd, closing);
   // 보고서 올해 열 → 전기 열 (보고서BS: B·C → D·E, 보고서PL 도 같은 모양 — 머리 「n기」 두 개의 간격)
   const toPrior = (f: string) => mapRefs(f, (s, ref) => (s && /^보고서/.test(s) ? ref.replace(/(\$?)([A-Z]{1,3})(?=\$?\d|:|$)/g, (x, d: string, c: string) => (colNum(c) <= 3 ? `${d}${colName(colNum(c) + 2)}` : x)) : ref));
   const curEvents = new Map<string, number>();
@@ -824,6 +861,13 @@ function rollSce(xml0: string, sstr: string[] | null, report: WtbRollReport): st
   }
   // 전기초 — 작년 당기초 금액(작년 정산표가 보고서와 맞춰 둔 값). 작년 전기초 식(WBS 묶음 기준)은 쓰지 않는다 — 재분류가 두 번 잡힌다.
   for (const c of cols.slice(0, -1)) edits.push({ ref: `${c}${pOpen}`, num: sh.get(`${c}${cOpen}`)?.num ?? 0 });
+  // 당기 사건 줄 — 작년에 손으로 적은 금액은 비운다(0).
+  const cleared: string[] = [];
+  for (let r = cOpen + 1; r < cClose; r++) for (const c of cols) {
+    const v = sh.get(`${c}${r}`);
+    if (v && !v.formula && v.num) { edits.push({ ref: `${c}${r}`, num: 0 }); cleared.push(`${c}${r}「${label(r).trim()}」 ${v.num.toLocaleString('ko-KR')}`); }
+  }
+  if (cleared.length) report.notes.push(`SCE: 당기 사건 줄에 작년 금액으로 남아 있던 ${cleared.length}칸을 0 으로 비웠습니다 — ${cleared.join(', ')}. 올해 금액을 넣어 「기말BS 차이」를 0 으로 맞추십시오.`);
   // 말 줄 — 세로 합계
   for (const c of cols) {
     edits.push({ ref: `${c}${pClose}`, formula: `SUM(${c}${pOpen}:${c}${pClose - 1})` });
@@ -913,6 +957,8 @@ export function wtbA500People(bytes: Uint8Array): { author: string | null; revie
  * 제조원가명세서는 보이는 금액 그대로(정산표 WMS 도 양수로 적고 식에서 뺀다).
  */
 const CONTRA = /^(감가상각누계액|대손충당금|정부보조금|국고보조금|현재가치할인차금|손상차손누계액|퇴직연금운용자산|국민연금전환금|사채할인발행차금)$|감가상각누계액$|대손충당금$/;
+/** 매출의 차감 계정 — 더존 손익계산서는 「매출액」 아래에 양수로 적고 합계에서 뺀다(알티스트 매출할인·상품매출에누리와환입, 사용자 2026-10-28). */
+const CONTRA_SALES = /매출(할인|에누리|환입)|에누리와?환입$/;
 const PAGE_HEAD = /^(재무상태표|대차대조표|손익계산서|포괄손익계산서|제조원가명세서|계정과목|과목|회계단위명.*|회사명.*|\(단위.*)$|^제\d+기/;
 /** 합계·이익 같은 계산 줄 — 정산표에 받을 줄이 없어도 「넣을 곳」으로 묻지 않는다. */
 const SUBTOTAL = /총계|합계|총이익|영업이익|영업손실|차감전|순이익|순손실|순손익|총포괄|기타포괄손익$/;
@@ -972,7 +1018,9 @@ export function fsFromSheet(sh: SheetData, kind: 'BS' | 'PL' | 'MC', src?: strin
     const amt0 = firstNum(L.r, curCol, curEnd);
     const pr0 = priorCol ? firstNum(L.r, priorCol, priorEnd) : undefined;
     if (amt0 == null && pr0 == null) continue;
-    const sgn = (x: number | undefined) => (x == null ? undefined : isContra ? -Math.abs(x) : x);
+    // 매출 차감 계정은 이름을 그대로 둔다(정산표 줄 이름과 짝지어야 한다) — 부호만 차감으로.
+    const contraSales = kind === 'PL' && credit && CONTRA_SALES.test(b);
+    const sgn = (x: number | undefined) => (x == null ? undefined : isContra || contraSales ? -Math.abs(x) : x);
     const amt = sgn(amt0) ?? 0, prior = sgn(pr0);
     const flip = kind === 'BS' ? section !== '자산' : kind === 'PL' ? credit : false;
     const group = stack.length ? stack[stack.length - 1].name : undefined;

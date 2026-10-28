@@ -56,6 +56,20 @@ test('재무제표 시트 — 들여 쓴 계정 줄만, 안쪽 열 먼저, 차�
   assert.deepEqual(fsFromSheet({ name: '손익계산서', cells: pl } as unknown as SheetData, 'PL').map((x) => [x.name, x.bal]), [['임대매출(신사동)', -752000000], ['직원급여', 100533336]]);
 });
 
+test('손익계산서 — 매출액 아래 양수로 적힌 매출할인·에누리와환입은 차감(차변 잔액)', async () => {
+  const { fsFromSheet } = await import('./wtbRoll');
+  const pl = new Map<string, { text?: string; num?: number }>([
+    ['A7', { text: '과목' }], ['B7', { text: '제 13 (당)기' }],
+    ['A9', { text: 'Ⅰ  . 매      출      액' }], ['C9', { num: 1 }],
+    ['A10', { text: '      상품매출' }], ['B10', { num: 7014930299 }],
+    ['A11', { text: '      상품매출에누리와환입' }], ['B11', { num: 203008640 }],
+    ['A12', { text: '      매출할인' }], ['B12', { num: 278652549 }],
+    ['A20', { text: 'Ⅴ  . 영  업  외  수  익' }], ['A21', { text: '      대손충당금환입' }], ['B21', { num: 5000 }],
+  ]);
+  assert.deepEqual(fsFromSheet({ name: '손익계산서', cells: pl } as unknown as SheetData, 'PL').map((x) => [x.name, x.bal]),
+    [['상품매출', -7014930299], ['상품매출에누리와환입', 203008640], ['매출할인', 278652549], ['대손충당금환입', -5000]]);
+});
+
 test('재무제표 시트 — 들여쓰기 없는 프로그램, VAT 같은 영문 계정 이름', async () => {
   const { fsFromSheet } = await import('./wtbRoll');
   const bs = new Map<string, { text?: string; num?: number }>([
