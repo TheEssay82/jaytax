@@ -94,6 +94,19 @@ test('더존 재무상태표 — 양수로 적힌 평가충당금·손상차손�
   ]);
 });
 
+test('검증표 칸 계산기 — 캐시 값 대신 수식대로(SUM·사칙연산·다른 시트·ROUND)', async () => {
+  const { makeEval } = await import('./wtbCheck');
+  const s = (name: string, c: [string, { num?: number; formula?: string }][]) => ({ name, cells: new Map(c) }) as unknown as SheetData;
+  const ev = makeEval([
+    s('WPL', [['N4', { num: 100 }], ['N5', { num: -20 }], ['N3', { formula: 'SUM(N4:N5)', num: 999 }], ['N6', { formula: 'N3*2-(N5)/4' }], ['N7', { formula: "ROUND(WBS!$A$1*0.5%,-1)" }], ['N8', { formula: 'VLOOKUP(N4,A:B,2,0)' }]]),
+    s('WBS', [['A1', { num: 12345 }]]),
+  ]);
+  assert.equal(ev('WPL', 'N3'), 80);
+  assert.equal(ev('WPL', 'N6'), 165);
+  assert.equal(ev('WPL', 'N7'), 60);
+  assert.equal(ev('WPL', 'N8'), null);
+});
+
 test('재무제표 시트 — 들여쓰기 없는 프로그램, VAT 같은 영문 계정 이름', async () => {
   const { fsFromSheet } = await import('./wtbRoll');
   const bs = new Map<string, { text?: string; num?: number }>([

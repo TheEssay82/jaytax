@@ -1020,7 +1020,8 @@ export function fsFromSheet(sh: SheetData, kind: 'BS' | 'PL' | 'MC', src?: strin
     while (stack.length && stack[stack.length - 1].depth >= L.depth) stack.pop();
     // 아래 줄이 번호 없이 한 단 더 깊으면 — 이 줄은 계정, 아래 줄은 차감 계정(ERP). 더존의 「(1) 당좌자산」 아래 계정 줄과 가르려고 이 줄이 「1.」「1)」일 때만.
     const contraBelow = !!nx && nx.rank === 9 && nx.depth > L.depth && (L.rank === 3 || L.rank === 4);
-    const deeper = !!nx && !contraBelow && (nx.depth > L.depth || (nx.depth === L.depth && nx.rank > L.rank && L.rank < 9));
+    // 「자산총계」 다음 줄 「 부 채 」가 한 칸 들여 쓰여도 총계 줄은 머리가 아니다(알티스트 — 검증표가 회사 합계를 읽는다).
+    const deeper = !!nx && !contraBelow && !/총계$/.test(b) && (nx.depth > L.depth || (nx.depth === L.depth && nx.rank > L.rank && L.rank < 9));
     const prev = lines[i - 1];
     const isContra = CONTRA.test(b) || (L.rank === 9 && !!prev && (prev.rank === 3 || prev.rank === 4) && L.depth > prev.depth);
     if (kind === 'BS') {

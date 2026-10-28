@@ -15,6 +15,7 @@ import { unzip, zip } from '../../lib/xlsxTransplant';
 import { rollWtb, refreshWtb, tbFromSheet, fsFromSheet, wtbOutline, wtbA500People, pairKey, type TbLine, type WtbPlace, type WtbRollReport, type WtbRow, type TableKind } from '../../lib/wtbRoll';
 import { listFiles, latestFile, uploadFile, type EngFile } from '../../lib/gwpStageApi';
 import { fileBytes, fileUrl } from '../../lib/gwpApi';
+import { wtbChecks, type WtbCheckResult } from '../../lib/wtbCheck';
 import { listWtbMaps, saveWtbMaps, deleteWtbMap, mapsToPlaces, type WtbMap, type WtbMapInput } from '../../lib/wtbMapApi';
 import { safeName, download } from '../dsd/dsdUi';
 
@@ -63,6 +64,7 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
   const [pair, setPair] = useState<Record<string, string>>({});
   const [closing, setClosing] = useState(end ? `${eng.fy}-12-31` : `${eng.fy}-08-31`);
   const [preview, setPreview] = useState<WtbRollReport | null>(null);
+  const [checks, setChecks] = useState<WtbCheckResult | null>(null);
   const [outline, setOutline] = useState<{ rows: WtbRow[]; tables: { sheet: string; kind: TableKind; hidden: boolean }[] }>({ rows: [], tables: [] });
   const [choice, setChoice] = useState<Record<string, Choice>>({});
   const [made, setMade] = useState<WtbRollReport | null>(null);
@@ -187,8 +189,11 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
     setBusy('preview'); setErr(null); setMsg(null);
     setTimeout(() => {
       try {
-        const r = run(prior.bytes, { ...opts, place: mapsToPlaces(maps) }, unzip, zip).report;
+        const out = run(prior.bytes, { ...opts, place: mapsToPlaces(maps) }, unzip, zip);
+        const r = out.report;
         setPreview(r);
+        // 검증표 — 만들 정산표의 WBS·WPL 합계를 수식대로 계산해 회사 재무제표와 맞춰 본다.
+        try { setChecks(wtbChecks(readWorkbook(out.bytes), built.tb, eng.fy - 1)); } catch { setChecks(null); }
         // 저장된 「넣지 않기」는 미리 골라 둔다.
         const pre: Record<string, Choice> = {};
         for (const u of r.unmatched) {
@@ -346,6 +351,38 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
 
       {preview && (
         <div style={box}>
+          {checks && checks.checks.length > 0 && (() => {
+            const bad = checks.checks.filter((c) => c.ok === false).length;
+            return (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 'var(--fs-2)', fontWeight: 700, color: bad ? 'var(--bad)' : 'var(--good)' }}>
+                  검증표 — {bad ? `${bad}개 어긋남. 만들기 전에 아래를 보세요` : '모두 맞습니다'}
+                  <span style={{ fontWeight: 400, color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}> · 만들 정산표의 회사제시 열을 수식대로 계산한 값{preview.unmatched.length ? ' · 받을 줄을 고르기 전 기준(고른 뒤 다시 「맞춰 보기」)' : ''}</span>
+                </div>
+                <table className="tbl" style={{ marginTop: 4, fontSize: 'var(--fs-1)' }}>
+                  <thead><tr style={{ background: 'var(--surface-2)' }}><th>검증</th><th>항목</th><th style={{ textAlign: 'right' }}>정산표</th><th style={{ textAlign: 'right' }}>맞춰 볼 값</th><th style={{ textAlign: 'right' }}>차이</th><th></th></tr></thead>
+                  <tbody>
+                    {checks.checks.map((c) => (
+                      <tr key={c.group + c.label}>
+                        <td style={{ color: 'var(--ink-3)' }}>{c.group}</td>
+                        <td>{c.label}{c.note && c.ok === false ? <div style={{ color: 'var(--ink-3)' }}>{c.note}</div> : null}</td>
+                        <td style={{ textAlign: 'right' }}>{c.ours == null ? '계산 못 함' : fmt(c.ours)}</td>
+                        <td style={{ textAlign: 'right' }}>{c.theirs == null ? '—' : fmt(c.theirs)}<div style={{ color: 'var(--ink-3)' }}>{c.basis}</div></td>
+                        <td style={{ textAlign: 'right', color: c.ok === false ? 'var(--bad)' : undefined }}>{c.ours != null && c.theirs != null ? fmt(c.ours - c.theirs) : ''}</td>
+                        <td style={{ color: c.ok ? 'var(--good)' : c.ok === false ? 'var(--bad)' : 'var(--ink-3)' }}>{c.ok ? '일치' : c.ok === false ? '어긋남' : '확인 못 함'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {checks.flipped.length > 0 && (
+                  <details open={bad > 0} style={{ fontSize: 'var(--fs-1)', marginTop: 4 }}>
+                    <summary style={{ cursor: 'pointer', color: bad ? 'var(--warn)' : 'var(--ink-3)' }}>전기와 부호가 반대인 줄 {checks.flipped.length}개 — 차감 계정을 거꾸로 읽었으면 여기 뜹니다</summary>
+                    {checks.flipped.map((x) => <div key={x}>{x}</div>)}
+                  </details>
+                )}
+              </div>
+            );
+          })()}
           <div style={{ fontSize: 'var(--fs-2)' }}>
             {preview.term ? <b>제{preview.term}기 · </b> : null}회사 자료 {preview.filled.length}줄을 정산표 줄에 맞췄습니다
             {(() => { const n = preview.filled.filter((f) => f.how === '전기 금액').length; return n ? <span style={{ color: 'var(--ink-3)' }}> (그 가운데 {n}줄은 이름이 달라 <b>전기 금액</b>으로 찾음)</span> : null; })()}
