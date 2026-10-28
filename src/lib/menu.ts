@@ -167,6 +167,18 @@ export function menuAllowed(role: Role, profileName: string, it: MenuItem): bool
   return !it.cap || can(role, it.cap);
 }
 
+/** 이 사람이 메뉴의 이 탭을 여는가 — 홈 바로가기가 메뉴와 같은 사람에게만 보이도록(AppShell 필터와 같은 규칙). */
+export function tabAllowed(role: Role, profileName: string, id: string): boolean {
+  for (const g of MENU_GROUPS) {
+    if (!groupAllowed(role, g)) continue;
+    for (const it of g.items) {
+      const hit = it.id === id ? it : it.children?.find((c) => c.id === id);
+      if (hit) return menuAllowed(role, profileName, hit);
+    }
+  }
+  return false;
+}
+
 /** 그 등급이 이 대분류를 보는가(인당회계사는 허용 그룹만). */
 export function groupAllowed(role: Role, g: MenuGroup): boolean {
   return role !== 'per_head_accountant' || PER_HEAD_ALLOWED_GROUPS.has(g.id);

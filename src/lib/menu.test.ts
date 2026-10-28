@@ -9,7 +9,7 @@
 // 여기서는 1·2번과, 숨긴 탭이 주소로도 열리지 않는지를 본다.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MENU_GROUPS, menuAllowed, type MenuItem } from './menu';
+import { MENU_GROUPS, menuAllowed, type MenuItem, tabAllowed } from './menu';
 import { canSeeStaffCost } from './staffCost';
 import type { Role } from './roles';
 
@@ -118,4 +118,14 @@ test('감사업무관리 — 인당회계사는 모두, 기장팀은 조회서 �
     for (const id of ['dsd', 'gwp', 'je']) assert.equal(opens(p, id), false, id);
   }
   assert.equal(menuAllowed('external', '외부', item('dsd')), true);   // 외부인 시연은 그대로
+});
+
+test('홈 바로가기 — 메뉴와 같은 사람에게만(tabAllowed)', () => {
+  assert.equal(tabAllowed('team_lead', '정남지', 'je'), false);
+  assert.equal(tabAllowed('team_lead', '정남지', 'bk-settle'), false);
+  assert.equal(tabAllowed('accountant', '송현주', 'je'), true);
+  assert.equal(tabAllowed('accountant', '송현주', 'expense'), true);
+  assert.equal(tabAllowed('superuser', '정우철', 'bk-settle'), true);
+  assert.equal(tabAllowed('superuser', '정우철', 'invoice-request'), true);
+  assert.equal(tabAllowed('superuser', '정우철', '없는-탭'), false);
 });

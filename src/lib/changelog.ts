@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.76.1',
+    date: '2026-10-28',
+    title: '내부홈 바로가기 타일 새로',
+    highlights: [
+      '바로가기에 발행요청(기장팀 · 감사팀), 정산표 관리 · 주석·DSD 관리 · 일반조서 관리 · 감사이슈 LOG · Journal Entry, 경비귀속처리 · 기장배분을 더했습니다. 메뉴에서 볼 수 있는 사람에게만 보입니다.',
+      '「준비 중」 흐린 타일(개별업무 청구 · 휴가관리 · 견적산출)은 뺐습니다.',
+    ],
+  },
+  {
     version: '3.76.0',
     date: '2026-10-28',
     title: '정산표 검증표 — 만들기 전에 WBS · WPL 합계를 회사 재무제표와 맞춰 보기',

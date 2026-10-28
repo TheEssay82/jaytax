@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { can, ROLE_LABELS, type Role } from '../../lib/roles';
+import { tabAllowed } from '../../lib/menu';
 import { CHANGELOG } from '../../lib/changelog';
 import { emphasize } from '../../lib/emphasis';
 import AnnouncementBar from './AnnouncementBar';
@@ -46,15 +47,28 @@ const TODO_DEFS: TodoDef[] = [
   { key: 'reqs', label: '미완료 업데이트요청', emoji: '💬', color: 'purple', tab: 'requests', roles: ['superuser'], fetch: () => countOpenRequests() },
 ];
 
-type ShortcutDef = { key: string; label: string; emoji: string; color: ColorKey; tab?: string; allow: (r: Role) => boolean };
+type ShortcutDef = { key: string; label: string; emoji: string; color: ColorKey; tab?: string; allow: (r: Role, name: string) => boolean };
+/** 메뉴에 있는 화면은 메뉴와 같은 사람에게만 — 규칙은 menu.ts 한 곳(tabAllowed). */
+const byMenu = (tab: string) => (r: Role, name: string) => tabAllowed(r, name, tab);
 
 const READY: ShortcutDef[] = [
   { key: 'clients', label: '거래처관리', emoji: '🏢', color: 'purple', tab: 'biz-register', allow: (r) => r !== 'external' },
   { key: 'doc', label: '문서발송관리', emoji: '📄', color: 'blue', tab: 'doc-request', allow: (r) => r !== 'external' },
   { key: 'evidence', label: '자료실', emoji: '📁', color: 'blue', tab: 'evidence', allow: (r) => r !== 'external' },
   { key: 'bill', label: '청구서 작성', emoji: '🧾', color: 'amber', tab: 'wizard', allow: (r) => can(r, 'saveInvoice') },
+  { key: 'inv-bk', label: '발행요청 · 기장팀', emoji: '🧾', color: 'amber', tab: 'invoice-request', allow: byMenu('invoice-request') },
+  { key: 'inv-aud', label: '발행요청 · 감사팀', emoji: '🧾', color: 'amber', tab: 'audit-invoice', allow: byMenu('audit-invoice') },
   { key: 'consult', label: '상담진행', emoji: '🧑‍💼', color: 'teal', tab: 'consult', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member'].includes(r) },
   { key: 'inquiry', label: '조회서 발송', emoji: '📮', color: 'blue', tab: 'conf-register', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member', 'per_head_accountant'].includes(r) },
+  // 감사업무관리(2026-10-28 사용자 「바로가기 타일 업데이트」)
+  { key: 'wtb', label: '정산표 관리', emoji: '📒', color: 'amber', tab: 'wtb', allow: byMenu('wtb') },
+  { key: 'dsd', label: '주석·DSD 관리', emoji: '📗', color: 'teal', tab: 'dsd', allow: byMenu('dsd') },
+  { key: 'gwp', label: '일반조서 관리', emoji: '📘', color: 'blue', tab: 'gwp', allow: byMenu('gwp') },
+  { key: 'issue', label: '감사이슈 LOG', emoji: '📝', color: 'coral', tab: 'issue', allow: byMenu('issue') },
+  { key: 'je', label: 'Journal Entry', emoji: '🔍', color: 'purple', tab: 'je', allow: byMenu('je') },
+  // 팀결산(네 사람만)
+  { key: 'expense', label: '경비귀속처리', emoji: '💳', color: 'green', tab: 'expense', allow: byMenu('expense') },
+  { key: 'bk-settle', label: '기장배분', emoji: '🧮', color: 'green', tab: 'bk-settle', allow: byMenu('bk-settle') },
 ];
 
 // 체험 계정(심리실 등) — 감사업무관리만 쓰므로 바로가기도 그것만(2026-10-06).
@@ -63,13 +77,6 @@ const SANDBOX: ShortcutDef[] = [
   { key: 'dsd', label: '주석·DSD 관리', emoji: '📗', color: 'teal', tab: 'dsd', allow: () => true },
   { key: 'gwp', label: '일반조서 관리', emoji: '📘', color: 'blue', tab: 'gwp', allow: () => true },
   { key: 'inquiry', label: '조회서 발송', emoji: '📮', color: 'blue', tab: 'conf-register', allow: () => true },
-];
-
-// 준비 중(미개발) — 로드맵 노출용. 클릭 불가.
-const COMING: ShortcutDef[] = [
-  { key: 'indiv', label: '개별업무 청구', emoji: '💰', color: 'amber', allow: (r) => ['superuser', 'accountant', 'team_lead', 'team_member'].includes(r) },
-  { key: 'vacation', label: '휴가관리', emoji: '🌴', color: 'coral', allow: (r) => r !== 'external' },
-  { key: 'estimate', label: '견적산출', emoji: '🧮', color: 'green', allow: (r) => r !== 'external' },
 ];
 
 function todayStr(): string {
@@ -108,8 +115,7 @@ export default function InternalHome({
   const openTodos = loaded ? myTodos.filter((t) => (counts[t.key] ?? 0) > 0) : myTodos;
   const doneTodos = loaded ? myTodos.filter((t) => (counts[t.key] ?? 0) === 0) : [];
 
-  const ready = sandbox ? SANDBOX : READY.filter((s) => s.allow(role));
-  const coming = sandbox ? [] : COMING.filter((s) => s.allow(role));
+  const ready = sandbox ? SANDBOX : READY.filter((s) => s.allow(role, profileName));
   const latest = CHANGELOG[0];
   const name = profileName || user?.email || '';
 
@@ -177,7 +183,7 @@ export default function InternalHome({
       )}
 
       {/* 바로가기 */}
-      <SectionTitle hint="흐린 타일은 준비 중">바로가기</SectionTitle>
+      <SectionTitle>바로가기</SectionTitle>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 11, marginBottom: 22 }}>
         {ready.map((s) => {
           const c = C[s.color];
@@ -188,13 +194,6 @@ export default function InternalHome({
             </button>
           );
         })}
-        {coming.map((s) => (
-          <div key={s.key} style={{ background: '#faf8f4', border: '1px dashed #d8d2c6', borderRadius: 14, padding: '15px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9 }}>
-            <span style={{ width: 40, height: 40, borderRadius: 11, background: '#fff', border: '1px solid var(--rule)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--fs-5)', filter: 'grayscale(1)', opacity: 0.55 }}>{s.emoji}</span>
-            <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)' }}>{s.label}</span>
-            <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', background: '#fff', border: '1px solid var(--rule)', padding: '1px 8px', borderRadius: 20 }}>준비 중</span>
-          </div>
-        ))}
       </div>
 
       {/* 개발노트 — **기장팀장·기장팀원에게는 내놓지 않는다**(2026-09-08).
