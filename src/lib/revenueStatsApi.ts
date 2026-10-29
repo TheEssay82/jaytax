@@ -10,7 +10,7 @@ import { revenueKind as kindOf, typeTopFromErp } from './revenueClassify';
 import { listSalesContracts } from './salesContractApi';
 import { erpAccountOf } from './invoiceRequestApi';
 import { listBizEntities } from './bizRegistryApi';
-import { periodRevenue } from './billingSchedule';
+import { periodRevenue, monthlyRevenue, type Basis } from './billingSchedule';
 import { listInvoiceStaff } from './invoiceStaffApi';
 import { findNode, pathLabel } from './salesContractTaxonomy';
 
@@ -51,6 +51,8 @@ export interface RevenueFact {
   kind: '세무조정' | '기장료' | '기타';
   /** 법인/개인 (실적 자료에만 있다). */
   bizType: string;
+  /** 거래처 id — 해를 넘겨 같은 곳을 맞춰 볼 때 쓴다. 계약 없는 청구 · 옛 실적에는 없을 수 있다. */
+  entityId?: string;
 }
 
 /**
@@ -116,6 +118,7 @@ export async function listRevenueFacts(
       kind: kindOf(r.erp_account ?? ''),
       // 청구 기록 자체에는 법인/개인이 없다 — 계약이 가리키는 거래처에서 가져온다.
       bizType: (c ? kindOfEntity.get(c.entityId) : '') ?? '',
+      entityId: c?.entityId,
     };
   });
   /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -132,14 +135,21 @@ export async function listRevenueFacts(
 async function listActualFacts(
   fromYm: string, toYm: string, team?: string,
 ): Promise<RevenueFact[]> {
-  let q = supabase.from('biz_revenue_actual')
-    .select('id, ym, team, cpa, manager, category, biz_type, entity_name, amount')
-    .gte('ym', fromYm).lte('ym', toYm);
-  if (team) q = q.eq('team', team);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
+  // 한 번에 1,000줄까지만 온다 — FY2025 실적은 1,910줄이라 **쪽으로 나눠 다 읽는다**.
+  // (나누지 않으면 감사팀 FY2025 가 1.4억으로 잘려 보였다. 2026-10-29)
   /* eslint-disable @typescript-eslint/no-explicit-any */
-  return ((data as any[]) ?? []).map((r) => {
+  const data: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    let q = supabase.from('biz_revenue_actual')
+      .select('id, ym, team, cpa, manager, category, biz_type, entity_id, entity_name, amount')
+      .gte('ym', fromYm).lte('ym', toYm).order('id').range(from, from + 999);
+    if (team) q = q.eq('team', team);
+    const { data: page, error } = await q;
+    if (error) throw new Error(error.message);
+    data.push(...((page as any[]) ?? []));
+    if (!page || page.length < 1000) break;
+  }
+  return data.map((r) => {
     const cat = (r.category ?? '').trim();
     const mgr = (r.manager ?? '').trim();
     return {
@@ -161,6 +171,7 @@ async function listActualFacts(
       origin: '실적' as const,
       kind: kindOf(cat),
       bizType: (r.biz_type ?? '').trim(),
+      entityId: r.entity_id ?? undefined,
     };
   });
   /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -220,7 +231,7 @@ const max = (a: string, b: string) => (a > b ? a : b);
  * 두 구간은 달이 겹치지 않으므로 이중계상이 없다.
  */
 export async function listBudgetFacts(
-  fy: number, team?: string, opts: { includeDraft?: boolean } = {},
+  fy: number, team?: string, opts: ForecastOpts = {},
 ): Promise<RevenueFact[]> {
   const { from, to } = fyRange(fy);
   const cut = kstYm();                        // 이번 달 = 예상이 시작되는 달
@@ -372,8 +383,20 @@ export async function listUnscheduledContracts(
     .sort((a, b) => b.amount - a.amount);
 }
 
+/**
+ * includeDraft — 미확정(미계약)도 넣는다.
+ * monthly — 계약 한 건을 **인식되는 달마다 한 줄**로 편다. 기본은 창구 첫 달에 한 줄로 모은다
+ *   (피벗 · 예산은 한 해 합계만 보므로). 월별 표를 그릴 때만 켠다(예측·성장 2026-10-29).
+ */
+export interface ForecastOpts {
+  includeDraft?: boolean; monthly?: boolean;
+  /** 'accrual'(기본) 인식 기준 · 'billing' 청구 기준. 기장팀처럼 실적이 발행 기준인 곳은 billing 으로 맞춰야
+   *  3월에 한 번 청구하는 세무조정이 월할로 쪼개져 지난 달 몫이 사라지지 않는다. */
+  basis?: Basis;
+}
+
 export async function listForecastFacts(
-  fromYm: string, toYm: string, team?: string, opts: { includeDraft?: boolean } = {},
+  fromYm: string, toYm: string, team?: string, opts: ForecastOpts = {},
 ): Promise<RevenueFact[]> {
   const [contracts, ents] = await Promise.all([listSalesContracts(), listBizEntities()]);
   const nameOf = new Map(ents.map((e) => [e.id, e.name]));
@@ -386,34 +409,38 @@ export async function listForecastFacts(
   for (const c of contracts) {
     if (!c.confirmed && !opts.includeDraft) continue;
     if (team && c.team !== team) continue;
-    const supply = periodRevenue(c, 'accrual', fromYm, toYm);
-    if (!supply) continue;
-    const staff = c.effectiveStaff;
-    const share = staff.length ? 100 / staff.length : 0;
-    const code = c.categoryCode ?? '';
-    const top = code ? (findNode(code)?.path[0]?.label ?? '기타') : '';
-    out.push({
-      id: `forecast:${c.id}`,
-      ym: fromYm,
-      fy: fyOf(fromYm),
-      team: c.team ?? '',
-      cpa: (c.effectiveCpa ?? '').trim(),
-      shares: staff.map((s) => ({ name: s.staffName, share })),
-      erpAccount: erpAccountOf(code),
-      company: nameOf.get(c.entityId) ?? '',
-      place: (c.placeId ? placeOf.get(c.placeId) : '') ?? '',
-      typeTop: top,
-      typeFull: code ? pathLabel(code) : '',
-      billingCycle: c.billingCycle ?? '',
-      phase: '',
-      status: c.confirmed ? '예상' : '예상(미확정)',
-      supply,
-      origin: '예상' as const,
-      kind: kindOf(erpAccountOf(code)),
-      // 법인/개인은 **거래처**에서 가져온다 — 계약의 occurrenceUnit 은 '사업장' 처럼
-      // 다른 값이 섞여 있어(2026-09-07 확인) 그것으로 가르면 36,800,000 이 (미지정)에 떨어졌다.
-      bizType: kindOfEntity.get(c.entityId) ?? '',
-    });
+    const parts = opts.monthly
+      ? monthlyRevenue(c, opts.basis ?? 'accrual', fromYm, toYm).filter((m) => m.net)
+      : [{ month: fromYm, net: periodRevenue(c, opts.basis ?? 'accrual', fromYm, toYm) }].filter((m) => m.net);
+    for (const { month, net: supply } of parts) {
+      const staff = c.effectiveStaff;
+      const share = staff.length ? 100 / staff.length : 0;
+      const code = c.categoryCode ?? '';
+      const top = code ? (findNode(code)?.path[0]?.label ?? '기타') : '';
+      out.push({
+        id: opts.monthly ? `forecast:${c.id}:${month}` : `forecast:${c.id}`,
+        ym: month,
+        fy: fyOf(month),
+        team: c.team ?? '',
+        cpa: (c.effectiveCpa ?? '').trim(),
+        shares: staff.map((s) => ({ name: s.staffName, share })),
+        erpAccount: erpAccountOf(code),
+        company: nameOf.get(c.entityId) ?? '',
+        place: (c.placeId ? placeOf.get(c.placeId) : '') ?? '',
+        typeTop: top,
+        typeFull: code ? pathLabel(code) : '',
+        billingCycle: c.billingCycle ?? '',
+        phase: '',
+        status: c.confirmed ? '예상' : '예상(미확정)',
+        supply,
+        origin: '예상' as const,
+        kind: kindOf(erpAccountOf(code)),
+        // 법인/개인은 **거래처**에서 가져온다 — 계약의 occurrenceUnit 은 '사업장' 처럼
+        // 다른 값이 섞여 있어(2026-09-07 확인) 그것으로 가르면 36,800,000 이 (미지정)에 떨어졌다.
+        bizType: kindOfEntity.get(c.entityId) ?? '',
+        entityId: c.entityId,
+      });
+    }
   }
   return out;
 }

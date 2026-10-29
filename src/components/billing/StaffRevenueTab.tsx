@@ -26,6 +26,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { canSeeStaffCost } from '../../lib/staffCostApi';
 import BudgetTab from './BudgetTab';
+import ForecastGrowthTab from './ForecastGrowthTab';
 import DateParts from '../common/DateParts';
 
 const won = (n: number) => Math.round(n).toLocaleString('ko-KR');
@@ -43,13 +44,13 @@ const dimOf = (key: string): Dim => DIMS.find((d) => d.key === key) ?? DIMS[0];
 export default function StaffRevenueTab() {
   const { role, profileName } = useAuth();
   const canBudget = canSeeStaffCost(role, profileName);
-  const [sub, setSub] = useState<'stats' | 'budget'>('stats');
+  const [sub, setSub] = useState<'stats' | 'budget' | 'growth'>('stats');
 
   if (!canBudget) return <StatsPanel />;
   return (
     <>
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        {([['stats', '📊 통계'], ['budget', '💵 예산']] as const).map(([k, label]) => (
+        {([['stats', '📊 통계'], ['budget', '💵 예산'], ['growth', '📈 예측·성장']] as const).map(([k, label]) => (
           <button key={k} className={sub === k ? 'btn-p' : 'btn-sm'} onClick={() => setSub(k)}>
             {label}
           </button>
@@ -58,6 +59,11 @@ export default function StaffRevenueTab() {
       {sub === 'budget' ? (
         <div className="card rep">
           <BudgetTab />
+        </div>
+      ) : sub === 'growth' ? (
+        // 예산과 같은 사람에게만 — 앞 해 팀 매출과 견주는 자리라 같은 선에 둔다.
+        <div className="card rep">
+          <ForecastGrowthTab />
         </div>
       ) : <StatsPanel />}
     </>
