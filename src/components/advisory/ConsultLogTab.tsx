@@ -25,6 +25,8 @@ export default function ConsultLogTab() {
   const [filter, setFilter] = useState('');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [clientFilter, setClientFilter] = useState<string>(''); // '' = 전체
+  const [kindFilter, setKindFilter] = useState<string>('');     // '' = 전체 분야
+  const [showTags, setShowTags] = useState(false);              // 태그 막대는 접어 둔다
   const [selected, setSelected] = useState<Consultation | null>(null);
 
   async function reload() {
@@ -72,8 +74,12 @@ export default function ConsultLogTab() {
       !f || c.title.includes(f) || c.question.includes(f) || c.authorName.includes(f) || c.authorEmail.includes(f) || c.clientName.includes(f) || c.tags.some((t) => t.includes(f));
     const tagOk = !tagFilter || c.tags.includes(tagFilter);
     const clientOk = !clientFilter || c.clientName === clientFilter;
-    return textOk && tagOk && clientOk;
+    const kindOk = !kindFilter || splitTitle(c.title).kind === kindFilter;
+    return textOk && tagOk && clientOk && kindOk;
   });
+  // 분야(제목 머리 「[세무 회신]」)별 건수 — 거르는 단추에 쓴다.
+  const kindCounts = new Map<string, number>();
+  for (const c of items ?? []) { const k = splitTitle(c.title).kind; if (k) kindCounts.set(k, (kindCounts.get(k) ?? 0) + 1); }
 
   // 거래처 필터 옵션: 기록에 존재하는 거래처명(가나다순).
   const clientNames = [...new Set((items ?? []).filter((c) => c.clientType === 'client' && c.clientName).map((c) => c.clientName))].sort((a, b) => a.localeCompare(b, 'ko'));
@@ -116,13 +122,30 @@ export default function ConsultLogTab() {
         )}
       </div>
 
-      {topTags.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 10 }}>
-          <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', fontWeight: 700 }}>태그</span>
-          <TagList tags={topTags} active={tagFilter} onSelect={(t) => setTagFilter((cur) => (cur === t ? null : t))} />
-          {tagFilter && (
-            <button className="btn-sm" style={{ fontSize: 'var(--fs-1)' }} onClick={() => setTagFilter(null)}>필터 해제</button>
-          )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 10 }}>
+        {kindCounts.size > 0 && (
+          <>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', fontWeight: 700 }}>분야</span>
+            {[['', `전체 ${items?.length ?? 0}`], ...[...kindCounts.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => [k, `${k} ${n}`])].map(([k, label]) => (
+              <button key={k || 'all'} className={kindFilter === k ? 'btn-p' : 'btn-sm'} style={{ fontSize: 'var(--fs-1)' }} onClick={() => setKindFilter(k)}>{label}</button>
+            ))}
+          </>
+        )}
+        {topTags.length > 0 && (
+          <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', marginLeft: kindCounts.size ? 8 : 0 }} onClick={() => setShowTags((v) => !v)}>
+            🏷️ 태그로 거르기 {showTags ? '▴' : '▾'}
+          </button>
+        )}
+        {tagFilter && (
+          <>
+            <TagList tags={[tagFilter]} active={tagFilter} onSelect={() => setTagFilter(null)} />
+            <button className="btn-sm" style={{ fontSize: 'var(--fs-1)' }} onClick={() => setTagFilter(null)}>태그 해제</button>
+          </>
+        )}
+      </div>
+      {showTags && topTags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, padding: 8, background: '#faf8f4', borderRadius: 'var(--r-sm)' }}>
+          <TagList tags={topTags} active={tagFilter} onSelect={(t) => { setTagFilter((cur) => (cur === t ? null : t)); setShowTags(false); }} />
         </div>
       )}
 
@@ -131,7 +154,7 @@ export default function ConsultLogTab() {
 
       {items !== null && (
         <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-3)', margin: '10px 0' }}>
-          총 {items.length}건 {(f || tagFilter || clientFilter) && `· 필터 ${filtered.length}건`}
+          총 {items.length}건 {(f || tagFilter || clientFilter || kindFilter) && `· 필터 ${filtered.length}건`}
           {clientFilter && (
             <> · 거래처 <b>{clientFilter}</b> <button className="btn-sm" style={{ fontSize: 'var(--fs-1)' }} onClick={() => setClientFilter('')}>해제</button></>
           )}
@@ -144,34 +167,54 @@ export default function ConsultLogTab() {
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {filtered.map((c) => (
-          // **제목 한 줄 + 해시태그.** 한때 결론 세 줄을 미리 보여 줬는데, 카드가 커져
-          // 한 화면에 몇 건 못 담겼다. 목록은 훑는 자리다 — 고를 수 있을 만큼만 보여 준다.
-          <button key={c.id} onClick={() => setSelected(c)} style={rowStyle}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-              <StatusBadge status={c.status} />
-              {finalSeq.has(c.id) && (
-                <span style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#1A6E3C', whiteSpace: 'nowrap' }}>#{finalSeq.get(c.id)}</span>
-              )}
-              {c.clientType === 'client' && c.clientName && <ClientBadge name={c.clientName} />}
-              <span style={{ flex: 1, fontWeight: 700, color: 'var(--navy)', fontSize: 'var(--fs-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {c.title || '(제목 없음)'}
-              </span>
-              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
-                초안 {c.authorName}
-                {c.status === 'final' && c.finalizedByName && ` · 확정 ${c.finalizedByName}`}
-              </span>
-              <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{dtFmt(c.createdAt)}</span>
-            </div>
-            {c.tags.length > 0 && (
-              <div style={{ marginTop: 5 }}>
-                <TagList tags={c.tags} />
-              </div>
-            )}
-          </button>
-        ))}
-      </div>
+      {filtered.length > 0 && (
+        // **표 한 줄에 한 건.** 「[세무 회신]」 머리말은 분야 칸으로 빼고, 태그는 제목 아래 작게 세 개까지만
+        // — 목록은 훑는 자리라 고를 수 있을 만큼만 보여 준다(사용자 2026-11-04 「목록화가 좀 더 깔끔하게」).
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--fs-2)', tableLayout: 'fixed' }}>
+          <thead>
+            <tr style={{ background: '#F3F0EA', color: 'var(--ink-2)', textAlign: 'left' }}>
+              <th style={{ ...th, width: 54, textAlign: 'center' }}>No</th>
+              <th style={{ ...th, width: 70 }}>분야</th>
+              <th style={th}>제목</th>
+              <th style={{ ...th, width: 160 }}>거래처</th>
+              <th style={{ ...th, width: 140 }}>작성 · 확정</th>
+              <th style={{ ...th, width: 96 }}>날짜</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((c) => {
+              const { kind, rest } = splitTitle(c.title);
+              const shown = c.tags.slice(0, 3);
+              return (
+                <tr key={c.id} onClick={() => setSelected(c)} className="consult-row" style={{ cursor: 'pointer', borderTop: '1px solid var(--rule-2)' }}>
+                  <td style={{ ...td, textAlign: 'center' }}>
+                    {finalSeq.has(c.id)
+                      ? <span style={{ fontWeight: 700, color: '#1A6E3C' }}>#{finalSeq.get(c.id)}</span>
+                      : <StatusBadge status={c.status} />}
+                  </td>
+                  <td style={td}>{kind ? <KindBadge kind={kind} /> : <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                  <td style={td}>
+                    <div style={{ ...clip, fontWeight: 700, color: 'var(--navy)' }} title={c.title}>{rest || '(제목 없음)'}</div>
+                    {shown.length > 0 && (
+                      <div style={{ ...clip, fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 2 }}>
+                        {shown.map((t) => `#${t}`).join('  ')}{c.tags.length > shown.length && `  +${c.tags.length - shown.length}`}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ ...td, ...clip, color: 'var(--ink-2)' }}>
+                    {c.clientType === 'client' && c.clientName ? c.clientName : <span style={{ color: 'var(--ink-4)' }}>일반</span>}
+                  </td>
+                  <td style={{ ...td, ...clip, color: 'var(--ink-2)' }}>
+                    {c.authorName}
+                    {c.status === 'final' && c.finalizedByName && c.finalizedByName !== c.authorName && <span style={{ color: 'var(--ink-3)' }}> → {c.finalizedByName}</span>}
+                  </td>
+                  <td style={{ ...td, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>{dtFmt(c.createdAt)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
@@ -473,7 +516,20 @@ function ClientBadge({ name }: { name: string }) {
   );
 }
 
-const rowStyle: React.CSSProperties = {
-  textAlign: 'left', border: '1px solid var(--rule)', borderRadius: 'var(--r-sm)', padding: '8px 12px',
-  background: '#fff', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'stretch', width: '100%',
+const th: React.CSSProperties = { padding: '7px 8px', fontWeight: 700, fontSize: 'var(--fs-1)', whiteSpace: 'nowrap' };
+const td: React.CSSProperties = { padding: '7px 8px', verticalAlign: 'middle' };
+const clip: React.CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+
+/** 제목 머리 「[세무 회신]」·「[회계·세무 회신]」을 분야로 떼어 낸다. 머리가 없으면 분야는 빈칸. */
+function splitTitle(title: string): { kind: string; rest: string } {
+  const m = (title || '').match(/^\s*\[([^\]]+?)\s*회신\]\s*/);
+  return m ? { kind: m[1].trim(), rest: title.slice(m[0].length) } : { kind: '', rest: title };
+}
+
+const KIND_COLOR: Record<string, [string, string]> = {
+  감사: ['#7a3e9d', '#f3ebf8'], 세무: ['#1f5f8b', '#e8f1f8'], 회계: ['#1A6E3C', '#e6f4ec'],
 };
+function KindBadge({ kind }: { kind: string }) {
+  const [fg, bg] = KIND_COLOR[kind] ?? ['#6b5b3e', '#f4efe6'];
+  return <span className="bdg" style={{ fontSize: 'var(--fs-0)', fontWeight: 700, color: fg, background: bg, whiteSpace: 'nowrap' }}>{kind}</span>;
+}

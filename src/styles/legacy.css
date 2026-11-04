@@ -449,3 +449,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
 /* 누를 수 있는 숫자 칸 — 눌러서 속을 볼 수 있다는 것이 보여야 한다. */
 .cellable{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;text-decoration-color:var(--ink-4)}
 .cellable:hover{background:var(--navy-bg);color:var(--navy)}
+
+/* 상담기록 목록 — 줄에 올리면 고를 수 있다는 표시(2026-11-04) */
+.consult-row:hover{background:var(--surface-3)}

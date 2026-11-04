@@ -601,12 +601,22 @@ function ContactSearch({
               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', border: 'none', borderBottom: '1px solid #F0ECE4', background: '#fff', cursor: 'pointer', fontSize: 'var(--fs-2)' }}
             >
               <b>{recipientLabel(ct.contactName, ct.position, ct.honorific)}</b> · <span style={{ color: 'var(--navy)' }}>{cl.companyName}</span> <span style={{ color: 'var(--ink-4)', fontSize: 'var(--fs-1)' }}>({cl.accountant})</span>
+              <div style={{ fontSize: 'var(--fs-0)', color: ct.address ? 'var(--ink-3)' : '#b45309', marginTop: 1 }}>
+                📮 {ct.address || '수령 주소 없음'}
+              </div>
             </button>
           ))}
         </div>
       )}
     </div>
   );
+}
+
+/** 수령 우편주소 — 우편 · 등기로 보낼 때 어디로 가는지 고르는 자리에서 바로 보이게(사용자 2026-11-04). */
+function RecipientAddress({ address }: { address: string }) {
+  return address
+    ? <span style={{ color: 'var(--ink-3)' }} title="수령 우편주소(거래처담당자등록의 주소)">📮 {address}</span>
+    : <span style={{ color: '#b45309' }} title="거래처관리 › 거래처담당자등록에서 주소를 넣어 주세요">📮 수령 주소 없음</span>;
 }
 
 // ── 새 발송요청 폼 (공통 + 수신자 다중) ─────────────────────
@@ -713,6 +723,7 @@ function AddRequestForm({
                 ) : (
                   r.phone && <span style={{ color: 'var(--ink-3)' }}>📞 {r.phone}</span>
                 )}
+                <RecipientAddress address={r.address} />
                 <button onClick={() => setRecipients((p) => p.filter((x) => x.contactId !== r.contactId))} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#c00', fontWeight: 700 }} title="제거">×</button>
               </div>
             );
@@ -810,9 +821,13 @@ function EditRequestForm({
       <div style={{ fontSize: 'var(--fs-1)', fontWeight: 700, color: '#345', margin: '10px 0 6px' }}>
         · 수신자 <span style={{ fontWeight: 400, color: 'var(--ink-3)' }}>(현재: {req.companyName} · {recipientLabel(req.recipientName, req.recipientTitle)} — 바꾸려면 검색해 선택, 미선택 시 유지)</span>
       </div>
+      <div style={{ fontSize: 'var(--fs-1)', marginBottom: 6 }}>
+        현재 수령 주소: <RecipientAddress address={req.address} />
+      </div>
       {picked && (
         <div style={{ fontSize: 'var(--fs-2)', color: '#059669', marginBottom: 6 }}>
           → 변경: <b>{picked.companyName}</b> · {recipientLabel(picked.recipientName, picked.recipientTitle)}
+          {' '}<RecipientAddress address={picked.address} />
         </div>
       )}
       <ContactSearch clients={clients} onPick={(cl, ct) => { const rc = toRecipient(cl, ct.id); setPicked(rc); if (rc) setPhone(rc.phone); }} placeholder="🔍 바꿀 담당자 검색…" />
