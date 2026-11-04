@@ -87,9 +87,13 @@ export interface ResolvedStaff {
  *      담당이 있는 **첫 사업장 하나**를 통째로 쓴다(여러 사업장을 합치지 않는다)
  *
  * 어느 경로든 `active=false` 는 세지 않는다.
+ *
+ * **감사팀 계약은 ②를 하지 않는다.** 감사팀은 담당회계사로만 나눈다 — 사업장 담당은 같은 거래처의
+ * 기장 · 세무조정 담당이라, 물려받으면 회계감사 계약에 「담당직원 송현주」가 붙어 보였다
+ * (평안정공 · 오큘러스 등 8곳, 사용자 2026-11-04). 계약에 직접 넣은 담당은 그대로 쓴다.
  */
 export function resolveStaff(
-  c: { entityId: string; placeId: string | null; staff: ContractStaffRow[] },
+  c: { entityId: string; placeId: string | null; staff: ContractStaffRow[]; team?: string | null },
   index: StaffIndex,
   month: string,
 ): ResolvedStaff {
@@ -97,6 +101,7 @@ export function resolveStaff(
   if (current.length) {
     return { staff: current.map((s) => ({ staffId: s.staffId, staffName: s.staffName })), inherited: false };
   }
+  if (c.team === '감사team') return { staff: [], inherited: false };
   const ofEntity = index.placesOfEntity.get(c.entityId) ?? [];
   const order = c.placeId ? [c.placeId, ...ofEntity] : ofEntity;
   for (const pid of order) {

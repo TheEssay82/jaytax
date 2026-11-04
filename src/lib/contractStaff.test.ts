@@ -132,3 +132,14 @@ test('한쪽이 비면 불일치로 보지 않는다 — 감사팀은 담당직�
 test('빈 이름은 걸러낸다 — 쉼표로 자른 찌꺼기가 불일치를 만들면 안 된다', () => {
   assert.equal(staffMismatch(['김민섭', ''], ['김민섭']), false);
 });
+
+test('감사팀 계약은 사업장 담당을 물려받지 않는다 — 감사팀은 담당회계사로만 나눈다(2026-11-04)', () => {
+  const idx = buildStaffIndex([place('p1', 'e1', true)], [ps('p1', '송현주')]);
+  const audit = resolveStaff({ entityId: 'e1', placeId: null, staff: [], team: '감사team' }, idx, '2026-11');
+  assert.deepEqual(names(audit), [], '회계감사 계약에 사업장의 세무조정 담당이 붙으면 안 된다');
+  assert.equal(audit.inherited, false);
+  const direct = resolveStaff({ entityId: 'e1', placeId: null, staff: [cs('송현주')], team: '감사team' }, idx, '2026-11');
+  assert.deepEqual(names(direct), ['송현주'], '계약에 직접 넣은 담당은 그대로');
+  const tax = resolveStaff({ entityId: 'e1', placeId: null, staff: [], team: 'taxteam' }, idx, '2026-11');
+  assert.deepEqual(names(tax), ['송현주'], '기장팀은 지금처럼 물려받는다');
+});

@@ -83,7 +83,7 @@ export async function loadClientCard(entityId: string): Promise<ClientCard> {
     annual: annualize({ amount: Number(c.amount) || 0, billingCycle: c.billing_cycle }),
     cpa: c.cpa || '',
     staff: resolveStaff(
-      { entityId, placeId: c.place_id ?? null, staff: staffOfContract.get(c.id) ?? [] },
+      { entityId, placeId: c.place_id ?? null, staff: staffOfContract.get(c.id) ?? [], team: c.team },
       idx, thisMonth,
     ).staff.map((s2) => s2.staffName).join('·'),
     confirmed: !!c.confirmed,
