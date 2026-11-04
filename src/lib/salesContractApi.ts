@@ -172,7 +172,7 @@ export async function listSalesContracts(): Promise<SalesContract[]> {
     // 조회시점(이번 달) 기준. 계약 우선 → 없으면 사업장 상속(계약 사업장 → 본사 → 나머지).
     const current = history.filter((s) => staffActiveOn(s, nowMonth));
     const resolved = resolveStaff(
-      { entityId: c.entityId, placeId: c.placeId, staff: history, team: c.team }, staffIndex, nowMonth);
+      { entityId: c.entityId, placeId: c.placeId, staff: history, team: c.team, categoryCode: c.categoryCode }, staffIndex, nowMonth);
     return {
       ...c, staff: current, installments: iM.get(c.id) ?? [], discounts: dM.get(c.id) ?? [],
       effectiveCpa: c.cpa || inherited, cpaInherited: !c.cpa && !!inherited,

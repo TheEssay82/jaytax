@@ -133,13 +133,18 @@ test('빈 이름은 걸러낸다 — 쉼표로 자른 찌꺼기가 불일치를 
   assert.equal(staffMismatch(['김민섭', ''], ['김민섭']), false);
 });
 
-test('감사팀 계약은 사업장 담당을 물려받지 않는다 — 감사팀은 담당회계사로만 나눈다(2026-11-04)', () => {
+test('감사팀 계약은 사업장 담당을 물려받지 않는다 — 세무조정만 빼고(2026-11-04)', () => {
   const idx = buildStaffIndex([place('p1', 'e1', true)], [ps('p1', '송현주')]);
-  const audit = resolveStaff({ entityId: 'e1', placeId: null, staff: [], team: '감사team' }, idx, '2026-11');
+  const audit = resolveStaff({ entityId: 'e1', placeId: null, staff: [], team: '감사team', categoryCode: 'AUD.AUDIT' }, idx, '2026-11');
   assert.deepEqual(names(audit), [], '회계감사 계약에 사업장의 세무조정 담당이 붙으면 안 된다');
   assert.equal(audit.inherited, false);
   const direct = resolveStaff({ entityId: 'e1', placeId: null, staff: [cs('송현주')], team: '감사team' }, idx, '2026-11');
   assert.deepEqual(names(direct), ['송현주'], '계약에 직접 넣은 담당은 그대로');
   const tax = resolveStaff({ entityId: 'e1', placeId: null, staff: [], team: 'taxteam' }, idx, '2026-11');
   assert.deepEqual(names(tax), ['송현주'], '기장팀은 지금처럼 물려받는다');
+  const adj = resolveStaff({ entityId: 'e1', placeId: null, staff: [], team: '감사team', categoryCode: 'AUD.SVC.FILING.CORP' }, idx, '2026-11');
+  assert.deepEqual(names(adj), ['송현주'], '감사팀 세무조정은 그 담당이 하는 일이라 물려받는다');
+  assert.equal(adj.inherited, true);
+  const svc = resolveStaff({ entityId: 'e1', placeId: null, staff: [], team: '감사team', categoryCode: 'AUD.SVC.CON.ETC' }, idx, '2026-11');
+  assert.deepEqual(names(svc), [], '감사팀 용역도 물려받지 않는다');
 });

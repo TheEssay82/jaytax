@@ -88,12 +88,18 @@ export interface ResolvedStaff {
  *
  * 어느 경로든 `active=false` 는 세지 않는다.
  *
- * **감사팀 계약은 ②를 하지 않는다.** 감사팀은 담당회계사로만 나눈다 — 사업장 담당은 같은 거래처의
- * 기장 · 세무조정 담당이라, 물려받으면 회계감사 계약에 「담당직원 송현주」가 붙어 보였다
- * (평안정공 · 오큘러스 등 8곳, 사용자 2026-11-04). 계약에 직접 넣은 담당은 그대로 쓴다.
+ * **감사팀 계약은 ②를 하지 않는다 — 세무조정(AUD.SVC.FILING.*)만 빼고.** 감사팀은 담당회계사로만
+ * 나눈다. 사업장 담당은 같은 거래처의 세무조정 담당이라, 물려받으면 회계감사 계약에 「담당직원 송현주」가
+ * 붙어 보였다(평안정공 · 오큘러스 등 8곳, 사용자 2026-11-04). 감사팀 세무조정은 그 담당이 실제로
+ * 하는 일이라 지금처럼 물려받는다(같은 날 사용자). 계약에 직접 넣은 담당은 어느 경우든 그대로 쓴다.
  */
+export function inheritsPlaceStaff(team?: string | null, categoryCode?: string | null): boolean {
+  if (team !== '감사team') return true;
+  return (categoryCode ?? '').startsWith('AUD.SVC.FILING');
+}
+
 export function resolveStaff(
-  c: { entityId: string; placeId: string | null; staff: ContractStaffRow[]; team?: string | null },
+  c: { entityId: string; placeId: string | null; staff: ContractStaffRow[]; team?: string | null; categoryCode?: string | null },
   index: StaffIndex,
   month: string,
 ): ResolvedStaff {
@@ -101,7 +107,7 @@ export function resolveStaff(
   if (current.length) {
     return { staff: current.map((s) => ({ staffId: s.staffId, staffName: s.staffName })), inherited: false };
   }
-  if (c.team === '감사team') return { staff: [], inherited: false };
+  if (!inheritsPlaceStaff(c.team, c.categoryCode)) return { staff: [], inherited: false };
   const ofEntity = index.placesOfEntity.get(c.entityId) ?? [];
   const order = c.placeId ? [c.placeId, ...ofEntity] : ofEntity;
   for (const pid of order) {

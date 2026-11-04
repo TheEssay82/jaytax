@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.77.3',
+    date: '2026-11-04',
+    title: '감사팀 세무조정 계약은 다시 사업장 담당을 물려받음',
+    highlights: [
+      '감사팀 계약 중 세무조정(신고) 계약은 지금처럼 거래처 사업장의 담당직원을 물려받습니다 — 그 담당이 실제로 하는 일입니다. 회계감사 · 용역 계약은 계속 물려받지 않습니다.',
+    ],
+  },
+  {
     version: '3.77.2',
     date: '2026-11-04',
     title: '감사팀 계약의 담당직원 — 사업장 담당을 물려받지 않음',
