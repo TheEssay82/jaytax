@@ -147,3 +147,26 @@ test('기간별 — 당월 · 당분기 = 누적에서 잘라 뺀 값', async ()
   const p1 = computePeriods(j2, cfg, [], 2026, 1);
   assert.equal(p1.prevMonthNo, 0); assert.equal(p1.month.pl1118['당기순손익'], p1.cum.pl1118['당기순손익']);
 });
+
+test('조정전표(권고코드) 반영 — 기표한 만큼 덜 옮기고 결과는 같다 · 코드/계정 이상은 걸린다', async () => {
+  const { tagOf, suggestReclassGl } = await import('./ifrs18');
+  const cfg2: Ifrs18Config = { ...cfg, accounts: [...cfg.accounts, A('72030199', '대여금손상차손', '금융비용', '투자', { special: '대여금손상' })] };
+  const jd = [{ docNo: '9', gl: '72030101', decision: '조정' as const, target: '대여금 손상차손' as const, reason: '대여금 손상' }];
+  const before = compute(journal, cfg2, jd, 2026, 6);
+  const m0 = before.moves.find((m) => m.kind === '판단')!;
+  assert.equal(m0.code, '1118-J-9-72030101'); assert.equal(m0.required, 900); assert.equal(m0.posted, 0);
+  assert.equal(m0.reclassGl, '72030199');
+  assert.equal(tagOf('KADP 1118-J-9-72030101 재분류'), '1118-J-9-72030101');
+  const posted = [...journal,
+    L('40', '72030199', 900, 0, { memo: '1118-J-9-72030101 재분류' }), L('40', '72030101', 0, 900, { memo: '1118-J-9-72030101 재분류' }),
+    // 계리: 6개월분 -600 을 퇴직급여 → 순이자원가(재무)로 기표
+    L('41', '51030101', 600, 0, { memo: '1118-A-pa' }), L('41', '74010115', 0, 600, { memo: '1118-A-pa' }),
+  ];
+  const after = compute(posted, cfg2, jd, 2026, 6);
+  for (const m of after.moves) assert.equal(m.amount, 0, m.code);
+  for (const k of ['영업손익', '대여금 손상차손', '재무비용', '당기순손익']) assert.equal(after.pl1118[k], before.pl1118[k], k);
+  assert.ok(after.checks.find((c) => c.id === 'tag')!.ok);
+  const bad = compute([...posted, L('42', '51020101', 10, 0, { memo: '1118-X-zz' }), L('42', '11100001', 0, 10)], cfg2, jd, 2026, 6);
+  assert.equal(bad.tagIssues[0].why, '미등록코드');
+  assert.equal(suggestReclassGl(cfg2, '51120701', '기타투자비용'), '');
+});

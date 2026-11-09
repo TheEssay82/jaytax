@@ -47,8 +47,9 @@ export interface ActuarialItem {
   /** 연간 금액(원천 계정 기준 차변+) */ annual: number;
   /** 월할 대신 직접 넣은 당기 금액 */ override?: number | null;
   note?: string;
+  /** 재분류 전표의 대상 GL(없으면 판단표에서 제안) */ reclassGl?: string;
 }
-export interface ManualAdj { srcGl: string; target: Line1118; amount: number; reason: string }
+export interface ManualAdj { srcGl: string; target: Line1118; amount: number; reason: string; /** 재분류 전표의 대상 GL */ reclassGl?: string }
 export interface Ifrs18Config {
   clientKey: string;
   clientName: string;
@@ -57,6 +58,10 @@ export interface Ifrs18Config {
   bsAttr: Record<string, BsAttr>;
   actuarial: ActuarialItem[];
   manual?: ManualAdj[];
+  /** 회사가 1118 조정전표를 SAP 에 실제로 기표하기 시작하는 달(YYYY-MM). 이 달부터 2차 마감(조정전표 반영 검증)을 한다. */
+  adjustFrom?: string;
+  /** 재분류 대상 GL 지정 — 키 「원천GL>대상 1118 항목」 */
+  reclassGl?: Record<string, string>;
 }
 export type Decision = '영업 유지' | '조정';
 export interface Judgment {
@@ -199,15 +204,30 @@ export interface WatchLine {
 }
 export interface Move {
   kind: '계리' | '판단' | '수동';
+  /** 권고코드 — 회사가 조정전표 라인텍스트에 적는 값(1118-A-… · 1118-J-전표-GL · 1118-M-GL) */ code: string;
   label: string;
   srcGl: string;
+  /** 판단 건의 원 전표번호 */ docNo?: string;
   src: string;
   target: string;
-  /** 차변+ */ amount: number;
+  /** 1118 기준으로 옮겨야 할 금액(누적, 차변+) */ required: number;
+  /** 회사가 이미 기표한 조정전표(권고코드가 달린 라인 중 대상 항목 계정, 차변+) */ posted: number;
+  /** 손익계산서에 실제로 옮기는 금액 = required − posted (차변+) */ amount: number;
+  /** 재분류 전표 대상 GL 제안 */ reclassGl: string;
+  /** 계리 · 수동의 기준 금액(연간 금액 또는 수동 금액) */ base?: number;
 }
+
+/** 라인텍스트에서 권고코드를 꺼낸다 — 엑셀 식과 같은 규칙: 「1118-」부터 40자 안에서 첫 공백 전까지. */
+export function tagOf(memo: string): string {
+  const i = memo.indexOf('1118-');
+  if (i < 0) return '';
+  return memo.slice(i, i + 40).split(' ')[0].trim();
+}
+export interface TagIssue { docNo: string; gl: string; code: string; amt: number; why: '미등록코드' | '계정 확인' }
 export interface Check { id: string; label: string; ok: boolean; fix: string }
 export interface Ifrs18Result {
   year: number; month: number;
+  tagIssues: TagIssue[];
   lineCount: number; tempCount: number;
   tb: TbRow[];
   unregisteredBs: string[];
@@ -221,6 +241,26 @@ export interface Ifrs18Result {
 }
 
 const r0 = (n: number) => Math.round(n);
+
+/**
+ * 재분류 전표의 대상 GL 제안 — ① 판단표 지정(reclassGl) ② 원천 계정명 +「(투자)」·「(재무)」 ③ 같은 1001 항목 · 같은 계정군(앞 4자리)
+ * 못 찾으면 ''(엑셀 노란 칸에서 직접 지정).
+ */
+export function suggestReclassGl(cfg: Ifrs18Config, srcGl: string, target: string): string {
+  const fixed = cfg.reclassGl?.[`${srcGl}>${target}`];
+  if (fixed) return fixed;
+  const src = cfg.accounts.find((a) => a.gl === srcGl);
+  const cands = cfg.accounts.filter((a) => a.gl !== srcGl && line1118(a) === target);
+  if (!cands.length) return '';
+  const base = (n: string) => n.replace(/\((투자|재무)\)$/, '').trim();
+  if (src) {
+    const same = cands.find((a) => base(a.name) === base(src.name) && /\((투자|재무)\)$/.test(a.name));
+    if (same) return same.gl;
+    const fam = cands.find((a) => a.l1001 === src.l1001 && a.gl.slice(0, 4) === srcGl.slice(0, 4));
+    if (fam) return fam.gl;
+  }
+  return '';   // 비슷한 계정이 없으면 비워 둔다 — 엉뚱한 계정을 권하지 않는다(엑셀 노란 칸에서 지정)
+}
 
 export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[], year: number, month: number): Ifrs18Result {
   const acc = new Map(cfg.accounts.map((a) => [a.gl, a]));
@@ -266,33 +306,51 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
   }
 
   // 3) 옮길 금액 — 계리 · 판단(조정) · 수동. 원천 항목에서 빼서 대상 항목에 넣는다.
-  const moves: Move[] = [];
-  const srcLine = (gl: string) => { const a = acc.get(gl); return a ? line1118(a) : '확인필요'; };
+  //    회사가 권고코드를 라인텍스트에 달아 조정전표를 이미 기표했으면(2차 마감), 그만큼은 시산에 이미 들어 있으므로 덜 옮긴다.
+  const lineOfGl = (gl: string) => { const a = acc.get(gl); return a ? line1118(a) : '확인필요'; };
+  const srcLine = lineOfGl;
+  const tagged = live.filter((l) => isPl(l.gl) && tagOf(l.memo));
+  const req: Omit<Move, 'posted' | 'amount'>[] = [];
   for (const x of cfg.actuarial) {
     const amt = x.override != null ? x.override : r0((x.annual * month) / 12);
-    if (!amt) continue;
-    moves.push({ kind: '계리', label: x.label, srcGl: x.srcGl, src: srcLine(x.srcGl), target: x.target, amount: amt });
+    req.push({ kind: '계리', code: `1118-A-${x.key}`, label: x.label, srcGl: x.srcGl, src: srcLine(x.srcGl), target: x.target, required: amt,
+      reclassGl: x.reclassGl || suggestReclassGl(cfg, x.srcGl, x.target), base: x.annual });
   }
   const docGl = new Map<string, number>();
   for (const l of live) docGl.set(keyOf(l.docNo, l.gl), (docGl.get(keyOf(l.docNo, l.gl)) ?? 0) + l.dr - l.cr);
   for (const j of judgments) {
     if (j.decision !== '조정') continue;
+    if (!docGl.has(keyOf(j.docNo, j.gl))) continue;
     const amt = r0(docGl.get(keyOf(j.docNo, j.gl)) ?? 0);
-    if (!amt) continue;
     const w = watch.find((x) => x.docNo === j.docNo && x.gl === j.gl);
     const target = j.target || w?.suggest || '확인필요';
-    moves.push({ kind: '판단', label: `${j.docNo} ${j.reason}`.trim(), srcGl: j.gl, src: srcLine(j.gl), target, amount: amt });
+    req.push({ kind: '판단', code: `1118-J-${j.docNo}-${j.gl}`, label: `${j.docNo} ${j.reason}`.trim(), srcGl: j.gl, docNo: j.docNo, src: srcLine(j.gl), target, required: amt,
+      reclassGl: suggestReclassGl(cfg, j.gl, target) });
   }
-  for (const m of cfg.manual ?? []) {
-    if (!m.amount) continue;
-    moves.push({ kind: '수동', label: m.reason, srcGl: m.srcGl, src: srcLine(m.srcGl), target: m.target, amount: r0(m.amount) });
+  (cfg.manual ?? []).forEach((m, i) => {
+    req.push({ kind: '수동', code: `1118-M-${m.srcGl}${i ? `-${i + 1}` : ''}`, label: m.reason, srcGl: m.srcGl, src: srcLine(m.srcGl), target: m.target, required: r0(m.amount),
+      reclassGl: m.reclassGl || suggestReclassGl(cfg, m.srcGl, m.target), base: r0(m.amount) });
+  });
+  const byCode = new Map(req.map((m) => [m.code, m]));
+  const postedBy = new Map<string, number>();
+  const tagIssues: TagIssue[] = [];
+  for (const l of tagged) {
+    const code = tagOf(l.memo);
+    const m = byCode.get(code);
+    const amt = r0(l.dr - l.cr);
+    if (!m) { tagIssues.push({ docNo: l.docNo, gl: l.gl, code, amt, why: '미등록코드' }); continue; }
+    const ln = lineOfGl(l.gl);
+    if (ln === m.target) postedBy.set(code, (postedBy.get(code) ?? 0) + l.dr - l.cr);
+    else if (l.gl !== m.srcGl) tagIssues.push({ docNo: l.docNo, gl: l.gl, code, amt, why: '계정 확인' });
   }
+  const moves: Move[] = req.map((m) => { const posted = r0(postedBy.get(m.code) ?? 0); return { ...m, posted, amount: m.required - posted }; });
 
   // 4) 손익계산서
   const pl1118: Record<string, number> = {};
   for (const n of LINES_1118) pl1118[n] = 0;
   for (const t of tb) pl1118[t.l1118] = (pl1118[t.l1118] ?? 0) - t.amt;
   for (const m of moves) {
+    if (!m.amount) continue;
     pl1118[m.src] = (pl1118[m.src] ?? 0) + m.amount;
     pl1118[m.target] = (pl1118[m.target] ?? 0) - m.amount;
   }
@@ -332,6 +390,7 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
     noteMap.set(k, (noteMap.get(k) ?? 0) - t.amt);
   }
   for (const m of moves) {
+    if (!m.amount) continue;
     for (const [ln, sg] of [[m.src, 1], [m.target, -1]] as const) {
       if (ln === '영업수익' || ln === '영업비용' || ln === '법인세비용') continue;
       const k = `${ln}\u0000계리 금액 · 조정`;
@@ -351,10 +410,11 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
     { id: 'bs', label: 'BS 계정 속성 모두 등록', ok: unregisteredBs.length === 0, fix: '미등록 BS 계정 속성 추가(인덕 문의)' },
     { id: 'watch', label: '주의계정 미판단 라인 0', ok: watch.every((w) => w.decision !== '미판단'), fix: 'STEP 4 에서 판단 기록' },
     { id: 'ni', label: '당기순이익 1001 = 1118', ok: r0(pl1001['당기순이익'] - pl1118['당기순손익']) === 0, fix: '인덕 문의' },
+    { id: 'tag', label: '조정전표(권고코드) 라인의 코드 · 계정 정상', ok: tagIssues.length === 0, fix: '라인텍스트의 권고코드와 차 · 대변 계정 확인' },
     { id: 'bridge', label: '영업손익 브릿지 = 1118 영업손익', ok: r0(bridge[bridge.length - 1].amount - pl1118['영업손익']) === 0, fix: '인덕 문의' },
   ];
 
-  return { year, month, lineCount: live.length, tempCount: lines.length - live.length, tb, unregisteredBs, watch, moves, pl1118, pl1001, bridge, notes, checks };
+  return { year, month, tagIssues, lineCount: live.length, tempCount: lines.length - live.length, tb, unregisteredBs, watch, moves, pl1118, pl1001, bridge, notes, checks };
 }
 
 export const PL1118_ORDER: { label: string; key: string; sub?: boolean }[] = [
@@ -471,3 +531,37 @@ export function closeSummary(res: Ifrs18Result, per: Ifrs18Periods, fileName: st
     checks: res.checks.map((c) => ({ label: c.label, ok: c.ok })),
   };
 }
+
+// ── 2차 마감(조정전표 반영 검증) ───────────────────────────────────────────────
+/** 2차 마감 확인 — 1차 마감 결과(요약)와 지금 분개장(조정전표 기표 후) 결과를 맞대 본다. */
+export interface Close2Check { id: string; label: string; ok: boolean; detail: string }
+export function close2Checks(res: Ifrs18Result, close1: CloseSummary | null): Close2Check[] {
+  const remain = res.moves.filter((m) => m.amount !== 0);
+  const out: Close2Check[] = [
+    { id: 'c1', label: '1차 마감 완료', ok: !!close1, detail: close1 ? '' : '먼저 STEP 6 에서 1차 마감' },
+    { id: 'base', label: '1차 마감 조건(위 확인) 모두 ✔', ok: res.checks.every((c) => c.ok), detail: res.checks.filter((c) => !c.ok).map((c) => c.label).join(', ') },
+    { id: 'remain', label: '조정 권고 잔액 0(권고 전표 모두 기표)', ok: remain.length === 0, detail: remain.map((m) => `${m.code} ${m.amount.toLocaleString()}`).join(' · ') },
+    { id: 'tag', label: '조정전표 줄의 코드 · 계정 정상', ok: res.tagIssues.length === 0, detail: res.tagIssues.map((t) => `${t.docNo}/${t.gl} ${t.code} ${t.why}`).join(' · ') },
+  ];
+  if (close1) {
+    const diffs = PL1118_ORDER.filter((o) => Math.round((res.pl1118[o.key] ?? 0) - (close1.pl1118.cum[o.key] ?? 0)) !== 0)
+      .map((o) => `${o.label.trim()} ${Math.round((res.pl1118[o.key] ?? 0) - (close1.pl1118.cum[o.key] ?? 0)).toLocaleString()}`);
+    out.push({ id: 'same', label: '1118 손익계산서 = 1차 마감(모든 항목)', ok: diffs.length === 0, detail: diffs.join(' · ') });
+  }
+  return out;
+}
+export interface Close2Summary {
+  fileName: string; lineCount: number; lastDate: string;
+  posted: { code: string; required: number; posted: number }[];
+  op1001: number; op: number; ni: number;
+}
+export function close2Summary(res: Ifrs18Result, fileName: string, lastDate: string): Close2Summary {
+  return {
+    fileName, lineCount: res.lineCount, lastDate,
+    posted: res.moves.map((m) => ({ code: m.code, required: m.required, posted: m.posted })),
+    op1001: Math.round(res.pl1001['영업이익']), op: Math.round(res.pl1118['영업손익']), ni: Math.round(res.pl1118['당기순손익']),
+  };
+}
+/** 그 달이 조정전표 기표(2차 마감) 대상인가 */
+export const needsClose2 = (cfg: Ifrs18Config, year: number, month: number) =>
+  !!cfg.adjustFrom && `${year}-${String(month).padStart(2, '0')}` >= cfg.adjustFrom;

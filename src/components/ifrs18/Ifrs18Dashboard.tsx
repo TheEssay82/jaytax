@@ -48,8 +48,8 @@ export default function Ifrs18Dashboard({ year, month, closes, logs, drift, onPi
               const c = cm.get(m); const d = drift.get(m);
               return (
                 <td key={m} style={{ ...td, textAlign: 'center', cursor: 'pointer', color: c ? (d ? '#B45309' : '#16A34A') : 'var(--ink-3)', fontWeight: 700 }} onClick={() => onPick(m)}
-                  title={c ? `${c.byName ?? ''} ${new Date(c.at).toLocaleString('ko-KR')} · ${c.summary.fileName}${d ? `\n⚠ 지금 분개장으로 다시 계산하면 영업손익 ${won(d.op)} · 순손익 ${won(d.ni)} 차이` : ''}` : '미마감'}>
-                  {c ? (d ? '⚠ 변동' : '✔ 마감') : '—'}
+                  title={c ? `1차 ${c.byName ?? ''} ${new Date(c.at).toLocaleString('ko-KR')} · ${c.summary.fileName}${c.close2 ? `\n2차 ${c.close2.byName ?? ''} ${new Date(c.close2.at).toLocaleString('ko-KR')}` : ''}${d ? `\n⚠ 지금 분개장으로 다시 계산하면 영업손익 ${won(d.op)} · 순손익 ${won(d.ni)} 차이` : ''}` : '미마감'}>
+                  {c ? (d ? '⚠ 변동' : c.close2 ? '✔✔ 2차' : '✔ 1차') : '—'}
                 </td>
               );
             })}</tr>
@@ -109,7 +109,8 @@ function describe(l: Ifrs18LogRow): string {
     case '판단 저장': return `${d.docNo} / ${d.gl} → ${d.decision}${d.target ? `(${d.target})` : ''}${d.reason ? ` — ${d.reason}` : ''}`;
     case '판단 삭제': return `${d.docNo} / ${d.gl} 판단 취소`;
     case '마감': return `영업손익 누적 ${won(Number(d.opCum ?? 0))} · 당월 ${won(Number(d.opMonth ?? 0))} · ${d.fileName ?? ''}`;
-    case '마감 해제': return `사유: ${d.reason ?? ''}`;
+    case '마감 해제': case '2차 마감 해제': return `사유: ${d.reason ?? ''}`;
+    case '2차 마감': return `조정전표 반영 확인 · 영업손익 ${won(Number(d.op ?? 0))} · ${d.fileName ?? ''}`;
     case '엑셀 내려받기': return String(d.file ?? '');
     default: return '';
   }

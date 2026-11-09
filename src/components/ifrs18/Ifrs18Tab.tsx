@@ -4,12 +4,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
-  compute, computeAt, computePeriods, closeSummary, monthEnd, parseSapJournal, validateConfig, keyOf, LINES_1118, PL1118_ORDER, PL1001_ORDER,
+  compute, computeAt, computePeriods, closeSummary, close2Checks, close2Summary, needsClose2, monthEnd, parseSapJournal, validateConfig, keyOf, LINES_1118, PL1118_ORDER, PL1001_ORDER,
   type Ifrs18Config, type JLine, type Judgment, type Line1118, type Decision,
 } from '../../lib/ifrs18';
 import {
   listIfrs18Clients, saveIfrs18Client, listIfrs18Judgments, saveIfrs18Judgment, deleteIfrs18Judgment,
-  listIfrs18Closes, closeIfrs18Month, reopenIfrs18Month, listIfrs18Log, logIfrs18,
+  listIfrs18Closes, closeIfrs18Month, reopenIfrs18Month, close2Ifrs18Month, listIfrs18Log, logIfrs18,
   type Ifrs18ClientRow, type Ifrs18CloseRow, type Ifrs18LogRow,
 } from '../../lib/ifrs18Api';
 import Ifrs18Dashboard, { type Drift } from './Ifrs18Dashboard';
@@ -153,7 +153,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
   async function download() {
     if (!cfg || !res) return;
     const { exportIfrs18Workbook, ifrs18FileName } = await import('../../lib/ifrs18Excel');
-    await exportIfrs18Workbook({ cfg, res, per: per ?? undefined, lines, judgments, fileName, byName: profileName });
+    await exportIfrs18Workbook({ cfg, res, per: per ?? undefined, lines, judgments, fileName, byName: profileName, close1: closedRow, close2: closedRow?.close2 ?? null });
     void log('엑셀 내려받기', { file: ifrs18FileName({ cfg, res }) });
   }
   async function closeMonth() {
@@ -170,8 +170,25 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
     } catch (e) { setErr(e instanceof Error ? e.message : '마감하지 못했습니다.'); }
     finally { setBusy(false); }
   }
+  async function close2Month(undo: boolean) {
+    if (!key || !res) return;
+    let reason = '';
+    if (undo) {
+      reason = prompt(`${year}년 ${month}월 2차 마감을 해제합니다. 사유를 적어 주세요(작업 기록에 남습니다).`)?.trim() ?? '';
+      if (!reason) return;
+    }
+    setBusy(true);
+    try {
+      await close2Ifrs18Month(key, year, month, undo ? null : close2Summary(res, fileName, lastDate), profileName);
+      await log(undo ? '2차 마감 해제' : '2차 마감', undo ? { reason } : { fileName, op: Math.round(res.pl1118['영업손익']), posted: res.moves.reduce((a, m) => a + Math.abs(m.posted), 0) });
+      reloadDash();
+      setMsg(undo ? `${year}년 ${month}월 2차 마감을 해제했습니다.` : `${year}년 ${month}월 2차 마감을 했습니다 — 조정전표 반영이 확인되었습니다.`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); }
+    finally { setBusy(false); }
+  }
   async function reopenMonth() {
     if (!key) return;
+    if (closedRow?.close2) { alert('2차 마감을 먼저 해제해 주세요(STEP 7).'); return; }
     const reason = prompt(`${year}년 ${month}월 마감을 해제합니다. 사유를 적어 주세요(작업 기록에 남습니다).`);
     if (!reason?.trim()) return;
     setBusy(true);
@@ -339,9 +356,45 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
                   <button className="btn-sm" disabled={busy || readonly} onClick={() => void reopenMonth()}>마감 해제</button></>
               : <button className="btn-sm btn-sm-navy" disabled={busy || readonly || !allOk} title={allOk ? '' : '위 확인이 모두 ✔ 여야 마감할 수 있습니다'} onClick={() => void closeMonth()}>{month}월 마감하기</button>}
             <button className="btn-sm" onClick={() => void download()}>엑셀 내려받기(수식 검증 파일)</button>
-            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>손익계산서 · 브릿지 · 주석금액이 엑셀 수식(SUMIFS)으로 다시 계산되고, 화면 값과의 차이 열이 0인지 보여 줍니다.{!allOk && ' 확인이 남아 있어도 내려받을 수 있습니다(진행 중 표시). 마감은 모두 ✔ 일 때만 됩니다.'}</span>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>엑셀만으로 다시 계산 · 검증되는 파일입니다(00_읽는법 → 01_검증체크 → 보고 · 권고 · 검토 · 근거 시트). 조정이 있으면 20_조정권고전표에 장부 기표용 전표가 나옵니다.{!allOk && ' 확인이 남아 있어도 내려받을 수 있습니다(진행 중 표시). 마감은 모두 ✔ 일 때만 됩니다.'}</span>
           </div>
         </div>
+        {(() => {
+          const c2 = close2Checks(res, closedRow?.summary ?? null);
+          const due = needsClose2(cfg, year, month);
+          const c2ok = c2.every((c) => c.ok);
+          return (
+            <div className="card">
+              {stepHead(7, '조정전표 반영 검증 · 2차 마감', !!closedRow?.close2,
+                cfg.adjustFrom ? (due ? `${cfg.adjustFrom.replace('-', '년 ')}월 결산부터 매월 — 1차 마감 → 조정 권고 전표 기표 → 분개장 다시 올리기 → 2차 마감` : `이 달은 대상 아님 — 회사가 조정전표를 기표하기 시작하는 ${cfg.adjustFrom.replace('-', '년 ')}월 결산부터`) : '조정전표를 기표한 달에만')}
+              <div style={{ fontSize: 'var(--fs-1)', lineHeight: 1.7, marginBottom: 6 }}>
+                ① STEP 6 에서 1차 마감하고 엑셀을 내려받습니다 → ② 엑셀 <b>20_조정권고전표</b>대로 SAP 에 기표합니다(<b>라인텍스트 맨 앞에 권고코드</b>) →
+                ③ 같은 기준월 분개장을 다시 받아 아래에서 올립니다 → ④ 확인이 모두 ✔ 이면 2차 마감.
+              </div>
+              <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 6 }}>
+                <thead><tr>{['권고코드', '구분', '원천 → 대상', '대상 G/L 제안', '옮길 금액(누적)', '이미 기표', '남은 권고액'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                <tbody>{res.moves.map((m) => (
+                  <tr key={m.code} style={{ background: m.amount !== 0 && due ? '#FEF2F2' : undefined }}>
+                    <td style={td}><code>{m.code}</code></td><td style={td}>{m.kind}</td><td style={td}>{m.srcGl} {m.src} → {m.target}</td><td style={td}>{m.reclassGl || '지정 필요'}</td>
+                    <td style={num}>{won(m.required)}</td><td style={num}>{won(m.posted)}</td><td style={{ ...num, fontWeight: 700 }}>{won(m.amount)}</td>
+                  </tr>
+                ))}{!res.moves.length && <tr><td style={td} colSpan={7}>조정 없음</td></tr>}</tbody>
+              </table>
+              <label className="btn-sm" style={{ cursor: 'pointer' }}>{reading ? '읽는 중…' : '조정전표 기표 후 분개장 다시 올리기'}<input type="file" accept=".xlsx,.xls" hidden disabled={reading} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onJournal(f); }} /></label>
+              <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 980, marginTop: 6 }}>
+                <tbody>{c2.map((c) => (
+                  <tr key={c.id}><td style={{ ...td, color: c.ok ? '#16A34A' : 'var(--bad)', fontWeight: 700 }}>{c.ok ? '✔' : '✘'}</td><td style={td}>{c.label}</td><td style={{ ...td, color: 'var(--ink-3)' }}>{c.ok ? '' : c.detail}</td></tr>
+                ))}</tbody>
+              </table>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+                {closedRow?.close2
+                  ? <><span style={{ fontWeight: 700, color: '#16A34A' }}>🔒 2차 마감됨 · {new Date(closedRow.close2.at).toLocaleString('ko-KR')} · {closedRow.close2.byName}</span>
+                      <button className="btn-sm" disabled={busy || readonly} onClick={() => void close2Month(true)}>2차 마감 해제</button></>
+                  : <button className="btn-sm btn-sm-navy" disabled={busy || readonly || !due || !c2ok} title={!due ? '조정전표 기표 시작월 전입니다' : c2ok ? '' : '확인이 모두 ✔ 여야 합니다'} onClick={() => void close2Month(false)}>{month}월 2차 마감하기</button>}
+              </div>
+            </div>
+          );
+        })()}
       </>}
     </>}
   </>);
