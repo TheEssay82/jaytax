@@ -1,7 +1,7 @@
 // K-IFRS 1118 월결산 — 계산 규칙 시험. 숫자는 지어낸 작은 회사다(실제 회사 판단표는 저장소에 넣지 않는다).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compute, line1118, parseSapJournal, suggestTarget, validateConfig, type AcctRule, type Ifrs18Config, type JLine } from './ifrs18';
+import { compute, ifrs18KeyFromPath, line1118, parseSapJournal, suggestTarget, validateConfig, type AcctRule, type Ifrs18Config, type JLine } from './ifrs18';
 
 const A = (gl: string, name: string, l1001: AcctRule['l1001'], kcat: AcctRule['kcat'], extra: Partial<AcctRule> = {}): AcctRule => ({ gl, name, l1001, kcat, ...extra });
 const cfg: Ifrs18Config = {
@@ -117,4 +117,12 @@ test('제안 항목 · 판단표 검사', () => {
   assert.equal(validateConfig(cfg).ok, true);
   assert.equal(validateConfig({ ...cfg, clientKey: 'Bad Key' }).ok, false);
   assert.equal(validateConfig({ ...cfg, accounts: [{ ...cfg.accounts[0], l1001: '이상' }] }).ok, false);
+});
+
+test('회사 전용 주소 — /kifrs1118_<회사키>', () => {
+  assert.equal(ifrs18KeyFromPath('/kifrs1118_neptune'), 'neptune');
+  assert.equal(ifrs18KeyFromPath('/kifrs1118_neptune/'), 'neptune');
+  assert.equal(ifrs18KeyFromPath('/kifrs1118_'), null);
+  assert.equal(ifrs18KeyFromPath('/kifrs1118_a b'), null);
+  assert.equal(ifrs18KeyFromPath('/'), null);
 });

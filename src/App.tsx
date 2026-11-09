@@ -5,6 +5,8 @@ import MfaGate from './components/MfaGate';
 import SharedConsult from './components/SharedConsult';
 import EssayAdmin from './components/essay/EssayAdmin';
 import { useNumericPlusKey } from './lib/useNumericPlusKey';
+import Ifrs18Page from './components/ifrs18/Ifrs18Page';
+import { ifrs18KeyFromPath } from './lib/ifrs18';
 
 function Gate() {
   useNumericPlusKey(); // 전역: 금액칸에서 '+' → '000'
@@ -31,6 +33,15 @@ function EssayClosed() {
   );
 }
 
+/** 회사 전용 1118 월결산 주소(/kifrs1118_<회사키>) — 로그인 · 2단계 인증은 본 앱과 같고, 그 화면 하나만 보인다. */
+function Ifrs18Gate({ clientKey }: { clientKey: string }) {
+  const { session, loading } = useAuth();
+  if (loading) {
+    return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--ink-3)' }}>불러오는 중…</div>;
+  }
+  return session ? <MfaGate><Ifrs18Page clientKey={clientKey} /></MfaGate> : <Login />;
+}
+
 /** 습작 관리: 로그인은 필요하지만 좌측 메뉴에는 노출하지 않는 숨김 URL(/essay/admin). */
 function EssayAdminGate() {
   const { session, loading } = useAuth();
@@ -54,6 +65,15 @@ export default function App() {
     return (
       <AuthProvider>
         <EssayAdminGate />
+      </AuthProvider>
+    );
+  }
+
+  const k1118 = ifrs18KeyFromPath(path);
+  if (k1118) {
+    return (
+      <AuthProvider>
+        <Ifrs18Gate clientKey={k1118} />
       </AuthProvider>
     );
   }

@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.78.1',
+    date: '2026-11-09',
+    title: 'K-IFRS 1118 월결산 — 회사 전용 주소(/kifrs1118_회사키)',
+    highlights: [
+      '회사 담당자는 jaytax.co.kr/kifrs1118_<회사키>(예: /kifrs1118_neptune)로 들어오면 다른 메뉴 없이 1118 월결산 화면 하나만 봅니다. 로그인 · 2단계 인증 · 권한(RLS)은 본 앱과 같습니다.',
+      '그 주소에서는 회사 고르기가 감춰지고, 다른 회사키의 판단표는 올라가지 않습니다. 권한이 없는 회사키면 안내만 보입니다.',
+    ],
+  },
+  {
     version: '3.78.0',
     date: '2026-11-09',
     title: 'K-IFRS 1118 월결산 — 회사가 SAP 분개장 하나로 1118 손익계산서를 만든다',

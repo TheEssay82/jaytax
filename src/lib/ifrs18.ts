@@ -390,3 +390,9 @@ export function validateConfig(x: unknown): { ok: true; cfg: Ifrs18Config } | { 
   if (!Array.isArray(c.actuarial)) return { ok: false, error: 'actuarial 이 배열이 아닙니다' };
   return { ok: true, cfg: c as Ifrs18Config };
 }
+
+/** 주소에서 회사키를 꺼낸다 — 회사키 규칙(0189: a-z 0-9 - , 2~40자)에 맞지 않으면 null. */
+export function ifrs18KeyFromPath(path: string): string | null {
+  const m = path.replace(/\/+$/, '').match(/^\/kifrs1118_([a-z0-9-]{2,40})$/i);
+  return m ? m[1].toLowerCase() : null;
+}

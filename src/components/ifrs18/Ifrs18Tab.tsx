@@ -21,11 +21,16 @@ const stepHead = (n: number, t: string, done: boolean, sub?: string) => (
   </div>
 );
 
-export default function Ifrs18Tab() {
+/**
+ * `fixedKey` — 회사 전용 주소(/kifrs1118_<회사키>)로 들어오면 그 회사만 보인다(사용자 2026-11-09 「주소는 별도로」).
+ * 회사 고르기는 감추고, 권한이 없는 회사 키면 안내만 한다.
+ */
+export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
   const { role, profileName, readonly } = useAuth();
   const admin = !readonly && (role === 'superuser' || role === 'accountant');
   const [clients, setClients] = useState<Ifrs18ClientRow[]>([]);
-  const [key, setKey] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [key, setKey] = useState(fixedKey ?? '');
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const now = new Date();
@@ -41,9 +46,10 @@ export default function Ifrs18Tab() {
   async function reload() {
     try {
       const cs = await listIfrs18Clients();
-      setClients(cs);
-      if (cs.length === 1 && !key) setKey(cs[0].key);
+      setClients(fixedKey ? cs.filter((c) => c.key === fixedKey) : cs);
+      if (!fixedKey && cs.length === 1 && !key) setKey(cs[0].key);
     } catch (e) { setErr(e instanceof Error ? e.message : '불러오지 못했습니다.'); }
+    finally { setLoaded(true); }
   }
   useEffect(() => { void reload(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const client = clients.find((c) => c.key === key) ?? null;
@@ -67,6 +73,7 @@ export default function Ifrs18Tab() {
     try {
       const v = validateConfig(JSON.parse(await f.text()));
       if (!v.ok) { setErr(`판단표 파일: ${v.error}`); return; }
+      if (fixedKey && v.cfg.clientKey !== fixedKey) { setErr(`이 주소는 「${fixedKey}」 전용입니다 — 올린 판단표의 회사키는 「${v.cfg.clientKey}」입니다.`); return; }
       await saveIfrs18Client(v.cfg);
       await reload(); setKey(v.cfg.clientKey);
       setMsg(`판단표를 올렸습니다 — ${v.cfg.clientName} · 계정 ${v.cfg.accounts.length}개 · BS 속성 ${Object.keys(v.cfg.bsAttr).length}개`);
@@ -134,7 +141,7 @@ export default function Ifrs18Tab() {
       </div>
       {err && <div className="alert-w" style={{ marginTop: 6 }}>{err}</div>}
       {msg && !err && <div style={{ marginTop: 6, fontSize: 'var(--fs-1)', color: '#166534' }}>{msg}</div>}
-      {!clients.length && <div style={{ marginTop: 8, color: 'var(--ink-3)' }}>연결된 회사가 없습니다. {admin ? '「판단표 올리기」로 회사 판단표(JSON)를 올려 주세요.' : '인덕회계법인에 연결을 요청해 주세요.'}</div>}
+      {loaded && !clients.length && <div style={{ marginTop: 8, color: 'var(--ink-3)' }}>{fixedKey ? '이 회사 화면을 볼 권한이 없거나 아직 판단표가 없습니다. ' : '연결된 회사가 없습니다. '}{admin ? '「판단표 올리기」로 회사 판단표(JSON)를 올려 주세요.' : '인덕회계법인에 연결을 요청해 주세요.'}</div>}
     </div>
 
     {cfg && <>
