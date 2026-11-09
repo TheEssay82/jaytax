@@ -68,6 +68,17 @@ export async function purgeRetention(key: string, reason: string): Promise<numbe
   return Number(data ?? 0);
 }
 
+/** 파기 대상 한 줄 — 누구 · 어느 거래처인지 알아볼 만큼만(파기할 값 자체는 오지 않는다). */
+export interface RetentionDueItem { label: string; detail: string; at: string }
+
+/** 이 정책의 파기 대상 목록(최대 300줄). 파기 전에 「누구 것인지」 보려는 것. */
+export async function listRetentionDue(key: string): Promise<RetentionDueItem[]> {
+  const { data, error } = await supabase.rpc('retention_due_list', { p_key: key });
+  if (error) throw new Error(error.message);
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  return ((data as any[]) ?? []).map((r) => ({ label: r.label ?? '', detail: r.detail ?? '', at: r.at ?? '' }));
+}
+
 /** 파기 이력. */
 export async function listPurgeLog(): Promise<PurgeLogRow[]> {
   const { data, error } = await supabase

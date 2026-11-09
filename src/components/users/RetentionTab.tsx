@@ -2,13 +2,13 @@
 //
 // 화면이 답해야 하는 질문은 하나다. **"지금 지워야 할 것이 있는가?"**
 // 그래서 자료마다 근거 법령·기간·경과 건수를 한 줄로 놓고, 경과한 것만 눈에 띄게 한다.
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { confirmDanger } from '../common/DangerConfirm';
 import Guide from '../common/Guide';
 import { kstDateTime } from '../../lib/format';
 import {
-  surveyRetention, purgeRetention, listPurgeLog, periodLabel, modeLabel,
-  type RetentionRow, type PurgeLogRow,
+  surveyRetention, purgeRetention, listPurgeLog, listRetentionDue, periodLabel, modeLabel,
+  type RetentionRow, type PurgeLogRow, type RetentionDueItem,
 } from '../../lib/retentionApi';
 
 export default function RetentionTab() {
@@ -17,6 +17,19 @@ export default function RetentionTab() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
+
+  // 「경과」 숫자를 누르면 그 정책의 대상이 아래로 펼쳐진다(사용자 2026-11-09 「어느 거래처인지 알 수 없나요?」).
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [dueItems, setDueItems] = useState<Record<string, RetentionDueItem[] | 'loading' | string>>({});
+  async function toggleDue(key: string) {
+    if (openKey === key) { setOpenKey(null); return; }
+    setOpenKey(key);
+    setDueItems((m) => ({ ...m, [key]: 'loading' }));
+    try {
+      const list = await listRetentionDue(key);
+      setDueItems((m) => ({ ...m, [key]: list }));
+    } catch (e) { setDueItems((m) => ({ ...m, [key]: e instanceof Error ? e.message : String(e) })); }
+  }
 
   async function load() {
     setBusy(true); setErr('');
@@ -108,7 +121,8 @@ export default function RetentionTab() {
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.key} style={r.due > 0 && r.destroyOk ? { background: '#FFFBEB' } : undefined}>
+            <Fragment key={r.key}>
+            <tr style={r.due > 0 && r.destroyOk ? { background: '#FFFBEB' } : undefined}>
               <td style={{ fontWeight: 700, color: 'var(--navy)' }}>
                 {r.label}
                 <div style={{ fontSize: 'var(--fs-0)', fontWeight: 400, color: 'var(--ink-3)' }}>{r.tableName}</div>
@@ -128,7 +142,12 @@ export default function RetentionTab() {
               </td>
               <td style={{ whiteSpace: 'nowrap', color: 'var(--ink-2)' }}>{r.mode === 'keep' ? '—' : r.cutoff}</td>
               <td className="r" style={r.due > 0 ? { fontWeight: 700, color: 'var(--warn)' } : { color: 'var(--ink-4)' }}>
-                {r.due.toLocaleString('ko-KR')}
+                {r.due > 0 && r.mode !== 'keep' ? (
+                  <button className="btn-sm" style={{ fontWeight: 700, color: 'var(--warn)' }}
+                    title="누르면 어느 거래처 · 누구 것인지 아래에 펼칩니다" onClick={() => void toggleDue(r.key)}>
+                    {r.due.toLocaleString('ko-KR')} {openKey === r.key ? '▴' : '▾'}
+                  </button>
+                ) : r.due.toLocaleString('ko-KR')}
               </td>
               <td className="r" style={{ color: 'var(--ink-2)' }}>{r.total.toLocaleString('ko-KR')}</td>
               <td>
@@ -144,6 +163,14 @@ export default function RetentionTab() {
                 )}
               </td>
             </tr>
+            {openKey === r.key && (
+              <tr>
+                <td colSpan={8} style={{ background: '#FFFDF5', padding: '6px 12px 10px' }}>
+                  <DueList items={dueItems[r.key]} total={r.due} />
+                </td>
+              </tr>
+            )}
+            </Fragment>
           ))}
         </tbody>
       </table>
@@ -186,5 +213,31 @@ export default function RetentionTab() {
         연락이 계속 오는 업종이라, 무작정 막으면 업무가 됩니다.
       </div>
     </div>
+  );
+}
+
+/** 파기 대상 목록 — 거래처 · 사업장 · 상태 · 기준 날짜. 파기할 값 자체는 보이지 않는다. */
+function DueList({ items, total }: { items: RetentionDueItem[] | 'loading' | string | undefined; total: number }) {
+  if (items === undefined || items === 'loading') return <div style={{ color: 'var(--ink-3)' }}>불러오는 중…</div>;
+  if (typeof items === 'string') return <div className="alert-e" style={{ fontSize: 'var(--fs-1)' }}>{items}</div>;
+  if (!items.length) return <div style={{ color: 'var(--ink-3)' }}>대상이 없습니다.</div>;
+  return (
+    <>
+      <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginBottom: 4 }}>
+        파기 대상 {items.length.toLocaleString('ko-KR')}건{total > items.length && ` (앞 ${items.length}건만 표시 · 전체 ${total.toLocaleString('ko-KR')}건)`}
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--fs-1)' }}>
+        <tbody>
+          {items.map((it, i) => (
+            <tr key={i} style={{ borderTop: i ? '1px solid var(--rule-2)' : undefined }}>
+              <td style={{ padding: '3px 6px', width: 34, color: 'var(--ink-4)', textAlign: 'right' }}>{i + 1}</td>
+              <td style={{ padding: '3px 6px', fontWeight: 700, color: 'var(--navy)', whiteSpace: 'nowrap' }}>{it.label || '—'}</td>
+              <td style={{ padding: '3px 6px', color: 'var(--ink-2)' }}>{it.detail}</td>
+              <td style={{ padding: '3px 6px', color: 'var(--ink-3)', whiteSpace: 'nowrap', textAlign: 'right' }}>{it.at}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }
