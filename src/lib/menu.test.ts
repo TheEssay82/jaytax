@@ -97,12 +97,12 @@ test('막힌 사람의 접근 가능 탭 목록에 그 id 가 아예 없다', ()
 
 // ── 감사업무관리(2026-10-05) — 감사 보조 시스템을 일반업무관리에서 옮겼다 ──
 
-test('감사업무관리에 조회서 발송관리·정산표·주석·DSD·일반조서·감사이슈 LOG·Journal Entry 가 있고, 일반업무관리에는 없다', () => {
+test('감사업무관리에 조회서 발송관리·정산표·주석·DSD·일반조서·감사이슈 LOG·Journal Entry·1118 월결산이 있고, 일반업무관리에는 없다', () => {
   const audit = MENU_GROUPS.find((g) => g.id === 'audit')!;
   const general = MENU_GROUPS.find((g) => g.id === 'general')!;
   assert.equal(audit.label, '감사업무관리');
-  assert.deepEqual(audit.items.map((i) => i.id), ['inquiry-send', 'wtb', 'dsd', 'gwp', 'issue', 'je']);
-  for (const id of ['inquiry-send', 'wtb', 'dsd', 'gwp', 'issue', 'je']) assert.equal(general.items.some((i) => i.id === id), false);
+  assert.deepEqual(audit.items.map((i) => i.id), ['inquiry-send', 'wtb', 'dsd', 'gwp', 'issue', 'je', 'ifrs18']);
+  for (const id of ['inquiry-send', 'wtb', 'dsd', 'gwp', 'issue', 'je', 'ifrs18']) assert.equal(general.items.some((i) => i.id === id), false);
 });
 
 test('Journal Entry 는 일반조서처럼 감사팀만', () => {
@@ -118,6 +118,13 @@ test('감사업무관리 — 인당회계사는 모두, 기장팀은 조회서 �
     for (const id of ['dsd', 'gwp', 'je']) assert.equal(opens(p, id), false, id);
   }
   assert.equal(menuAllowed('external', '외부', item('dsd')), true);   // 외부인 시연은 그대로
+});
+
+test('1118 월결산 — 감사팀과 회사 담당자(외부인)가 열고, 기장팀은 열지 않는다(2026-11-09)', () => {
+  assert.equal(opens(송현주, 'ifrs18'), true);
+  assert.equal(opens(['per_head_accountant', '조현규'], 'ifrs18'), true);
+  assert.equal(opens(정남지, 'ifrs18'), false);
+  assert.equal(menuAllowed('external', '넵튠 담당', item('ifrs18')), true);
 });
 
 test('홈 바로가기 — 메뉴와 같은 사람에게만(tabAllowed)', () => {

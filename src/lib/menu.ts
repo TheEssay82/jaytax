@@ -103,6 +103,9 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'issue', label: '📝 감사이슈 LOG', cap: 'viewAuditPapers' },
       // 분개장 전수 검토(JE Test) — 1차(사용자 2026-10-21): 분개장 · 잔액표 올리기 → 필수 검증 · 시나리오 → 보완할 점 → 조서 엑셀. 감사팀만.
       { id: 'je', label: '🔍 Journal Entry 시스템', cap: 'viewAuditPapers' },
+      // K-IFRS 1118 월결산 — 회사가 SAP 분개장 하나로 1118 손익계산서를 만든다(사용자 2026-11-09). 분개장은 브라우저 안에서만.
+      // 회사 담당자(외부인)는 EXTERNAL_ALLOWED_TABS 로 이 화면만 열고, 데이터는 ifrs18_access 로 연결된 회사만 보인다(0189).
+      { id: 'ifrs18', label: '📐 K-IFRS 1118 월결산', cap: 'viewAuditPapers' },
     ],
   },
   {
