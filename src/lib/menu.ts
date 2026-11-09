@@ -164,6 +164,7 @@ export const ICON_ITEMS: (MenuItem & { icon: string })[] = [
  */
 export function menuAllowed(role: Role, profileName: string, it: MenuItem): boolean {
   if (role === 'external') return EXTERNAL_ALLOWED_TABS.has(it.id);
+  if (role === 'client_user') return it.id === 'ifrs18';   // 넵튠이용자 — 1118 월결산만
   if (role === 'per_head_accountant' && PER_HEAD_HIDDEN_TABS.has(it.id)) return false;
   if (it.hideFor?.includes(profileName)) return false;
   if (it.onlyFor && !it.onlyFor.includes(profileName) && role !== 'superuser') return false;

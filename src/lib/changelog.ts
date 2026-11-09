@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.79.0',
+    date: '2026-11-09',
+    title: '넵튠이용자 등급 — 회사 담당자는 1118 월결산 화면만',
+    highlights: [
+      '등급 「넵튠이용자」(client_user)를 새로 만들었습니다. 로그인하면 메뉴 없이 자기 회사의 1118 월결산 화면(/kifrs1118_회사키)으로 바로 갑니다.',
+      '서버는 이 등급을 외부인과 똑같이 막습니다(고객정보 0건). 1118 판단표 · 판단 기록은 연결된 회사만 보입니다. DB: 마이그레이션 0190.',
+    ],
+  },
+  {
     version: '3.78.1',
     date: '2026-11-09',
     title: 'K-IFRS 1118 월결산 — 회사 전용 주소(/kifrs1118_회사키)',

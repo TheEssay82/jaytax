@@ -6,11 +6,12 @@ import SharedConsult from './components/SharedConsult';
 import EssayAdmin from './components/essay/EssayAdmin';
 import { useNumericPlusKey } from './lib/useNumericPlusKey';
 import Ifrs18Page from './components/ifrs18/Ifrs18Page';
+import ClientUserHome from './components/ifrs18/ClientUserHome';
 import { ifrs18KeyFromPath } from './lib/ifrs18';
 
 function Gate() {
   useNumericPlusKey(); // 전역: 금액칸에서 '+' → '000'
-  const { session, loading } = useAuth();
+  const { session, loading, role } = useAuth();
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: 'var(--ink-3)' }}>
@@ -18,7 +19,9 @@ function Gate() {
       </div>
     );
   }
-  return session ? <MfaGate><AppShell /></MfaGate> : <Login />;
+  if (!session) return <Login />;
+  // 넵튠이용자는 본 앱(메뉴)을 보지 않는다 — 자기 회사 1118 화면만(2026-11-09).
+  return <MfaGate>{role === 'client_user' ? <ClientUserHome /> : <AppShell />}</MfaGate>;
 }
 
 /** 습작 열람이 끝났음을 알리는 한 장. 작품·평가는 건드리지 않는다. */

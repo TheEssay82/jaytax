@@ -5,9 +5,12 @@
 //     (마이그 0121 로 perhead_block_select RESTRICTIVE 정책 제거). 쓰기는 등급별 정책이 그대로 막는다.
 //   · 2026-10-02 일반조서 관리 보기·작성·확정 허용(is_audit_staff 에 포함, 마이그 0162).
 //   아직 숨기는 것: 발송요청 처리 · ERP 발행내역 대사 · 통계 · AI 사용량 · 기초 미수금 입력 · 설정 · 사용자 관리.
-export type Role = 'superuser' | 'accountant' | 'team_lead' | 'team_member' | 'per_head_accountant' | 'external';
+// client_user(넵튠이용자) — 회사 담당자 계정(2026-11-09). K-IFRS 1118 월결산 화면 하나만 쓴다.
+//   서버는 is_external() 가 직원 등급 화이트리스트라 이 등급을 **외부인과 똑같이** 막는다(고객정보 0건).
+//   1118 판단표 · 판단 기록은 ifrs18_access 로 연결된 회사만 보인다(0189 · 0190).
+export type Role = 'superuser' | 'accountant' | 'team_lead' | 'team_member' | 'per_head_accountant' | 'external' | 'client_user';
 
-export const ROLES: Role[] = ['superuser', 'accountant', 'team_lead', 'team_member', 'per_head_accountant', 'external'];
+export const ROLES: Role[] = ['superuser', 'accountant', 'team_lead', 'team_member', 'per_head_accountant', 'external', 'client_user'];
 
 export const ROLE_LABELS: Record<Role, string> = {
   superuser: '최고관리자',
@@ -16,6 +19,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   team_member: '기장팀원',
   per_head_accountant: '인당회계사',
   external: '외부인',
+  client_user: '넵튠이용자',
 };
 
 /** 인당회계사가 접근 가능한 대분류(그룹) id. 조회 전용이다. */
