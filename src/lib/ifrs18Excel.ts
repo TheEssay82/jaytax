@@ -11,7 +11,7 @@
 import type { Worksheet } from 'exceljs';
 import { FONT, FONT_BOLD, FILL_HEADER, FILL_TOTAL, FILL_INPUT, BORDER_ALL, setWidths, saveWorkbook } from './confirmExcelStyle';
 import {
-  PL1118_ORDER, PL1001_ORDER, LINES_1118,
+  PL1118_ORDER, PL1001_ORDER, LINES_1118, startCutMonth,
   type Ifrs18Config, type Ifrs18Result, type Ifrs18Periods, type JLine, type Judgment, type CloseSummary,
 } from './ifrs18';
 
@@ -90,7 +90,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   const wsB = add('94_BS속성', TAB.basis);
 
   // ── 00 기본 정보(다른 시트가 읽는 값: B6 연도 · B7 기준월 · B8 전월 · B9 직전 분기 말 월) ──
-  const P = { Y: "'00_읽는법'!$B$6", M: "'00_읽는법'!$B$7", PM: "'00_읽는법'!$B$8", PQ: "'00_읽는법'!$B$9" };
+  const P = { Y: "'00_읽는법'!$B$6", M: "'00_읽는법'!$B$7", PM: "'00_읽는법'!$B$8", PQ: "'00_읽는법'!$B$9", SC: "'00_읽는법'!$B$10" };
   const cutPM = `DATE(${P.Y},${P.PM}+1,0)`, cutPQ = `DATE(${P.Y},${P.PQ}+1,0)`;
 
   // ── 93_계정판단표 — 판단(입력) + 1118 표시항목(수식) ──
@@ -173,8 +173,8 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   title(wsA, '조정 내역 — 필요(1118 기준) − 이미 기표(권고코드 달린 조정전표) = 반영(손익계산서에서 옮김), 금액 차변+',
     '계리: 연간 금액(노란 칸) × 개월/12 · 판단: 92_분개장에서 그 전표 · 계정 합계 · 수동: 지정 금액. 이미 기표 = 92_분개장에서 권고코드가 같고 계정이 대상 1118 항목인 줄의 합계.');
   header(wsA, 4, ['권고코드', '구분', '원 전표번호', '원천 G/L', '원천 1118 항목', '대상 1118 항목', '기준 금액(계리 연간 · 수동)',
-    '필요(누적)', '이미 기표(누적)', '반영(누적)', '필요(전월 말)', '이미 기표(전월 말)', '반영(전월 말)', '필요(직전 분기 말)', '이미 기표(직전 분기 말)', '반영(직전 분기 말)', '내용 · 근거']);
-  setWidths(wsA, [28, 7, 12, 10, 16, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 50]);
+    '필요(누적)', '이미 기표(누적)', '반영(누적)', '필요(전월 말)', '이미 기표(전월 말)', '반영(전월 말)', '필요(직전 분기 말)', '이미 기표(직전 분기 말)', '반영(직전 분기 말)', '내용 · 근거', '기표 시작 전 몫(누적, 장부 기표 안 함)', '권고 잔액(누적) = 필요 − 시작 전 몫 − 이미 기표']);
+  setWidths(wsA, [28, 7, 12, 10, 16, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 50, 17, 19]);
   res.moves.forEach((m, i) => {
     const r = 5 + i;
     cell(wsA, r, 1, m.code, BLUE); cell(wsA, r, 2, m.kind, BLUE); cell(wsA, r, 3, m.docNo ?? '', BLUE); cell(wsA, r, 4, m.srcGl, BLUE);
@@ -201,6 +201,11 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     cell(wsA, r, 15, f(`SUMIFS(${J('G')},${J('M')},A${r},${J('K')},F${r},${J('B')},"<="&${cutPQ})`), GREEN, NUM);
     for (const [c, a, b] of [[10, 'H', 'I'], [13, 'K', 'L'], [16, 'N', 'O']] as const) cell(wsA, r, c, f(`${a}${r}-${b}${r}`), FONT_BOLD, NUM);
     cell(wsA, r, 17, m.label, BLUE);
+    const sc = `${P.SC}>=${P.M}`;
+    if (m.kind === '계리') cell(wsA, r, 18, f(`IF(${sc},H${r},ROUND(G${r}*${P.SC}/12,0))`), GREEN, NUM);
+    else if (m.kind === '판단') cell(wsA, r, 18, f(`IF(${sc},H${r},SUMIFS(${J('G')},${J('A')},C${r},${J('C')},D${r},${J('B')},"<="&DATE(${P.Y},${P.SC}+1,0)))`), GREEN, NUM);
+    else cell(wsA, r, 18, f(`IF(${P.SC}>0,H${r},0)`), GREEN, NUM);
+    cell(wsA, r, 19, f(`H${r}-R${r}-I${r}`), FONT_BOLD, NUM);
   });
   if (!res.moves.length) cell(wsA, 5, 1, '조정 없음');
   wsA.views = [{ state: 'frozen', ySplit: 4, xSplit: 1 }];
@@ -332,31 +337,36 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   const started = !cfg.adjustFrom || `${res.year}-${String(res.month).padStart(2, '0')}` >= cfg.adjustFrom;
   title(wsR, '조정 권고 전표 — K-IFRS 1118 기준으로 장부(SAP)에 기표할 재분류 전표',
     `${started ? '이번 달 기표 대상' : `참고용 — 기표는 ${startTxt} 결산부터`} · 금액 = 1118 기준 옮길 금액(누적) − 이미 기표한 조정전표(누적). 각 줄의 라인텍스트 맨 앞에 A열 권고코드를 적는다. 대상 G/L(노란 칸)은 바꿀 수 있다.`);
-  header(wsR, 4, ['권고코드(라인텍스트에 기재)', '구분', '내용', '옮길 금액(누적)', '이미 기표(누적)', '이번 기표 금액(차변+)', '차변 G/L', '차변 계정명', '대변 G/L', '대변 계정명', '금액', '대상 G/L(입력)', '대상 G/L의 1118 항목', '확인']);
-  setWidths(wsR, [28, 7, 40, 15, 15, 16, 10, 26, 10, 26, 15, 11, 20, 16]);
+  header(wsR, 4, ['권고코드(라인텍스트에 기재)', '구분', '내용', '옮길 금액(누적)', '기표 시작 전 몫(기표 안 함)', '이미 기표(누적)', '이번 기표 금액(차변+)',
+    '차변 G/L', '차변 계정명', '대변 G/L', '대변 계정명', '금액', '대상 G/L(입력)', '대상 G/L의 1118 항목', '1118 확인', '원천 G/L 1001 항목', '대상 G/L 1001 항목', '1001 확인']);
+  setWidths(wsR, [28, 7, 36, 15, 15, 15, 16, 10, 24, 10, 24, 15, 11, 18, 14, 12, 12, 16]);
   res.moves.forEach((m, i) => {
     const rr = 5 + i, ar = 5 + i;
     cell(wsR, rr, 1, f(`'91_조정내역'!A${ar}`), GREEN); cell(wsR, rr, 2, f(`'91_조정내역'!B${ar}`), GREEN); cell(wsR, rr, 3, f(`'91_조정내역'!Q${ar}`), GREEN);
-    cell(wsR, rr, 4, f(`'91_조정내역'!H${ar}`), GREEN, NUM); cell(wsR, rr, 5, f(`'91_조정내역'!I${ar}`), GREEN, NUM); cell(wsR, rr, 6, f(`'91_조정내역'!J${ar}`), GREEN, NUM);
-    cell(wsR, rr, 7, f(`IF(F${rr}=0,"",IF(F${rr}>0,L${rr},'91_조정내역'!D${ar}))`));
-    cell(wsR, rr, 8, f(`IF(G${rr}="","",${look(`G${rr}`, 'B', '판단표에 없음')})`), GREEN);
-    cell(wsR, rr, 9, f(`IF(F${rr}=0,"",IF(F${rr}>0,'91_조정내역'!D${ar},L${rr}))`));
-    cell(wsR, rr, 10, f(`IF(I${rr}="","",${look(`I${rr}`, 'B', '판단표에 없음')})`), GREEN);
-    cell(wsR, rr, 11, f(`ABS(F${rr})`), FONT_BOLD, NUM);
-    const t = cell(wsR, rr, 12, m.reclassGl, BLUE); t.fill = FILL_INPUT;
-    cell(wsR, rr, 13, f(`IF(L${rr}="","대상 G/L 입력 필요",${look(`L${rr}`, 'K', '판단표에 없음')})`), GREEN);
-    cell(wsR, rr, 14, f(`IF(F${rr}=0,"기표 불필요",IF(M${rr}='91_조정내역'!F${ar},"✔ 기표","✘ 대상 항목과 다름"))`));
+    cell(wsR, rr, 4, f(`'91_조정내역'!H${ar}`), GREEN, NUM); cell(wsR, rr, 5, f(`'91_조정내역'!R${ar}`), GREEN, NUM);
+    cell(wsR, rr, 6, f(`'91_조정내역'!I${ar}`), GREEN, NUM); cell(wsR, rr, 7, f(`'91_조정내역'!S${ar}`), GREEN, NUM);
+    cell(wsR, rr, 8, f(`IF(G${rr}=0,"",IF(G${rr}>0,M${rr},'91_조정내역'!D${ar}))`));
+    cell(wsR, rr, 9, f(`IF(H${rr}="","",${look(`H${rr}`, 'B', '판단표에 없음')})`), GREEN);
+    cell(wsR, rr, 10, f(`IF(G${rr}=0,"",IF(G${rr}>0,'91_조정내역'!D${ar},M${rr}))`));
+    cell(wsR, rr, 11, f(`IF(J${rr}="","",${look(`J${rr}`, 'B', '판단표에 없음')})`), GREEN);
+    cell(wsR, rr, 12, f(`ABS(G${rr})`), FONT_BOLD, NUM);
+    const t = cell(wsR, rr, 13, m.reclassGl, BLUE); t.fill = FILL_INPUT;
+    cell(wsR, rr, 14, f(`IF(M${rr}="","대상 G/L 입력 필요",${look(`M${rr}`, 'K', '판단표에 없음')})`), GREEN);
+    cell(wsR, rr, 15, f(`IF(G${rr}=0,"기표 불필요",IF(M${rr}="","✘ 대상 G/L 입력 필요",IF(N${rr}='91_조정내역'!F${ar},"✔","✘ 대상 항목과 다름")))`));
+    cell(wsR, rr, 16, f(look(`'91_조정내역'!D${ar}`, 'C', '판단표에 없음')), GREEN);
+    cell(wsR, rr, 17, f(`IF(M${rr}="","",${look(`M${rr}`, 'C', '판단표에 없음')})`), GREEN);
+    cell(wsR, rr, 18, f(`IF(G${rr}=0,"기표 불필요",IF(M${rr}="","✘ 대상 G/L 입력 필요",IF(Q${rr}=P${rr},"✔ 같음","✘ 1001 영향")))`));
   });
   const RE = 4 + Math.max(res.moves.length, 1);
   if (!res.moves.length) cell(wsR, 5, 1, '권고 전표 없음');
   let rr2 = RE + 2;
-  cell(wsR, rr2, 3, '이번 기표 합계(차변 = 대변)', FONT_BOLD); cell(wsR, rr2, 11, f(`SUM(K5:K${RE})`), FONT_BOLD, NUM); rr2 += 2;
+  cell(wsR, rr2, 3, '이번 기표 합계(차변 = 대변)', FONT_BOLD); cell(wsR, rr2, 12, f(`SUM(L5:L${RE})`), FONT_BOLD, NUM); rr2 += 2;
   const rules = [
     '1. 전표마다 차변 · 대변 두 줄. 두 줄 모두 라인텍스트 맨 앞에 권고코드(A열)를 적는다 — 다음 달 분개장에서 「이미 기표」로 잡히는 열쇠다.',
-    '2. 금액은 1월부터 기준월까지 누적 기준이다. 지난달까지 기표한 금액은 「이미 기표」에 들어 있으므로 「이번 기표 금액」만 기표한다.',
-    '3. 손익 안에서 계정만 옮기는 전표라 당기순이익은 바뀌지 않는다. 1001 영업이익은 계정의 1001 항목에 따라 바뀔 수 있다.',
+    `2. 금액은 기표 시작월(${startTxt || '지정 없음'}) 이후 누적이다. 시작 전 몫은 장부에 기표하지 않고 1118 표시에서만 옮긴다(91_조정내역). 지난달까지 기표한 금액은 「이미 기표」에 들어 있으므로 「이번 기표 금액」만 기표한다.`,
+    '3. 손익 안에서 계정만 옮기는 전표라 당기순이익은 바뀌지 않는다. 대상 G/L 의 1001 항목이 원천과 다르면 현행 1001 손익계산서(영업이익 등)가 바뀌므로 「1001 확인」이 ✔ 인 계정을 쓴다.',
     '4. 기표 후 같은 기준월 분개장을 다시 받아 이 파일을 다시 만들면 「이번 기표 금액」이 0 이고 10_손익계산서가 기표 전과 같아야 한다(01_검증체크 2차 항목).',
-    '5. 대상 G/L 이 판단표에 없거나 1118 항목이 다르면 ✘ — 계정을 바꾸거나 판단표(93)를 고친다.',
+    '5. 대상 G/L 이 판단표에 없거나 1118 항목 · 1001 항목이 다르면 ✘ — 계정을 바꾸거나 판단표(93)를 고친다.',
   ];
   for (const t of rules) { const c = wsR.getCell(rr2, 1); c.value = t; c.font = { ...FONT, size: 9 }; wsR.mergeCells(rr2, 1, rr2, 14); rr2++; }
   wsR.views = [{ state: 'frozen', ySplit: 4, xSplit: 1 }];
@@ -405,7 +415,6 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     ['주석금액 항목 합계 = 손익계산서', `SUMPRODUCT(ABS('12_주석금액'!$E$5:$E$${NE}))=0`, `SUMPRODUCT(ABS('12_주석금액'!$E$5:$E$${NE}))`, '12_주석금액의 빨간 줄'],
     ['기간별: 전월 말 1118 당기순손익 = 1001 당기순이익', `ROUND('11_기간별손익'!D${qp['당기순손익']}-'11_기간별손익'!D${qp1['당기순이익']},0)=0`, `'11_기간별손익'!D${qp['당기순손익']}-'11_기간별손익'!D${qp1['당기순이익']}`, '91_조정내역 전월 말 열'],
     ['조정전표(권고코드) 줄의 코드 · 계정 정상', `COUNTIF(${J('N')},"확인")+COUNTIF(${J('N')},"미등록코드")=0`, `COUNTIF(${J('N')},"확인")+COUNTIF(${J('N')},"미등록코드")`, '92_분개장 N열 「확인 · 미등록코드」 줄의 라인텍스트 · 계정'],
-    ['20_조정권고전표 대상 G/L 이 대상 항목과 맞음', `COUNTIF('20_조정권고전표'!$N$5:$N$${RE},"✘*")=0`, `COUNTIF('20_조정권고전표'!$N$5:$N$${RE},"✘*")`, '20_조정권고전표 노란 칸(대상 G/L)'],
   ];
   let cr = 5;
   const c1 = cr;
@@ -423,7 +432,9 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   header(wsC, cr, ['', `2차 마감(조정전표 반영 검증)${cfg.adjustFrom ? ` — ${startTxt}부터` : ''}`, '결과', '값', '고칠 곳']); cr++;
   const c2 = cr;
   const two: [string, string, string, string][] = [
-    ['조정 권고 잔액 0(이번 기표 금액 모두 0)', `SUMPRODUCT(ABS(${A('J')}))=0`, `SUMPRODUCT(ABS(${A('J')}))`, '20_조정권고전표대로 기표 후 분개장 다시 받기'],
+    ['조정 권고 잔액 0(이번 기표 금액 모두 0)', `SUMPRODUCT(ABS(${A('S')}))=0`, `SUMPRODUCT(ABS(${A('S')}))`, '20_조정권고전표대로 기표 후 분개장 다시 받기'],
+    ['20_조정권고전표 대상 G/L 의 1118 항목이 맞음', `COUNTIF('20_조정권고전표'!$O$5:$O$${RE},"✘*")=0`, `COUNTIF('20_조정권고전표'!$O$5:$O$${RE},"✘*")`, '20_조정권고전표 노란 칸(대상 G/L)'],
+    ['20_조정권고전표 대상 G/L 의 1001 항목 = 원천(현행 1001 영향 없음)', `COUNTIF('20_조정권고전표'!$R$5:$R$${RE},"✘*")=0`, `COUNTIF('20_조정권고전표'!$R$5:$R$${RE},"✘*")`, '20_조정권고전표 노란 칸 — 1001 항목이 같은 계정으로'],
   ];
   if (opts.close1) {
     const s = opts.close1.summary;
@@ -459,6 +470,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     ['기준월', res.month, true],
     ['전월(당월 계산 기준)', f('B7-1')],
     ['직전 분기 말 월', f('INT((B7-1)/3)*3')],
+    ['기표 시작 전 마지막 월', startCutMonth(cfg, res.year, res.month), true],
     ['누적 기간', period],
     ['원천 분개장', `${opts.fileName} · ${res.lineCount.toLocaleString()}줄(임시전표 ${res.tempCount}줄 제외)`],
     ['작성', `${new Date().toLocaleString('ko-KR')} · ${opts.byName}`],
@@ -501,7 +513,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   for (const [k, ft, fill, v] of legend) { const c = cell(wsG, gr, 1, k, ft); if (fill) c.fill = FILL_INPUT; cell(wsG, gr, 4, v); gr++; }
 
   // 이 시트 B6 · B7 이 다른 시트의 기준(연도 · 월)이다 — 위 info 순서와 맞물려 있다.
-  if (wsG.getCell('A6').value !== '기준연도' || wsG.getCell('A7').value !== '기준월') throw new Error('00_읽는법 기준 칸 위치가 바뀌었습니다');
+  if (wsG.getCell('A6').value !== '기준연도' || wsG.getCell('A7').value !== '기준월' || wsG.getCell('A10').value !== '기표 시작 전 마지막 월') throw new Error('00_읽는법 기준 칸 위치가 바뀌었습니다');
 
   wb.calcProperties = { fullCalcOnLoad: true };
   return wb;

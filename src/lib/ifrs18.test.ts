@@ -170,3 +170,16 @@ test('조정전표(권고코드) 반영 — 기표한 만큼 덜 옮기고 결�
   assert.equal(bad.tagIssues[0].why, '미등록코드');
   assert.equal(suggestReclassGl(cfg2, '51120701', '기타투자비용'), '');
 });
+
+test('기표 시작월(adjustFrom) — 시작 전 몫은 권고에서 빼고 1118 표시에는 그대로', async () => {
+  const { startCutMonth } = await import('./ifrs18');
+  const c3: Ifrs18Config = { ...cfg, adjustFrom: '2026-10', accounts: [...cfg.accounts, A('74010199', '이자비용-기타', '금융비용', '재무')] };
+  assert.equal(startCutMonth(c3, 2026, 7), 7); assert.equal(startCutMonth(c3, 2026, 11), 9); assert.equal(startCutMonth(c3, 2027, 3), 0);
+  const j11 = journal.map((l) => ({ ...l, date: '2026-11-15' }));
+  const r = compute(j11, c3, [], 2026, 11);
+  const a = r.moves.find((m) => m.kind === '계리')!;
+  assert.equal(a.required, -1100); assert.equal(a.beforeStart, -900); assert.equal(a.advise, -200);
+  assert.equal(a.amount, -1100);   // 1118 표시에는 1~11월 전부
+  const r7 = compute(journal, c3, [], 2026, 7);
+  assert.equal(r7.moves.find((m) => m.kind === '계리')!.advise, 0);
+});

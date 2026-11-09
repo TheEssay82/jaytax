@@ -215,6 +215,18 @@ export interface Move {
   /** 손익계산서에 실제로 옮기는 금액 = required − posted (차변+) */ amount: number;
   /** 재분류 전표 대상 GL 제안 */ reclassGl: string;
   /** 계리 · 수동의 기준 금액(연간 금액 또는 수동 금액) */ base?: number;
+  /** 기표 시작 전 몫(adjustFrom 이전 달까지 — 장부에 기표하지 않고 1118 표시에서만 옮긴다) */ beforeStart: number;
+  /** 장부에 기표할 권고액 = required − beforeStart − posted */ advise: number;
+  /** 대상 GL 의 1001 항목이 원천 GL 과 같은가(2026년 1001 공시 영향 없음) — 대상 GL 없으면 null */ same1001: boolean | null;
+}
+
+/** 기표 시작 전 마지막 달 — 그 달까지의 몫은 권고 전표에서 뺀다(사용자 2026-11-09 「10월분부터만」). 시작 전 해면 기준월 전체. */
+export function startCutMonth(cfg: Ifrs18Config, year: number, month: number): number {
+  if (!cfg.adjustFrom) return 0;
+  const [ay, am] = cfg.adjustFrom.split('-').map(Number);
+  if (year > ay) return 0;
+  if (year < ay) return month;
+  return Math.min(month, am - 1);
 }
 
 /** 라인텍스트에서 권고코드를 꺼낸다 — 엑셀 식과 같은 규칙: 「1118-」부터 40자 안에서 첫 공백 전까지. */
@@ -310,7 +322,7 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
   const lineOfGl = (gl: string) => { const a = acc.get(gl); return a ? line1118(a) : '확인필요'; };
   const srcLine = lineOfGl;
   const tagged = live.filter((l) => isPl(l.gl) && tagOf(l.memo));
-  const req: Omit<Move, 'posted' | 'amount'>[] = [];
+  const req: Omit<Move, 'posted' | 'amount' | 'beforeStart' | 'advise' | 'same1001'>[] = [];
   for (const x of cfg.actuarial) {
     const amt = x.override != null ? x.override : r0((x.annual * month) / 12);
     req.push({ kind: '계리', code: `1118-A-${x.key}`, label: x.label, srcGl: x.srcGl, src: srcLine(x.srcGl), target: x.target, required: amt,
@@ -343,7 +355,21 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
     if (ln === m.target) postedBy.set(code, (postedBy.get(code) ?? 0) + l.dr - l.cr);
     else if (l.gl !== m.srcGl) tagIssues.push({ docNo: l.docNo, gl: l.gl, code, amt, why: '계정 확인' });
   }
-  const moves: Move[] = req.map((m) => { const posted = r0(postedBy.get(m.code) ?? 0); return { ...m, posted, amount: m.required - posted }; });
+  const sc = startCutMonth(cfg, year, month);
+  const scEnd = sc > 0 ? monthEnd(year, sc) : '';
+  const before = (m: (typeof req)[number]): number => {
+    if (sc <= 0) return 0;
+    if (m.kind === '계리') { const x = cfg.actuarial.find((a) => `1118-A-${a.key}` === m.code); return x ? r0((x.annual * sc) / 12) : 0; }
+    if (m.kind === '수동') return m.required;
+    return r0(live.filter((l) => l.docNo === m.docNo && l.gl === m.srcGl && l.date <= scEnd).reduce((t, l) => t + l.dr - l.cr, 0));
+  };
+  const l1001Of = (gl: string) => acc.get(gl)?.l1001;
+  const moves: Move[] = req.map((m) => {
+    const posted = r0(postedBy.get(m.code) ?? 0);
+    const b = sc >= month ? m.required : before(m);
+    return { ...m, posted, amount: m.required - posted, beforeStart: b, advise: m.required - b - posted,
+      same1001: m.reclassGl ? l1001Of(m.reclassGl) === l1001Of(m.srcGl) : null };
+  });
 
   // 4) 손익계산서
   const pl1118: Record<string, number> = {};
@@ -536,12 +562,16 @@ export function closeSummary(res: Ifrs18Result, per: Ifrs18Periods, fileName: st
 /** 2차 마감 확인 — 1차 마감 결과(요약)와 지금 분개장(조정전표 기표 후) 결과를 맞대 본다. */
 export interface Close2Check { id: string; label: string; ok: boolean; detail: string }
 export function close2Checks(res: Ifrs18Result, close1: CloseSummary | null): Close2Check[] {
-  const remain = res.moves.filter((m) => m.amount !== 0);
+  const remain = res.moves.filter((m) => m.advise !== 0);
   const out: Close2Check[] = [
     { id: 'c1', label: '1차 마감 완료', ok: !!close1, detail: close1 ? '' : '먼저 STEP 6 에서 1차 마감' },
     { id: 'base', label: '1차 마감 조건(위 확인) 모두 ✔', ok: res.checks.every((c) => c.ok), detail: res.checks.filter((c) => !c.ok).map((c) => c.label).join(', ') },
-    { id: 'remain', label: '조정 권고 잔액 0(권고 전표 모두 기표)', ok: remain.length === 0, detail: remain.map((m) => `${m.code} ${m.amount.toLocaleString()}`).join(' · ') },
+    { id: 'remain', label: '조정 권고 잔액 0(권고 전표 모두 기표)', ok: remain.length === 0, detail: remain.map((m) => `${m.code} ${m.advise.toLocaleString()}`).join(' · ') },
     { id: 'tag', label: '조정전표 줄의 코드 · 계정 정상', ok: res.tagIssues.length === 0, detail: res.tagIssues.map((t) => `${t.docNo}/${t.gl} ${t.code} ${t.why}`).join(' · ') },
+    { id: 'gl', label: '권고 전표 대상 G/L 지정됨', ok: res.moves.every((m) => m.advise === 0 || !!m.reclassGl),
+      detail: res.moves.filter((m) => m.advise !== 0 && !m.reclassGl).map((m) => `${m.code} 대상 G/L 지정 필요`).join(' · ') },
+    { id: 'l1001', label: '권고 전표 대상 G/L 의 1001 항목 = 원천 G/L(현행 1001 손익계산서 영향 없음)', ok: res.moves.every((m) => m.advise === 0 || m.same1001 === true),
+      detail: res.moves.filter((m) => m.advise !== 0 && m.same1001 !== true).map((m) => `${m.code} → ${m.reclassGl || '대상 G/L 지정 필요'}`).join(' · ') },
   ];
   if (close1) {
     const diffs = PL1118_ORDER.filter((o) => Math.round((res.pl1118[o.key] ?? 0) - (close1.pl1118.cum[o.key] ?? 0)) !== 0)

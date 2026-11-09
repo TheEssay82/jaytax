@@ -41,7 +41,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(Math.max(1, now.getMonth())); // 기본: 지난달
-  const [lines, setLines] = useState<JLine[]>([]);
+  const [allLines, setLines] = useState<JLine[]>([]);
   const [fileName, setFileName] = useState('');
   const [reading, setReading] = useState(false);
   const [annual, setAnnual] = useState<Record<string, number>>({});
@@ -82,6 +82,9 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
     ...cfgBase,
     actuarial: cfgBase.actuarial.map((a) => (a.key in annual ? { ...a, annual: annual[a.key] } : a)),
   }, [cfgBase, annual]);
+  /** 기준월보다 뒤 전표는 잘라 낸다 — 1~9월 누적 파일 하나로 7 · 8 · 9월을 차례로 마감해 볼 수 있다(사용자 2026-11-09 「7~9월 월마감 테스트」). */
+  const lines = useMemo(() => { const end = monthEnd(year, month); return allLines.filter((l) => l.date <= end); }, [allLines, year, month]);
+  const cutCount = allLines.length - lines.length;
   const res = useMemo(() => (cfg && lines.length ? compute(lines, cfg, judgments, year, month) : null), [cfg, lines, judgments, year, month]);
   const lastDate = useMemo(() => lines.reduce((m, l) => (l.date > m ? l.date : m), ''), [lines]);
   const per = useMemo(() => (cfg && res ? computePeriods(lines, cfg, judgments, year, month, res) : null), [cfg, res, lines, judgments, year, month]);
@@ -243,7 +246,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
       <div className="card">
         {stepHead(2, 'SAP 분개장 올리기', lines.length > 0 && periodOk, '1월 1일 ~ 기준월 말일 누적 · 전체 계정 · SAP 에서 내려받은 파일 그대로')}
         <label className="btn-sm btn-sm-navy" style={{ cursor: 'pointer' }}>{reading ? '읽는 중…' : '분개장 xlsx 선택'}<input type="file" accept=".xlsx,.xls" hidden disabled={reading} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onJournal(f); }} /></label>
-        {lines.length > 0 && <span style={{ marginLeft: 8, fontSize: 'var(--fs-1)' }}>{fileName} · {lines.length.toLocaleString()}줄 · 마지막 전기일 {lastDate}{res ? ` · 임시전표 ${res.tempCount}줄 제외` : ''}</span>}
+        {lines.length > 0 && <span style={{ marginLeft: 8, fontSize: 'var(--fs-1)' }}>{fileName} · {lines.length.toLocaleString()}줄{cutCount > 0 ? `(기준월 뒤 ${cutCount.toLocaleString()}줄은 빼고 계산)` : ''} · 마지막 전기일 {lastDate}{res ? ` · 임시전표 ${res.tempCount}줄 제외` : ''}</span>}
         {lines.length > 0 && !periodOk && <div className="alert-w" style={{ marginTop: 6 }}>분개장의 마지막 전기일({lastDate})이 기준월({year}-{String(month).padStart(2, '0')})과 다릅니다. 기준월이나 파일을 확인하세요.</div>}
         {res && res.tb.some((t) => !t.registered) && (
           <div className="alert-w" style={{ marginTop: 6 }}>판단표에 없는 손익 계정: {res.tb.filter((t) => !t.registered).map((t) => `${t.gl} ${t.name}`).join(', ')} — 인덕회계법인에 판단표 추가를 요청하세요.</div>
@@ -370,15 +373,17 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
               <div style={{ fontSize: 'var(--fs-1)', lineHeight: 1.7, marginBottom: 6 }}>
                 ① STEP 6 에서 1차 마감하고 엑셀을 내려받습니다 → ② 엑셀 <b>20_조정권고전표</b>대로 SAP 에 기표합니다(<b>라인텍스트 맨 앞에 권고코드</b>) →
                 ③ 같은 기준월 분개장을 다시 받아 아래에서 올립니다 → ④ 확인이 모두 ✔ 이면 2차 마감.
+                {cfg.adjustFrom && <> 기표 시작월({cfg.adjustFrom}) 전 몫은 장부에 기표하지 않고 1118 표시에서만 옮깁니다(「기표 시작 전 몫」).</>}
               </div>
               <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 6 }}>
-                <thead><tr>{['권고코드', '구분', '원천 → 대상', '대상 G/L 제안', '옮길 금액(누적)', '이미 기표', '남은 권고액'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                <thead><tr>{['권고코드', '구분', '원천 → 대상', '대상 G/L 제안', '1001 같음', '옮길 금액(누적)', '기표 시작 전 몫', '이미 기표', '이번 기표 권고액'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
                 <tbody>{res.moves.map((m) => (
-                  <tr key={m.code} style={{ background: m.amount !== 0 && due ? '#FEF2F2' : undefined }}>
+                  <tr key={m.code} style={{ background: m.advise !== 0 && due ? '#FEF2F2' : undefined }}>
                     <td style={td}><code>{m.code}</code></td><td style={td}>{m.kind}</td><td style={td}>{m.srcGl} {m.src} → {m.target}</td><td style={td}>{m.reclassGl || '지정 필요'}</td>
-                    <td style={num}>{won(m.required)}</td><td style={num}>{won(m.posted)}</td><td style={{ ...num, fontWeight: 700 }}>{won(m.amount)}</td>
+                    <td style={{ ...td, color: m.same1001 === false ? 'var(--bad)' : undefined }}>{m.same1001 == null ? '—' : m.same1001 ? '✔' : '✘ 1001 영향'}</td>
+                    <td style={num}>{won(m.required)}</td><td style={num}>{won(m.beforeStart)}</td><td style={num}>{won(m.posted)}</td><td style={{ ...num, fontWeight: 700 }}>{won(m.advise)}</td>
                   </tr>
-                ))}{!res.moves.length && <tr><td style={td} colSpan={7}>조정 없음</td></tr>}</tbody>
+                ))}{!res.moves.length && <tr><td style={td} colSpan={9}>조정 없음</td></tr>}</tbody>
               </table>
               <label className="btn-sm" style={{ cursor: 'pointer' }}>{reading ? '읽는 중…' : '조정전표 기표 후 분개장 다시 올리기'}<input type="file" accept=".xlsx,.xls" hidden disabled={reading} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void onJournal(f); }} /></label>
               <table style={{ borderCollapse: 'collapse', width: '100%', maxWidth: 980, marginTop: 6 }}>
