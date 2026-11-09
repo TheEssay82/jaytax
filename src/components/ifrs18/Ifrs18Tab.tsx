@@ -359,10 +359,11 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
                   <button className="btn-sm" disabled={busy || readonly} onClick={() => void reopenMonth()}>마감 해제</button></>
               : <button className="btn-sm btn-sm-navy" disabled={busy || readonly || !allOk} title={allOk ? '' : '위 확인이 모두 ✔ 여야 마감할 수 있습니다'} onClick={() => void closeMonth()}>{month}월 마감하기</button>}
             <button className="btn-sm" onClick={() => void download()}>엑셀 내려받기(수식 검증 파일)</button>
+            {!cfg.close2 && res.moves.some((m) => m.advise !== 0) && <span style={{ fontSize: 'var(--fs-1)', color: '#B45309' }}>정정 후보(참고) {res.moves.filter((m) => m.advise !== 0).length}건 — 엑셀 20_정정후보</span>}
             <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>엑셀만으로 다시 계산 · 검증되는 파일입니다(00_읽는법 → 01_검증체크 → 보고 · 권고 · 검토 · 근거 시트). 조정이 있으면 20_조정권고전표에 장부 기표용 전표가 나옵니다.{!allOk && ' 확인이 남아 있어도 내려받을 수 있습니다(진행 중 표시). 마감은 모두 ✔ 일 때만 됩니다.'}</span>
           </div>
         </div>
-        {(() => {
+        {cfg.close2 && (() => {
           const c2 = close2Checks(res, closedRow?.summary ?? null);
           const due = needsClose2(cfg, year, month);
           const c2ok = c2.every((c) => c.ok);

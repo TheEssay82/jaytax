@@ -49,7 +49,7 @@ export default function Ifrs18Dashboard({ year, month, closes, logs, drift, onPi
               return (
                 <td key={m} style={{ ...td, textAlign: 'center', cursor: 'pointer', color: c ? (d ? '#B45309' : '#16A34A') : 'var(--ink-3)', fontWeight: 700 }} onClick={() => onPick(m)}
                   title={c ? `1차 ${c.byName ?? ''} ${new Date(c.at).toLocaleString('ko-KR')} · ${c.summary.fileName}${c.close2 ? `\n2차 ${c.close2.byName ?? ''} ${new Date(c.close2.at).toLocaleString('ko-KR')}` : ''}${d ? `\n⚠ 지금 분개장으로 다시 계산하면 영업손익 ${won(d.op)} · 순손익 ${won(d.ni)} 차이` : ''}` : '미마감'}>
-                  {c ? (d ? '⚠ 변동' : c.close2 ? '✔✔ 2차' : '✔ 1차') : '—'}
+                  {c ? (d ? '⚠ 변동' : c.close2 ? '✔✔ 2차' : '✔ 마감') : '—'}
                 </td>
               );
             })}</tr>

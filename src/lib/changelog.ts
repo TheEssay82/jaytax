@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.81.4',
+    date: '2026-11-09',
+    title: 'K-IFRS 1118 월결산 — 장부 정정은 참고로 낮춤 · 2차 마감 기본 끔',
+    highlights: [
+      '장부 정정은 원칙적으로 없다는 전제(손익은 기존 계정 · 투자/재무는 상대계정으로 분류)에 맞췄습니다. 엑셀 20 시트는 「20_정정후보」(참고)로 바꾸고 마감 조건에서 뺐습니다.',
+      'STEP 7 2차 마감은 판단표 close2 를 켠 회사에만 보입니다(기본 끔). 결산 현황 상태는 「✔ 마감」.',
+    ],
+  },
+  {
     version: '3.81.3',
     date: '2026-11-09',
     title: 'K-IFRS 1118 월결산 — 엑셀 사용 안내 시트 · 기표 시작일 전 전표는 조정 없음 · 계리 직접 기표',

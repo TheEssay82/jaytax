@@ -69,6 +69,8 @@ export interface Ifrs18Config {
   reclassGl?: Record<string, string>;
   /** 표시 계정 — 같은 전표에 있으면 그 전표의 영업 범주 손익 줄을 모두 주의 라인으로 올리는 BS 계정(크래프톤 신설 미지급금 · 미지급비용 (투자)/(재무)) */
   markerBs?: string[];
+  /** 2차 마감(정정 전표 반영 검증)을 쓰는가 — 기본 끔(사용자 2026-11-09: 장부 정정은 원칙적으로 없고, 상대계정으로 분류한다) */
+  close2?: boolean;
 }
 export type Decision = '영업 유지' | '조정';
 export interface Judgment {
