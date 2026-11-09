@@ -173,7 +173,7 @@ test('조정전표(권고코드) 반영 — 기표한 만큼 덜 옮기고 결�
 
 test('기표 시작월(adjustFrom) — 시작 전 몫은 권고에서 빼고 1118 표시에는 그대로', async () => {
   const { startCutMonth } = await import('./ifrs18');
-  const c3: Ifrs18Config = { ...cfg, adjustFrom: '2026-10', accounts: [...cfg.accounts, A('74010199', '이자비용-기타', '금융비용', '재무')] };
+  const c3: Ifrs18Config = { ...cfg, adjustFrom: '2026-10', reclassGl: { '51030101>재무비용': '74010115' }, accounts: [...cfg.accounts, A('74010199', '이자비용-기타', '금융비용', '재무')] };
   assert.equal(startCutMonth(c3, 2026, 7), 7); assert.equal(startCutMonth(c3, 2026, 11), 9); assert.equal(startCutMonth(c3, 2027, 3), 0);
   const j11 = journal.map((l) => ({ ...l, date: '2026-11-15' }));
   const r = compute(j11, c3, [], 2026, 11);
@@ -182,4 +182,16 @@ test('기표 시작월(adjustFrom) — 시작 전 몫은 권고에서 빼고 111
   assert.equal(a.amount, -1100);   // 1118 표시에는 1~11월 전부
   const r7 = compute(journal, c3, [], 2026, 7);
   assert.equal(r7.moves.find((m) => m.kind === '계리')!.advise, 0);
+});
+
+test('표시 계정 — 같은 전표에 미지급금(투자)가 있으면 주의계정이 아니어도 영업 손익 줄을 올린다 · 대상 손익 계정 없으면 기표 대상 아님', () => {
+  const c4: Ifrs18Config = { ...cfg, bsAttr: { ...cfg.bsAttr, '21040129': '투자' }, markerBs: ['21040129'] };
+  const j = [...journal, L('50', '51020101', 300, 0, { memo: 'M&A 자문료' }), L('50', '21040129', 0, 300)];
+  const r = compute(j, c4, [], 2026, 6);
+  const w = r.watch.find((x) => x.docNo === '50')!;
+  assert.equal(w.via, '표시 계정'); assert.equal(w.suggest, '기타투자비용');
+  const r2 = compute(j, c4, [{ docNo: '50', gl: '51020101', decision: '조정', target: '기타투자비용', reason: 'M&A' }], 2026, 6);
+  const m = r2.moves.find((x) => x.code === '1118-J-50-51020101')!;
+  assert.equal(m.reclassGl, ''); assert.equal(m.advise, 0); assert.equal(m.amount, 300);
+  assert.equal(r2.pl1118['기타투자비용'], -300 + (r.pl1118['기타투자비용'] ?? 0));
 });

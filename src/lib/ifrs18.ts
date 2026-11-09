@@ -62,6 +62,8 @@ export interface Ifrs18Config {
   adjustFrom?: string;
   /** 재분류 대상 GL 지정 — 키 「원천GL>대상 1118 항목」 */
   reclassGl?: Record<string, string>;
+  /** 표시 계정 — 같은 전표에 있으면 그 전표의 영업 범주 손익 줄을 모두 주의 라인으로 올리는 BS 계정(크래프톤 신설 미지급금 · 미지급비용 (투자)/(재무)) */
+  markerBs?: string[];
 }
 export type Decision = '영업 유지' | '조정';
 export interface Judgment {
@@ -200,6 +202,7 @@ export interface TbRow {
 export interface WatchLine {
   docNo: string; date: string; gl: string; glName: string; amt: number; memo: string;
   cpName: string; cpAttr: BsAttr; suggest: Line1118 | null;
+  /** 어떻게 잡혔나 — 주의계정(판단표) / 표시 계정(상대계정이 크래프톤 신설 (투자)/(재무) 미지급금 등) */ via: '주의계정' | '표시 계정';
   decision: Decision | '미판단';
 }
 export interface Move {
@@ -297,22 +300,31 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
   const attrOf = (gl: string): BsAttr | null => cfg.bsAttr[gl] ?? null;
   const unregisteredBs = [...new Set(live.filter((l) => !isPl(l.gl) && !attrOf(l.gl)).map((l) => l.gl))].sort();
   const irByDoc = new Map<string, JLine>();
+  const markByDoc = new Map<string, JLine>();
+  const markers = new Set(cfg.markerBs ?? []);
   for (const l of live) {
     if (isPl(l.gl)) continue;
     const a = attrOf(l.gl);
     if ((a === '투자' || a === '재무') && !irByDoc.has(l.docNo)) irByDoc.set(l.docNo, l);
+    if (markers.has(l.gl) && !markByDoc.has(l.docNo)) markByDoc.set(l.docNo, l);
   }
   const jmap = new Map(judgments.map((j) => [keyOf(j.docNo, j.gl), j]));
   const watch: WatchLine[] = [];
+  // 주의 라인 = ① 주의계정이고 같은 전표에 투자 · 재무 BS 계정이 있는 줄
+  //          ② 같은 전표에 「표시 계정」(크래프톤 신설 미지급금 · 미지급비용 (투자)/(재무))이 있는 영업 범주 손익 줄 — 계정 무관.
+  //             회사가 기표할 때 직접 투자 · 재무 목적이라고 표시한 거래라 놓치지 않는다(사용자 2026-11-09).
   for (const l of live) {
     const a = acc.get(l.gl);
-    if (!a?.watch) continue;
-    const cp = irByDoc.get(l.docNo);
+    if (!a || !isPl(l.gl)) continue;
+    const mk = markByDoc.get(l.docNo);
+    const viaMark = !!mk && catOf(a) === '영업';
+    if (!(a.watch || viaMark)) continue;
+    const cp = viaMark ? mk : irByDoc.get(l.docNo);
     if (!cp) continue;
     const cpAttr = attrOf(cp.gl)!;
     watch.push({
       docNo: l.docNo, date: l.date, gl: l.gl, glName: a.name, amt: r0(l.dr - l.cr), memo: l.memo,
-      cpName: cp.glName, cpAttr, suggest: suggestTarget(a, cpAttr),
+      cpName: cp.glName, cpAttr, suggest: suggestTarget(a, cpAttr), via: viaMark && !a.watch ? '표시 계정' : '주의계정',
       decision: jmap.get(keyOf(l.docNo, l.gl))?.decision ?? '미판단',
     });
   }
@@ -367,7 +379,8 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
   const moves: Move[] = req.map((m) => {
     const posted = r0(postedBy.get(m.code) ?? 0);
     const b = sc >= month ? m.required : before(m);
-    return { ...m, posted, amount: m.required - posted, beforeStart: b, advise: m.required - b - posted,
+    // 대상 손익 계정이 없으면(크래프톤 (투자)/(재무) 손익 계정 없음) 장부 기표 대상이 아니다 — 상대계정 표시로 분류하고 1118 표시에서만 옮긴다.
+    return { ...m, posted, amount: m.required - posted, beforeStart: b, advise: m.reclassGl ? m.required - b - posted : 0,
       same1001: m.reclassGl ? l1001Of(m.reclassGl) === l1001Of(m.srcGl) : null };
   });
 
@@ -568,8 +581,6 @@ export function close2Checks(res: Ifrs18Result, close1: CloseSummary | null): Cl
     { id: 'base', label: '1차 마감 조건(위 확인) 모두 ✔', ok: res.checks.every((c) => c.ok), detail: res.checks.filter((c) => !c.ok).map((c) => c.label).join(', ') },
     { id: 'remain', label: '조정 권고 잔액 0(권고 전표 모두 기표)', ok: remain.length === 0, detail: remain.map((m) => `${m.code} ${m.advise.toLocaleString()}`).join(' · ') },
     { id: 'tag', label: '조정전표 줄의 코드 · 계정 정상', ok: res.tagIssues.length === 0, detail: res.tagIssues.map((t) => `${t.docNo}/${t.gl} ${t.code} ${t.why}`).join(' · ') },
-    { id: 'gl', label: '권고 전표 대상 G/L 지정됨', ok: res.moves.every((m) => m.advise === 0 || !!m.reclassGl),
-      detail: res.moves.filter((m) => m.advise !== 0 && !m.reclassGl).map((m) => `${m.code} 대상 G/L 지정 필요`).join(' · ') },
     { id: 'l1001', label: '권고 전표 대상 G/L 의 1001 항목 = 원천 G/L(현행 1001 손익계산서 영향 없음)', ok: res.moves.every((m) => m.advise === 0 || m.same1001 === true),
       detail: res.moves.filter((m) => m.advise !== 0 && m.same1001 !== true).map((m) => `${m.code} → ${m.reclassGl || '대상 G/L 지정 필요'}`).join(' · ') },
   ];

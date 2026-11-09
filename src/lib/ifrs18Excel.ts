@@ -173,7 +173,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   title(wsA, '조정 내역 — 필요(1118 기준) − 이미 기표(권고코드 달린 조정전표) = 반영(손익계산서에서 옮김), 금액 차변+',
     '계리: 연간 금액(노란 칸) × 개월/12 · 판단: 92_분개장에서 그 전표 · 계정 합계 · 수동: 지정 금액. 이미 기표 = 92_분개장에서 권고코드가 같고 계정이 대상 1118 항목인 줄의 합계.');
   header(wsA, 4, ['권고코드', '구분', '원 전표번호', '원천 G/L', '원천 1118 항목', '대상 1118 항목', '기준 금액(계리 연간 · 수동)',
-    '필요(누적)', '이미 기표(누적)', '반영(누적)', '필요(전월 말)', '이미 기표(전월 말)', '반영(전월 말)', '필요(직전 분기 말)', '이미 기표(직전 분기 말)', '반영(직전 분기 말)', '내용 · 근거', '기표 시작 전 몫(누적, 장부 기표 안 함)', '권고 잔액(누적) = 필요 − 시작 전 몫 − 이미 기표']);
+    '필요(누적)', '이미 기표(누적)', '반영(누적)', '필요(전월 말)', '이미 기표(전월 말)', '반영(전월 말)', '필요(직전 분기 말)', '이미 기표(직전 분기 말)', '반영(직전 분기 말)', '내용 · 근거', '기표 시작 전 몫(누적, 장부 기표 안 함)', '권고 잔액(누적) = 필요 − 시작 전 몫 − 이미 기표 (대상 G/L 없으면 0)']);
   setWidths(wsA, [28, 7, 12, 10, 16, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 50, 17, 19]);
   res.moves.forEach((m, i) => {
     const r = 5 + i;
@@ -205,7 +205,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     if (m.kind === '계리') cell(wsA, r, 18, f(`IF(${sc},H${r},ROUND(G${r}*${P.SC}/12,0))`), GREEN, NUM);
     else if (m.kind === '판단') cell(wsA, r, 18, f(`IF(${sc},H${r},SUMIFS(${J('G')},${J('A')},C${r},${J('C')},D${r},${J('B')},"<="&DATE(${P.Y},${P.SC}+1,0)))`), GREEN, NUM);
     else cell(wsA, r, 18, f(`IF(${P.SC}>0,H${r},0)`), GREEN, NUM);
-    cell(wsA, r, 19, f(`H${r}-R${r}-I${r}`), FONT_BOLD, NUM);
+    cell(wsA, r, 19, f(`IF('20_조정권고전표'!M${r}="",0,H${r}-R${r}-I${r})`), FONT_BOLD, NUM);
   });
   if (!res.moves.length) cell(wsA, 5, 1, '조정 없음');
   wsA.views = [{ state: 'frozen', ySplit: 4, xSplit: 1 }];
@@ -351,11 +351,11 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     cell(wsR, rr, 11, f(`IF(J${rr}="","",${look(`J${rr}`, 'B', '판단표에 없음')})`), GREEN);
     cell(wsR, rr, 12, f(`ABS(G${rr})`), FONT_BOLD, NUM);
     const t = cell(wsR, rr, 13, m.reclassGl, BLUE); t.fill = FILL_INPUT;
-    cell(wsR, rr, 14, f(`IF(M${rr}="","대상 G/L 입력 필요",${look(`M${rr}`, 'K', '판단표에 없음')})`), GREEN);
-    cell(wsR, rr, 15, f(`IF(G${rr}=0,"기표 불필요",IF(M${rr}="","✘ 대상 G/L 입력 필요",IF(N${rr}='91_조정내역'!F${ar},"✔","✘ 대상 항목과 다름")))`));
+    cell(wsR, rr, 14, f(`IF(M${rr}="","대상 손익 계정 없음 — 상대계정 표시로 분류",${look(`M${rr}`, 'K', '판단표에 없음')})`), GREEN);
+    cell(wsR, rr, 15, f(`IF(M${rr}="","기표 대상 아님",IF(G${rr}=0,"기표 불필요",IF(N${rr}='91_조정내역'!F${ar},"✔","✘ 대상 항목과 다름")))`));
     cell(wsR, rr, 16, f(look(`'91_조정내역'!D${ar}`, 'C', '판단표에 없음')), GREEN);
     cell(wsR, rr, 17, f(`IF(M${rr}="","",${look(`M${rr}`, 'C', '판단표에 없음')})`), GREEN);
-    cell(wsR, rr, 18, f(`IF(G${rr}=0,"기표 불필요",IF(M${rr}="","✘ 대상 G/L 입력 필요",IF(Q${rr}=P${rr},"✔ 같음","✘ 1001 영향")))`));
+    cell(wsR, rr, 18, f(`IF(M${rr}="","기표 대상 아님",IF(G${rr}=0,"기표 불필요",IF(Q${rr}=P${rr},"✔ 같음","✘ 1001 영향")))`));
   });
   const RE = 4 + Math.max(res.moves.length, 1);
   if (!res.moves.length) cell(wsR, 5, 1, '권고 전표 없음');
@@ -367,15 +367,16 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     '3. 손익 안에서 계정만 옮기는 전표라 당기순이익은 바뀌지 않는다. 대상 G/L 의 1001 항목이 원천과 다르면 현행 1001 손익계산서(영업이익 등)가 바뀌므로 「1001 확인」이 ✔ 인 계정을 쓴다.',
     '4. 기표 후 같은 기준월 분개장을 다시 받아 이 파일을 다시 만들면 「이번 기표 금액」이 0 이고 10_손익계산서가 기표 전과 같아야 한다(01_검증체크 2차 항목).',
     '5. 대상 G/L 이 판단표에 없거나 1118 항목 · 1001 항목이 다르면 ✘ — 계정을 바꾸거나 판단표(93)를 고친다.',
+    '6. 대상 G/L 이 빈 줄은 「기표 대상 아님」 — 옮겨 갈 (투자)/(재무) 손익 계정이 없는 거래다(그룹 지침: 손익은 기존 계정, 투자 · 재무 목적은 상대 미지급금 등 (투자)/(재무) 계정으로 표시). 1118 손익계산서에서만 옮긴다.',
   ];
   for (const t of rules) { const c = wsR.getCell(rr2, 1); c.value = t; c.font = { ...FONT, size: 9 }; wsR.mergeCells(rr2, 1, rr2, 14); rr2++; }
   wsR.views = [{ state: 'frozen', ySplit: 4, xSplit: 1 }];
 
   // ── 30_주의계정판단 ──
-  title(wsW, '주의계정 판단 — 투자 · 재무 거래가 섞일 수 있는 계정 중 같은 전표에 투자 · 재무 속성 BS 계정이 있는 줄',
+  title(wsW, '주의계정 판단 — ① 주의계정 중 같은 전표에 투자 · 재무 속성 BS 계정이 있는 줄 ② 같은 전표에 표시 계정(미지급금 · 미지급비용 (투자)/(재무))이 있는 영업 범주 손익 줄',
     'E · G · H 열은 92_분개장에서 다시 센 값. 판단 「조정」은 91_조정내역과 20_조정권고전표에 같은 권고코드로 들어간다.');
-  header(wsW, 4, ['전표번호', '전기일', 'G/L', '계정명', '금액(전표·계정 합계)', '라인텍스트', '같은 전표 투자 BS 줄', '같은 전표 재무 BS 줄', '확인', '제안 항목', '판단', '대상 항목', '근거', '판단자', '일시', '권고코드']);
-  setWidths(wsW, [13, 11, 11, 24, 15, 36, 9, 9, 10, 14, 10, 14, 40, 10, 16, 28]);
+  header(wsW, 4, ['전표번호', '전기일', 'G/L', '계정명', '금액(전표·계정 합계)', '라인텍스트', '같은 전표 투자 BS 줄', '같은 전표 재무 BS 줄', '확인', '제안 항목', '판단', '대상 항목', '근거', '판단자', '일시', '권고코드', '잡힌 경로']);
+  setWidths(wsW, [13, 11, 11, 24, 15, 36, 9, 9, 10, 14, 10, 14, 40, 10, 16, 28, 12]);
   const jm = new Map(judgments.map((j) => [`${j.docNo}|${j.gl}`, j]));
   res.watch.forEach((w, i) => {
     const rr = 5 + i;
@@ -391,6 +392,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     cell(wsW, rr, 13, j?.reason ?? '', BLUE); cell(wsW, rr, 14, j?.byName ?? '', BLUE);
     cell(wsW, rr, 15, j?.at ? new Date(j.at).toLocaleString('ko-KR') : '', BLUE);
     cell(wsW, rr, 16, f(`IF(K${rr}="조정","1118-J-"&A${rr}&"-"&C${rr},"")`));
+    cell(wsW, rr, 17, w.via, BLUE);
   });
   const WE = 4 + Math.max(res.watch.length, 1);
   if (!res.watch.length) cell(wsW, 5, 1, '검토 대상 줄 없음');

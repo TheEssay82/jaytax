@@ -272,7 +272,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
 
       {res && <>
         <div className="card">
-          {stepHead(4, '주의계정 판단', pending === 0, `같은 계정에 투자 · 재무 거래가 섞일 수 있는 계정만 — 같은 전표에 대여금 · 투자주식 · 차입금 같은 계정이 있는 라인 ${res.watch.length}줄`)}
+          {stepHead(4, '주의계정 판단', pending === 0, `① 주의계정 중 같은 전표에 대여금 · 투자주식 · 차입금 같은 계정이 있는 줄 ② 같은 전표에 미지급금 · 미지급비용 (투자)/(재무)가 있는 영업 손익 줄 — ${res.watch.length}줄`)}
           {res.watch.length === 0 ? <div style={{ color: 'var(--ink-3)' }}>검토할 라인이 없습니다.</div> : <>
             <div style={{ fontSize: 'var(--fs-1)', marginBottom: 4 }}>
               라인마다 <b>영업 유지</b>(그대로 둠) 또는 <b>조정</b>(제안 항목으로 옮김)을 누르고 근거를 적습니다. 판단은 저장되어 다음 달 누적 분개장에서도 다시 묻지 않습니다.
@@ -287,7 +287,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
                   return (
                     <tr key={keyOf(w.docNo, w.gl)} style={{ background: w.decision === '미판단' ? '#FEF2F2' : undefined }}>
                       <td style={td}>{w.docNo}</td><td style={td}>{w.date}</td><td style={td}>{w.gl} {w.glName}</td><td style={num}>{won(w.amt)}</td>
-                      <td style={td}>{w.memo}</td><td style={td}>{w.cpName} [{w.cpAttr}]</td>
+                      <td style={td}>{w.memo}</td><td style={td}>{w.cpName} [{w.cpAttr}]{w.via === '표시 계정' && <div style={{ fontSize: 'var(--fs-0)', color: '#7030A0' }}>표시 계정으로 잡힘</div>}</td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
                         {(['영업 유지', '조정'] as Decision[]).map((d) => (
                           <button key={d} className={`btn-sm${w.decision === d ? ' btn-sm-navy' : ''}`} disabled={busy || readonly || lk} title={lk ? '마감된 달의 전표 — 바꾸려면 그 달 마감 해제' : undefined} onClick={() => void decide(w, w.decision === d ? null : d)} style={{ marginRight: 4 }}>{d}</button>
@@ -379,7 +379,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
                 <thead><tr>{['권고코드', '구분', '원천 → 대상', '대상 G/L 제안', '1001 같음', '옮길 금액(누적)', '기표 시작 전 몫', '이미 기표', '이번 기표 권고액'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
                 <tbody>{res.moves.map((m) => (
                   <tr key={m.code} style={{ background: m.advise !== 0 && due ? '#FEF2F2' : undefined }}>
-                    <td style={td}><code>{m.code}</code></td><td style={td}>{m.kind}</td><td style={td}>{m.srcGl} {m.src} → {m.target}</td><td style={td}>{m.reclassGl || '지정 필요'}</td>
+                    <td style={td}><code>{m.code}</code></td><td style={td}>{m.kind}</td><td style={td}>{m.srcGl} {m.src} → {m.target}</td><td style={td}>{m.reclassGl || <span style={{ color: 'var(--ink-3)' }}>기표 대상 아님(대상 손익 계정 없음)</span>}</td>
                     <td style={{ ...td, color: m.same1001 === false ? 'var(--bad)' : undefined }}>{m.same1001 == null ? '—' : m.same1001 ? '✔' : '✘ 1001 영향'}</td>
                     <td style={num}>{won(m.required)}</td><td style={num}>{won(m.beforeStart)}</td><td style={num}>{won(m.posted)}</td><td style={{ ...num, fontWeight: 700 }}>{won(m.advise)}</td>
                   </tr>
