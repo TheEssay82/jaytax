@@ -126,3 +126,24 @@ test('회사 전용 주소 — /kifrs1118_<회사키>', () => {
   assert.equal(ifrs18KeyFromPath('/kifrs1118_a b'), null);
   assert.equal(ifrs18KeyFromPath('/'), null);
 });
+
+test('기간별 — 당월 · 당분기 = 누적에서 잘라 뺀 값', async () => {
+  const { computePeriods, monthEnd } = await import('./ifrs18');
+  const j2: JLine[] = [
+    ...journal.map((l) => ({ ...l, date: '2026-04-15' })),
+    L('30', '11040101', 5000, 0, { date: '2026-05-10' }), L('30', '41010101', 0, 5000, { date: '2026-05-10' }),
+    L('31', '11040101', 700, 0, { date: '2026-06-20' }), L('31', '41010101', 0, 700, { date: '2026-06-20' }),
+  ];
+  assert.equal(monthEnd(2026, 2), '2026-02-28');
+  const p = computePeriods(j2, cfg, [], 2026, 6);
+  assert.equal(p.prevMonthNo, 5); assert.equal(p.prevQuarterNo, 3);
+  assert.equal(p.cum.pl1118['영업수익'], 15700);
+  assert.equal(p.month.pl1118['영업수익'], 700);
+  assert.equal(p.quarter.pl1118['영업수익'], 15700);
+  // 계리: 연 -1200 → 당월 -100 이 재무비용(+100)으로
+  assert.equal(p.month.pl1118['재무비용'], 100);
+  assert.equal(p.prevQuarter.pl1118['재무비용'], 300);   // 1분기 3개월분(분개는 없음)
+  for (const k of ['영업손익', '당기순손익']) assert.equal(p.month.pl1118[k] + p.prevMonth.pl1118[k], p.cum.pl1118[k]);
+  const p1 = computePeriods(j2, cfg, [], 2026, 1);
+  assert.equal(p1.prevMonthNo, 0); assert.equal(p1.month.pl1118['당기순손익'], p1.cum.pl1118['당기순손익']);
+});

@@ -396,3 +396,78 @@ export function ifrs18KeyFromPath(path: string): string | null {
   const m = path.replace(/\/+$/, '').match(/^\/kifrs1118_([a-z0-9-]{2,40})$/i);
   return m ? m[1].toLowerCase() : null;
 }
+
+// ── 기간별(당월 · 당분기 · 누적) ─────────────────────────────────────────────
+// 회사가 올리는 분개장은 1월~기준월 **누적**이다. 같은 분개장을 「전월 말까지」 · 「직전 분기 말까지」로 잘라
+// 다시 계산하고 빼면 당월 · 당분기가 나온다(사용자 2026-11-09 「월별 결산 다음 분기 · 누적」).
+// 계리 금액은 연간 × 개월/12 라 잘라 계산해도 맞고, 판단(조정)은 그 전표가 잘린 범위에 있을 때만 들어간다.
+export const monthEnd = (year: number, month: number) => `${year}-${String(month).padStart(2, '0')}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+
+export interface PeriodPl { pl1118: Record<string, number>; pl1001: Record<string, number> }
+export interface Ifrs18Periods {
+  /** 누적(1월~기준월) */ cum: PeriodPl;
+  /** 전월 말 누적(1월이면 0) */ prevMonth: PeriodPl;
+  /** 직전 분기 말 누적(1분기면 0) */ prevQuarter: PeriodPl;
+  /** 당월 = 누적 − 전월 말 누적 */ month: PeriodPl;
+  /** 당분기 = 누적 − 직전 분기 말 누적(분기 중이면 분기 시작~기준월) */ quarter: PeriodPl;
+  prevMonthNo: number; prevQuarterNo: number;
+  /** 잘라 계산할 때 쓴 조정(5_조정 시트의 전월 · 분기초 열) */ movesPrevMonth: Move[]; movesPrevQuarter: Move[];
+}
+
+const zeroPl = (): PeriodPl => {
+  const pl1118: Record<string, number> = {}; const pl1001: Record<string, number> = {};
+  for (const o of PL1118_ORDER) pl1118[o.key] = 0;
+  for (const n of L1001S) pl1001[n] = 0;
+  for (const o of PL1001_ORDER) pl1001[o.key] = 0;
+  return { pl1118, pl1001 };
+};
+const diffPl = (a: PeriodPl, b: PeriodPl): PeriodPl => {
+  const d = zeroPl();
+  for (const k of new Set([...Object.keys(a.pl1118), ...Object.keys(b.pl1118)])) d.pl1118[k] = (a.pl1118[k] ?? 0) - (b.pl1118[k] ?? 0);
+  for (const k of new Set([...Object.keys(a.pl1001), ...Object.keys(b.pl1001)])) d.pl1001[k] = (a.pl1001[k] ?? 0) - (b.pl1001[k] ?? 0);
+  return d;
+};
+
+/** 그 달 말까지 잘라 계산한 누적. 계리의 「직접 넣은 금액」은 기준월 것이라 잘린 달에서는 월할로 돌린다. */
+export function computeAt(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[], year: number, m: number): Ifrs18Result | null {
+  if (m <= 0) return null;
+  const end = monthEnd(year, m);
+  const cfgM = { ...cfg, actuarial: cfg.actuarial.map((a) => ({ ...a, override: null })) };
+  return compute(lines.filter((l) => l.date <= end), cfgM, judgments, year, m);
+}
+
+export function computePeriods(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[], year: number, month: number, cum?: Ifrs18Result): Ifrs18Periods {
+  const c = cum ?? compute(lines, cfg, judgments, year, month);
+  const prevMonthNo = month - 1;
+  const prevQuarterNo = Math.floor((month - 1) / 3) * 3;
+  const pm = computeAt(lines, cfg, judgments, year, prevMonthNo);
+  const pq = prevQuarterNo === prevMonthNo ? pm : computeAt(lines, cfg, judgments, year, prevQuarterNo);
+  const P = (r: Ifrs18Result | null): PeriodPl => (r ? { pl1118: r.pl1118, pl1001: r.pl1001 } : zeroPl());
+  const cumP = P(c), pmP = P(pm), pqP = P(pq);
+  return {
+    cum: cumP, prevMonth: pmP, prevQuarter: pqP, month: diffPl(cumP, pmP), quarter: diffPl(cumP, pqP),
+    prevMonthNo, prevQuarterNo, movesPrevMonth: pm?.moves ?? [], movesPrevQuarter: pq?.moves ?? [],
+  };
+}
+
+/** 마감 때 남기는 요약(서버 ifrs18_close.summary). 숫자만 — 분개장은 남기지 않는다. */
+export interface CloseSummary {
+  year: number; month: number;
+  fileName: string; lineCount: number; lastDate: string;
+  op: { cum: number; month: number; quarter: number };
+  ni: { cum: number; month: number; quarter: number };
+  op1001: { cum: number; month: number; quarter: number };
+  pl1118: { cum: Record<string, number>; month: Record<string, number>; quarter: Record<string, number> };
+  watchCount: number; adjCount: number;
+  checks: { label: string; ok: boolean }[];
+}
+export function closeSummary(res: Ifrs18Result, per: Ifrs18Periods, fileName: string, lastDate: string): CloseSummary {
+  const t = (k: string, src: 'pl1118' | 'pl1001') => ({ cum: r0(per.cum[src][k] ?? 0), month: r0(per.month[src][k] ?? 0), quarter: r0(per.quarter[src][k] ?? 0) });
+  return {
+    year: res.year, month: res.month, fileName, lineCount: res.lineCount, lastDate,
+    op: t('영업손익', 'pl1118'), ni: t('당기순손익', 'pl1118'), op1001: t('영업이익', 'pl1001'),
+    pl1118: { cum: per.cum.pl1118, month: per.month.pl1118, quarter: per.quarter.pl1118 },
+    watchCount: res.watch.length, adjCount: res.moves.filter((m) => m.kind === '판단').length,
+    checks: res.checks.map((c) => ({ label: c.label, ok: c.ok })),
+  };
+}

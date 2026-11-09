@@ -7,7 +7,7 @@
 // ExcelJS 는 무거워 내보낼 때만 동적 로드한다.
 import type { Worksheet } from 'exceljs';
 import { FONT, FONT_BOLD, FILL_HEADER, FILL_TOTAL, BORDER_ALL, setWidths, saveWorkbook } from './confirmExcelStyle';
-import { PL1118_ORDER, PL1001_ORDER, LINES_1118, isPl, type Ifrs18Config, type Ifrs18Result, type JLine, type Judgment } from './ifrs18';
+import { PL1118_ORDER, PL1001_ORDER, LINES_1118, isPl, monthEnd, type Ifrs18Config, type Ifrs18Result, type Ifrs18Periods, type JLine, type Judgment, type Move } from './ifrs18';
 
 async function loadExcelJS() {
   const mod = await import('exceljs');
@@ -39,7 +39,7 @@ function cell(ws: Worksheet, r: number, c: number, v: unknown, font = FONT, fmt?
 }
 const f = (formula: string) => ({ formula });
 
-export interface Ifrs18ExportOpts { cfg: Ifrs18Config; res: Ifrs18Result; lines: JLine[]; judgments: Judgment[]; fileName: string; byName: string }
+export interface Ifrs18ExportOpts { cfg: Ifrs18Config; res: Ifrs18Result; per?: Ifrs18Periods; lines: JLine[]; judgments: Judgment[]; fileName: string; byName: string }
 
 /** 파일 이름 — 「날짜_회사_K-IFRS1118_월결산_YYYYMM.xlsx」 (증빙 파일에 날짜를 넣는다). */
 export function ifrs18FileName(o: Pick<Ifrs18ExportOpts, 'cfg' | 'res'>): string {
@@ -63,6 +63,8 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
 
   const wsG = wb.addWorksheet('0_안내');
   const wsP = wb.addWorksheet('1_손익계산서');
+  const per = opts.per;
+  const wsQ = per ? wb.addWorksheet('1-2_기간별손익') : null;
   const wsN = wb.addWorksheet('2_주석금액');
   const wsW = wb.addWorksheet('3_주의계정검토');
   const wsT = wb.addWorksheet('4_시산표');
@@ -78,7 +80,9 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   pl.forEach((l, i) => {
     const r = 5 + i;
     const row = wsJ.getRow(r);
-    row.values = [l.docNo, l.date, l.gl, l.glName, l.dr, l.cr, null, l.memo, l.vendor];
+    const [yy, mm, dd] = l.date.split('-').map(Number);
+    row.values = [l.docNo, yy ? new Date(Date.UTC(yy, mm - 1, dd)) : l.date, l.gl, l.glName, l.dr, l.cr, null, l.memo, l.vendor];
+    row.getCell(2).numFmt = 'yyyy-mm-dd';
     row.getCell(7).value = f(`E${r}-F${r}`);
     for (const c of [5, 6, 7]) row.getCell(c).numFmt = NUM;
   });
@@ -88,14 +92,21 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
 
   // ── 4_시산표 — 분개장 합계(수식) + 판단표 매핑(값) ──
   title(wsT, '시산표 = 분개장 손익 합계 (수식)', '금액은 6_분개장손익을 SUMIFS 로 다시 합한 값. 1001 항목 · 범주 · 1118 표시항목은 7_계정판단표의 판단(값).');
-  header(wsT, 4, ['G/L', '계정명', '누적(차변+) = 분개장 합계', '1001 항목', '적용범주', '1118 표시항목', '주석 세부항목', '손익(수익+)', '화면 계산값(차변+)', '차이']);
-  setWidths(wsT, [11, 32, 18, 11, 9, 22, 26, 16, 16, 10]);
+  const cut = (m: number) => (m > 0 ? monthEnd(res.year, m).split('-').map(Number) : null);
+  const pmCut = per ? cut(per.prevMonthNo) : null, pqCut = per ? cut(per.prevQuarterNo) : null;
+  header(wsT, 4, ['G/L', '계정명', '누적(차변+) = 분개장 합계', '1001 항목', '적용범주', '1118 표시항목', '주석 세부항목', '손익(수익+)', '화면 계산값(차변+)', '차이',
+    ...(per ? [`전월 말 누적 손익(수익+, ~${per.prevMonthNo}월)`, `직전 분기 말 누적 손익(수익+, ~${per.prevQuarterNo}월)`] : [])]);
+  setWidths(wsT, [11, 32, 18, 11, 9, 22, 26, 16, 16, 10, 18, 18]);
   res.tb.forEach((t, i) => {
     const r = 5 + i;
     cell(wsT, r, 1, t.gl, BLUE); cell(wsT, r, 2, t.name, BLUE);
     cell(wsT, r, 3, f(`SUMIFS('6_분개장손익'!$G$5:$G$${JE},'6_분개장손익'!$C$5:$C$${JE},A${r})`), GREEN, NUM);
     cell(wsT, r, 4, t.l1001, BLUE); cell(wsT, r, 5, t.cat, BLUE); cell(wsT, r, 6, t.l1118, BLUE); cell(wsT, r, 7, t.detail, BLUE);
     cell(wsT, r, 8, f(`-C${r}`), FONT, NUM); cell(wsT, r, 9, t.amt, BLUE, NUM); cell(wsT, r, 10, f(`ROUND(C${r}-I${r},0)`), FONT, NUM);
+    if (per) {
+      const cf = (c: number[] | null) => (c ? f(`-SUMIFS('6_분개장손익'!$G$5:$G$${JE},'6_분개장손익'!$C$5:$C$${JE},A${r},'6_분개장손익'!$B$5:$B$${JE},"<="&DATE(${c[0]},${c[1]},${c[2]}))`) : 0);
+      cell(wsT, r, 11, cf(pmCut), GREEN, NUM); cell(wsT, r, 12, cf(pqCut), GREEN, NUM);
+    }
   });
   const TE = 4 + Math.max(res.tb.length, 1);
   wsT.views = [{ state: 'frozen', ySplit: 4 }];
@@ -104,14 +115,20 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
 
   // ── 5_조정 — 계리 · 판단 · 수동(값) ──
   title(wsA, '조정 (원천 항목 → 대상 항목, 금액 차변+)', '같은 금액이 원천 항목에서 빠져 대상 항목에 들어간다 — 당기순이익은 바뀌지 않는다.');
-  header(wsA, 4, ['구분', '내용', '원천 G/L', '원천 1118 항목', '대상 1118 항목', '금액(차변+)']);
-  setWidths(wsA, [8, 60, 11, 18, 18, 16]);
-  res.moves.forEach((m, i) => {
+  header(wsA, 4, ['구분', '내용', '원천 G/L', '원천 1118 항목', '대상 1118 항목', '금액(차변+) 누적',
+    ...(per ? [`전월 말 누적(~${per.prevMonthNo}월)`, `직전 분기 말 누적(~${per.prevQuarterNo}월)`] : [])]);
+  setWidths(wsA, [8, 60, 11, 18, 18, 16, 16, 16]);
+  const mk = (m: Move) => [m.kind, m.label, m.srcGl, m.src, m.target].join('\u0000');
+  const mrows = new Map<string, { m: Move; a: number[] }>();
+  const addM = (list: Move[], i: number) => list.forEach((m) => { const k = mk(m); const x = mrows.get(k) ?? { m, a: [0, 0, 0] }; x.a[i] += m.amount; mrows.set(k, x); });
+  addM(res.moves, 0); if (per) { addM(per.movesPrevMonth, 1); addM(per.movesPrevQuarter, 2); }
+  [...mrows.values()].forEach(({ m, a }, i) => {
     const r = 5 + i;
     cell(wsA, r, 1, m.kind, BLUE); cell(wsA, r, 2, m.label, BLUE); cell(wsA, r, 3, m.srcGl, BLUE);
-    cell(wsA, r, 4, m.src, BLUE); cell(wsA, r, 5, m.target, BLUE); cell(wsA, r, 6, m.amount, BLUE, NUM);
+    cell(wsA, r, 4, m.src, BLUE); cell(wsA, r, 5, m.target, BLUE); cell(wsA, r, 6, a[0], BLUE, NUM);
+    if (per) { cell(wsA, r, 7, a[1], BLUE, NUM); cell(wsA, r, 8, a[2], BLUE, NUM); }
   });
-  const AE = 4 + Math.max(res.moves.length, 1);
+  const AE = 4 + Math.max(mrows.size, 1);
   const A = (c: string) => `'5_조정'!$${c}$5:$${c}$${AE}`;
   const lineF = (n: string) => `SUMIFS(${T('H')},${T('F')},"${n}")+SUMIFS(${A('F')},${A('D')},"${n}")-SUMIFS(${A('F')},${A('E')},"${n}")`;
 
@@ -188,6 +205,59 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   wsP.addConditionalFormatting({ ref: `E5:E${r}`, rules: [{ type: 'expression', formulae: ['AND(ISNUMBER(E5),E5<>0)'], style: { fill: RED_FILL }, priority: 1 }] });
   wsP.views = [{ state: 'frozen', ySplit: 4 }];
 
+  // ── 1-2_기간별손익 — 당월 · 당분기 = 누적 − 잘라 낸 누적(같은 분개장을 날짜로 SUMIFS) ──
+  if (per && wsQ) {
+    title(wsQ, `기간별 손익 — 당월(${res.month}월) · 당분기(${per.prevQuarterNo + 1}~${res.month}월) · 누적(1~${res.month}월)`,
+      '누적 = 1_손익계산서 C열 · 전월 말/직전 분기 말 누적 = 4_시산표 K·L열(분개장을 전기일로 잘라 SUMIFS) + 5_조정 G·H열 · 당월 = 누적 − 전월 말 · 당분기 = 누적 − 직전 분기 말');
+    header(wsQ, 4, ['', '항목', '누적', '전월 말 누적', '당월', '직전 분기 말 누적', '당분기', '화면 당월', '차이', '화면 당분기', '차이']);
+    setWidths(wsQ, [3, 36, 16, 16, 16, 16, 16, 16, 9, 16, 9]);
+    const qp: Record<string, number> = {}; let qr = 5;
+    for (const o of PL1118_ORDER) { qp[o.key] = qr; qr++; }
+    qr++; const qh = qr; qr++;
+    const qp1: Record<string, number> = {};
+    for (const o of PL1001_ORDER) { qp1[o.key] = qr; qr++; }
+    header(wsQ, qh, ['', '1001 (현행)', '누적', '전월 말 누적', '당월', '직전 분기 말 누적', '당분기', '화면 당월', '차이', '화면 당분기', '차이']);
+    const fx1118 = (key: string, col: string, tc: string, ac: string) => {
+      if (key === '영업손익') return `SUM(${col}${qp['영업수익']}:${col}${qp['기타영업비용']})`;
+      if (key === '재무손익 및 법인세비용차감전손익') return `${col}${qp['영업손익']}+SUM(${col}${qp['종속기업·관계기업 관련 손익']}:${col}${qp['기타투자비용']})`;
+      if (key === '법인세비용차감전순손익') return `${col}${qp['재무손익 및 법인세비용차감전손익']}+${col}${qp['재무수익']}+${col}${qp['재무비용']}`;
+      if (key === '당기순손익') return `${col}${qp['법인세비용차감전순손익']}+${col}${qp['법인세비용']}`;
+      return `SUMIFS(${T(tc)},${T('F')},"${key}")+SUMIFS(${A(ac)},${A('D')},"${key}")-SUMIFS(${A(ac)},${A('E')},"${key}")`;
+    };
+    const fx1001 = (key: string, col: string, tc: string) => {
+      if (key === '영업이익') return `${col}${qp1['영업수익']}+${col}${qp1['영업비용']}`;
+      if (key === '법인세비용차감전순이익') return `${col}${qp1['영업이익']}+SUM(${col}${qp1['기타수익']}:${col}${qp1['금융비용']})+SUMIFS(${T(tc)},${T('D')},"임시계정")`;
+      if (key === '당기순이익') return `${col}${qp1['법인세비용차감전순이익']}+${col}${qp1['법인세비용']}`;
+      return `SUMIFS(${T(tc)},${T('D')},"${key}")`;
+    };
+    const put = (rr: number, label: string, sub: boolean | undefined, cumRef: string, dF: string, fF: string, appM: number, appQ: number) => {
+      cell(wsQ, rr, 2, label, sub ? FONT_BOLD : FONT);
+      cell(wsQ, rr, 3, f(cumRef), GREEN, NUM);
+      cell(wsQ, rr, 4, per.prevMonthNo ? f(dF) : 0, per.prevMonthNo ? GREEN : BLUE, NUM);
+      cell(wsQ, rr, 5, f(`C${rr}-D${rr}`), sub ? FONT_BOLD : FONT, NUM);
+      cell(wsQ, rr, 6, per.prevQuarterNo ? f(fF) : 0, per.prevQuarterNo ? GREEN : BLUE, NUM);
+      cell(wsQ, rr, 7, f(`C${rr}-F${rr}`), sub ? FONT_BOLD : FONT, NUM);
+      cell(wsQ, rr, 8, Math.round(appM), BLUE, NUM); cell(wsQ, rr, 9, f(`ROUND(E${rr}-H${rr},0)`), FONT, NUM);
+      cell(wsQ, rr, 10, Math.round(appQ), BLUE, NUM); cell(wsQ, rr, 11, f(`ROUND(G${rr}-J${rr},0)`), FONT, NUM);
+      if (sub) for (let c = 2; c <= 11; c++) wsQ.getCell(rr, c).fill = FILL_TOTAL;
+    };
+    for (const o of PL1118_ORDER) {
+      const rr = qp[o.key];
+      put(rr, o.label, o.sub, `'1_손익계산서'!C${pos[o.key]}`, fx1118(o.key, 'D', 'K', 'G'), fx1118(o.key, 'F', 'L', 'H'), per.month.pl1118[o.key] ?? 0, per.quarter.pl1118[o.key] ?? 0);
+    }
+    for (const o of PL1001_ORDER) {
+      const rr = qp1[o.key];
+      const appM = o.key === '법인세비용차감전순이익' ? (per.month.pl1001[o.key] ?? 0) + (per.month.pl1001['임시계정'] ?? 0) : per.month.pl1001[o.key] ?? 0;
+      const appQ = o.key === '법인세비용차감전순이익' ? (per.quarter.pl1001[o.key] ?? 0) + (per.quarter.pl1001['임시계정'] ?? 0) : per.quarter.pl1001[o.key] ?? 0;
+      put(rr, o.label, o.sub, `'1_손익계산서'!C${p1[o.key]}`, fx1001(o.key, 'D', 'K'), fx1001(o.key, 'F', 'L'), appM, appQ);
+    }
+    qr++;
+    cell(wsQ, qr, 2, '엑셀 재계산 = 화면(당월 · 당분기)', FONT_BOLD);
+    const qc = cell(wsQ, qr, 3, f(`IF(SUMPRODUCT(ISNUMBER(I5:I${qr - 2})*(I5:I${qr - 2}<>0))+SUMPRODUCT(ISNUMBER(K5:K${qr - 2})*(K5:K${qr - 2}<>0))=0,"✔","✘")`), GREEN); qc.alignment = { horizontal: 'center' };
+    wsQ.addConditionalFormatting({ ref: `I5:K${qr}`, rules: [{ type: 'expression', formulae: ['AND(ISNUMBER(I5),I5<>0,OR(COLUMN(I5)=9,COLUMN(I5)=11))'], style: { fill: RED_FILL }, priority: 1 }] });
+    wsQ.views = [{ state: 'frozen', ySplit: 4 }];
+  }
+
   // ── 2_주석금액 ──
   title(wsN, '범주별 손익 — 주석 #6 기타영업손익 · #7 투자 범주 · #8 재무 범주', 'C열 = 4_시산표를 (1118 표시항목, 세부항목)으로 SUMIFS / 「계리 금액 · 조정」 줄은 5_조정에서.');
   header(wsN, 4, ['1118 표시항목', '주석 세부항목', '금액(엑셀 수식)', '화면 계산값', '차이']);
@@ -250,6 +320,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     ['자동 확인', res.checks.map((c) => `${c.ok ? '✔' : '✘'} ${c.label}`).join('  ·  ')],
     ['기준', 'K-IFRS 제1118호 문단 47~65 · 69 · 86 · B65 · B70~B76 · 24 · 41 · 42'],
   ];
+  if (per) info.splice(3, 0, ['기간별', `1-2_기간별손익: 당월(${res.month}월) · 당분기(${per.prevQuarterNo + 1}~${res.month}월) · 누적. 같은 누적 분개장을 전기일로 잘라 다시 합한 값의 차이다.`]);
   info.forEach(([k, v], i) => {
     cell(wsG, 4 + i, 1, k, FONT_BOLD); const c = cell(wsG, 4 + i, 2, v); c.alignment = { wrapText: true, vertical: 'top' };
     wsG.getRow(4 + i).height = Math.max(18, Math.ceil(v.length / 60) * 15);

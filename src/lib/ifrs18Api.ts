@@ -1,6 +1,6 @@
 // K-IFRS 1118 월결산 — 서버에 두는 것은 회사별 판단표와 주의계정 판단 기록뿐이다(0189). 분개장은 올리지 않는다.
 import { supabase } from './supabase';
-import type { Ifrs18Config, Judgment, Decision, Line1118 } from './ifrs18';
+import type { Ifrs18Config, Judgment, Decision, Line1118, CloseSummary } from './ifrs18';
 
 export interface Ifrs18ClientRow { key: string; name: string; config: Ifrs18Config; updatedAt: string }
 
@@ -40,4 +40,38 @@ export async function saveIfrs18Judgment(clientKey: string, j: Judgment, byName:
 export async function deleteIfrs18Judgment(clientKey: string, docNo: string, gl: string): Promise<void> {
   const { error } = await supabase.from('ifrs18_judgment').delete().eq('client_key', clientKey).eq('doc_no', docNo).eq('gl', gl);
   if (error) throw error;
+}
+
+// ── 월 마감 · 작업 기록(0191) ──
+export interface Ifrs18CloseRow { year: number; month: number; summary: CloseSummary; byName: string | null; at: string }
+export async function listIfrs18Closes(clientKey: string): Promise<Ifrs18CloseRow[]> {
+  const { data, error } = await supabase.from('ifrs18_close').select('year, month, summary, by_name, at').eq('client_key', clientKey).order('year').order('month');
+  if (error) throw error;
+  return (data ?? []).map((r) => ({ year: r.year, month: r.month, summary: r.summary as CloseSummary, byName: r.by_name, at: r.at }));
+}
+export async function closeIfrs18Month(clientKey: string, summary: CloseSummary, byName: string): Promise<void> {
+  const { error } = await supabase.from('ifrs18_close').upsert({
+    client_key: clientKey, year: summary.year, month: summary.month, summary, by_name: byName, at: new Date().toISOString(),
+  }, { onConflict: 'client_key,year,month' });
+  if (error) throw error;
+}
+export async function reopenIfrs18Month(clientKey: string, year: number, month: number): Promise<void> {
+  const { error } = await supabase.from('ifrs18_close').delete().eq('client_key', clientKey).eq('year', year).eq('month', month);
+  if (error) throw error;
+}
+
+export type Ifrs18Action = '분개장 읽음' | '판단 저장' | '판단 삭제' | '마감' | '마감 해제' | '엑셀 내려받기';
+export interface Ifrs18LogRow { id: number; year: number | null; month: number | null; action: Ifrs18Action; detail: Record<string, unknown>; byName: string | null; at: string }
+export async function listIfrs18Log(clientKey: string, limit = 200): Promise<Ifrs18LogRow[]> {
+  const { data, error } = await supabase.from('ifrs18_log').select('id, year, month, action, detail, by_name, at')
+    .eq('client_key', clientKey).order('at', { ascending: false }).limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((r) => ({ id: r.id, year: r.year, month: r.month, action: r.action as Ifrs18Action, detail: (r.detail ?? {}) as Record<string, unknown>, byName: r.by_name, at: r.at }));
+}
+/** 기록은 거들 뿐 — 실패해도 작업을 막지 않는다. */
+export async function logIfrs18(clientKey: string, year: number, month: number, action: Ifrs18Action, detail: Record<string, unknown>, byName: string): Promise<void> {
+  try {
+    const { data: u } = await supabase.auth.getUser();
+    await supabase.from('ifrs18_log').insert({ client_key: clientKey, year, month, action, detail, by_name: byName, by_id: u.user?.id });
+  } catch { /* 기록 실패는 무시 */ }
 }
