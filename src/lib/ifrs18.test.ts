@@ -195,3 +195,22 @@ test('표시 계정 — 같은 전표에 미지급금(투자)가 있으면 주�
   assert.equal(m.reclassGl, ''); assert.equal(m.advise, 0); assert.equal(m.amount, 300);
   assert.equal(r2.pl1118['기타투자비용'], -300 + (r.pl1118['기타투자비용'] ?? 0));
 });
+
+test('기표 시작일(날짜) · 계리 직접 기표 — 시작일 전 판단 건은 권고 없음 · 직접 기표 달부터는 옮기지 않음 · 직접 기표 발견 시 확인', () => {
+  const c5: Ifrs18Config = { ...cfg, adjustFrom: '2026-10-21', reclassGl: { '51030101>재무비용': '74010115', '72030101>기타투자비용': '72030101' },
+    accounts: [...cfg.accounts, A('72039999', '기타투자비용', '기타비용', '투자')] };
+  const jd = [{ docNo: '9', gl: '72030101', decision: '조정' as const, target: '기타투자비용' as const, reason: '' }];
+  const j10a = journal.map((l) => ({ ...l, date: '2026-10-15' }));
+  const r = compute(j10a, { ...c5, reclassGl: { ...c5.reclassGl, '72030101>기타투자비용': '72039999' } }, jd, 2026, 10);
+  assert.equal(r.moves.find((m) => m.kind === '판단')!.advise, 0);        // 10/15 전표 — 시작일 전
+  const j10b = journal.map((l) => ({ ...l, date: '2026-10-25' }));
+  const r2 = compute(j10b, { ...c5, reclassGl: { ...c5.reclassGl, '72030101>기타투자비용': '72039999' } }, jd, 2026, 10);
+  assert.equal(r2.moves.find((m) => m.kind === '판단')!.advise, 900);      // 시작일 뒤 — 정정 권고
+  // 계리: 11월부터 회사가 74010115 에 직접 기표
+  const c6: Ifrs18Config = { ...c5, actuarial: [{ ...cfg.actuarial[0], directFrom: '2026-11' }] };
+  const r3 = compute(journal.map((l) => ({ ...l, date: '2026-12-10' })), c6, [], 2026, 12);
+  assert.equal(r3.moves[0].required, -1000);   // 1~10월분만(연 -1200 × 10/12)
+  assert.ok(r3.checks.find((c) => c.id === 'actdirect')!.ok);
+  const r4 = compute(journal.map((l) => ({ ...l, date: '2026-12-10' })), c5, [], 2026, 12);
+  assert.equal(r4.checks.find((c) => c.id === 'actdirect')!.ok, false);   // 74010115 에 직접 기표가 있는데 directFrom 없음
+});

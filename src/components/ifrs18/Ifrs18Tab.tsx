@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
-  compute, computeAt, computePeriods, closeSummary, close2Checks, close2Summary, needsClose2, monthEnd, parseSapJournal, validateConfig, keyOf, LINES_1118, PL1118_ORDER, PL1001_ORDER,
+  compute, computeAt, computePeriods, closeSummary, close2Checks, close2Summary, needsClose2, fmtAdjustFrom, monthEnd, parseSapJournal, validateConfig, keyOf, LINES_1118, PL1118_ORDER, PL1001_ORDER,
   type Ifrs18Config, type JLine, type Judgment, type Line1118, type Decision,
 } from '../../lib/ifrs18';
 import {
@@ -369,11 +369,11 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
           return (
             <div className="card">
               {stepHead(7, '조정전표 반영 검증 · 2차 마감', !!closedRow?.close2,
-                cfg.adjustFrom ? (due ? `${cfg.adjustFrom.replace('-', '년 ')}월 결산부터 매월 — 1차 마감 → 조정 권고 전표 기표 → 분개장 다시 올리기 → 2차 마감` : `이 달은 대상 아님 — 회사가 조정전표를 기표하기 시작하는 ${cfg.adjustFrom.replace('-', '년 ')}월 결산부터`) : '조정전표를 기표한 달에만')}
+                cfg.adjustFrom ? (due ? `1118 계정 기표 시작일(${fmtAdjustFrom(cfg)})이 든 달부터 매월 — 정정 권고가 있으면 기표 → 분개장 다시 올리기 → 2차 마감` : `이 달은 대상 아님 — 1118 계정 기표 시작일(${fmtAdjustFrom(cfg)})이 든 달부터`) : '정정 전표를 기표한 달에만')}
               <div style={{ fontSize: 'var(--fs-1)', lineHeight: 1.7, marginBottom: 6 }}>
-                ① STEP 6 에서 1차 마감하고 엑셀을 내려받습니다 → ② 엑셀 <b>20_조정권고전표</b>대로 SAP 에 기표합니다(<b>라인텍스트 맨 앞에 권고코드</b>) →
+                ① STEP 6 에서 1차 마감하고 엑셀을 내려받습니다 → ② 엑셀 <b>20_조정권고전표</b>에 정정 권고가 있으면 SAP 에 기표합니다(<b>라인텍스트 맨 앞에 권고코드</b>) →
                 ③ 같은 기준월 분개장을 다시 받아 아래에서 올립니다 → ④ 확인이 모두 ✔ 이면 2차 마감.
-                {cfg.adjustFrom && <> 기표 시작월({cfg.adjustFrom}) 전 몫은 장부에 기표하지 않고 1118 표시에서만 옮깁니다(「기표 시작 전 몫」).</>}
+                {cfg.adjustFrom && <> {fmtAdjustFrom(cfg)} 전 전표는 장부를 고치지 않고 1118 표시에서만 옮깁니다(「기표 시작 전 몫」 — 그룹 추가 지침 전까지). 권고는 그 뒤 전표가 1118 기준과 다르게 기표된 경우의 정정뿐입니다.</>}
               </div>
               <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 6 }}>
                 <thead><tr>{['권고코드', '구분', '원천 → 대상', '대상 G/L 제안', '1001 같음', '옮길 금액(누적)', '기표 시작 전 몫', '이미 기표', '이번 기표 권고액'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>

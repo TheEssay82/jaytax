@@ -48,6 +48,7 @@ export interface ActuarialItem {
   /** 월할 대신 직접 넣은 당기 금액 */ override?: number | null;
   note?: string;
   /** 재분류 전표의 대상 GL(없으면 판단표에서 제안) */ reclassGl?: string;
+  /** 회사가 이 달(YYYY-MM)부터 대상 계정에 직접 기표한다 — 그 달부터는 원천 계정에 섞여 있지 않으므로 옮기지 않는다 */ directFrom?: string;
 }
 export interface ManualAdj { srcGl: string; target: Line1118; amount: number; reason: string; /** 재분류 전표의 대상 GL */ reclassGl?: string }
 export interface Ifrs18Config {
@@ -58,7 +59,11 @@ export interface Ifrs18Config {
   bsAttr: Record<string, BsAttr>;
   actuarial: ActuarialItem[];
   manual?: ManualAdj[];
-  /** 회사가 1118 조정전표를 SAP 에 실제로 기표하기 시작하는 달(YYYY-MM). 이 달부터 2차 마감(조정전표 반영 검증)을 한다. */
+  /**
+   * 1118 계정(크래프톤 신설 CoA)으로 기표하기 시작한 날(YYYY-MM-DD, 또는 YYYY-MM = 그달 1일). 넵튠 2026-10-21.
+   * 이 날 전 전표는 장부를 고치지 않고 1118 표시에서만 옮긴다(크래프톤 추가 지침 전까지 — 사용자 2026-11-09).
+   * 이 날 뒤 전표가 1118 기준과 다르게 기표됐으면 정정 전표를 권고하고, 이 날이 든 달부터 2차 마감을 한다.
+   */
   adjustFrom?: string;
   /** 재분류 대상 GL 지정 — 키 「원천GL>대상 1118 항목」 */
   reclassGl?: Record<string, string>;
@@ -224,6 +229,20 @@ export interface Move {
 }
 
 /** 기표 시작 전 마지막 달 — 그 달까지의 몫은 권고 전표에서 뺀다(사용자 2026-11-09 「10월분부터만」). 시작 전 해면 기준월 전체. */
+/** 1118 계정 기표 시작일(YYYY-MM-DD). 없으면 ''. */
+export function cutoverDate(cfg: Ifrs18Config): string {
+  if (!cfg.adjustFrom) return '';
+  const [y, m, d] = cfg.adjustFrom.split('-');
+  return `${y}-${m}-${d ?? '01'}`;
+}
+/** 계리 항목을 원천 계정에서 옮길 마지막 달 — directFrom 달부터는 회사가 대상 계정에 직접 기표하므로 0. 12 = 제한 없음. */
+export function actuarialLastMonth(x: ActuarialItem, year: number): number {
+  if (!x.directFrom) return 12;
+  const [dy, dm] = x.directFrom.split('-').map(Number);
+  if (year > dy) return 0;
+  if (year < dy) return 12;
+  return dm - 1;
+}
 export function startCutMonth(cfg: Ifrs18Config, year: number, month: number): number {
   if (!cfg.adjustFrom) return 0;
   const [ay, am] = cfg.adjustFrom.split('-').map(Number);
@@ -336,7 +355,7 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
   const tagged = live.filter((l) => isPl(l.gl) && tagOf(l.memo));
   const req: Omit<Move, 'posted' | 'amount' | 'beforeStart' | 'advise' | 'same1001'>[] = [];
   for (const x of cfg.actuarial) {
-    const amt = x.override != null ? x.override : r0((x.annual * month) / 12);
+    const amt = x.override != null ? x.override : r0((x.annual * Math.min(month, actuarialLastMonth(x, year))) / 12);
     req.push({ kind: '계리', code: `1118-A-${x.key}`, label: x.label, srcGl: x.srcGl, src: srcLine(x.srcGl), target: x.target, required: amt,
       reclassGl: x.reclassGl || suggestReclassGl(cfg, x.srcGl, x.target), base: x.annual });
   }
@@ -368,12 +387,12 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
     else if (l.gl !== m.srcGl) tagIssues.push({ docNo: l.docNo, gl: l.gl, code, amt, why: '계정 확인' });
   }
   const sc = startCutMonth(cfg, year, month);
-  const scEnd = sc > 0 ? monthEnd(year, sc) : '';
+  const cut = cutoverDate(cfg);
   const before = (m: (typeof req)[number]): number => {
+    if (m.kind === '판단') return cut ? r0(live.filter((l) => l.docNo === m.docNo && l.gl === m.srcGl && l.date < cut).reduce((t, l) => t + l.dr - l.cr, 0)) : 0;
     if (sc <= 0) return 0;
-    if (m.kind === '계리') { const x = cfg.actuarial.find((a) => `1118-A-${a.key}` === m.code); return x ? r0((x.annual * sc) / 12) : 0; }
-    if (m.kind === '수동') return m.required;
-    return r0(live.filter((l) => l.docNo === m.docNo && l.gl === m.srcGl && l.date <= scEnd).reduce((t, l) => t + l.dr - l.cr, 0));
+    if (m.kind === '계리') { const x = cfg.actuarial.find((a) => `1118-A-${a.key}` === m.code); return x ? r0((x.annual * Math.min(sc, actuarialLastMonth(x, year))) / 12) : 0; }
+    return m.required;
   };
   const l1001Of = (gl: string) => acc.get(gl)?.l1001;
   const moves: Move[] = req.map((m) => {
@@ -382,6 +401,14 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
     // 대상 손익 계정이 없으면(크래프톤 (투자)/(재무) 손익 계정 없음) 장부 기표 대상이 아니다 — 상대계정 표시로 분류하고 1118 표시에서만 옮긴다.
     return { ...m, posted, amount: m.required - posted, beforeStart: b, advise: m.reclassGl ? m.required - b - posted : 0,
       same1001: m.reclassGl ? l1001Of(m.reclassGl) === l1001Of(m.srcGl) : null };
+  });
+
+  // 계리 대상 계정(예: 51030104 순이자원가)에 권고코드 없이 기표가 생겼는데 directFrom 이 없으면 — 회사가 직접 기표를 시작한 것. 그대로 두면 두 번 옮긴다.
+  const actDirect = cfg.actuarial.filter((x) => !x.directFrom).flatMap((x) => {
+    const gl = moves.find((m) => m.code === `1118-A-${x.key}`)?.reclassGl;
+    if (!gl) return [];
+    const hit = live.some((l) => l.gl === gl && !tagOf(l.memo) && (!cut || l.date >= cut));
+    return hit ? [`${x.label}(${gl})`] : [];
   });
 
   // 4) 손익계산서
@@ -449,6 +476,7 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
     { id: 'bs', label: 'BS 계정 속성 모두 등록', ok: unregisteredBs.length === 0, fix: '미등록 BS 계정 속성 추가(인덕 문의)' },
     { id: 'watch', label: '주의계정 미판단 라인 0', ok: watch.every((w) => w.decision !== '미판단'), fix: 'STEP 4 에서 판단 기록' },
     { id: 'ni', label: '당기순이익 1001 = 1118', ok: r0(pl1001['당기순이익'] - pl1118['당기순손익']) === 0, fix: '인덕 문의' },
+    { id: 'actdirect', label: '계리 대상 계정에 직접 기표가 있으면 「직접 기표 시작월」 지정됨(이중 계산 방지)', ok: actDirect.length === 0, fix: `판단표 계리 항목에 directFrom 지정(인덕 문의): ${actDirect.join(', ')}` },
     { id: 'tag', label: '조정전표(권고코드) 라인의 코드 · 계정 정상', ok: tagIssues.length === 0, fix: '라인텍스트의 권고코드와 차 · 대변 계정 확인' },
     { id: 'bridge', label: '영업손익 브릿지 = 1118 영업손익', ok: r0(bridge[bridge.length - 1].amount - pl1118['영업손익']) === 0, fix: '인덕 문의' },
   ];
@@ -605,4 +633,10 @@ export function close2Summary(res: Ifrs18Result, fileName: string, lastDate: str
 }
 /** 그 달이 조정전표 기표(2차 마감) 대상인가 */
 export const needsClose2 = (cfg: Ifrs18Config, year: number, month: number) =>
-  !!cfg.adjustFrom && `${year}-${String(month).padStart(2, '0')}` >= cfg.adjustFrom;
+  !!cfg.adjustFrom && `${year}-${String(month).padStart(2, '0')}` >= cfg.adjustFrom.slice(0, 7);
+/** 「2026년 10월 21일」 */
+export const fmtAdjustFrom = (cfg: Ifrs18Config) => {
+  const d = cutoverDate(cfg); if (!d) return '';
+  const [y, m, dd] = d.split('-').map(Number);
+  return `${y}년 ${m}월 ${dd}일`;
+};

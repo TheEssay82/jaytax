@@ -11,7 +11,7 @@
 import type { Worksheet } from 'exceljs';
 import { FONT, FONT_BOLD, FILL_HEADER, FILL_TOTAL, FILL_INPUT, BORDER_ALL, setWidths, saveWorkbook } from './confirmExcelStyle';
 import {
-  PL1118_ORDER, PL1001_ORDER, LINES_1118, startCutMonth,
+  PL1118_ORDER, PL1001_ORDER, LINES_1118, startCutMonth, cutoverDate, fmtAdjustFrom, actuarialLastMonth,
   type Ifrs18Config, type Ifrs18Result, type Ifrs18Periods, type JLine, type Judgment, type CloseSummary,
 } from './ifrs18';
 
@@ -78,6 +78,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   const add = (name: string, tab: string) => { const ws = wb.addWorksheet(name); ws.properties.tabColor = { argb: tab }; return ws; };
   const wsG = add('00_읽는법', TAB.guide);
   const wsC = add('01_검증체크', TAB.check);
+  const wsU = add('02_사용안내', TAB.guide);
   const wsP = add('10_손익계산서', TAB.report);
   const wsQ = add('11_기간별손익', TAB.report);
   const wsN = add('12_주석금액', TAB.report);
@@ -90,7 +91,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   const wsB = add('94_BS속성', TAB.basis);
 
   // ── 00 기본 정보(다른 시트가 읽는 값: B6 연도 · B7 기준월 · B8 전월 · B9 직전 분기 말 월) ──
-  const P = { Y: "'00_읽는법'!$B$6", M: "'00_읽는법'!$B$7", PM: "'00_읽는법'!$B$8", PQ: "'00_읽는법'!$B$9", SC: "'00_읽는법'!$B$10" };
+  const P = { Y: "'00_읽는법'!$B$6", M: "'00_읽는법'!$B$7", PM: "'00_읽는법'!$B$8", PQ: "'00_읽는법'!$B$9", SC: "'00_읽는법'!$B$10", CD: "'00_읽는법'!$B$11" };
   const cutPM = `DATE(${P.Y},${P.PM}+1,0)`, cutPQ = `DATE(${P.Y},${P.PQ}+1,0)`;
 
   // ── 93_계정판단표 — 판단(입력) + 1118 표시항목(수식) ──
@@ -173,8 +174,8 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   title(wsA, '조정 내역 — 필요(1118 기준) − 이미 기표(권고코드 달린 조정전표) = 반영(손익계산서에서 옮김), 금액 차변+',
     '계리: 연간 금액(노란 칸) × 개월/12 · 판단: 92_분개장에서 그 전표 · 계정 합계 · 수동: 지정 금액. 이미 기표 = 92_분개장에서 권고코드가 같고 계정이 대상 1118 항목인 줄의 합계.');
   header(wsA, 4, ['권고코드', '구분', '원 전표번호', '원천 G/L', '원천 1118 항목', '대상 1118 항목', '기준 금액(계리 연간 · 수동)',
-    '필요(누적)', '이미 기표(누적)', '반영(누적)', '필요(전월 말)', '이미 기표(전월 말)', '반영(전월 말)', '필요(직전 분기 말)', '이미 기표(직전 분기 말)', '반영(직전 분기 말)', '내용 · 근거', '기표 시작 전 몫(누적, 장부 기표 안 함)', '권고 잔액(누적) = 필요 − 시작 전 몫 − 이미 기표 (대상 G/L 없으면 0)']);
-  setWidths(wsA, [28, 7, 12, 10, 16, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 50, 17, 19]);
+    '필요(누적)', '이미 기표(누적)', '반영(누적)', '필요(전월 말)', '이미 기표(전월 말)', '반영(전월 말)', '필요(직전 분기 말)', '이미 기표(직전 분기 말)', '반영(직전 분기 말)', '내용 · 근거', '기표 시작 전 몫(누적, 장부 기표 안 함)', '권고 잔액(누적) = 필요 − 시작 전 몫 − 이미 기표 (대상 G/L 없으면 0)', '계리: 원천 계정에서 옮길 마지막 월(직접 기표 시작 전)']);
+  setWidths(wsA, [28, 7, 12, 10, 16, 16, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 50, 17, 19, 14]);
   res.moves.forEach((m, i) => {
     const r = 5 + i;
     cell(wsA, r, 1, m.code, BLUE); cell(wsA, r, 2, m.kind, BLUE); cell(wsA, r, 3, m.docNo ?? '', BLUE); cell(wsA, r, 4, m.srcGl, BLUE);
@@ -183,10 +184,11 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     const act = cfg.actuarial.find((x) => `1118-A-${x.key}` === m.code);
     if (m.kind === '계리') {
       base.fill = FILL_INPUT;
+      const lm = cell(wsA, r, 20, act ? actuarialLastMonth(act, res.year) : 12, BLUE); lm.fill = FILL_INPUT;
       if (act?.override != null) cell(wsA, r, 8, act.override, BLUE, NUM);
-      else cell(wsA, r, 8, f(`ROUND(G${r}*${P.M}/12,0)`), GREEN, NUM);
-      cell(wsA, r, 11, f(`ROUND(G${r}*${P.PM}/12,0)`), GREEN, NUM);
-      cell(wsA, r, 14, f(`ROUND(G${r}*${P.PQ}/12,0)`), GREEN, NUM);
+      else cell(wsA, r, 8, f(`ROUND(G${r}*MIN(${P.M},T${r})/12,0)`), GREEN, NUM);
+      cell(wsA, r, 11, f(`ROUND(G${r}*MIN(${P.PM},T${r})/12,0)`), GREEN, NUM);
+      cell(wsA, r, 14, f(`ROUND(G${r}*MIN(${P.PQ},T${r})/12,0)`), GREEN, NUM);
     } else if (m.kind === '판단') {
       cell(wsA, r, 8, f(`SUMIFS(${J('G')},${J('A')},C${r},${J('C')},D${r})`), GREEN, NUM);
       cell(wsA, r, 11, f(`SUMIFS(${J('G')},${J('A')},C${r},${J('C')},D${r},${J('B')},"<="&${cutPM})`), GREEN, NUM);
@@ -202,8 +204,8 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     for (const [c, a, b] of [[10, 'H', 'I'], [13, 'K', 'L'], [16, 'N', 'O']] as const) cell(wsA, r, c, f(`${a}${r}-${b}${r}`), FONT_BOLD, NUM);
     cell(wsA, r, 17, m.label, BLUE);
     const sc = `${P.SC}>=${P.M}`;
-    if (m.kind === '계리') cell(wsA, r, 18, f(`IF(${sc},H${r},ROUND(G${r}*${P.SC}/12,0))`), GREEN, NUM);
-    else if (m.kind === '판단') cell(wsA, r, 18, f(`IF(${sc},H${r},SUMIFS(${J('G')},${J('A')},C${r},${J('C')},D${r},${J('B')},"<="&DATE(${P.Y},${P.SC}+1,0)))`), GREEN, NUM);
+    if (m.kind === '계리') cell(wsA, r, 18, f(`IF(${sc},H${r},ROUND(G${r}*MIN(${P.SC},T${r})/12,0))`), GREEN, NUM);
+    else if (m.kind === '판단') cell(wsA, r, 18, f(`SUMIFS(${J('G')},${J('A')},C${r},${J('C')},D${r},${J('B')},"<"&${P.CD})`), GREEN, NUM);
     else cell(wsA, r, 18, f(`IF(${P.SC}>0,H${r},0)`), GREEN, NUM);
     cell(wsA, r, 19, f(`IF('20_조정권고전표'!M${r}="",0,H${r}-R${r}-I${r})`), FONT_BOLD, NUM);
   });
@@ -333,10 +335,10 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   wsN.addConditionalFormatting({ ref: `E5:E${NE}`, rules: [{ type: 'expression', formulae: ['AND(ISNUMBER(E5),E5<>0)'], style: { fill: RED_FILL }, priority: 1 }] });
 
   // ── 20_조정권고전표 ──
-  const startTxt = cfg.adjustFrom ? `${cfg.adjustFrom.replace('-', '년 ')}월` : '';
-  const started = !cfg.adjustFrom || `${res.year}-${String(res.month).padStart(2, '0')}` >= cfg.adjustFrom;
+  const startTxt = fmtAdjustFrom(cfg);
+  const started = !cfg.adjustFrom || `${res.year}-${String(res.month).padStart(2, '0')}` >= cfg.adjustFrom.slice(0, 7);
   title(wsR, '조정 권고 전표 — K-IFRS 1118 기준으로 장부(SAP)에 기표할 재분류 전표',
-    `${started ? '이번 달 기표 대상' : `참고용 — 기표는 ${startTxt} 결산부터`} · 금액 = 1118 기준 옮길 금액(누적) − 이미 기표한 조정전표(누적). 각 줄의 라인텍스트 맨 앞에 A열 권고코드를 적는다. 대상 G/L(노란 칸)은 바꿀 수 있다.`);
+    `${started ? '이번 달 기표 대상' : `참고용 — ${startTxt} 이후 전표부터`} · 금액 = 1118 기준 옮길 금액(누적) − 기표 시작일 전 몫 − 이미 기표한 정정전표(누적). 각 줄의 라인텍스트 맨 앞에 A열 권고코드를 적는다. 대상 G/L(노란 칸)은 바꿀 수 있다.`);
   header(wsR, 4, ['권고코드(라인텍스트에 기재)', '구분', '내용', '옮길 금액(누적)', '기표 시작 전 몫(기표 안 함)', '이미 기표(누적)', '이번 기표 금액(차변+)',
     '차변 G/L', '차변 계정명', '대변 G/L', '대변 계정명', '금액', '대상 G/L(입력)', '대상 G/L의 1118 항목', '1118 확인', '원천 G/L 1001 항목', '대상 G/L 1001 항목', '1001 확인']);
   setWidths(wsR, [28, 7, 36, 15, 15, 15, 16, 10, 24, 10, 24, 15, 11, 18, 14, 12, 12, 16]);
@@ -363,7 +365,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   cell(wsR, rr2, 3, '이번 기표 합계(차변 = 대변)', FONT_BOLD); cell(wsR, rr2, 12, f(`SUM(L5:L${RE})`), FONT_BOLD, NUM); rr2 += 2;
   const rules = [
     '1. 전표마다 차변 · 대변 두 줄. 두 줄 모두 라인텍스트 맨 앞에 권고코드(A열)를 적는다 — 다음 달 분개장에서 「이미 기표」로 잡히는 열쇠다.',
-    `2. 금액은 기표 시작월(${startTxt || '지정 없음'}) 이후 누적이다. 시작 전 몫은 장부에 기표하지 않고 1118 표시에서만 옮긴다(91_조정내역). 지난달까지 기표한 금액은 「이미 기표」에 들어 있으므로 「이번 기표 금액」만 기표한다.`,
+    `2. 1118 계정 기표 시작일(${startTxt || '지정 없음'}) 전 전표는 장부를 고치지 않는다(그룹 추가 지침 전까지) — 그 몫은 1118 표시에서만 옮긴다(91_조정내역 「기표 시작 전 몫」). 권고는 시작일 뒤 전표가 1118 기준과 다르게 기표된 경우의 정정이다. 지난달까지 기표한 금액은 「이미 기표」에 들어 있으므로 「이번 기표 금액」만 기표한다.`,
     '3. 손익 안에서 계정만 옮기는 전표라 당기순이익은 바뀌지 않는다. 대상 G/L 의 1001 항목이 원천과 다르면 현행 1001 손익계산서(영업이익 등)가 바뀌므로 「1001 확인」이 ✔ 인 계정을 쓴다.',
     '4. 기표 후 같은 기준월 분개장을 다시 받아 이 파일을 다시 만들면 「이번 기표 금액」이 0 이고 10_손익계산서가 기표 전과 같아야 한다(01_검증체크 2차 항목).',
     '5. 대상 G/L 이 판단표에 없거나 1118 항목 · 1001 항목이 다르면 ✘ — 계정을 바꾸거나 판단표(93)를 고친다.',
@@ -431,7 +433,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   const s1 = cell(wsC, cr, 3, f(`IF(COUNTIF(C${c1}:C${c1e},"✘")=0,"✔","✘")`), FONT_BOLD); s1.alignment = { horizontal: 'center' };
   for (const c of [2, 3, 4, 5]) wsC.getCell(cr, c).fill = FILL_TOTAL;
   cr += 2;
-  header(wsC, cr, ['', `2차 마감(조정전표 반영 검증)${cfg.adjustFrom ? ` — ${startTxt}부터` : ''}`, '결과', '값', '고칠 곳']); cr++;
+  header(wsC, cr, ['', `2차 마감(정정전표 반영 검증)${cfg.adjustFrom ? ` — ${startTxt}이 든 달부터` : ''}`, '결과', '값', '고칠 곳']); cr++;
   const c2 = cr;
   const two: [string, string, string, string][] = [
     ['조정 권고 잔액 0(이번 기표 금액 모두 0)', `SUMPRODUCT(ABS(${A('S')}))=0`, `SUMPRODUCT(ABS(${A('S')}))`, '20_조정권고전표대로 기표 후 분개장 다시 받기'],
@@ -461,6 +463,88 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   for (const c of [2, 3, 4, 5]) wsC.getCell(cr, c).fill = FILL_TOTAL;
   wsC.addConditionalFormatting({ ref: `C5:C${cr}`, rules: [{ type: 'expression', formulae: ['C5="✘"'], style: { fill: RED_FILL }, priority: 1 }] });
 
+  // ── 02_사용안내 — 처음 쓰는 사람이 이 시트만 읽고 파일을 다룰 수 있게(사용자 2026-11-09 「자세한 안내를 엑셀에」) ──
+  {
+    title(wsU, '사용 안내 — 이 파일을 어떻게 읽고 검증하나', `${cfg.clientName} · ${res.year}년 ${res.month}월 · 이 시트만 읽으면 나머지 시트를 다룰 수 있게 정리했다.`);
+    setWidths(wsU, [20, 30, 110]);
+    const cutTxt = fmtAdjustFrom(cfg);
+    type Row = [string, string, string];
+    const sec: [string, Row[]][] = [
+      ['1. 이 파일은 무엇인가', [
+        ['목적', '', `${res.year}년 1월 1일 ~ ${res.month}월 말 누적 분개장으로 K-IFRS 제1118호 손익계산서 · 당월 · 당분기 · 주석 금액을 만들고, 1118 기준과 다르게 기표된 전표의 정정 권고를 보여 준다.`],
+        ['검증 방식', '', '모든 결과는 이 파일 안의 원천(92_분개장) · 판단(93_계정판단표 · 94_BS속성 · 30_주의계정판단) · 조정(91_조정내역)만으로 엑셀 수식이 다시 계산한다. 다른 프로그램이나 화면 값에 기대지 않는다.'],
+        ['당기순이익', '', '1118 은 손익을 영업 · 투자 · 재무 범주로 다시 묶는 것이라 당기순이익은 1001 과 같다(01_검증체크 8번). 영업손익만 달라진다.'],
+      ]],
+      ['2. 전제(2026년)', [
+        ['적용 시점', '', 'K-IFRS 제1118호는 2027년 1월 1일 이후 시작하는 회계연도부터 적용한다. 2026년 숫자는 2027년 재무제표의 비교표시와 그룹(크래프톤) 연결에 쓰인다. 2026년 회사 재무제표는 1001 그대로다.'],
+        ['기존 기표 내역', '', cutTxt ? `${cutTxt} 전에 기표한 전표는 장부를 고치지 않는다(그룹 추가 지침 전까지). 그 몫은 1118 손익계산서에서만 옮긴다 — 91_조정내역 「기표 시작 전 몫」.` : '기표 시작일이 지정되지 않았다 — 모든 전표가 정정 권고 대상이다.'],
+        ['시작일 이후', '', '그룹 지침대로 투자 목적은 (투자), 자금조달은 (재무) 계정(미지급금 · 미지급비용 등)을 쓰고 손익은 기존 계정을 쓴다. 외환 · 이자 · 파생 등 (투자)/(재무) 손익 계정이 있는 거래는 그 계정에 바로 기표한다. 이렇게 기표하면 정정 권고는 생기지 않는다.'],
+        ['정정 권고가 생기는 경우', '', '시작일 뒤 전표인데 ① 투자 · 재무 목적 외환차이를 영업 계정에 기표했거나 ② 퇴직급여 등에 섞어 기표하던 계리 이자 금액을 계속 섞어 기표했거나 ③ 주의 라인을 「조정」으로 판단했고 옮겨 갈 (투자)/(재무) 손익 계정이 있는 경우.'],
+        ['그룹 추가 지침', '', '그룹이 기존 기표분도 고치라고 안내하면 기표 시작일을 바꿔 다시 만든다. 그러면 그 전 몫도 권고 전표에 나온다.'],
+      ]],
+      ['3. 검토 순서', [
+        ['①', '01_검증체크', '「1차 마감 조건」이 ✔ 인지 본다. ✘ 이면 그 줄의 「고칠 곳」을 따라간다(아래 6번).'],
+        ['②', '30_주의계정판단', '투자 · 재무 거래가 섞일 수 있는 줄의 판단(영업 유지 / 조정)과 근거를 확인한다. 근거 칸이 비었으면 채운다.'],
+        ['③', '10_손익계산서', '1118 손익계산서와 1001 을 나란히 보고, 「영업손익 조정」에서 1001 영업이익이 1118 영업손익으로 바뀌는 이유를 확인한다.'],
+        ['④', '11_기간별손익 · 12_주석금액', '당월 · 당분기 금액과 주석 #6~#8 세부 금액을 확인한다(12 의 차이 열이 0).'],
+        ['⑤', '20_조정권고전표', '「이번 기표 금액」이 0 이 아닌 줄이 있으면 장부에 정정 전표를 기표한다(아래 5번). 모두 「기표 불필요」 또는 「기표 대상 아님」이면 할 일이 없다.'],
+        ['⑥', '01_검증체크(2차)', '정정 전표를 기표했으면 같은 기준월 분개장을 다시 받아 이 파일을 다시 만들고 「2차 마감 조건」이 ✔ 인지 본다.'],
+      ]],
+      ['4. 시트별 설명', [
+        ['01_검증체크', '열', 'B 확인 항목 · C 결과(✔/✘) · D 값(차이 금액이나 건수, 0 이면 정상) · E 고칠 곳. 위는 1차 마감 조건, 아래는 2차 마감 조건.'],
+        ['10_손익계산서', '열', 'C 금액(수식). 1118 → 1001 → 영업손익 조정 순. 1118 항목 = 90_시산표를 1118 표시항목으로 합한 값 ± 91_조정내역 「반영」.'],
+        ['11_기간별손익', '열', 'C 누적 · D 전월 말 누적 · E 당월(C−D) · F 직전 분기 말 누적 · G 당분기(C−F). 같은 누적 분개장을 전기일로 잘라 다시 합한 값이다.'],
+        ['12_주석금액', '열', '1118 표시항목 × 주석 세부항목 금액. 항목 합계 줄의 E(차이)가 0 이어야 한다. 「계리 금액 · 조정」 줄은 91_조정내역에서 온다.'],
+        ['20_조정권고전표', '열', 'A 권고코드 · D 1118 기준 옮길 금액(누적) · E 기표 시작 전 몫 · F 이미 기표 · G 이번 기표 금액 · H~K 차변/대변 계정과 금액 · M 대상 G/L(노란 칸) · O 1118 확인 · R 1001 확인.'],
+        ['30_주의계정판단', '열', 'E 금액(분개장에서 다시 셈) · G/H 같은 전표의 투자/재무 BS 줄 수 · I 확인 · K 판단 · L 대상 항목 · M 근거 · Q 잡힌 경로(주의계정 / 표시 계정).'],
+        ['90_시산표', '열', 'C 누적(차변+) = 92_분개장 합계 · D~G 판단표에서 찾은 1001 항목 · 범주 · 1118 표시항목 · 세부항목 · H 손익(수익+) · I/J 전월 말 · 직전 분기 말 누적.'],
+        ['91_조정내역', '열', 'H 필요 · I 이미 기표 · J 반영(=H−I, 손익계산서에서 옮기는 금액) · K~P 전월 말 · 직전 분기 말 같은 계산 · R 기표 시작 전 몫 · S 권고 잔액 · T 계리 직접 기표 전 마지막 월(노란 칸).'],
+        ['92_분개장', '열', 'A~I 원천(임시전표 제외) · J 손익/BS · K 1118 표시항목 · L BS 속성 · M 권고코드(라인텍스트에서 읽음) · N 정정 전표 줄 확인.'],
+        ['93_계정판단표', '열', 'D 그룹 범주 · E 회사 판단 범주(노란 칸) · F 적용 범주 · K 1118 표시항목(수식). E 를 바꾸면 모든 시트가 다시 계산된다.'],
+        ['94_BS속성', '열', 'BS 계정의 영업 · 투자 · 재무 · 현금 · 중립 · 법인세 속성. 주의 라인을 찾을 때 쓴다(노란 칸).'],
+      ]],
+      ['5. 정정 전표 기표 방법', [
+        ['전표 모양', '', '20_조정권고전표 한 줄 = 전표 한 장(차변 한 줄 · 대변 한 줄). 금액은 L열. 손익 계정끼리 옮기는 전표라 당기순이익은 바뀌지 않는다.'],
+        ['권고코드', '', '두 줄 모두 라인텍스트 맨 앞에 A열 권고코드를 적고, 한 칸 띄운 뒤 내용을 적는다. 예: 「1118-A-db_plan_asset_interest 10월 사외적립자산 이자수익 재분류」. 다음 분개장에서 이 코드로 「이미 기표」를 잡는다.'],
+        ['코드 종류', '', '1118-A-… 계리 · 1118-J-전표번호-G/L 주의 라인 판단 · 1118-M-G/L 수동 조정.'],
+        ['대상 G/L', '', 'M열(노란 칸)을 바꿀 수 있다. 1118 확인(O)과 1001 확인(R)이 모두 ✔ 인 계정을 쓴다 — 1001 항목이 다르면 2026년 1001 손익계산서가 바뀐다.'],
+        ['기표 대상 아님', '', '옮겨 갈 (투자)/(재무) 손익 계정이 없는 거래. 그룹 지침상 손익은 기존 계정에 두고 상대계정((투자)/(재무) 미지급금 등)으로 표시한다. 1118 손익계산서에서만 옮긴다.'],
+        ['계리 직접 기표', '', '회사가 계리 이자 금액을 대상 계정(예: 순이자원가)에 직접 기표하기 시작하면 91_조정내역 T열에 직접 기표 전 마지막 월을 넣는다. 넣지 않으면 두 번 옮기게 되고 검증에서 걸린다.'],
+      ]],
+      ['6. ✘ 가 나올 때', [
+        ['차변 ≠ 대변', '01 1번', '분개장이 잘렸거나 일부만 내려받았다 → 분개장을 처음부터 다시 받는다.'],
+        ['판단표에 없는 계정', '01 3 · 4번', '새로 연 계정 → 93_계정판단표 · 94_BS속성에 범주 · 속성을 넣는다(판단 필요 — 담당 회계사와 협의).'],
+        ['임시계정 잔액', '01 5번', '임시 · 전환 계정에 잔액이 남았다 → 장부에서 정리 후 다시 받는다.'],
+        ['미판단 · 대상 아님', '01 6 · 7번', '30_주의계정판단에서 판단을 기록하거나 94_BS속성을 확인한다.'],
+        ['당기순이익 · 브릿지 · 주석', '01 8~12번', '91_조정내역의 원천 · 대상 항목이 「확인필요」인지, 93 의 범주가 비었는지 본다.'],
+        ['권고코드 줄', '01 13번 · 92 N열', '라인텍스트의 코드 오타이거나 대상 항목이 아닌 계정에 기표했다 → 코드 · 계정을 고쳐 다시 기표한다.'],
+        ['2차: 권고 잔액', '2차 1번', '20_조정권고전표의 「이번 기표 금액」을 아직 기표하지 않았다.'],
+        ['2차: 1차 마감 값과 다름', '2차 4번~', '정정 전표 금액 · 계정이 틀렸거나 1차 마감 뒤 다른 전표가 들어왔다.'],
+      ]],
+      ['7. 자주 묻는 질문', [
+        ['노란 칸을 바꿔도 되나', '', '된다. 바꾸면 모든 시트가 다시 계산되고 01_검증체크로 결과를 다시 확인할 수 있다. 바꾼 내용은 담당 회계사와 공유한다.'],
+        ['기준월보다 뒤 전표가 있으면', '', '이 파일에는 기준월 말일까지의 전표만 들어 있다. 뒤 전표는 빠져 있다.'],
+        ['1차 · 2차 마감', '', '1차 = 장부 그대로 1118 결과를 확정. 2차 = 정정 전표를 기표한 뒤 권고 잔액이 0 이고 1118 결과가 1차와 같음을 확인. 이번 달 권고가 없으면 2차는 1차와 같다.'],
+        ['금액 부호', '', '손익계산서 · 기간별 · 주석은 수익 + / 비용 −. 시산표 · 조정 · 분개장 금액은 차변 + / 대변 −.'],
+      ]],
+      ['8. 기준', [
+        ['K-IFRS 제1118호', '', '문단 47~65(영업 · 투자 · 재무 범주) · 69(영업손익) · 86 · B65(외환차이는 발생 원천을 따름) · B70~B76(파생상품은 관리하는 위험을 따름) · 24 · 41 · 42(통합 · 세분화).'],
+      ]],
+    ];
+    let ur = 4;
+    for (const [h, rows] of sec) {
+      const hc = wsU.getCell(ur, 1); hc.value = h; hc.font = { ...FONT_BOLD, size: 11 }; hc.fill = FILL_HEADER;
+      wsU.mergeCells(ur, 1, ur, 3); ur++;
+      for (const [a, b, c] of rows) {
+        cell(wsU, ur, 1, a, FONT_BOLD); cell(wsU, ur, 2, b);
+        const x = cell(wsU, ur, 3, c); x.alignment = { wrapText: true, vertical: 'top' };
+        wsU.getRow(ur).height = Math.max(18, Math.ceil(c.length / 75) * 15);
+        ur++;
+      }
+      ur++;
+    }
+  }
+
   // ── 00_읽는법 ──
   title(wsG, `${cfg.clientName} · K-IFRS 제1118호 월결산 (${res.year}년 ${res.month}월)`, '이 파일은 엑셀만으로 다시 계산 · 검증된다. 먼저 01_검증체크가 모두 ✔ 인지 본다.');
   setWidths(wsG, [26, 16, 22, 70]);
@@ -473,11 +557,12 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     ['전월(당월 계산 기준)', f('B7-1')],
     ['직전 분기 말 월', f('INT((B7-1)/3)*3')],
     ['기표 시작 전 마지막 월', startCutMonth(cfg, res.year, res.month), true],
+    ['1118 계정 기표 시작일', (() => { const d = cutoverDate(cfg) || '1900-01-01'; const [a, b, c] = d.split('-').map(Number); return new Date(Date.UTC(a, b - 1, c)); })(), true],
     ['누적 기간', period],
     ['원천 분개장', `${opts.fileName} · ${res.lineCount.toLocaleString()}줄(임시전표 ${res.tempCount}줄 제외)`],
     ['작성', `${new Date().toLocaleString('ko-KR')} · ${opts.byName}`],
     ['마감 상태', st],
-    ['조정전표 기표 시작월', startTxt || '지정 없음'],
+    ['1118 계정 기표 시작일(설명)', startTxt ? `${startTxt} — 이 날 전 전표는 장부를 고치지 않고 1118 표시에서만 옮긴다(그룹 추가 지침 전까지)` : '지정 없음 — 모든 전표가 정정 권고 대상'],
     ['판단 근거', cfg.source ?? ''],
     ['기준', 'K-IFRS 제1118호 문단 47~65(범주) · 69(영업손익) · 86 · B65(외환차이) · B70~B76(파생상품) · 24 · 41 · 42(통합 · 세분화)'],
   ];
@@ -485,6 +570,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     const rr = 5 + i;
     cell(wsG, rr, 1, k, FONT_BOLD);
     const c = cell(wsG, rr, 2, v, num ? BLUE : FONT);
+    if (v instanceof Date) c.numFmt = 'yyyy-mm-dd';
     if (typeof v === 'string' && v.length > 14) wsG.mergeCells(rr, 2, rr, 4);
     c.alignment = { wrapText: true, vertical: 'top' };
   });
@@ -492,6 +578,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   header(wsG, gr, ['시트', '구분', '누가', '무엇을 보나']); gr++;
   const guide: [string, string, string, string][] = [
     ['01_검증체크', '먼저 · 확인', '모두', '이 파일만으로 결과가 맞는지 — 1차 마감 조건 · 2차 마감 조건이 ✔ 인지'],
+    ['02_사용안내', '안내', '모두(처음 쓸 때)', '이 파일의 전제 · 검토 순서 · 시트별 열 설명 · ✘ 가 나올 때 · 자주 묻는 질문'],
     ['10_손익계산서', '보고', '결산 · 공시 담당', '1118 손익계산서(누적) · 1001 비교 · 영업손익 조정(1001 영업이익 → 1118 영업손익)'],
     ['11_기간별손익', '보고', '결산 담당', '당월 · 당분기 · 누적(같은 누적 분개장을 전기일로 잘라 다시 계산)'],
     ['12_주석금액', '보고', '공시 담당', '주석 #6 기타영업손익 · #7 투자 범주 · #8 재무 범주의 세부 금액'],
@@ -515,7 +602,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   for (const [k, ft, fill, v] of legend) { const c = cell(wsG, gr, 1, k, ft); if (fill) c.fill = FILL_INPUT; cell(wsG, gr, 4, v); gr++; }
 
   // 이 시트 B6 · B7 이 다른 시트의 기준(연도 · 월)이다 — 위 info 순서와 맞물려 있다.
-  if (wsG.getCell('A6').value !== '기준연도' || wsG.getCell('A7').value !== '기준월' || wsG.getCell('A10').value !== '기표 시작 전 마지막 월') throw new Error('00_읽는법 기준 칸 위치가 바뀌었습니다');
+  if (wsG.getCell('A6').value !== '기준연도' || wsG.getCell('A7').value !== '기준월' || wsG.getCell('A10').value !== '기표 시작 전 마지막 월' || wsG.getCell('A11').value !== '1118 계정 기표 시작일') throw new Error('00_읽는법 기준 칸 위치가 바뀌었습니다');
 
   wb.calcProperties = { fullCalcOnLoad: true };
   return wb;
