@@ -11,9 +11,10 @@ const lab: React.CSSProperties = { ...td, textAlign: 'left', fontWeight: 700, ba
 
 export interface Drift { op: number; ni: number }
 
-export default function Ifrs18Dashboard({ year, month, closes, logs, drift, onPick }: {
+export default function Ifrs18Dashboard({ year, month, closes, logs, drift, onPick, onExcel }: {
   year: number; month: number; closes: Ifrs18CloseRow[]; logs: Ifrs18LogRow[];
   drift: Map<number, Drift>; onPick: (m: number) => void;
+  /** 보관된 마감 엑셀 내려받기(분개장을 올리지 않아도 된다) */ onExcel: (c: Ifrs18CloseRow) => void;
 }) {
   const [logMonthOnly, setLogMonthOnly] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -60,6 +61,16 @@ export default function Ifrs18Dashboard({ year, month, closes, logs, drift, onPi
             {([['당월 영업손익', 'op', 'month'], ['누적 영업손익', 'op', 'cum'], ['당월 당기순손익', 'ni', 'month'], ['누적 당기순손익', 'ni', 'cum']] as const).map(([t, k, p]) => (
               <tr key={t}><td style={lab}>{t}</td>{months.map((m) => { const c = cm.get(m); return <td key={m} style={td}>{c ? won(c.summary[k][p]) : ''}</td>; })}</tr>
             ))}
+            <tr><td style={lab}>마감 엑셀</td>{months.map((m) => {
+              const c = cm.get(m);
+              return (
+                <td key={m} style={{ ...td, textAlign: 'center' }}>
+                  {c?.excelPath
+                    ? <button className="btn-sm" style={{ padding: '1px 6px' }} title={`${c.excelPath.split('/').pop()}\n보관 ${c.excelAt ? new Date(c.excelAt).toLocaleString('ko-KR') : ''}`} onClick={() => onExcel(c)}>⬇ 엑셀</button>
+                    : c ? <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }} title="이 달은 엑셀 보관 전에 마감했습니다 — 분개장을 올리고 STEP 6 「마감 엑셀 보관」을 누르면 채워집니다">미보관</span> : ''}
+                </td>
+              );
+            })}</tr>
             <tr><td style={lab}>조정 판단 · 주의 라인</td>{months.map((m) => { const c = cm.get(m); return <td key={m} style={{ ...td, textAlign: 'center' }}>{c ? `${c.summary.adjCount} / ${c.summary.watchCount}` : ''}</td>; })}</tr>
           </tbody>
         </table>

@@ -5,11 +5,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   compute, computeAt, computePeriods, closeSummary, close2Checks, close2Summary, needsClose2, fmtAdjustFrom, monthEnd, parseSapJournal, validateConfig, keyOf, LINES_1118, PL1118_ORDER, PL1001_ORDER, BS_ATTRS,
-  type Ifrs18Config, type JLine, type Judgment, type Line1118, type Decision,
+  type Ifrs18Config, type JLine, type Judgment, type Line1118, type Decision, type Ifrs18Result, type Ifrs18Periods, type CloseSummary,
 } from '../../lib/ifrs18';
 import {
   listIfrs18Clients, saveIfrs18Client, listIfrs18Judgments, saveIfrs18Judgment, deleteIfrs18Judgment,
   listIfrs18Closes, closeIfrs18Month, reopenIfrs18Month, close2Ifrs18Month, listIfrs18Log, logIfrs18,
+  storeIfrs18CloseExcel, downloadIfrs18CloseExcel,
   type Ifrs18ClientRow, type Ifrs18CloseRow, type Ifrs18LogRow,
 } from '../../lib/ifrs18Api';
 import Ifrs18Dashboard, { type Drift } from './Ifrs18Dashboard';
@@ -188,6 +189,45 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
     await exportIfrs18Workbook({ cfg, res, per: per ?? undefined, lines, judgments, fileName, byName: profileName, close1: closedRow, close2: closedRow?.close2 ?? null });
     void log('엑셀 내려받기', { file: ifrs18FileName({ cfg, res }) });
   }
+  /** 마감한 달의 엑셀을 만들어 서버에 보관한다(사용자 2026-11-11 「서버에 마감 엑셀 보관」). 그 달 말까지 자른 분개장으로 만든다. */
+  async function storeExcel(m: number, r: Ifrs18Result, pm: Ifrs18Periods | null, sm: CloseSummary): Promise<void> {
+    if (!key || !cfg) return;
+    const { buildIfrs18Workbook, ifrs18FileName } = await import('../../lib/ifrs18Excel');
+    const end = monthEnd(year, m);
+    const prev = closedThisYear.get(m);
+    const close1 = { summary: sm, at: new Date().toISOString(), byName: profileName };
+    const wb = await buildIfrs18Workbook({ cfg, res: r, per: pm ?? undefined, lines: lines.filter((l) => l.date <= end), judgments, fileName, byName: profileName, close1, close2: prev?.close2 ?? null });
+    const buf = await wb.xlsx.writeBuffer();
+    const name = ifrs18FileName({ cfg, res: r });
+    await storeIfrs18CloseExcel(key, year, m, buf as ArrayBuffer, name);
+    await logIfrs18(key, year, m, '엑셀 보관', { file: name, bytes: (buf as ArrayBuffer).byteLength }, profileName);
+  }
+  /** 마감했지만 엑셀이 없는 달(기준월까지) — 지금 올린 누적 분개장으로 만들어 보관. 다시 계산한 값이 마감 값과 같을 때만. */
+  const unstored = useMemo(() => [...closedThisYear.values()].filter((c) => c.month <= month && !c.excelPath).map((c) => c.month).sort((a, b) => a - b), [closedThisYear, month]);
+  async function restoreExcel(months: number[]) {
+    if (!key || !cfg || !lines.length || !months.length) return;
+    setBusy(true);
+    const done: number[] = [], skip: number[] = [];
+    try {
+      for (const m of months) {
+        const c = closedThisYear.get(m);
+        if (!c || drift.has(m)) { skip.push(m); continue; }
+        const r = m === month && res ? res : computeAt(lines, cfg, judgments, year, m);
+        if (!r) { skip.push(m); continue; }
+        const pm = m === month && per ? per : computePeriods(lines, cfg, judgments, year, m, r);
+        await storeExcel(m, r, pm, c.summary);
+        done.push(m);
+      }
+      reloadDash();
+      setMsg(`${done.length ? `${done.map((m) => `${m}월`).join(' · ')} 마감 엑셀을 서버에 보관했습니다 — 결산 현황 「⬇ 엑셀」에서 언제든 내려받습니다.` : ''}${skip.length ? ` ${skip.map((m) => `${m}월`).join(' · ')}은 지금 분개장으로 다시 계산한 값이 마감 때와 달라 보관하지 않았습니다.` : ''}`);
+    } catch (e) { setErr(`${done.length ? `${done.join('·')}월은 보관했습니다. ` : ''}${e instanceof Error ? e.message : '엑셀을 보관하지 못했습니다.'}`); }
+    finally { setBusy(false); }
+  }
+  async function downloadStored(c: Ifrs18CloseRow) {
+    if (!key || !c.excelPath) return;
+    try { await downloadIfrs18CloseExcel(c.excelPath); await logIfrs18(key, c.year, c.month, '엑셀 내려받기', { file: c.excelPath.split('/').pop(), 보관본: true }, profileName); }
+    catch (e) { setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'); }
+  }
   async function closeMonth() {
     if (!key || !res || !per) return;
     const earlier = Array.from({ length: month - 1 }, (_, i) => i + 1).filter((m) => !closedThisYear.has(m));
@@ -197,8 +237,10 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
       const sm = closeSummary(res, per, fileName, lastDate);
       await closeIfrs18Month(key, sm, profileName);
       await log('마감', { opCum: sm.op.cum, opMonth: sm.op.month, niCum: sm.ni.cum, fileName });
+      let kept = true;
+      try { await storeExcel(month, res, per, sm); } catch { kept = false; }
       reloadDash();
-      setMsg(`${year}년 ${month}월을 마감했습니다. 이 달 전표의 주의계정 판단은 잠깁니다.`);
+      setMsg(`${year}년 ${month}월을 마감했습니다. 이 달 전표의 주의계정 판단은 잠깁니다.${kept ? ' 마감 엑셀은 서버에 보관했습니다(결산 현황 「⬇ 엑셀」).' : ' ⚠ 마감 엑셀 보관은 실패했습니다 — STEP 6 「마감 엑셀 보관」을 다시 눌러 주세요.'}`);
     } catch (e) { setErr(e instanceof Error ? e.message : '마감하지 못했습니다.'); }
     finally { setBusy(false); }
   }
@@ -228,6 +270,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
         const sm = closeSummary(r, pm, fileName, ld);
         await closeIfrs18Month(key, sm, profileName);
         await logIfrs18(key, year, m, '마감', { opCum: sm.op.cum, opMonth: sm.op.month, niCum: sm.ni.cum, fileName, 일괄: true }, profileName);
+        await storeExcel(m, r, pm, sm);
         done.push(m);
       }
       if (done.length) setMsg(`${done.map((m) => `${m}월`).join(' · ')}을 마감했습니다(같은 누적 분개장으로 각 달 말까지 잘라 계산).`);
@@ -294,7 +337,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
     </div>
 
     {cfg && <>
-      <Ifrs18Dashboard year={year} month={month} closes={closes} logs={logs} drift={drift} onPick={setMonth} />
+      <Ifrs18Dashboard year={year} month={month} closes={closes} logs={logs} drift={drift} onPick={setMonth} onExcel={(c) => void downloadStored(c)} />
       <div className="card">
         {stepHead(1, '기준월 고르기', true, '마감할 달(누적 마지막 달)')}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -440,6 +483,8 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
                   <button className="btn-sm" disabled={busy || readonly} onClick={() => void reopenMonth()}>마감 해제</button></>
               : <button className="btn-sm btn-sm-navy" disabled={busy || readonly || !allOk} title={allOk ? '' : '위 확인이 모두 ✔ 여야 마감할 수 있습니다'} onClick={() => void closeMonth()}>{month}월 마감하기</button>}
             <button className="btn-sm" onClick={() => void download()}>엑셀 내려받기(수식 검증 파일)</button>
+            {lines.length > 0 && unstored.length > 0 && <button className="btn-sm" disabled={busy || readonly} title="마감은 했지만 엑셀이 서버에 없는 달 — 지금 올린 누적 분개장으로 그 달 말까지 잘라 만들어 보관합니다" onClick={() => void restoreExcel(unstored)}>마감 엑셀 보관({unstored.join('·')}월)</button>}
+            {closedRow?.excelPath && <button className="btn-sm" disabled={busy || readonly} title="이 달의 보관 엑셀을 지금 분개장으로 다시 만들어 바꿉니다" onClick={() => void restoreExcel([month])}>{month}월 마감 엑셀 다시 보관</button>}
             {openEarlier.length > 0 && <button className="btn-sm" disabled={busy || readonly} title="같은 누적 분개장을 각 달 말까지 잘라 계산해 달마다 마감합니다" onClick={() => void closeEarlier()}>앞선 달({openEarlier[0]}~{openEarlier[openEarlier.length - 1]}월) 각각 마감</button>}
             {!cfg.close2 && res.moves.some((m) => m.advise !== 0) && <span style={{ fontSize: 'var(--fs-1)', color: '#B45309' }}>정정 후보(참고) {res.moves.filter((m) => m.advise !== 0).length}건 — 엑셀 20_정정후보</span>}
             <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>엑셀만으로 다시 계산 · 검증되는 파일입니다(00_읽는법 → 01_검증체크 → 02_사용안내 → 보고 · 검토 · 근거 시트).{!allOk && ' 확인이 남아 있어도 내려받을 수 있습니다(진행 중 표시). 마감은 모두 ✔ 일 때만 됩니다.'}</span>

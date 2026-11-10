@@ -46,13 +46,15 @@ export async function deleteIfrs18Judgment(clientKey: string, docNo: string, gl:
 export interface Ifrs18CloseRow {
   year: number; month: number; summary: CloseSummary; byName: string | null; at: string;
   close2: { summary: Close2Summary; at: string; byName: string | null } | null;
+  /** 보관된 마감 엑셀(0193) — storage ifrs18-close 경로 */ excelPath: string | null; excelAt: string | null;
 }
 export async function listIfrs18Closes(clientKey: string): Promise<Ifrs18CloseRow[]> {
-  const { data, error } = await supabase.from('ifrs18_close').select('year, month, summary, by_name, at, close2_summary, close2_at, close2_by_name').eq('client_key', clientKey).order('year').order('month');
+  const { data, error } = await supabase.from('ifrs18_close').select('year, month, summary, by_name, at, close2_summary, close2_at, close2_by_name, excel_path, excel_at').eq('client_key', clientKey).order('year').order('month');
   if (error) throw error;
   return (data ?? []).map((r) => ({
     year: r.year, month: r.month, summary: r.summary as CloseSummary, byName: r.by_name, at: r.at,
     close2: r.close2_at ? { summary: r.close2_summary as Close2Summary, at: r.close2_at, byName: r.close2_by_name } : null,
+    excelPath: r.excel_path ?? null, excelAt: r.excel_at ?? null,
   }));
 }
 export async function closeIfrs18Month(clientKey: string, summary: CloseSummary, byName: string): Promise<void> {
@@ -62,8 +64,36 @@ export async function closeIfrs18Month(clientKey: string, summary: CloseSummary,
   if (error) throw error;
 }
 export async function reopenIfrs18Month(clientKey: string, year: number, month: number): Promise<void> {
+  // 보관 엑셀부터 지운다(실패해도 해제는 진행 — 경로는 줄과 함께 사라진다).
+  const { data: row } = await supabase.from('ifrs18_close').select('excel_path').eq('client_key', clientKey).eq('year', year).eq('month', month).maybeSingle();
+  if (row?.excel_path) await supabase.storage.from(CLOSE_BUCKET).remove([row.excel_path]);
   const { error } = await supabase.from('ifrs18_close').delete().eq('client_key', clientKey).eq('year', year).eq('month', month);
   if (error) throw error;
+}
+
+// ── 마감 엑셀 보관(0193) ──
+const CLOSE_BUCKET = 'ifrs18-close';
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+/** 마감한 달의 엑셀을 비공개 저장소에 두고 마감 줄에 경로를 적는다. 같은 달 이전 파일은 지운다. */
+export async function storeIfrs18CloseExcel(clientKey: string, year: number, month: number, buf: ArrayBuffer, fileName: string): Promise<string> {
+  const path = `${clientKey}/${year}/${String(month).padStart(2, '0')}/${fileName}`;
+  const { data: prev } = await supabase.from('ifrs18_close').select('excel_path').eq('client_key', clientKey).eq('year', year).eq('month', month).maybeSingle();
+  const { error: upErr } = await supabase.storage.from(CLOSE_BUCKET).upload(path, new Blob([buf], { type: XLSX_MIME }), { contentType: XLSX_MIME, upsert: true });
+  if (upErr) throw upErr;
+  const { error } = await supabase.from('ifrs18_close').update({ excel_path: path, excel_at: new Date().toISOString() })
+    .eq('client_key', clientKey).eq('year', year).eq('month', month);
+  if (error) throw error;
+  if (prev?.excel_path && prev.excel_path !== path) await supabase.storage.from(CLOSE_BUCKET).remove([prev.excel_path]);
+  return path;
+}
+/** 보관 엑셀 내려받기 — 짧은 서명 URL 로 받는다. */
+export async function downloadIfrs18CloseExcel(path: string): Promise<void> {
+  const name = path.split('/').pop() ?? 'ifrs18.xlsx';
+  const { data, error } = await supabase.storage.from(CLOSE_BUCKET).createSignedUrl(path, 60, { download: name });
+  if (error || !data?.signedUrl) throw error ?? new Error('내려받기 주소를 만들지 못했습니다.');
+  const a = document.createElement('a');
+  a.href = data.signedUrl; a.download = name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
 /** 2차 마감 — 1차 마감 줄에 덧붙인다(해제는 비운다). */
@@ -76,7 +106,7 @@ export async function close2Ifrs18Month(clientKey: string, year: number, month: 
   if (error) throw error;
 }
 
-export type Ifrs18Action = '분개장 읽음' | '판단 저장' | '판단 삭제' | '마감' | '마감 해제' | '2차 마감' | '2차 마감 해제' | '엑셀 내려받기';
+export type Ifrs18Action = '분개장 읽음' | '판단 저장' | '판단 삭제' | '마감' | '마감 해제' | '2차 마감' | '2차 마감 해제' | '엑셀 내려받기' | '엑셀 보관';
 export interface Ifrs18LogRow { id: number; year: number | null; month: number | null; action: Ifrs18Action; detail: Record<string, unknown>; byName: string | null; at: string }
 export async function listIfrs18Log(clientKey: string, limit = 200): Promise<Ifrs18LogRow[]> {
   const { data, error } = await supabase.from('ifrs18_log').select('id, year, month, action, detail, by_name, at')
