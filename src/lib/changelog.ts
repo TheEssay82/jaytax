@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.81.7',
+    date: '2026-11-11',
+    title: 'K-IFRS 1118 월결산 — 주석금액 당월 · 당분기 · 수동 조정 전표 지정',
+    highlights: [
+      '엑셀 「12_주석금액」에 전월 말 누적 · 당월 · 직전 분기 말 누적 · 당분기 열을 넣었습니다(수식, 11_기간별손익과 대사). 2027년 분기 비교표시용입니다.',
+      '판단표 수동 조정에 대상 전표(docs)를 지정하면 금액을 분개장에서 그 전표 줄로 세어 전기일대로 월별 배분합니다(엑셀도 SUMIFS 로 다시 셈).',
+    ],
+  },
+  {
     version: '3.81.6',
     date: '2026-11-11',
     title: 'K-IFRS 1118 월결산 — 앞선 달 각각 마감',

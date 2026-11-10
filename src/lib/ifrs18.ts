@@ -50,7 +50,11 @@ export interface ActuarialItem {
   /** 재분류 전표의 대상 GL(없으면 판단표에서 제안) */ reclassGl?: string;
   /** 회사가 이 달(YYYY-MM)부터 대상 계정에 직접 기표한다 — 그 달부터는 원천 계정에 섞여 있지 않으므로 옮기지 않는다 */ directFrom?: string;
 }
-export interface ManualAdj { srcGl: string; target: Line1118; amount: number; reason: string; /** 재분류 전표의 대상 GL */ reclassGl?: string }
+export interface ManualAdj {
+  srcGl: string; target: Line1118; amount: number; reason: string; /** 재분류 전표의 대상 GL */ reclassGl?: string;
+  /** 대상 전표번호 — 있으면 금액을 분개장에서 그 전표 · 원천 계정 줄의 합계로 센다(전기일대로 월별 배분, 사용자 2026-11-11). amount 는 참고값 */
+  docs?: string[];
+}
 export interface Ifrs18Config {
   clientKey: string;
   clientName: string;
@@ -225,6 +229,7 @@ export interface Move {
   /** 손익계산서에 실제로 옮기는 금액 = required − posted (차변+) */ amount: number;
   /** 재분류 전표 대상 GL 제안 */ reclassGl: string;
   /** 계리 · 수동의 기준 금액(연간 금액 또는 수동 금액) */ base?: number;
+  /** 수동 조정의 대상 전표번호(있으면 분개장에서 셈) */ docs?: string[];
   /** 기표 시작 전 몫(adjustFrom 이전 달까지 — 장부에 기표하지 않고 1118 표시에서만 옮긴다) */ beforeStart: number;
   /** 장부에 기표할 권고액 = required − beforeStart − posted */ advise: number;
   /** 대상 GL 의 1001 항목이 원천 GL 과 같은가(2026년 1001 공시 영향 없음) — 대상 GL 없으면 null */ same1001: boolean | null;
@@ -373,8 +378,10 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
       reclassGl: suggestReclassGl(cfg, j.gl, target) });
   }
   (cfg.manual ?? []).forEach((m, i) => {
-    req.push({ kind: '수동', code: `1118-M-${m.srcGl}${i ? `-${i + 1}` : ''}`, label: m.reason, srcGl: m.srcGl, src: srcLine(m.srcGl), target: m.target, required: r0(m.amount),
-      reclassGl: m.reclassGl || suggestReclassGl(cfg, m.srcGl, m.target), base: r0(m.amount) });
+    const ds = m.docs?.length ? new Set(m.docs) : null;
+    const amt = ds ? r0(live.filter((l) => l.gl === m.srcGl && ds.has(l.docNo)).reduce((t, l) => t + l.dr - l.cr, 0)) : r0(m.amount);
+    req.push({ kind: '수동', code: `1118-M-${m.srcGl}${i ? `-${i + 1}` : ''}`, label: m.reason, srcGl: m.srcGl, src: srcLine(m.srcGl), target: m.target, required: amt,
+      reclassGl: m.reclassGl || suggestReclassGl(cfg, m.srcGl, m.target), base: ds ? undefined : r0(m.amount), docs: m.docs });
   });
   const byCode = new Map(req.map((m) => [m.code, m]));
   const postedBy = new Map<string, number>();
@@ -392,6 +399,7 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
   const cut = cutoverDate(cfg);
   const before = (m: (typeof req)[number]): number => {
     if (m.kind === '판단') return cut ? r0(live.filter((l) => l.docNo === m.docNo && l.gl === m.srcGl && l.date < cut).reduce((t, l) => t + l.dr - l.cr, 0)) : 0;
+    if (m.kind === '수동' && m.docs?.length) { const ds = new Set(m.docs); return cut ? r0(live.filter((l) => l.gl === m.srcGl && ds.has(l.docNo) && l.date < cut).reduce((t, l) => t + l.dr - l.cr, 0)) : 0; }
     if (sc <= 0) return 0;
     if (m.kind === '계리') { const x = cfg.actuarial.find((a) => `1118-A-${a.key}` === m.code); return x ? r0((x.annual * Math.min(sc, actuarialLastMonth(x, year))) / 12) : 0; }
     return m.required;

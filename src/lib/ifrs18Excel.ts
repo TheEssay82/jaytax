@@ -193,6 +193,13 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
       cell(wsA, r, 8, f(`SUMIFS(${J('G')},${J('A')},C${r},${J('C')},D${r})`), GREEN, NUM);
       cell(wsA, r, 11, f(`SUMIFS(${J('G')},${J('A')},C${r},${J('C')},D${r},${J('B')},"<="&${cutPM})`), GREEN, NUM);
       cell(wsA, r, 14, f(`SUMIFS(${J('G')},${J('A')},C${r},${J('C')},D${r},${J('B')},"<="&${cutPQ})`), GREEN, NUM);
+    } else if (m.docs?.length) {
+      // 대상 전표가 정해진 수동 조정 — 분개장에서 그 전표 · 원천 계정 줄을 전기일대로 센다
+      const arr = `{${m.docs.map((d) => q(d)).join(',')}}`;
+      const sp = (extra = '') => `SUMPRODUCT(SUMIFS(${J('G')},${J('A')},${arr},${J('C')},D${r}${extra}))`;
+      cell(wsA, r, 8, f(sp()), GREEN, NUM);
+      cell(wsA, r, 11, f(sp(`,${J('B')},"<="&${cutPM}`)), GREEN, NUM);
+      cell(wsA, r, 14, f(sp(`,${J('B')},"<="&${cutPQ}`)), GREEN, NUM);
     } else {
       cell(wsA, r, 8, f(`G${r}`), FONT, NUM);
       cell(wsA, r, 11, f(`IF(${P.PM}>0,G${r},0)`), GREEN, NUM);
@@ -202,10 +209,11 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     cell(wsA, r, 12, f(`SUMIFS(${J('G')},${J('M')},A${r},${J('K')},F${r},${J('B')},"<="&${cutPM})`), GREEN, NUM);
     cell(wsA, r, 15, f(`SUMIFS(${J('G')},${J('M')},A${r},${J('K')},F${r},${J('B')},"<="&${cutPQ})`), GREEN, NUM);
     for (const [c, a, b] of [[10, 'H', 'I'], [13, 'K', 'L'], [16, 'N', 'O']] as const) cell(wsA, r, c, f(`${a}${r}-${b}${r}`), FONT_BOLD, NUM);
-    cell(wsA, r, 17, m.label, BLUE);
+    cell(wsA, r, 17, m.docs?.length ? `${m.label} — 대상 전표 ${m.docs.length}건: ${m.docs.join(', ')}` : m.label, BLUE);
     const sc = `${P.SC}>=${P.M}`;
     if (m.kind === '계리') cell(wsA, r, 18, f(`IF(${sc},H${r},ROUND(G${r}*MIN(${P.SC},T${r})/12,0))`), GREEN, NUM);
     else if (m.kind === '판단') cell(wsA, r, 18, f(`SUMIFS(${J('G')},${J('A')},C${r},${J('C')},D${r},${J('B')},"<"&${P.CD})`), GREEN, NUM);
+    else if (m.docs?.length) cell(wsA, r, 18, f(`SUMPRODUCT(SUMIFS(${J('G')},${J('A')},{${m.docs.map((d) => q(d)).join(',')}},${J('C')},D${r},${J('B')},"<"&${P.CD}))`), GREEN, NUM);
     else cell(wsA, r, 18, f(`IF(${P.SC}>0,H${r},0)`), GREEN, NUM);
     cell(wsA, r, 19, f(`IF('20_정정후보'!M${r}="",0,H${r}-R${r}-I${r})`), FONT_BOLD, NUM);
   });
@@ -306,10 +314,12 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
   }
   wsQ.views = [{ state: 'frozen', ySplit: 4 }];
 
-  // ── 12_주석금액 ──
-  title(wsN, '범주별 손익 — 주석 #6 기타영업손익 · #7 투자 범주 · #8 재무 범주', 'C열 = 90_시산표를 (1118 표시항목, 세부항목)으로 SUMIFS · 「계리 금액 · 조정」 줄은 91_조정내역 반영 열. 항목 합계가 10_손익계산서와 같은지 E열(차이).');
-  header(wsN, 4, ['1118 표시항목', '주석 세부항목', '금액', '10_손익계산서', '차이']);
-  setWidths(wsN, [26, 30, 18, 18, 12]);
+  // ── 12_주석금액 — 누적 · 당월 · 당분기 (2027년 분기 비교표시용, 사용자 2026-11-11) ──
+  title(wsN, `범주별 손익 — 주석 #6 기타영업손익 · #7 투자 범주 · #8 재무 범주 (누적 1~${res.month}월 · 당월 · 당분기)`,
+    '누적 = 90_시산표 H열을 (1118 표시항목, 세부항목)으로 SUMIFS · 전월 말 / 직전 분기 말 누적 = 같은 방식으로 90_시산표 I · J열 · 「계리 금액 · 조정」 줄은 91_조정내역 반영 열(J · M · P). 항목 합계가 10_손익계산서 · 11_기간별손익과 같은지 차이 열로 본다.');
+  header(wsN, 4, ['1118 표시항목', '주석 세부항목', '누적', `전월 말 누적(~${pm}월)`, `당월(${res.month}월)`, `직전 분기 말 누적(~${pq}월)`, `당분기(${pq + 1}~${res.month}월)`,
+    '10_손익계산서(누적)', '차이(누적)', '11_기간별(전월 말)', '차이', '11_기간별(직전 분기 말)', '차이']);
+  setWidths(wsN, [26, 30, 16, 16, 16, 16, 16, 16, 9, 16, 9, 16, 9]);
   let nr = 5;
   for (const ln of LINES_1118) {
     if (ln === '영업수익' || ln === '영업비용' || ln === '법인세비용') continue;
@@ -318,21 +328,27 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     const s0 = nr;
     for (const it of items) {
       cell(wsN, nr, 1, ln); cell(wsN, nr, 2, it.detail, BLUE);
-      const fx = it.detail === '계리 금액 · 조정'
-        ? `SUMIFS(${A('J')},${A('E')},A${nr})-SUMIFS(${A('J')},${A('F')},A${nr})`
-        : `SUMIFS(${T('H')},${T('F')},A${nr},${T('G')},B${nr})`;
-      cell(wsN, nr, 3, f(fx), GREEN, NUM);
+      const fx = (tc: string, ac: string) => it.detail === '계리 금액 · 조정'
+        ? `SUMIFS(${A(ac)},${A('E')},A${nr})-SUMIFS(${A(ac)},${A('F')},A${nr})`
+        : `SUMIFS(${T(tc)},${T('F')},A${nr},${T('G')},B${nr})`;
+      cell(wsN, nr, 3, f(fx('H', 'J')), GREEN, NUM);
+      cell(wsN, nr, 4, f(fx('I', 'M')), GREEN, NUM);
+      cell(wsN, nr, 5, f(`C${nr}-D${nr}`), FONT, NUM);
+      cell(wsN, nr, 6, f(fx('J', 'P')), GREEN, NUM);
+      cell(wsN, nr, 7, f(`C${nr}-F${nr}`), FONT, NUM);
       nr++;
     }
     cell(wsN, nr, 1, `${ln} 합계`, FONT_BOLD);
-    cell(wsN, nr, 3, f(items.length ? `SUM(C${s0}:C${nr - 1})` : '0'), FONT_BOLD, NUM);
-    cell(wsN, nr, 4, f(`'10_손익계산서'!C${pos[ln]}`), GREEN, NUM);
-    cell(wsN, nr, 5, f(`ROUND(C${nr}-D${nr},0)`), FONT, NUM);
-    for (const c of [1, 2, 3, 4, 5]) wsN.getCell(nr, c).fill = FILL_TOTAL;
+    for (const [c, col] of [[3, 'C'], [4, 'D'], [5, 'E'], [6, 'F'], [7, 'G']] as const) cell(wsN, nr, c, f(items.length ? `SUM(${col}${s0}:${col}${nr - 1})` : '0'), FONT_BOLD, NUM);
+    cell(wsN, nr, 8, f(`'10_손익계산서'!C${pos[ln]}`), GREEN, NUM); cell(wsN, nr, 9, f(`ROUND(C${nr}-H${nr},0)`), FONT, NUM);
+    cell(wsN, nr, 10, f(`'11_기간별손익'!D${qp[ln]}`), GREEN, NUM); cell(wsN, nr, 11, f(`ROUND(D${nr}-J${nr},0)`), FONT, NUM);
+    cell(wsN, nr, 12, f(`'11_기간별손익'!F${qp[ln]}`), GREEN, NUM); cell(wsN, nr, 13, f(`ROUND(F${nr}-L${nr},0)`), FONT, NUM);
+    for (let c = 1; c <= 13; c++) wsN.getCell(nr, c).fill = FILL_TOTAL;
     nr += 2;
   }
   const NE = Math.max(nr, 6);
-  wsN.addConditionalFormatting({ ref: `E5:E${NE}`, rules: [{ type: 'expression', formulae: ['AND(ISNUMBER(E5),E5<>0)'], style: { fill: RED_FILL }, priority: 1 }] });
+  wsN.addConditionalFormatting({ ref: `I5:M${NE}`, rules: [{ type: 'expression', formulae: ['AND(ISNUMBER(I5),I5<>0,MOD(COLUMN(I5),2)=1)'], style: { fill: RED_FILL }, priority: 1 }] });
+  wsN.views = [{ state: 'frozen', ySplit: 4, xSplit: 2 }];
 
   // ── 20_정정후보 ──
   const startTxt = fmtAdjustFrom(cfg);
@@ -416,7 +432,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     ['1118 당기순손익 = 1001 당기순이익', `ROUND('10_손익계산서'!C${pos['당기순손익']}-'10_손익계산서'!C${p1['당기순이익']},0)=0`, `'10_손익계산서'!C${pos['당기순손익']}-'10_손익계산서'!C${p1['당기순이익']}`, '91_조정내역 원천 · 대상 항목 확인'],
     ['조정은 항목만 옮김(1118 당기순손익 = 시산표 손익 합계)', `ROUND('10_손익계산서'!C${pos['당기순손익']}-SUM(${T('H')}),0)=0`, `'10_손익계산서'!C${pos['당기순손익']}-SUM(${T('H')})`, '91_조정내역의 「확인필요」 항목'],
     ['영업손익 조정(브릿지) 끝 = 1118 영업손익', `ROUND('10_손익계산서'!C${bEnd}-'10_손익계산서'!C${pos['영업손익']},0)=0`, `'10_손익계산서'!C${bEnd}-'10_손익계산서'!C${pos['영업손익']}`, '93_계정판단표 범주 확인'],
-    ['주석금액 항목 합계 = 손익계산서', `SUMPRODUCT(ABS('12_주석금액'!$E$5:$E$${NE}))=0`, `SUMPRODUCT(ABS('12_주석금액'!$E$5:$E$${NE}))`, '12_주석금액의 빨간 줄'],
+    ['주석금액 항목 합계 = 손익계산서(누적 · 전월 말 · 직전 분기 말)', `SUMPRODUCT(ABS('12_주석금액'!$I$5:$I$${NE}))+SUMPRODUCT(ABS('12_주석금액'!$K$5:$K$${NE}))+SUMPRODUCT(ABS('12_주석금액'!$M$5:$M$${NE}))=0`, `SUMPRODUCT(ABS('12_주석금액'!$I$5:$I$${NE}))+SUMPRODUCT(ABS('12_주석금액'!$K$5:$K$${NE}))+SUMPRODUCT(ABS('12_주석금액'!$M$5:$M$${NE}))`, '12_주석금액의 빨간 줄'],
     ['기간별: 전월 말 1118 당기순손익 = 1001 당기순이익', `ROUND('11_기간별손익'!D${qp['당기순손익']}-'11_기간별손익'!D${qp1['당기순이익']},0)=0`, `'11_기간별손익'!D${qp['당기순손익']}-'11_기간별손익'!D${qp1['당기순이익']}`, '91_조정내역 전월 말 열'],
     ['조정전표(권고코드) 줄의 코드 · 계정 정상', `COUNTIF(${J('N')},"확인")+COUNTIF(${J('N')},"미등록코드")=0`, `COUNTIF(${J('N')},"확인")+COUNTIF(${J('N')},"미등록코드")`, '92_분개장 N열 「확인 · 미등록코드」 줄의 라인텍스트 · 계정'],
   ];
@@ -500,7 +516,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
         ['01_검증체크', '열', 'B 확인 항목 · C 결과(✔/✘) · D 값(차이 금액이나 건수, 0 이면 정상) · E 고칠 곳. 「1차 마감 조건」이 마감 기준이다. 아래 「참고: 정정 후보 금액」은 마감 조건이 아니다.'],
         ['10_손익계산서', '열', 'C 금액(수식). 1118 → 1001 → 영업손익 조정 순. 1118 항목 = 90_시산표를 1118 표시항목으로 합한 값 ± 91_조정내역 「반영」.'],
         ['11_기간별손익', '열', 'C 누적 · D 전월 말 누적 · E 당월(C−D) · F 직전 분기 말 누적 · G 당분기(C−F). 같은 누적 분개장을 전기일로 잘라 다시 합한 값이다.'],
-        ['12_주석금액', '열', '1118 표시항목 × 주석 세부항목 금액. 항목 합계 줄의 E(차이)가 0 이어야 한다. 「계리 금액 · 조정」 줄은 91_조정내역에서 온다.'],
+        ['12_주석금액', '열', '1118 표시항목 × 주석 세부항목 — C 누적 · D 전월 말 누적 · E 당월 · F 직전 분기 말 누적 · G 당분기. 항목 합계 줄의 I · K · M(차이)이 0 이어야 한다. 「계리 금액 · 조정」 줄은 91_조정내역에서 온다. 2027년 비교표시: 연간은 12월 파일의 C, 분기는 그 분기 말 파일의 G(3개월) · C(누적).'],
         ['20_정정후보', '열', 'A 권고코드 · D 1118 기준 옮길 금액(누적) · E 기표 시작 전 몫 · F 이미 기표 · G 이번 기표 금액 · H~K 차변/대변 계정과 금액 · M 대상 G/L(노란 칸) · O 1118 확인 · R 1001 확인.'],
         ['30_주의계정판단', '열', 'E 금액(분개장에서 다시 셈) · G/H 같은 전표의 투자/재무 BS 줄 수 · I 확인 · K 판단 · L 대상 항목 · M 근거 · Q 잡힌 경로(주의계정 / 표시 계정).'],
         ['90_시산표', '열', 'C 누적(차변+) = 92_분개장 합계 · D~G 판단표에서 찾은 1001 항목 · 범주 · 1118 표시항목 · 세부항목 · H 손익(수익+) · I/J 전월 말 · 직전 분기 말 누적.'],
@@ -586,7 +602,7 @@ export async function buildIfrs18Workbook(opts: Ifrs18ExportOpts) {
     ['02_사용안내', '안내', '모두(처음 쓸 때)', '이 파일의 전제 · 검토 순서 · 시트별 열 설명 · ✘ 가 나올 때 · 자주 묻는 질문'],
     ['10_손익계산서', '보고', '결산 · 공시 담당', '1118 손익계산서(누적) · 1001 비교 · 영업손익 조정(1001 영업이익 → 1118 영업손익)'],
     ['11_기간별손익', '보고', '결산 담당', '당월 · 당분기 · 누적(같은 누적 분개장을 전기일로 잘라 다시 계산)'],
-    ['12_주석금액', '보고', '공시 담당', '주석 #6 기타영업손익 · #7 투자 범주 · #8 재무 범주의 세부 금액'],
+    ['12_주석금액', '보고', '공시 담당', '주석 #6 기타영업손익 · #7 투자 범주 · #8 재무 범주의 세부 금액 — 누적 · 당월 · 당분기'],
     ['20_정정후보', '참고', '회계 담당', '장부 정정이 필요할 수 있는 건(참고). 원칙은 정정 없음 — 1118 표시는 10 · 12 에 이미 반영. 정정한다면 라인텍스트에 권고코드.'],
     ['30_주의계정판단', '검토', '회계 담당 · 검토자', '투자 · 재무 거래가 섞인 줄의 판단(영업 유지 / 조정)과 근거'],
     ['90_시산표', '근거', '검토자', '분개장 손익 줄의 계정별 합계와 1118 표시항목'],
