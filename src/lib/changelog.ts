@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.81.5',
+    date: '2026-11-10',
+    title: 'K-IFRS 1118 월결산 — 판단표에 없는 BS 계정을 화면에서 바로 넣기',
+    highlights: [
+      '마감 체크 「BS 계정 속성 모두 등록」이 ✘ 면 STEP 6 에 그 계정(G/L · 계정명 · 줄 수 · 순액)이 나옵니다. 최고관리자 · 회계사는 속성을 골라 「판단표에 넣기」로 바로 저장하고 마감할 수 있습니다(같은 계정군 속성으로 미리 골라 둠, 판단표 기록에 남음).',
+    ],
+  },
+  {
     version: '3.81.4',
     date: '2026-11-09',
     title: 'K-IFRS 1118 월결산 — 장부 정정은 참고로 낮춤 · 2차 마감 기본 끔',

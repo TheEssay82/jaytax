@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
-  compute, computeAt, computePeriods, closeSummary, close2Checks, close2Summary, needsClose2, fmtAdjustFrom, monthEnd, parseSapJournal, validateConfig, keyOf, LINES_1118, PL1118_ORDER, PL1001_ORDER,
+  compute, computeAt, computePeriods, closeSummary, close2Checks, close2Summary, needsClose2, fmtAdjustFrom, monthEnd, parseSapJournal, validateConfig, keyOf, LINES_1118, PL1118_ORDER, PL1001_ORDER, BS_ATTRS,
   type Ifrs18Config, type JLine, type Judgment, type Line1118, type Decision,
 } from '../../lib/ifrs18';
 import {
@@ -117,6 +117,35 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
       await reload(); setKey(v.cfg.clientKey);
       setMsg(`판단표를 올렸습니다 — ${v.cfg.clientName} · 계정 ${v.cfg.accounts.length}개 · BS 속성 ${Object.keys(v.cfg.bsAttr).length}개`);
     } catch (e) { setErr(e instanceof Error ? e.message : '판단표를 올리지 못했습니다.'); }
+  }
+  /** 미등록 BS 계정 속성 — 최고관리자 · 회계사가 화면에서 바로 넣는다(사용자 2026-11-10 「마감이 안 됩니다」). */
+  const [bsPick, setBsPick] = useState<Record<string, string>>({});
+  const unregBs = useMemo(() => {
+    if (!res) return [];
+    return res.unregisteredBs.map((gl) => {
+      const ls = lines.filter((l) => l.gl === gl && !l.temp);
+      const name = ls[0]?.glName ?? '';
+      // 같은 계정군(앞 6자리 → 4자리)에 이미 있는 속성 중 가장 많은 것 → 없으면 계정명으로 짐작
+      const fam = (n: number) => { const c: Record<string, number> = {}; for (const [g, at] of Object.entries(cfg?.bsAttr ?? {})) if (g.slice(0, n) === gl.slice(0, n)) c[at] = (c[at] ?? 0) + 1; return Object.entries(c).sort((x, y) => y[1] - x[1])[0]?.[0]; };
+      const guess = fam(6) ?? (/\(투자\)/.test(name) ? '투자' : /\(재무\)/.test(name) ? '재무'
+        : /차입|사채|리스부채|임대보증금/.test(name) ? '재무' : /대여|투자|금융상품|파생|보증금/.test(name) ? '투자'
+        : /현금|보통예금|당좌/.test(name) ? '현금' : /법인세/.test(name) ? '법인세' : '') || (fam(4) ?? '');
+      return { gl, name, n: ls.length, docs: new Set(ls.map((l) => l.docNo)).size, net: ls.reduce((t, l) => t + l.dr - l.cr, 0), guess };
+    });
+  }, [res, lines, cfg]);
+  async function saveBsAttrs() {
+    if (!cfg) return;
+    const add = Object.fromEntries(unregBs.map((u) => [u.gl, bsPick[u.gl] ?? u.guess]).filter(([, v]) => v));
+    if (Object.keys(add).length < unregBs.length) { setErr('모든 계정의 속성을 골라 주세요.'); return; }
+    setBusy(true);
+    try {
+      const next = { ...cfg, bsAttr: { ...cfg.bsAttr, ...add }, source: `${cfg.source ?? ''} · BS 속성 화면 추가 ${Object.keys(add).join(',')}(${profileName} ${new Date().toISOString().slice(0, 10)})` } as Ifrs18Config;
+      const v = validateConfig(next);
+      if (!v.ok) { setErr(v.error); return; }
+      await saveIfrs18Client(v.cfg); await reload();
+      setMsg(`BS 속성 ${Object.keys(add).length}개를 판단표에 넣었습니다 — ${Object.entries(add).map(([g, a]) => `${g} ${a}`).join(' · ')}`);
+    } catch (e) { setErr(e instanceof Error ? e.message : '저장하지 못했습니다.'); }
+    finally { setBusy(false); }
   }
   async function onJournal(f: File) {
     setErr(null); setReading(true);
@@ -353,6 +382,25 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
               ))}
             </tbody>
           </table>
+          {unregBs.length > 0 && (
+            <div className="alert-w" style={{ marginTop: 8 }}>
+              <b>판단표에 속성이 없는 BS 계정 {unregBs.length}개</b> — 주의 라인을 찾을 때 투자 · 재무 거래인지 가르는 데 씁니다.
+              {admin ? ' 속성을 골라 「판단표에 넣기」를 누르면 마감할 수 있습니다(판단표 기록에 남습니다).' : ' 인덕회계법인에 알려 주세요.'}
+              <table style={{ borderCollapse: 'collapse', marginTop: 6 }}>
+                <thead><tr>{['G/L', '계정명', '줄 · 전표', '순액(차변+)', '속성'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                <tbody>{unregBs.map((u) => (
+                  <tr key={u.gl}><td style={td}>{u.gl}</td><td style={td}>{u.name}</td><td style={td}>{u.n}줄 · {u.docs}건</td><td style={num}>{won(u.net)}</td>
+                    <td style={td}>{admin
+                      ? <select value={bsPick[u.gl] ?? u.guess} onChange={(e) => setBsPick((p) => ({ ...p, [u.gl]: e.target.value }))}>
+                          <option value="">— 고르기 —</option>{BS_ATTRS.map((a) => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                      : '—'}</td></tr>
+                ))}</tbody>
+              </table>
+              {admin && <button className="btn-sm btn-sm-navy" style={{ marginTop: 6 }} disabled={busy} onClick={() => void saveBsAttrs()}>판단표에 넣기</button>}
+              <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 4 }}>영업 · 투자 · 재무 · 현금(현금성 — 어느 쪽에도 넣지 않음) · 중립 · 법인세. 계정명으로 짐작한 값이 미리 골라져 있습니다.</div>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
             {closedRow
               ? <><span style={{ fontWeight: 700, color: '#16A34A' }}>🔒 {month}월 마감됨 · {new Date(closedRow.at).toLocaleString('ko-KR')} · {closedRow.byName}</span>
@@ -360,7 +408,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
               : <button className="btn-sm btn-sm-navy" disabled={busy || readonly || !allOk} title={allOk ? '' : '위 확인이 모두 ✔ 여야 마감할 수 있습니다'} onClick={() => void closeMonth()}>{month}월 마감하기</button>}
             <button className="btn-sm" onClick={() => void download()}>엑셀 내려받기(수식 검증 파일)</button>
             {!cfg.close2 && res.moves.some((m) => m.advise !== 0) && <span style={{ fontSize: 'var(--fs-1)', color: '#B45309' }}>정정 후보(참고) {res.moves.filter((m) => m.advise !== 0).length}건 — 엑셀 20_정정후보</span>}
-            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>엑셀만으로 다시 계산 · 검증되는 파일입니다(00_읽는법 → 01_검증체크 → 보고 · 권고 · 검토 · 근거 시트). 조정이 있으면 20_조정권고전표에 장부 기표용 전표가 나옵니다.{!allOk && ' 확인이 남아 있어도 내려받을 수 있습니다(진행 중 표시). 마감은 모두 ✔ 일 때만 됩니다.'}</span>
+            <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>엑셀만으로 다시 계산 · 검증되는 파일입니다(00_읽는법 → 01_검증체크 → 02_사용안내 → 보고 · 검토 · 근거 시트).{!allOk && ' 확인이 남아 있어도 내려받을 수 있습니다(진행 중 표시). 마감은 모두 ✔ 일 때만 됩니다.'}</span>
           </div>
         </div>
         {cfg.close2 && (() => {

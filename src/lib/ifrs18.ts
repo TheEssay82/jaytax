@@ -475,7 +475,7 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
     { id: 'reg', label: '손익 계정이 모두 판단표에 등록됨', ok: tb.every((t) => t.registered), fix: '미등록 계정을 판단표에 추가(인덕 문의)' },
     { id: 'chk', label: '1118 표시항목 「확인필요」 0', ok: tb.every((t) => t.l1118 !== '확인필요') && moves.every((m) => m.src !== '확인필요' && m.target !== '확인필요'), fix: '판단표의 1001 항목 · 범주 확인' },
     { id: 'temp', label: '임시계정 잔액 0', ok: tb.filter((t) => t.l1118 === '임시계정').every((t) => t.amt === 0), fix: 'SAP 임시 · 전환 계정 정리 후 다시 내려받기' },
-    { id: 'bs', label: 'BS 계정 속성 모두 등록', ok: unregisteredBs.length === 0, fix: '미등록 BS 계정 속성 추가(인덕 문의)' },
+    { id: 'bs', label: 'BS 계정 속성 모두 등록', ok: unregisteredBs.length === 0, fix: `아래 표에서 속성 지정: ${unregisteredBs.join(', ')}` },
     { id: 'watch', label: '주의계정 미판단 라인 0', ok: watch.every((w) => w.decision !== '미판단'), fix: 'STEP 4 에서 판단 기록' },
     { id: 'ni', label: '당기순이익 1001 = 1118', ok: r0(pl1001['당기순이익'] - pl1118['당기순손익']) === 0, fix: '인덕 문의' },
     { id: 'actdirect', label: '계리 대상 계정에 직접 기표가 있으면 「직접 기표 시작월」 지정됨(이중 계산 방지)', ok: actDirect.length === 0, fix: `판단표 계리 항목에 directFrom 지정(인덕 문의): ${actDirect.join(', ')}` },
