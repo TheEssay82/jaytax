@@ -127,9 +127,9 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
       const name = ls[0]?.glName ?? '';
       // 같은 계정군(앞 6자리 → 4자리)에 이미 있는 속성 중 가장 많은 것 → 없으면 계정명으로 짐작
       const fam = (n: number) => { const c: Record<string, number> = {}; for (const [g, at] of Object.entries(cfg?.bsAttr ?? {})) if (g.slice(0, n) === gl.slice(0, n)) c[at] = (c[at] ?? 0) + 1; return Object.entries(c).sort((x, y) => y[1] - x[1])[0]?.[0]; };
-      const guess = fam(6) ?? (/\(투자\)/.test(name) ? '투자' : /\(재무\)/.test(name) ? '재무'
+      const guess = fam(6) ?? ((/\(투자\)/.test(name) ? '투자' : /\(재무\)/.test(name) ? '재무'
         : /차입|사채|리스부채|임대보증금/.test(name) ? '재무' : /대여|투자|금융상품|파생|보증금/.test(name) ? '투자'
-        : /현금|보통예금|당좌/.test(name) ? '현금' : /법인세/.test(name) ? '법인세' : '') || (fam(4) ?? '');
+        : /현금|보통예금|당좌/.test(name) ? '현금' : /법인세/.test(name) ? '법인세' : '') || (fam(4) ?? ''));
       return { gl, name, n: ls.length, docs: new Set(ls.map((l) => l.docNo)).size, net: ls.reduce((t, l) => t + l.dr - l.cr, 0), guess };
     });
   }, [res, lines, cfg]);
