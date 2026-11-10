@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.81.6',
+    date: '2026-11-11',
+    title: 'K-IFRS 1118 월결산 — 앞선 달 각각 마감',
+    highlights: [
+      '기준월 앞에 마감 안 된 달이 있으면 STEP 6 에 「앞선 달 각각 마감」이 보입니다. 지금 올린 누적 분개장을 각 달 말까지 잘라 계산해 달마다 마감합니다(그 달 확인이 하나라도 ✘ 면 그 달에서 멈춤). 2027년 비교표시용 2026년 월별 · 분기 숫자를 채울 때 씁니다.',
+    ],
+  },
+  {
     version: '3.81.5',
     date: '2026-11-10',
     title: 'K-IFRS 1118 월결산 — 판단표에 없는 BS 계정을 화면에서 바로 넣기',

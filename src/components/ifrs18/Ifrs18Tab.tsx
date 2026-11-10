@@ -202,6 +202,39 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
     } catch (e) { setErr(e instanceof Error ? e.message : '마감하지 못했습니다.'); }
     finally { setBusy(false); }
   }
+  /** 기준월 앞의 마감 안 된 달 — 같은 누적 분개장을 그 달 말까지 잘라 각각 마감한다(사용자 2026-11-11 「1~6월을 월별로」). */
+  const openEarlier = useMemo(() => {
+    if (!lines.length) return [] as number[];
+    const first = lines.reduce((m, l) => (l.date < m ? l.date : m), '9999');
+    const fm = first.slice(0, 4) === String(year) ? Number(first.slice(5, 7)) : 1;
+    return Array.from({ length: month - 1 }, (_, i) => i + 1).filter((m) => m >= fm && !closedThisYear.has(m));
+  }, [lines, month, year, closedThisYear]);
+  async function closeEarlier() {
+    if (!key || !cfg || !openEarlier.length) return;
+    if (!confirm(`${openEarlier.map((m) => `${m}월`).join(' · ')}을 지금 올린 누적 분개장으로 각각 마감합니다(그 달 말까지 잘라 계산). 진행할까요?`)) return;
+    setBusy(true);
+    const done: number[] = [];
+    try {
+      for (const m of openEarlier) {
+        const end = monthEnd(year, m);
+        const lm = lines.filter((l) => l.date <= end);
+        const r = computeAt(lines, cfg, judgments, year, m);
+        if (!r) continue;
+        const ld = lm.reduce((x, l) => (l.date > x ? l.date : x), '');
+        const bad = r.checks.filter((c) => !c.ok).map((c) => c.label);
+        if (ld.slice(0, 7) !== end.slice(0, 7)) bad.unshift(`${m}월 전표 없음`);
+        if (bad.length) { setErr(`${m}월에서 멈췄습니다 — ${bad.join(', ')}. ${done.length ? `${done.join('·')}월은 마감했습니다.` : ''}`); break; }
+        const pm = computePeriods(lines, cfg, judgments, year, m, r);
+        const sm = closeSummary(r, pm, fileName, ld);
+        await closeIfrs18Month(key, sm, profileName);
+        await logIfrs18(key, year, m, '마감', { opCum: sm.op.cum, opMonth: sm.op.month, niCum: sm.ni.cum, fileName, 일괄: true }, profileName);
+        done.push(m);
+      }
+      if (done.length) setMsg(`${done.map((m) => `${m}월`).join(' · ')}을 마감했습니다(같은 누적 분개장으로 각 달 말까지 잘라 계산).`);
+      reloadDash();
+    } catch (e) { setErr(e instanceof Error ? e.message : '마감하지 못했습니다.'); }
+    finally { setBusy(false); }
+  }
   async function close2Month(undo: boolean) {
     if (!key || !res) return;
     let reason = '';
@@ -407,6 +440,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
                   <button className="btn-sm" disabled={busy || readonly} onClick={() => void reopenMonth()}>마감 해제</button></>
               : <button className="btn-sm btn-sm-navy" disabled={busy || readonly || !allOk} title={allOk ? '' : '위 확인이 모두 ✔ 여야 마감할 수 있습니다'} onClick={() => void closeMonth()}>{month}월 마감하기</button>}
             <button className="btn-sm" onClick={() => void download()}>엑셀 내려받기(수식 검증 파일)</button>
+            {openEarlier.length > 0 && <button className="btn-sm" disabled={busy || readonly} title="같은 누적 분개장을 각 달 말까지 잘라 계산해 달마다 마감합니다" onClick={() => void closeEarlier()}>앞선 달({openEarlier[0]}~{openEarlier[openEarlier.length - 1]}월) 각각 마감</button>}
             {!cfg.close2 && res.moves.some((m) => m.advise !== 0) && <span style={{ fontSize: 'var(--fs-1)', color: '#B45309' }}>정정 후보(참고) {res.moves.filter((m) => m.advise !== 0).length}건 — 엑셀 20_정정후보</span>}
             <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>엑셀만으로 다시 계산 · 검증되는 파일입니다(00_읽는법 → 01_검증체크 → 02_사용안내 → 보고 · 검토 · 근거 시트).{!allOk && ' 확인이 남아 있어도 내려받을 수 있습니다(진행 중 표시). 마감은 모두 ✔ 일 때만 됩니다.'}</span>
           </div>
