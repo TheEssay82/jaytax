@@ -142,3 +142,22 @@ test('ERP 재무제표(아비즈) — 번호 층층, 쪽 머리 되풀이, 번�
     ['미지급금', '부채', 1000, undefined],
   ]);
 });
+
+test('표 머리 — 날짜가 위 줄, 「제 23 기 | DR | CR」가 아래 줄인 틀(에스씨티)도 읽는다', async () => {
+  const { readLayout } = await import('./wtbRoll');
+  const c = (text?: string, num?: number, formula?: string) => ({ text, num, formula });
+  const cells: [string, ReturnType<typeof c>][] = [
+    ['N5', c(undefined, 45657)], ['O5', c(undefined, 46022)], ['P5', c('수정사항')], ['R5', c(undefined, 46022, 'O5')],
+    ['A6', c('과목')], ['C6', c('DART과목')], ['N6', c('제 22 기')], ['O6', c('제 23 기')], ['P6', c('DR')], ['Q6', c('CR')], ['R6', c('제 23 기', undefined, 'O6')], ['S6', c('증감액')], ['T6', c('증감율')],
+    ['A7', c('자산')], ['A10', c('현금')], ['C10', c('현금및현금성자산')], ['N10', c(undefined, 5)], ['O10', c(undefined, 7)], ['R10', c(undefined, 7, 'O10+P10-Q10')],
+  ];
+  const L = readLayout({ name: 'WBS', cells: new Map(cells) } as unknown as SheetData);
+  assert.ok(L);
+  assert.equal(L.cur, 15);
+  assert.equal(L.yearRow, 5);
+  assert.equal(L.termRow, 6);
+  assert.equal(L.curYear, 2025);
+  assert.equal(L.curTerm, 23);
+  assert.equal(L.history.get(2024), 14);
+  assert.deepEqual(L.accounts, [10]);
+});

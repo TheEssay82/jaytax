@@ -151,7 +151,7 @@ export function wtbChecks(book: SheetData[], tb: TbLine[], prevYear: number): Wt
     for (const [label, re, pre] of [
       ['매출총이익', /^매출총(이익|손실|손익)$/, /^매출총(이익|손실|손익)$/],
       ['영업이익', /^영업(이익|손실|손익)$/, /^영업(이익|손실|손익)$/],
-      ['당기순이익', /^당기순(이익|손실|손익)$/, /^당기순(이익|손실|손익)$/],
+      ['당기순이익', /^당기순(이익|손실|손익)(\(.*\))?$/, /^당기순(이익|손실|손익)$/],   // 「Ⅹ.당기순이익(계속사업손익)」(에스씨티)
     ] as const) {
       const v = at(wpl, C, rowOfHead(wpl.sh, wpl.L, re));
       if (label === '당기순이익') wplNi = v;
@@ -163,7 +163,8 @@ export function wtbChecks(book: SheetData[], tb: TbLine[], prevYear: number): Wt
 
   if (wbs && wpl) {
     const pc = wbs.L.history.get(prevYear);
-    const re = wbs.L.accounts.filter((r) => /이익잉여금|결손금/.test(bare(wbs.sh.cells.get(`${colName(wbs.L.acct)}${r}`)?.text) + bare(wbs.sh.cells.get(`${colName(wbs.L.headCol)}${r}`)?.text)));
+    // 「(당기순이익)」 줄이 따로 있는 틀(에스씨티)도 이익잉여금으로 센다.
+    const re = wbs.L.accounts.filter((r) => /이익잉여금|결손금|당기순(이익|손실|손익)/.test(bare(wbs.sh.cells.get(`${colName(wbs.L.acct)}${r}`)?.text) + bare(wbs.sh.cells.get(`${colName(wbs.L.headCol)}${r}`)?.text)));
     if (pc != null && re.length) {
       let d: number | null = 0;
       for (const r of re) { const a = at(wbs, wbs.L.cur, r), b = at(wbs, pc, r); d = d == null || a == null || b == null ? null : d + a - b; }

@@ -41,12 +41,13 @@ function dateOf(sh: SheetData): string | null {
   }
   return null;
 }
+// 제목 칸만 본다 — 긴 문장(에스씨티 「감사보고서」 시트 본문 「…손익계산서, 재산목록…」)은 제목이 아니다.
 const has = (sh: SheetData, re: RegExp) => re.test(sh.name.replace(/\s/g, ''))
-  || [...sh.cells.values()].slice(0, 60).some((v) => re.test((v.text ?? '').replace(/\s/g, '')));
+  || [...sh.cells.values()].slice(0, 60).some((v) => { const t = (v.text ?? '').replace(/\s/g, ''); return t.length <= 30 && re.test(t); });
 /** 시트 종류 — 제목(앞쪽 칸 글자)·시트 이름으로. */
 function kindOf(sh: SheetData): SrcKind {
   if (has(sh, /합계잔액시산표|^시산표$/)) return 'TB';
-  if (has(sh, /제조원가명세서|^WMS/i)) return 'MC';
+  if (has(sh, /원가명세서|^WMS/i)) return 'MC';   // 제조원가 · 도급원가(에스씨티 공사원가) · 공사원가 명세서
   if (has(sh, /재무상태표|대차대조표/)) return 'BS';
   if (has(sh, /손익계산서|포괄손익/)) return 'PL';
   return 'skip';

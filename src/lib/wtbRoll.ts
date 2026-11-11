@@ -65,9 +65,12 @@ export function wtbOutline(bytes: Uint8Array): { rows: WtbRow[]; term: number | 
   const rows: WtbRow[] = [];
   const tables: { sheet: string; kind: TableKind; hidden: boolean }[] = [];
   let term: number | null = null;
-  for (const sh of readWorkbook(bytes)) {
+  const sheets = readWorkbook(bytes);
+  const bsTerm = sheets.map((sh) => readLayout(sh)).find((L) => L?.kind === 'BS')?.curTerm ?? null;
+  for (const sh of sheets) {
     const L = readLayout(sh);
     if (!L) continue;
+    if (L.kind === 'MC' && bsTerm != null && L.curTerm != null && L.curTerm < bsTerm - 1) continue;   // 멈춘 원가표(rollWtb 와 같게)
     tables.push({ sheet: sh.name, kind: L.kind, hidden: !!sh.hidden });
     if (L.kind === 'BS') term = L.curTerm;
     const { sec } = rowSections(sh, L);
@@ -114,6 +117,7 @@ export interface TableLayout {
   kind: TableKind;
   /** 머리 글자 줄(「제10기」·「Proposed」) */ head: number;
   /** 날짜 줄 — 「DR | CR」 가 있는 줄 */ dateRow: number;
+  /** 「제n기」가 적힌 줄 · 결산일이 적힌 줄 — 보통 head · dateRow 인데, 에스씨티처럼 날짜가 위 줄이고 「제 23 기」가 「DR | CR」 줄인 틀도 있다. */ termRow: number; yearRow: number;
   /** 계정 이름 열 · 과목(공시) 열(없으면 null) · 머리글(「자산」「Ⅰ.유동자산」)이 적힌 열 */ acct: number; fsli: number | null; headCol: number;
   /** 회사제시 · 수정 DR · CR · 수정후 · 증감액 · 증감율 (열 번호) */ cur: number; dr: number; cr: number; adj: number; inc: number | null; ratio: number | null;
   curTerm: number | null;
@@ -148,15 +152,20 @@ export function readLayout(sh: SheetData): TableLayout | null {
   for (let c = cur + 4; c <= Math.min(maxCol, cur + 9); c++) if (/증감액/.test(text(c, dateRow)) || /증감액/.test(text(c, head))) { inc = c; break; }
   const ratio = inc && /증감율|증감률/.test(text(inc + 1, dateRow) + text(inc + 1, head)) ? inc + 1 : null;
   // 과거 해 — 날짜 줄의 날짜(수식이면 캐시 값). 같은 해가 여럿이면 오른쪽(묶음의 수정후). 날짜가 없으면 「제n기」로.
-  const curYear = yearOfSerial(sh.cells.get(`${colName(cur)}${dateRow}`)?.num);
-  const curTerm = termOf(text(cur, head));
+  // 날짜 · 기수가 어느 줄에 있나 — 두 줄 중 날짜가 더 많은 줄이 날짜 줄(에스씨티: 5행 날짜 · 6행 「제 23 기 | DR | CR」).
+  const count = (f: (c: number) => boolean) => { let n = 0; for (let c = 1; c < cur + 1; c++) if (f(c)) n++; return n; };
+  const isDate = (c: number, r: number) => yearOfSerial(sh.cells.get(`${colName(c)}${r}`)?.num) != null;
+  const yearRow = count((c) => isDate(c, head)) > count((c) => isDate(c, dateRow)) ? head : dateRow;
+  const termRow = count((c) => termOf(text(c, dateRow)) != null) > count((c) => termOf(text(c, head)) != null) ? dateRow : head;
+  const curYear = yearOfSerial(sh.cells.get(`${colName(cur)}${yearRow}`)?.num);
+  const curTerm = termOf(text(cur, termRow));
   // 수정사항집계표(A500 — 「계정과목 | DR | CR」)처럼 회사제시 열에 날짜·기수가 없거나 계정 열 왼쪽이면 표가 아니다.
   if (cur <= Math.max(acct, fsli ?? 0) || (curYear == null && curTerm == null)) return null;
   const history = new Map<number, number>();
   const first = Math.max(acct, fsli ?? 0) + 1;
   for (let c = first; c < cur; c++) {
-    const y = yearOfSerial(sh.cells.get(`${colName(c)}${dateRow}`)?.num);
-    const t = termOf(text(c, head));
+    const y = yearOfSerial(sh.cells.get(`${colName(c)}${yearRow}`)?.num);
+    const t = termOf(text(c, termRow));
     if (y != null) history.set(y, c);
     else if (t != null && curTerm != null && curYear != null) history.set(curYear - (curTerm - t), c);
   }
@@ -192,7 +201,7 @@ export function readLayout(sh: SheetData): TableLayout | null {
     return new RegExp(String.raw`(^|[^A-Z$])\$?${adjL}\$?\d`).test(f);
   });
   const acc2 = accounts.filter((r) => !derived.includes(r));
-  return { sheet: sh.name, kind, head, dateRow, acct, fsli, headCol, cur, dr: cur + 1, cr: cur + 2, adj: cur + 3, inc, ratio, curTerm, curYear, history, accounts: acc2, derived, last };
+  return { sheet: sh.name, kind, head, dateRow, termRow, yearRow, acct, fsli, headCol, cur, dr: cur + 1, cr: cur + 2, adj: cur + 3, inc, ratio, curTerm, curYear, history, accounts: acc2, derived, last };
 }
 
 /** 줄의 성격 — 대변(부채·자본·수익)이면 true. 같은 무리 수정후 식에서 배우고, 없으면 위 머리글로. */
@@ -305,6 +314,8 @@ function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], alias: Map<string,
       }
       // 후보가 여럿(아비즈 WPL 「기초제품재고액」 세 줄) — 전기 금액이 같은 줄. 전기 금액이 있는데 아무도 안 맞으면 이름은 버리고 아래 ②로.
       if (cands.length > 1 && t.prior) { const same = cands.filter((r) => samePrior(r, t)); cands = same.length ? same : []; }
+      // ①-2 묶은 줄 — 정산표 이름이 「장비사용료+소모공구비」처럼 둘을 더한 줄이면 각각 그 줄로(에스씨티 공사원가).
+      if (!cands.length) cands = pool.filter((r) => label(r).includes('+') && label(r).split('+').some((x) => norm(x) === n || bare(x) === nb));
       // ② 전기 금액이 작년 수정후와 같은 줄(아직 채우지 않은 줄 가운데 하나뿐일 때) — 세목 이름이 엉뚱하게 찍힌 ERP(아비즈)
       if (!cands.length && t.prior) {
         const same = rows.filter((r) => samePrior(r, t) && !sums.has(r));
@@ -328,11 +339,23 @@ function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], alias: Map<string,
       const same = rows.filter((r) => samePrior(r, t) && !sums.has(r));
       if (same.length === 1) { cands = same; how = '전기 금액'; }
     }
-    if (!cands.length) { if ((t.bal || t.prior) && !t.subtotal) unmatched.push(t); continue; }
+    if (!cands.length) {
+      // 정산표에서 식으로 더하는 합계 줄과 이름이 같으면 짝이 필요 없다(에스씨티 「Ⅵ. 당기총공사비용」 — 정산표는 「Ⅴ.당기총공사비용」 =M12+M11+M7+M3).
+      const isTotal = !contra && !!nb && Array.from({ length: L.last - L.dateRow }, (_, i) => L.dateRow + 1 + i)
+        .some((r) => !rows.includes(r) && bare(label(r)) === nb && !!sh.cells.get(`${colName(L.adj)}${r}`)?.formula);
+      if ((t.bal || t.prior) && !t.subtotal && !isTotal) unmatched.push(t);
+      continue;
+    }
     const r = cands[0];
     add(r, t, (sign.get(r) ?? 1) * t.bal, how);
     // 중간 재무상태표의 미처분이익잉여금은 당기순이익을 품는다(FY25 중간 P94 = 기초 + 1~8월 순이익).
-    if (L.kind === 'BS' && n === '이월이익잉여금' && norm(label(r)) === '미처분이익잉여금' && ni) add(r, { ...t, name: '당기순이익(손익)' }, ni, how);
+    //   정산표에 「(당기순이익)」 줄이 따로 있으면(에스씨티 WBS 109 미처분 · 110 (당기순이익)) 순이익은 그 줄로, 미처분 줄엔 이월분만.
+    //   회사 줄이 「이월이익잉여금」이면 순이익이 빠져 있고, 「미처분이익잉여금 · 미처리결손금」이면 들어 있다.
+    if (L.kind === 'BS' && norm(label(r)) === '미처분이익잉여금' && ni) {
+      const niRow = rows.find((x) => /^당기순(이익|손실|손익)$/.test(bare(label(x)).replace(/[()]/g, '')));
+      if (n === '이월이익잉여금') add(niRow ?? r, { ...t, name: '당기순이익(손익)' }, ni, how);
+      else if (niRow && /^(미처분이익잉여금|미처리결손금)$/.test(n)) { add(r, { ...t, name: '당기순이익(손익) 빼기' }, -ni, how); add(niRow, { ...t, name: '당기순이익(손익)' }, ni, how); }
+    }
   }
   return { sums, unmatched };
 }
@@ -352,16 +375,16 @@ function tableEdits(p: Planned, o: { closing: number; prevEnd: number; term: num
   // 머리 — 새 전기 · 올해 회사제시.
   //   글자 줄: 「제n기」면 기수를 올리고(제이), 아니면 새 전기는 왼쪽 과거 열의 글자(「Audited」 — 아비즈), 회사제시는 그대로(「Proposed」).
   //   날짜 줄: 수식이면(WPL 「=WBS!K3」) 새 전기에 원래 식 그대로 두고 회사제시는 밀린 식 그대로, 값이면 작년 결산일 · 올해 기준일.
-  const oldLabel = sh.cells.get(`${C(L.cur)}${L.head}`);
+  const oldLabel = sh.cells.get(`${C(L.cur)}${L.termRow}`);
   if (termOf(oldLabel?.text) != null && o.prevTerm != null && o.term != null && !oldLabel?.formula) {
-    edits.push({ ref: `${C(at)}${L.head}`, text: `제${o.prevTerm}기` }, { ref: `${C(comp)}${L.head}`, text: `제${o.term}기` });
+    edits.push({ ref: `${C(at)}${L.termRow}`, text: `제${o.prevTerm}기` }, { ref: `${C(comp)}${L.termRow}`, text: `제${o.term}기` });
   } else {
-    const left = sh.cells.get(`${C(L.cur - 1)}${L.head}`);
-    if (left?.text && !left.formula && termOf(left.text) == null) edits.push({ ref: `${C(at)}${L.head}`, text: left.text });
+    const left = sh.cells.get(`${C(L.cur - 1)}${L.termRow}`);
+    if (left?.text && !left.formula && termOf(left.text) == null) edits.push({ ref: `${C(at)}${L.termRow}`, text: left.text });
   }
-  const oldDate = sh.cells.get(`${C(L.cur)}${L.dateRow}`);
-  if (oldDate?.formula) edits.push({ ref: `${C(at)}${L.dateRow}`, formula: oldDate.formula });
-  else edits.push({ ref: `${C(at)}${L.dateRow}`, num: o.prevEnd }, { ref: `${C(comp)}${L.dateRow}`, num: o.closing });
+  const oldDate = sh.cells.get(`${C(L.cur)}${L.yearRow}`);
+  if (oldDate?.formula) edits.push({ ref: `${C(at)}${L.yearRow}`, formula: oldDate.formula });
+  else edits.push({ ref: `${C(at)}${L.yearRow}`, num: o.prevEnd }, { ref: `${C(comp)}${L.yearRow}`, num: o.closing });
   for (let r = L.dateRow + 1; r <= L.last + 12; r++) {
     const old = sh.cells.get(`${C(L.cur)}${r}`);          // 원래 회사제시(끼우기 전 좌표)
     const after = sh.cells.get(`${C(L.adj)}${r}`);        // 원래 수정후
@@ -511,6 +534,15 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
     if (L) tables.push({ L, sh, credit: creditRows(sh, L) });
   }
   for (const k of ['BS', 'PL'] as const) if (!tables.some((t) => t.L.kind === k)) report.notes.push(`${k === 'BS' ? 'WBS' : 'WPL'} 시트(머리 「과목」, 올해 묶음 「DR | CR」)를 찾지 못했습니다.`);
+  // 오래전에 멈춘 원가표는 밀지 않는다 — 에스씨티 「바이오원가」는 제14기에서 멈춘 채 남아 있다(WBS 제23기). 기수가 두 해 넘게 뒤처지면 그대로 둔다.
+  const bsTerm = tables.find((t) => t.L.kind === 'BS')?.L.curTerm ?? null;
+  for (let i = tables.length - 1; i >= 0; i--) {
+    const t = tables[i];
+    if (t.L.kind === 'MC' && bsTerm != null && t.L.curTerm != null && t.L.curTerm < bsTerm - 1) {
+      report.notes.push(`${t.L.sheet}: 제${t.L.curTerm}기에서 멈춘 원가표라 밀지 않고 그대로 두었습니다.`);
+      tables.splice(i, 1);
+    }
+  }
   const wbs = tables.find((t) => t.L.kind === 'BS');
   const prevTerm = wbs?.L.curTerm ?? null;
   const term = o.term ?? (prevTerm != null ? prevTerm + 1 : null);
@@ -575,8 +607,8 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
     if (keepYears.length) {
       const minY = Math.min(...keepYears);
       for (let c = first; c < t.L.cur; c++) {
-        const y = yearOfSerial(t.sh.cells.get(`${colName(c)}${t.L.dateRow}`)?.num)
-          ?? (termOf(t.sh.cells.get(`${colName(c)}${t.L.head}`)?.text) != null && t.L.curTerm != null && t.L.curYear != null ? t.L.curYear - (t.L.curTerm - termOf(t.sh.cells.get(`${colName(c)}${t.L.head}`)?.text)!) : null);
+        const y = yearOfSerial(t.sh.cells.get(`${colName(c)}${t.L.yearRow}`)?.num)
+          ?? (termOf(t.sh.cells.get(`${colName(c)}${t.L.termRow}`)?.text) != null && t.L.curTerm != null && t.L.curYear != null ? t.L.curYear - (t.L.curTerm - termOf(t.sh.cells.get(`${colName(c)}${t.L.termRow}`)?.text)!) : null);
         if (y != null && y >= minY) { hideTo = c - 1; break; }
       }
     } else hideTo = t.L.cur - 1;
@@ -735,8 +767,8 @@ export function refreshWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Ui
     report.unmatched.push(...m.unmatched.map((x) => ({ ...x, sheet: L.sheet })));
     const edits: CellEdit[] = [];
     const C = colName(L.cur);
-    const d = sh.cells.get(`${C}${L.dateRow}`);
-    if (d && !d.formula && d.num != null) edits.push({ ref: `${C}${L.dateRow}`, num: closing });
+    const d = sh.cells.get(`${C}${L.yearRow}`);
+    if (d && !d.formula && d.num != null) edits.push({ ref: `${C}${L.yearRow}`, num: closing });
     let zeroed = 0;
     for (const r of L.accounts) {
       const old = sh.cells.get(`${C}${r}`);
@@ -1061,7 +1093,7 @@ export function wbsBalances(sheets: SheetData[], asOf: string | string[]): WbsBa
   if (!sh) throw new Error('정산표에 WBS 시트가 없습니다.');
   const L = readLayout(sh);
   if (!L) throw new Error('WBS 표의 모양(회사제시 · DR · CR 열)을 알아보지 못했습니다.');
-  const serial = sh.cells.get(`${colName(L.cur)}${L.dateRow}`)?.num;
+  const serial = sh.cells.get(`${colName(L.cur)}${L.yearRow}`)?.num;
   const curDate = serial != null && serial > 20000 ? new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000).toISOString().slice(0, 10) : null;
   if (curDate && !dates.includes(curDate)) throw new Error(`정산표 회사제시 열이 ${curDate} 기준입니다 — ${dates.join(' 또는 ')} 기준 정산표가 필요합니다.`);
   const fy = Number(periodTo.slice(0, 4));
