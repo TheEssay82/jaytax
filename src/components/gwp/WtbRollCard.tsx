@@ -386,7 +386,7 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
           })()}
           <div style={{ fontSize: 'var(--fs-2)' }}>
             {preview.term ? <b>제{preview.term}기 · </b> : null}회사 자료 {preview.filled.length}줄을 정산표 줄에 맞췄습니다
-            {(() => { const n = preview.filled.filter((f) => f.how === '전기 금액').length; return n ? <span style={{ color: 'var(--ink-3)' }}> (그 가운데 {n}줄은 이름이 달라 <b>전기 금액</b>으로 찾음)</span> : null; })()}
+            {(() => { const n = preview.filled.filter((f) => f.how?.startsWith('전기 금액')).length; return n ? <span style={{ color: 'var(--ink-3)' }}> (그 가운데 {n}줄은 이름이 달라 <b>전기 금액</b>으로 찾음)</span> : null; })()}
           </div>
           <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>
             {preview.tables.map((t) => <span key={t.sheet}>{end ? `${t.sheet} 회사제시 ${t.company}` : `${t.sheet} ${t.insertedAt}열에 작년 수정후 끼움${t.hidden ? ` · ${t.hidden} 숨김` : ''}`}; </span>)}
@@ -398,10 +398,10 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
               저장된 짝 {preview.filled.filter((f) => f.how === '고른 짝').length}줄을 썼습니다 — {preview.filled.filter((f) => f.how === '고른 짝').map((f) => `${f.from.join('+')} → ${f.sheet} ${f.label}`).join(' · ')}
             </div>
           )}
-          {preview.filled.some((f) => f.how === '전기 금액') && (
+          {preview.filled.some((f) => f.how?.startsWith('전기 금액')) && (
             <details style={{ fontSize: 'var(--fs-1)', marginTop: 4 }}>
               <summary style={{ cursor: 'pointer', color: 'var(--ink-3)' }}>전기 금액으로 찾은 짝 보기 — 회사 자료의 이름이 정산표와 다른 줄</summary>
-              {preview.filled.filter((f) => f.how === '전기 금액').map((f) => <div key={`${f.sheet}${f.row}`}>{f.sheet} {f.row}행 「{f.label}」 ← {f.from.join(' + ')} · {fmt(f.value)}</div>)}
+              {preview.filled.filter((f) => f.how?.startsWith('전기 금액')).map((f) => <div key={`${f.sheet}${f.row}`}>{f.sheet} {f.row}행 「{f.label}」 ← {f.from.join(' + ')} · {fmt(f.value)}</div>)}
             </details>
           )}
           {preview.unmatched.length > 0 ? (

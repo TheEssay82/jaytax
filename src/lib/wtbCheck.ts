@@ -181,6 +181,8 @@ export function wtbChecks(book: SheetData[], tb: TbLine[], prevYear: number): Wt
       const a = t.sh.cells.get(`${colName(t.L.cur)}${r}`), b = t.sh.cells.get(`${colName(pc)}${r}`);
       if (a?.formula || b?.formula || !a?.num || !b?.num || Math.sign(a.num) === Math.sign(b.num)) continue;
       const name = (t.sh.cells.get(`${colName(t.L.acct)}${r}`)?.text ?? t.sh.cells.get(`${colName(t.L.headCol)}${r}`)?.text ?? '').trim();
+      // 이익잉여금 · 결손금 · 순이익은 손익에 따라 부호가 바뀌는 게 정상이다(에스씨티 미처분 654백만 → 결손 −2,344백만).
+      if (t.L.kind === 'BS' && /이익잉여금|결손금|당기순/.test(name)) continue;
       flipped.push(`${t.L.sheet} ${r}행 ${name} ${a.num.toLocaleString('ko-KR')} (전기 ${b.num.toLocaleString('ko-KR')})`);
     }
   }

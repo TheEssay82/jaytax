@@ -357,6 +357,26 @@ function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], alias: Map<string,
       else if (niRow && /^(미처분이익잉여금|미처리결손금)$/.test(n)) { add(r, { ...t, name: '당기순이익(손익) 빼기' }, -ni, how); add(niRow, { ...t, name: '당기순이익(손익)' }, ni, how); }
     }
   }
+  // 여러 계정을 한 줄에 모은 정산표 — 짝 없는 회사 계정 둘·셋의 전기 금액 합이 아직 빈 줄 하나의 전기 금액과 같으면 그 줄로
+  // (에스씨티: 회사 당좌예금 61,500 + 제예금 10,371,208,648 = 정산표 보통예금 10,371,270,148).
+  const left = unmatched.filter((t) => t.prior != null && t.prior !== 0 && !t.subtotal);
+  if (left.length >= 2 && left.length <= 30) {
+    const used = new Set<TbLine>();
+    for (const r of rows) {
+      if (sums.has(r)) continue;
+      const ps = priorsOf(r).filter((p) => p !== 0);
+      if (!ps.length) continue;
+      const pool = left.filter((t) => !used.has(t) && (isPl || sec.get(r)?.section === t.section));
+      let hit: TbLine[] | null = null;
+      for (let i = 0; i < pool.length && !hit; i++) for (let j = i + 1; j < pool.length && !hit; j++) {
+        if (ps.some((p) => Math.abs(pool[i].prior! + pool[j].prior! - p) < 1)) hit = [pool[i], pool[j]];
+        else for (let k = j + 1; k < pool.length && !hit; k++) if (ps.some((p) => Math.abs(pool[i].prior! + pool[j].prior! + pool[k].prior! - p) < 1)) hit = [pool[i], pool[j], pool[k]];
+      }
+      if (!hit) continue;
+      for (const t of hit) { add(r, t, (sign.get(r) ?? 1) * t.bal, '전기 금액 합'); used.add(t); }
+    }
+    if (used.size) return { sums, unmatched: unmatched.filter((t) => !used.has(t)) };
+  }
   return { sums, unmatched };
 }
 
