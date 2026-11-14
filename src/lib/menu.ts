@@ -101,6 +101,8 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'gwp', label: '📘 일반조서 관리', cap: 'viewAuditPapers' },
       // 감사 건마다 이슈를 아이템으로 쌓고 경과를 남기는 자리(2026-10-14, 옛 엑셀 ISSUELOG). 우리 내부용 — 감사팀만.
       { id: 'issue', label: '📝 감사이슈 LOG', cap: 'viewAuditPapers' },
+      // 기말감사일정 — 감사 대상 연도의 다음 해 1~3월 달력에 회사 × 일을 배정(사용자 2026-11-15, 엑셀 기말일정검토26). 감사팀만.
+      { id: 'schedule', label: '📅 기말감사일정', cap: 'viewAuditPapers' },
       // 분개장 전수 검토(JE Test) — 1차(사용자 2026-10-21): 분개장 · 잔액표 올리기 → 필수 검증 · 시나리오 → 보완할 점 → 조서 엑셀. 감사팀만.
       { id: 'je', label: '🔍 Journal Entry 시스템', cap: 'viewAuditPapers' },
       // K-IFRS 1118 월결산 — 회사가 SAP 분개장 하나로 1118 손익계산서를 만든다(사용자 2026-11-09). 분개장은 브라우저 안에서만.

@@ -65,6 +65,7 @@ const READY: ShortcutDef[] = [
   { key: 'dsd', label: '주석·DSD 관리', emoji: '📗', color: 'teal', tab: 'dsd', allow: byMenu('dsd') },
   { key: 'gwp', label: '일반조서 관리', emoji: '📘', color: 'blue', tab: 'gwp', allow: byMenu('gwp') },
   { key: 'issue', label: '감사이슈 LOG', emoji: '📝', color: 'coral', tab: 'issue', allow: byMenu('issue') },
+  { key: 'schedule', label: '기말감사일정', emoji: '📅', color: 'teal', tab: 'schedule', allow: byMenu('schedule') },
   { key: 'je', label: 'Journal Entry', emoji: '🔍', color: 'purple', tab: 'je', allow: byMenu('je') },
   // 팀결산(네 사람만)
   { key: 'expense', label: '경비귀속처리', emoji: '💳', color: 'green', tab: 'expense', allow: byMenu('expense') },

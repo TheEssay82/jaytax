@@ -53,6 +53,7 @@ import BkSettleTab from './expense/BkSettleTab';
 import AuditIssueTab from './issue/AuditIssueTab';
 import JeTab from './je/JeTab';
 import Ifrs18Tab from './ifrs18/Ifrs18Tab';
+import AuditScheduleTab from './schedule/AuditScheduleTab';
 import WtbTab from './gwp/WtbTab';
 import PlaceholderTab from './common/PlaceholderTab';
 import DevNotesModal from './common/DevNotesModal';
@@ -548,6 +549,9 @@ function TabContent({
     // 감사업무관리 › 감사이슈 LOG (2026-10-14)
     case 'issue':
       return <AuditIssueTab />;
+    // 감사업무관리 › 기말감사일정(2026-11-15)
+    case 'schedule':
+      return <AuditScheduleTab />;
     case 'je':
       return <JeTab />;
     // 감사업무관리 › K-IFRS 1118 월결산(2026-11-09) — 회사 담당자(외부인)도 쓰는 화면

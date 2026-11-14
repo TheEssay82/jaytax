@@ -73,6 +73,7 @@ export const MENU_PERMS: Record<string, MenuPerm> = {
   'dsd': { write: { ...AUDIT, external: '시연 — 조회만' }, note: '「외부인에게 보여 주기」 표시는 최고관리자' },
   'gwp': { write: { ...AUDIT } },
   'issue': { write: { ...AUDIT }, note: '지우기는 만든 사람 본인 것만' },
+  'schedule': { write: { ...AUDIT } },
   'je': { use: { all: '준비 중' }, write: READ_ONLY },
   'ifrs18': { write: { ...AUDIT, external: '일부: 연결된 회사의 주의계정 판단만', client_user: '일부: 연결된 회사의 주의계정 판단만' }, note: '판단표 올리기는 최고관리자 · 회계사. 분개장은 서버에 올리지 않는다(브라우저 안 계산)' },
 

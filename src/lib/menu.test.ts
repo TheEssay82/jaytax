@@ -101,8 +101,8 @@ test('감사업무관리에 조회서 발송관리·정산표·주석·DSD·일�
   const audit = MENU_GROUPS.find((g) => g.id === 'audit')!;
   const general = MENU_GROUPS.find((g) => g.id === 'general')!;
   assert.equal(audit.label, '감사업무관리');
-  assert.deepEqual(audit.items.map((i) => i.id), ['inquiry-send', 'wtb', 'dsd', 'gwp', 'issue', 'je', 'ifrs18']);
-  for (const id of ['inquiry-send', 'wtb', 'dsd', 'gwp', 'issue', 'je', 'ifrs18']) assert.equal(general.items.some((i) => i.id === id), false);
+  assert.deepEqual(audit.items.map((i) => i.id), ['inquiry-send', 'wtb', 'dsd', 'gwp', 'issue', 'schedule', 'je', 'ifrs18']);
+  for (const id of ['inquiry-send', 'wtb', 'dsd', 'gwp', 'issue', 'schedule', 'je', 'ifrs18']) assert.equal(general.items.some((i) => i.id === id), false);
 });
 
 test('Journal Entry 는 일반조서처럼 감사팀만', () => {
