@@ -21,7 +21,9 @@ export interface ScheduleItem {
   confirmed: boolean;
   sort: number;
   note: string | null;
-  /** 배정한 날(YYYY-MM-DD) → 칸 글(재고실사 담당 이니셜 등) */
+  /** 나가는 사람(성 한 글자 — 조·김·정·윤). 재고실사는 날짜 칸 글(mark)로 따로 */
+  staff: string[];
+  /** 배정한 날(YYYY-MM-DD) → 칸 글(재고실사 담당 「조정김」 등) */
   days: Map<string, string>;
 }
 
@@ -30,10 +32,32 @@ export interface ScheduleSetting {
   startDay: string;      // 기말 필드 착수 가능일
   deadline: string;      // 외감·상장 현장 종료 한도
   deadlineOther: string; // 임의·PEF·SPC 한도
+  closed: boolean;       // 마감한 해(실제 진행 내역) — 고치지 않는다
 }
+
+/** 나가는 사람 — 성 한 글자로 적는다(엑셀 「조정김」 그대로). */
+export const PEOPLE = [
+  { k: '조', name: '조현규', bg: '#2563EB' },
+  { k: '김', name: '김준성', bg: '#059669' },
+  { k: '정', name: '정우철', bg: '#7C3AED' },
+  { k: '윤', name: '윤영미', bg: '#DB2777' },
+] as const;
+/** 기말감사 기본 — 조·김·정. 윤영미가 같이 가는 거래처(사용자 2026-11-15)는 윤까지. */
+const WITH_YOON = /윤성에프앤씨|제이스튜디오|더그림엔터테인먼트|에이치앤아비즈|오톰|알티스트|휴식|대양이티에스|유니퓨전/;
+export const defaultStaff = (company: string, task: string): string[] =>
+  isInventory(task) ? [] : WITH_YOON.test(company) ? ['조', '김', '정', '윤'] : ['조', '김', '정'];
+/** 칸 글 「조정김」·「정&김」 → ['조','정','김'] (아는 사람만, 적힌 차례). */
+export const parseMark = (mark: string | undefined): string[] =>
+  [...(mark ?? '')].filter((ch, i, a) => PEOPLE.some((p) => p.k === ch) && a.indexOf(ch) === i);
+/** 그날 그 줄에 나가는 사람 — 재고실사는 칸 글, 나머지는 줄의 사람. */
+export const peopleOn = (it: ScheduleItem, date: string): string[] =>
+  isInventory(it.task) ? parseMark(it.days.get(date)) : it.staff;
 
 /** 공휴일 — 이름. 연도별로 적는다(없는 해는 주말만). 출처: 우주항공청 2027 월력요항. */
 const HOLIDAYS: Record<string, string> = {
+  '2026-01-01': '신정',
+  '2026-02-16': '설 연휴', '2026-02-17': '설날', '2026-02-18': '설 연휴',
+  '2026-03-01': '삼일절', '2026-03-02': '대체공휴일',
   '2027-01-01': '신정',
   '2027-02-06': '설 연휴', '2027-02-07': '설날', '2027-02-08': '설 연휴', '2027-02-09': '대체공휴일',
   '2027-03-01': '삼일절',
@@ -43,6 +67,7 @@ const HOLIDAYS: Record<string, string> = {
 };
 /** 평일이지만 감사하기 어려운 날 — 설 전날·다음날(사용자). */
 const HARD_DAYS: Record<string, string> = {
+  '2026-02-13': '설 연휴 전날', '2026-02-19': '설 연휴 다음날',
   '2027-02-05': '설 연휴 전날', '2027-02-10': '설 연휴 다음날',
   '2028-01-24': '설 연휴 전날', '2028-01-28': '설 연휴 다음날',
 };
@@ -74,7 +99,7 @@ export function calendarDays(fy: number): CalDay[] {
 
 /** 근무일 — 주말·공휴일·설 전후일이 아닌 날. */
 export const isWorkday = (c: CalDay) => !c.weekend && !c.holiday && !c.hard;
-const isInventory = (task: string) => /재고/.test(task) && !/중간&재고/.test(task);
+export const isInventory = (task: string) => /재고/.test(task) && !/중간&재고/.test(task);
 const isFund = (k: ScheduleKind) => k === 'PEF' || k === 'SPC';
 const isStatutory = (k: ScheduleKind) => k === '상장' || k === '외감';
 
@@ -162,3 +187,41 @@ export function dayTitle(c: CalDay, items: ScheduleItem[]): string {
   const who = items.filter((it) => it.days.has(c.date)).map((it) => `${it.confirmed ? '✓' : '·'} ${it.company} ${it.task}`);
   return [head, ...who].join('\n');
 }
+
+/** 사람별 그날 나가는 건수 — 한 사람이 같은 날 두 곳이면 겹침(재고실사 포함). */
+export function personDays(items: ScheduleItem[]): Map<string, Map<string, number>> {
+  const m = new Map<string, Map<string, number>>(PEOPLE.map((p) => [p.k, new Map()]));
+  for (const it of items) for (const d of it.days.keys()) for (const k of peopleOn(it, d)) {
+    const pm = m.get(k); if (!pm) continue;
+    pm.set(d, (pm.get(d) ?? 0) + 1);
+  }
+  return m;
+}
+
+/** 회사 이름 가나다 — ㈜·(주)·(합)·(유) 떼고. */
+export const nameKey = (s: string) => s.replace(/㈜|\(주\)|\(합\)|\(유\)|주식회사|유한회사|\s/g, '');
+export type SortMode = '가나다' | '일정' | '입력';
+/** 줄 정렬 — 회사끼리 묶은 채로. 가나다 = 회사 이름 · 일정 = 회사의 첫 배정일 · 입력 = 넣은 차례. 회사 안은 넣은 차례. */
+export function sortItems(items: ScheduleItem[], mode: SortMode): ScheduleItem[] {
+  const first = new Map<string, string>();
+  const order = new Map<string, number>();
+  for (const it of items) {
+    const k = nameKey(it.company);
+    const d = [...it.days.keys()].sort()[0];
+    if (d && (!first.has(k) || d < first.get(k)!)) first.set(k, d);
+    order.set(k, Math.min(order.get(k) ?? Infinity, it.sort));
+  }
+  const cmp = (a: ScheduleItem, b: ScheduleItem) => {
+    const ka = nameKey(a.company), kb = nameKey(b.company);
+    if (ka !== kb) {
+      if (mode === '가나다') return ka.localeCompare(kb, 'ko');
+      if (mode === '일정') return (first.get(ka) ?? '9').localeCompare(first.get(kb) ?? '9') || ka.localeCompare(kb, 'ko');
+      return (order.get(ka)! - order.get(kb)!) || ka.localeCompare(kb, 'ko');
+    }
+    return a.sort - b.sort;
+  };
+  return [...items].sort(cmp);
+}
+
+/** 상장사 — 주총 6주 전까지 제시재무제표 증선위 제출(사용자 2026-11-15). */
+export const fsDueDate = (agm: string) => ymd(new Date(parse(agm).getTime() - 42 * 86400000));

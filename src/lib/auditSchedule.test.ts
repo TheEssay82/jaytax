@@ -1,12 +1,12 @@
 // 기말감사일정 — 달력 · 점검 · 색(사용자 2026-11-15 원칙).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calendarDays, capacity, cellTone, checkItem, dayOrdinal, dayStats, headTone, type ScheduleItem } from './auditSchedule';
+import { calendarDays, capacity, cellTone, checkItem, dayOrdinal, dayStats, defaultStaff, fsDueDate, headTone, parseMark, personDays, sortItems, type ScheduleItem } from './auditSchedule';
 
-const S = { teams: 1, startDay: '2027-01-25', deadline: '2027-03-22', deadlineOther: '2027-03-31' };
+const S = { teams: 1, startDay: '2027-01-25', deadline: '2027-03-22', deadlineOther: '2027-03-31', closed: false };
 let n = 0;
 const it = (p: Partial<ScheduleItem> & { days?: string[] }): ScheduleItem => ({
-  id: String(++n), entityId: null, company: 'A', kind: '외감', task: '개별감사', daysNeeded: 1, daysUncertain: false, confirmed: false, sort: 0, note: null,
+  id: String(++n), entityId: null, company: 'A', kind: '외감', task: '개별감사', daysNeeded: 1, daysUncertain: false, confirmed: false, sort: 0, note: null, staff: [],
   ...p, days: new Map((p.days ?? []).map((d) => [d, ''])),
 });
 
@@ -49,4 +49,27 @@ test('n일차 · 여유일', () => {
   const cap = capacity([it({ daysNeeded: 3 }), it({ task: '재고실사', daysNeeded: 1 }), it({ kind: '임의', daysNeeded: 2 })], S, 2026);
   assert.equal(cap.need, 3);
   assert.equal(cap.avail, 36);   // 1/25~3/22 평일 41 − 설 2/8·2/9 − 2/5·2/10 − 3/1 (엑셀 대화와 같은 36일)
+});
+
+test('사람 — 칸 글 「조정김」·「정&김」, 기본 인원(윤영미 동행 거래처), 같은 날 두 곳이면 2', () => {
+  assert.deepEqual(parseMark('조정김'), ['조', '정', '김']);
+  assert.deepEqual(parseMark('정&김'), ['정', '김']);
+  assert.deepEqual(defaultStaff('㈜휴식', '기말감사'), ['조', '김', '정', '윤']);
+  assert.deepEqual(defaultStaff('㈜백련', '개별감사'), ['조', '김', '정']);
+  assert.deepEqual(defaultStaff('㈜휴식', '재고실사'), []);
+  const a = it({ staff: ['조', '김'], days: ['2027-01-06'] });
+  const inv: ScheduleItem = { ...it({ task: '재고실사' }), days: new Map([['2027-01-06', '김']]) };
+  const pd = personDays([a, inv]);
+  assert.equal(pd.get('김')!.get('2027-01-06'), 2);
+  assert.equal(pd.get('조')!.get('2027-01-06'), 1);
+});
+
+test('정렬 — 가나다(㈜ 떼고, 회사 안은 넣은 차례) · 첫 일정순', () => {
+  const xs = [it({ company: '㈜휴식', sort: 1, days: ['2027-03-10'] }), it({ company: '㈜대양이티에스', sort: 3, task: '개별감사', days: ['2027-01-13'] }), it({ company: '㈜대양이티에스', sort: 2, task: '중간&재고' }), it({ company: '백련', sort: 4, days: ['2027-03-19'] })];
+  assert.deepEqual(sortItems(xs, '가나다').map((x) => x.company + x.sort), ['㈜대양이티에스2', '㈜대양이티에스3', '백련4', '㈜휴식1']);
+  assert.deepEqual(sortItems(xs, '일정').map((x) => x.company), ['㈜대양이티에스', '㈜대양이티에스', '㈜휴식', '백련']);
+});
+
+test('상장사 제시재무제표 — 주총 6주 전', () => {
+  assert.equal(fsDueDate('2027-03-31'), '2027-02-17');
 });
