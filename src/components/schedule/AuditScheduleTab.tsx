@@ -5,7 +5,7 @@
 //   외감·상장 3/23 이전 · PEF·SPC 주말 · 착수 1/25 · 설 전날·다음날 곤란. 재고실사는 팀 겹침에서 뺀다.
 //   나가는 사람은 성 한 글자 아이콘(조·김·정·윤) — 기말감사는 줄마다, 재고실사는 날마다 다르다.
 //   상장사는 주총 6주 전까지 제시재무제표를 증선위에 낸다 — 🚩.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Loading from '../common/Loading';
 import { confirmDanger } from '../common/DangerConfirm';
 import { useAuth } from '../../context/AuthContext';
@@ -59,6 +59,10 @@ export default function AuditScheduleTab() {
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [more, setMore] = useState(false);   // 기준·주총·범례 펼치기
+  const topScroll = useRef<HTMLDivElement>(null);
+  const tableScroll = useRef<HTMLDivElement>(null);
+  const syncing = useRef(false);
 
   const reload = async () => {
     try {
@@ -164,94 +168,104 @@ export default function AuditScheduleTab() {
     ({ position: 'sticky', left: lefts[i], minWidth: COLS[i], maxWidth: COLS[i], width: COLS[i], background: '#fff', zIndex: 2, ...extra });
   const dayBg = (date: string, weekend: boolean, holiday: string | null, hard: string | null) =>
     hard ? '#D9D9D9' : holiday || weekend ? '#EFEFEF' : date < setting.startDay ? '#FAFAF7' : '#fff';
-  const chip = (on: boolean): React.CSSProperties => ({ fontSize: 'var(--fs-1)', padding: '2px 8px' , opacity: on ? 1 : 0.85 });
 
   return (
     <div className="card">
-      <div className="chdr" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      {/* 맨 위 한 줄 — 연도 · 요약 · 펼치기 */}
+      <div className="chdr" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
         📅 기말감사일정
         <select value={fy} onChange={(e) => setFy(Number(e.target.value))} style={{ fontSize: 'var(--fs-2)', width: 'auto' }}>
           {[thisYear - 2, thisYear - 1, thisYear, thisYear + 1].map((y) => <option key={y} value={y}>FY{y} 감사 → {y + 1}년 1~3월</option>)}
         </select>
-        {closed
-          ? <span className="bdg" style={{ background: '#E5E7EB', color: '#374151', fontWeight: 700 }}>🔒 마감 — 실제 진행 내역</span>
-          : <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', fontWeight: 400 }}>
-              칸 누르기 = 배정/빼기 · 재고실사 칸은 나가는 사람(성) 묻기 · Shift+누르기 = 칸 글 고치기 · 맨 앞 체크 = 확정 · 인원 아이콘 누르기 = 넣기/빼기
-            </span>}
-        {canEdit && role === 'superuser' && (closed
-          ? <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => void setClosed(false)}>🔓 마감 풀기</button>
-          : <button className="btn-sm" style={{ marginLeft: 'auto' }} onClick={() => void setClosed(true)}>🔒 이 해 마감</button>)}
+        {closed && <span className="bdg" style={{ background: '#E5E7EB', color: '#374151', fontWeight: 700 }}>🔒 마감</span>}
+        <span style={{ display: 'inline-flex', gap: 12, alignItems: 'center', fontSize: 'var(--fs-1)', fontWeight: 400 }}>
+          {cap && <span title={`외감·상장 기말 ${cap.need}일 필요 · ${md(setting.startDay)}~${md(setting.deadline)} 가용 ${cap.avail}일`}>
+            여유 <b style={{ color: cap.spare < 0 ? '#DC2626' : cap.spare <= 3 ? '#D97706' : '#0B6B2B' }}>{cap.spare}</b>일 <span style={{ color: 'var(--ink-3)' }}>({cap.need}/{cap.avail})</span></span>}
+          <span>점검 <b style={{ color: badCount ? '#DC2626' : '#0B6B2B' }}>{badCount}</b></span>
+          <span>겹친 날 <b style={{ color: overDays ? '#9C0006' : '#0B6B2B' }}>{overDays}</b></span>
+          {[...dues.entries()].map(([c, d]) => <span key={c} title={`${c} 주총 ${md(d.agm)} — 6주 전까지 제시재무제표 증선위 제출`} style={{ color: '#9C0006' }}>🚩 {c.replace(/㈜/g, '')} {md(d.due)}</span>)}
+        </span>
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
+          <button className="btn-sm" onClick={() => setMore((v) => !v)}>⚙ 기준 · 주총 · 범례 {more ? '▴' : '▾'}</button>
+          {canEdit && role === 'superuser' && (closed
+            ? <button className="btn-sm" onClick={() => void setClosed(false)}>🔓 마감 풀기</button>
+            : <button className="btn-sm" onClick={() => void setClosed(true)}>🔒 이 해 마감</button>)}
+        </span>
       </div>
 
-      {/* 요약 */}
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 'var(--fs-2)', margin: '6px 0 8px' }}>
-        {cap && (
-          <span>외감·상장 기말 <b>{cap.need}</b>일 필요 · {md(setting.startDay)}~{md(setting.deadline)} 가용 <b>{cap.avail}</b>일
-            {' · '}여유 <b style={{ color: cap.spare < 0 ? '#DC2626' : cap.spare <= 3 ? '#D97706' : '#0B6B2B' }}>{cap.spare}</b>일</span>
-        )}
-        <span>점검 걸린 줄 <b style={{ color: badCount ? '#DC2626' : '#0B6B2B' }}>{badCount}</b></span>
-        <span>겹친 날 <b style={{ color: overDays ? '#9C0006' : '#0B6B2B' }}>{overDays}</b></span>
-        {outside > 0 && <span style={{ color: 'var(--ink-3)' }}>1~3월 밖에 배정한 날 {outside}(전년 12월 재고실사·중간 등 — 달력엔 안 보임)</span>}
-      </div>
-      {/* 상장사 — 주총 6주 전 제시재무제표 제출 */}
-      {listed.length > 0 && (
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 'var(--fs-1)', marginBottom: 8, padding: '6px 8px', border: '1px solid #F5C2C7', background: '#FFF5F5', borderRadius: 'var(--r-sm)' }}>
-          <b style={{ color: '#9C0006' }}>상장사 제시재무제표</b>
-          {listed.map((c) => {
-            const d = dues.get(c);
-            return (
-              <span key={c} style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                {c} 주총
-                <input type="date" value={agm.get(c) ?? ''} disabled={!canWrite} onChange={(e) => void changeAgm(c, e.target.value)} style={{ width: 140 }} />
-                {d ? <span>→ 🚩 <b>{md(d.due)}({WEEKDAYS[new Date(`${d.due}T00:00:00Z`).getUTCDay()]})</b>까지 증선위 제출(주총 6주 전)</span> : <span style={{ color: 'var(--ink-3)' }}>주총일을 넣으면 제출 기한이 달력에 🚩 로 보입니다</span>}
-              </span>
-            );
-          })}
+      {/* 접어 두는 것 — 기준 · 상장사 주총 · 범례 · 쓰는 법 */}
+      {more && (
+        <div style={{ display: 'grid', gap: 6, fontSize: 'var(--fs-1)', marginBottom: 8, padding: 8, background: '#faf8f4', borderRadius: 'var(--r-sm)' }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <b>기준</b>
+            <label style={lbl}>하루 팀 수 <input type="number" min={1} max={9} value={draftSet.teams} disabled={!canWrite} style={{ width: 52 }}
+              onChange={(e) => setDraftSet({ ...draftSet, teams: Math.max(1, Number(e.target.value) || 1) })} /></label>
+            <label style={lbl}>기말 착수 <input type="date" style={{ width: 140 }} value={draftSet.startDay} disabled={!canWrite} onChange={(e) => setDraftSet({ ...draftSet, startDay: e.target.value })} /></label>
+            <label style={lbl}>외감·상장 한도 <input type="date" style={{ width: 140 }} value={draftSet.deadline} disabled={!canWrite} onChange={(e) => setDraftSet({ ...draftSet, deadline: e.target.value })} /></label>
+            <label style={lbl}>임의·PEF 한도 <input type="date" style={{ width: 140 }} value={draftSet.deadlineOther} disabled={!canWrite} onChange={(e) => setDraftSet({ ...draftSet, deadlineOther: e.target.value })} /></label>
+            {canWrite && JSON.stringify(draftSet) !== JSON.stringify(setting) && <button className="btn-sm btn-sm-navy" onClick={() => void storeSetting()}>기준 저장</button>}
+            {cap && <span style={{ color: 'var(--ink-3)' }}>외감·상장 기말 {cap.need}일 필요 · 가용 {cap.avail}일</span>}
+          </div>
+          {listed.length > 0 && (
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+              <b style={{ color: '#9C0006' }}>상장사 주총</b>
+              {listed.map((c) => {
+                const d = dues.get(c);
+                return (
+                  <span key={c} style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                    {c}
+                    <input type="date" value={agm.get(c) ?? ''} disabled={!canWrite} onChange={(e) => void changeAgm(c, e.target.value)} style={{ width: 140 }} />
+                    {d ? <span>→ 🚩 <b>{md(d.due)}({WEEKDAYS[new Date(`${d.due}T00:00:00Z`).getUTCDay()]})</b>까지 제시재무제표 증선위 제출(주총 6주 전)</span> : <span style={{ color: 'var(--ink-3)' }}>주총일을 넣으면 6주 전이 🚩 로 보입니다</span>}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <b>범례</b>
+            {(['assigned', 'confirmed', 'overlap'] as const).map((t) => (
+              <span key={t}><span style={{ ...swatch, background: TONE[t]!.bg }} /> {t === 'assigned' ? '배정(미확정)' : t === 'confirmed' ? '확정' : `겹침(하루 ${setting.teams}팀 초과)`}</span>
+            ))}
+            <span><span style={{ ...swatch, background: '#EFEFEF' }} /> 주말·공휴일</span>
+            <span><span style={{ ...swatch, background: '#D9D9D9' }} /> 설 전날·다음날</span>
+            <span>🚩 제시재무제표 제출 기한 · 🏛 주총</span>
+            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>{PEOPLE.map((p) => <span key={p.k} style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}><Badge k={p.k} size={14} />{p.name}</span>)}</span>
+          </div>
+          {!closed && <div style={{ color: 'var(--ink-3)' }}>칸 누르기 = 배정/빼기 · 재고실사 칸은 나가는 사람(성) 묻기 · Shift+누르기 = 칸 글 고치기 · 맨 앞 체크 = 확정 · 인원 아이콘 누르기 = 넣기/빼기</div>}
+          {outside > 0 && <div style={{ color: 'var(--ink-3)' }}>1~3월 밖에 배정한 날 {outside}(전년 12월 재고실사·중간 등 — 달력엔 안 보임)</div>}
         </div>
       )}
-      {/* 기준 */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: 'var(--fs-1)', marginBottom: 8, padding: 8, background: '#faf8f4', borderRadius: 'var(--r-sm)' }}>
-        <b>기준</b>
-        <label style={lbl}>하루 팀 수 <input type="number" min={1} max={9} value={draftSet.teams} disabled={!canWrite} style={{ width: 52 }}
-          onChange={(e) => setDraftSet({ ...draftSet, teams: Math.max(1, Number(e.target.value) || 1) })} /></label>
-        <label style={lbl}>기말 착수 <input type="date" style={{ width: 140 }} value={draftSet.startDay} disabled={!canWrite} onChange={(e) => setDraftSet({ ...draftSet, startDay: e.target.value })} /></label>
-        <label style={lbl}>외감·상장 한도 <input type="date" style={{ width: 140 }} value={draftSet.deadline} disabled={!canWrite} onChange={(e) => setDraftSet({ ...draftSet, deadline: e.target.value })} /></label>
-        <label style={lbl}>임의·PEF 한도 <input type="date" style={{ width: 140 }} value={draftSet.deadlineOther} disabled={!canWrite} onChange={(e) => setDraftSet({ ...draftSet, deadlineOther: e.target.value })} /></label>
-        {canWrite && JSON.stringify(draftSet) !== JSON.stringify(setting) && <button className="btn-sm btn-sm-navy" onClick={() => void storeSetting()}>기준 저장</button>}
-      </div>
-      {/* 거르기 · 정렬 */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 'var(--fs-1)', marginBottom: 8 }}>
-        <label style={lbl}>정렬 <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={{ width: 'auto', fontSize: 'var(--fs-1)' }}>
-          <option value="가나다">회사 가나다순</option><option value="일정">첫 일정순</option><option value="입력">넣은 차례</option>
-        </select></label>
-        <input placeholder="회사 찾기" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 120, fontSize: 'var(--fs-1)' }} />
-        <span style={{ marginLeft: 6, fontWeight: 700 }}>업무구분</span>
-        <button className={!tasks.size ? 'btn-p' : 'btn-sm'} style={chip(!tasks.size)} onClick={() => setTasks(new Set())}>전체</button>
+
+      {/* 거르기 · 정렬 — 한 줄 */}
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', fontSize: 'var(--fs-1)', marginBottom: 6 }}>
+        <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={{ width: 'auto', fontSize: 'var(--fs-1)', padding: '1px 4px' }} title="정렬">
+          <option value="가나다">가나다순</option><option value="일정">첫 일정순</option><option value="입력">넣은 차례</option>
+        </select>
+        <input placeholder="회사 찾기" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 100, fontSize: 'var(--fs-1)', padding: '1px 4px' }} />
+        <span style={sep} />
+        <button className={!tasks.size ? 'btn-p' : 'btn-sm'} style={chip} onClick={() => setTasks(new Set())}>전체</button>
         {taskList.map(([t, n]) => (
-          <button key={t} className={tasks.has(t) ? 'btn-p' : 'btn-sm'} style={chip(tasks.has(t))}
-            onClick={() => setTasks((s) => { const x = new Set(s); if (x.has(t)) x.delete(t); else x.add(t); return x; })}>{t} {n}</button>
+          <button key={t} className={tasks.has(t) ? 'btn-p' : 'btn-sm'} style={chip}
+            onClick={() => setTasks((x0) => { const x = new Set(x0); if (x.has(t)) x.delete(t); else x.add(t); return x; })}>{t} {n}</button>
         ))}
-        <span style={{ marginLeft: 6, fontWeight: 700 }}>구분</span>
+        <span style={sep} />
         {SCHEDULE_KINDS.map((k) => (
-          <button key={k} className={kinds.has(k) ? 'btn-p' : 'btn-sm'} style={chip(kinds.has(k))}
-            onClick={() => setKinds((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; })}>{k}</button>
+          <button key={k} className={kinds.has(k) ? 'btn-p' : 'btn-sm'} style={chip}
+            onClick={() => setKinds((x0) => { const n = new Set(x0); if (n.has(k)) n.delete(k); else n.add(k); return n; })}>{k}</button>
         ))}
-        <span style={{ marginLeft: 6, fontWeight: 700 }}>사람</span>
+        <span style={sep} />
         {PEOPLE.map((p) => <Badge key={p.k} k={p.k} size={18} off={!!who && who !== p.k} onClick={() => setWho((w) => (w === p.k ? '' : p.k))} />)}
-      </div>
-      <div style={{ display: 'flex', gap: 12, fontSize: 'var(--fs-1)', marginBottom: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        {(['assigned', 'confirmed', 'overlap'] as const).map((t) => (
-          <span key={t}><span style={{ ...swatch, background: TONE[t]!.bg }} /> {t === 'assigned' ? '배정(미확정)' : t === 'confirmed' ? '확정' : `겹침(하루 ${setting.teams}팀 초과)`}</span>
-        ))}
-        <span><span style={{ ...swatch, background: '#EFEFEF' }} /> 주말·공휴일</span>
-        <span><span style={{ ...swatch, background: '#D9D9D9' }} /> 설 전날·다음날</span>
-        <span>🚩 상장사 제시재무제표 제출 기한 · 🏛 주총</span>
-        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>{PEOPLE.map((p) => <span key={p.k} style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}><Badge k={p.k} size={14} />{p.name}</span>)}</span>
         {err && <span className="err" style={{ marginLeft: 8 }}>{err}</span>}
-        {msg && <span style={{ color: '#0B6B2B' }}>{msg}</span>}
+        {msg && <span style={{ color: '#0B6B2B', marginLeft: 8 }}>{msg}</span>}
       </div>
 
-      <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 330px)', border: '1px solid var(--rule)', borderRadius: 'var(--r-sm)' }}>
+      {/* 가로 스크롤 — 표 위에도(아래 것과 함께 움직인다) */}
+      <div ref={topScroll} onScroll={(e) => { if (tableScroll.current && !syncing.current) { syncing.current = true; tableScroll.current.scrollLeft = e.currentTarget.scrollLeft; syncing.current = false; } }}
+        style={{ overflowX: 'auto', overflowY: 'hidden', height: 14, marginBottom: 2 }}>
+        <div style={{ width: leftW + cal.length * W, height: 1 }} />
+      </div>
+      <div ref={tableScroll} onScroll={(e) => { if (topScroll.current && !syncing.current) { syncing.current = true; topScroll.current.scrollLeft = e.currentTarget.scrollLeft; syncing.current = false; } }}
+        style={{ overflow: 'auto', maxHeight: 'calc(100vh - 215px)', border: '1px solid var(--rule)', borderRadius: 'var(--r-sm)' }}>
         <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 'var(--fs-1)', tableLayout: 'fixed', width: leftW + cal.length * W }}>
           <colgroup>
             {COLS.map((w, i) => <col key={i} style={{ width: w }} />)}
@@ -426,4 +440,6 @@ const td: React.CSSProperties = { padding: '3px 4px', borderBottom: '1px solid #
 const clip: React.CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
 const swatch: React.CSSProperties = { display: 'inline-block', width: 14, height: 12, border: '1px solid #ccc', verticalAlign: 'middle' };
 const lbl: React.CSSProperties = { display: 'inline-flex', gap: 4, alignItems: 'center', margin: 0, fontWeight: 400, whiteSpace: 'nowrap' };
+const chip: React.CSSProperties = { fontSize: 'var(--fs-1)', padding: '1px 7px' };
+const sep: React.CSSProperties = { width: 1, height: 16, background: '#ddd', margin: '0 4px' };
 const mini: React.CSSProperties = { fontSize: 'var(--fs-1)', padding: '1px 2px', border: '1px solid #ddd', borderRadius: 3, background: 'transparent' };
