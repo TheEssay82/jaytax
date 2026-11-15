@@ -153,3 +153,21 @@ test('경영 — 인당회계사 조현규는 팀결산을 계속 연다(일반�
   assert.equal(opens(인당, 'expense'), true);
   assert.equal(opens(인당, 'bk-settle'), true);
 });
+
+// ── ⚙ 관리(2026-11-15) — 관리·설정 화면을 단추 하나에 묶었다 ──
+
+test('⚙ 관리 — 관리 아이콘 5개와 기초 미수금 입력이 묶이고, 업데이트요청은 아이콘으로 남는다', async () => {
+  const { ICON_ITEMS } = await import('./menu');
+  assert.deepEqual(ICON_ITEMS.filter((i) => i.admin).map((i) => i.id), ['users', 'access-log', 'retention', 'backlog', 'service-limits', 'receivable-opening']);
+  assert.deepEqual(ICON_ITEMS.filter((i) => !i.admin).map((i) => i.id), ['requests']);
+  for (const g of MENU_GROUPS) assert.equal(g.items.some((i) => i.id === 'receivable-opening'), false, g.id);
+  assert.equal(MENU_GROUPS.find((g) => g.id === 'billing')!.items.some((i) => i.id === 'settings'), true, '세무조정 설정은 제자리');
+});
+
+test('기초 미수금 입력은 여전히 정우철만', async () => {
+  const { ICON_ITEMS, menuAllowed } = await import('./menu');
+  const it = ICON_ITEMS.find((i) => i.id === 'receivable-opening')!;
+  assert.equal(menuAllowed('superuser', '정우철', it), true);
+  assert.equal(menuAllowed('accountant', '송현주', it), false);
+  assert.equal(menuAllowed('team_member', '정남지', it), false);
+});

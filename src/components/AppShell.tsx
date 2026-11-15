@@ -113,6 +113,7 @@ function Shell() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [openSub, setOpenSub] = useState<string | null>(null); // 열린 중분류 플라이아웃 서브메뉴
   const [openPalette, setOpenPalette] = useState(0);   // 값이 바뀌면 팔레트가 열린다(단추용)
+  const adminRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLElement>(null);
   const fromPop = useRef(false); // popstate로 인한 탭 변경이면 pushState 생략
   const navMounted = useRef(false);
@@ -142,7 +143,10 @@ function Shell() {
     .filter((g) => g.items.length > 0);
   const visibleIcons = isExternal || sandbox
     ? []
-    : ICON_ITEMS.filter((it) => (!it.cap || can(role, it.cap)) && (!isPerHead || PER_HEAD_ALLOWED_ICONS.has(it.id)));
+    : ICON_ITEMS.filter((it) => menuAllowed(role, profileName, it) && (!isPerHead || PER_HEAD_ALLOWED_ICONS.has(it.id)));
+  // ⚙ 관리 단추 하나에 묶는 것과 아이콘으로 하나씩 두는 것
+  const adminIcons = visibleIcons.filter((it) => it.admin);
+  const plainIcons = visibleIcons.filter((it) => !it.admin);
 
   // 실제 이동 가능한 항목(컨테이너는 제외, 하위 소분류로 대체)
   const navItems = visibleGroups.flatMap((g) => g.items.flatMap((it) => it.children ?? [it]));
@@ -165,7 +169,9 @@ function Shell() {
   useEffect(() => {
     if (!openMenu) return;
     const onDown = (e: MouseEvent) => {
-      if (navRef.current && !navRef.current.contains(e.target as Node)) { setOpenMenu(null); setOpenSub(null); }
+      const t = e.target as Node;
+      if (navRef.current?.contains(t) || adminRef.current?.contains(t)) return;
+      setOpenMenu(null); setOpenSub(null);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { setOpenMenu(null); setOpenSub(null); }
@@ -371,7 +377,7 @@ function Shell() {
 
         {/* 우측: 아이콘 메뉴 + 사용자 정보 + 액션 */}
         <div className="h-right">
-          {visibleIcons.map((it) => (
+          {plainIcons.map((it) => (
             <button
               key={it.id}
               className={`h-iconbtn${cur === it.id ? ' on' : ''}`}
@@ -382,6 +388,27 @@ function Shell() {
               {it.icon}
             </button>
           ))}
+          {/* ⚙ 관리 — 관리·설정 화면을 단추 하나에 묶었다(2026-11-15). */}
+          {adminIcons.length > 0 && (
+            <div ref={adminRef} style={{ position: 'relative' }}>
+              <button
+                className={`h-iconbtn${adminIcons.some((it) => it.id === curCanon) ? ' on' : ''}`}
+                title="관리" aria-label="관리" aria-expanded={openMenu === '__admin'}
+                onClick={() => setOpenMenu((m) => (m === '__admin' ? null : '__admin'))}
+              >
+                ⚙️
+              </button>
+              {openMenu === '__admin' && (
+                <div className="h-dropdown" role="menu" style={{ left: 'auto', right: 0 }}>
+                  {adminIcons.map((it) => (
+                    <button key={it.id} className={`h-dropdown-item${cur === it.id ? ' on' : ''}`} role="menuitem" onClick={() => goTab(it.id)}>
+                      {it.icon} {it.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {role !== 'external' && <NotificationBell onNavigate={goTab} />}
           <span className="h-title">
             <span className="h-email">{user?.email}</span>

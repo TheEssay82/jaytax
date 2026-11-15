@@ -9,6 +9,8 @@ import { can, PER_HEAD_ALLOWED_GROUPS, PER_HEAD_HIDDEN_TABS, EXTERNAL_ALLOWED_TA
 // children: 중분류가 하위 소분류를 가지면 클릭·호버 시 플라이아웃 서브메뉴로 펼친다(컨테이너 자체는 페이지 없음).
 export type MenuItem = {
   id: string; label: string; cap?: Capability; children?: MenuItem[];
+  /** 우측 아이콘 중 ⚙ 관리 단추 하나에 묶어 펼치는 것(2026-11-15 — 아이콘 줄이 길었다). */
+  admin?: boolean;
   /** 이 사람들에게는 내놓지 않는다(권한이 아니라 '볼 일이 없다'는 뜻의 가림). */
   hideFor?: readonly string[];
   /** 이 사람에게만 내놓는다. */
@@ -34,8 +36,6 @@ export const MENU_GROUPS: MenuGroup[] = [
       { id: 'audit-invoice', label: '🧾 발행요청 · 감사팀' },
       { id: 'erp-reconcile', label: '📥 ERP 발행내역 대사' },
       { id: 'receivable', label: '💰 수금·미수금' },
-      // 기초미수금은 2026-07-01 시점에 한 번 넣은 값이다. 다음 사업연도 이월 때만 다시 쓴다.
-      { id: 'receivable-opening', label: '⚙️ 기초 미수금 입력', onlyFor: ['정우철'] },
     ],
   },
   {
@@ -152,19 +152,24 @@ export const MENU_GROUPS: MenuGroup[] = [
 ];
 
 // 우측 아이콘 메뉴 (대분류 밖)
+// admin: true 는 아이콘으로 하나씩 늘어놓지 않고 **⚙ 관리 단추 하나**에 묶어 펼친다(사용자 2026-11-15
+// 「메뉴판이 너무 복잡하다」). 한 해에 몇 번 여는 관리·설정 화면이라 매일 쓰는 아이콘과 나눴다.
+// 메뉴 id 는 그대로라 책갈피(?tab=)가 바뀌지 않는다.
 export const ICON_ITEMS: (MenuItem & { icon: string })[] = [
   { id: 'requests', label: '업데이트요청', icon: '💬' },
-  { id: 'users', label: '사용자 관리', icon: '👤', cap: 'manageUsers' },
+  { id: 'users', label: '사용자 관리', icon: '👤', cap: 'manageUsers', admin: true },
   // 접속기록은 개인정보 보호책임자가 월 1회 이상 점검하는 자리다(고시 제8조제2항).
   // 남의 접속기록도 그 자체가 개인정보라 최고관리자에게만 내놓는다.
-  { id: 'access-log', label: '접속기록 점검', icon: '🔎', cap: 'manageUsers' },
+  { id: 'access-log', label: '접속기록 점검', icon: '🔎', cap: 'manageUsers', admin: true },
   // 보존기한이 지난 개인정보는 지체 없이 파기해야 한다(법 제21조). 파기는 되돌릴 수 없어
   // 개인정보 보호책임자만 볼 수 있게 둔다.
-  { id: 'retention', label: '보존기한 · 파기', icon: '🗑️', cap: 'manageUsers' },
+  { id: 'retention', label: '보존기한 · 파기', icon: '🗑️', cap: 'manageUsers', admin: true },
   // 개발노트(끝난 일)의 짝 — 남은 일. 착수금 금액·내부 우선순위가 담겨 최고관리자에게만 내놓는다.
-  { id: 'backlog', label: '개발 백로그', icon: '📌', cap: 'manageUsers' },
+  { id: 'backlog', label: '개발 백로그', icon: '📌', cap: 'manageUsers', admin: true },
   // 외부 서비스 요금제 한도. 넘기면 어느 날 갑자기 막히므로 미리 본다.
-  { id: 'service-limits', label: '서비스 한도', icon: '⚙️', cap: 'manageUsers' },
+  { id: 'service-limits', label: '서비스 한도', icon: '🚦', cap: 'manageUsers', admin: true },
+  // 기초미수금은 2026-07-01 시점에 한 번 넣은 값이다. 다음 사업연도 이월 때만 다시 쓴다(기장등청구관리에서 옮김).
+  { id: 'receivable-opening', label: '기초 미수금 입력', icon: '💰', onlyFor: ['정우철'], admin: true },
 ];
 
 /**
