@@ -136,3 +136,20 @@ test('홈 바로가기 — 메뉴와 같은 사람에게만(tabAllowed)', () => 
   assert.equal(tabAllowed('superuser', '정우철', 'invoice-request'), true);
   assert.equal(tabAllowed('superuser', '정우철', '없는-탭'), false);
 });
+
+// ── 📊 경영(2026-11-15) — 보는 사람용 화면을 모았다. 누가 보는지는 그대로 ──
+
+test('경영 대분류에 현황및예산조회·매출통계·팀결산·AI 사용량이 있고, 세무조정 통계는 제자리', () => {
+  const mgmt = MENU_GROUPS.find((g) => g.id === 'mgmt')!;
+  assert.deepEqual(mgmt.items.map((i) => i.id), ['biz-status', 'staff-revenue', 'team-settle', 'ai-usage']);
+  for (const g of MENU_GROUPS.filter((x) => x.id !== 'mgmt')) {
+    for (const id of ['biz-status', 'staff-revenue', 'team-settle', 'ai-usage']) assert.equal(g.items.some((i) => i.id === id), false, `${g.id} ${id}`);
+  }
+  assert.equal(MENU_GROUPS.find((g) => g.id === 'billing')!.items.some((i) => i.id === 'stats'), true);
+});
+
+test('경영 — 인당회계사 조현규는 팀결산을 계속 연다(일반업무관리에서 옮긴 뒤에도)', () => {
+  const 인당: [Role, string] = ['per_head_accountant', '조현규'];
+  assert.equal(opens(인당, 'expense'), true);
+  assert.equal(opens(인당, 'bk-settle'), true);
+});
