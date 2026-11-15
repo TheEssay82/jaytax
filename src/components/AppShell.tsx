@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { WizardProvider, useWizard } from '../context/WizardContext';
 import { ConfigProvider } from '../context/ConfigContext';
@@ -114,6 +114,8 @@ function Shell() {
   const [openSub, setOpenSub] = useState<string | null>(null); // 열린 중분류 플라이아웃 서브메뉴
   const [openPalette, setOpenPalette] = useState(0);   // 값이 바뀌면 팔레트가 열린다(단추용)
   const adminRef = useRef<HTMLDivElement>(null);
+  const accountRef = useRef<HTMLDivElement>(null);
+  const hdrRef = useRef<HTMLElement>(null);
   const navRef = useRef<HTMLElement>(null);
   const fromPop = useRef(false); // popstate로 인한 탭 변경이면 pushState 생략
   const navMounted = useRef(false);
@@ -170,7 +172,7 @@ function Shell() {
     if (!openMenu) return;
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (navRef.current?.contains(t) || adminRef.current?.contains(t)) return;
+      if (navRef.current?.contains(t) || adminRef.current?.contains(t) || accountRef.current?.contains(t)) return;
       setOpenMenu(null); setOpenSub(null);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -256,6 +258,30 @@ function Shell() {
     ...(isExternal ? [] : [{ id: 'home', label: '🏠 내부홈', group: '' }]),
   ];
 
+  // 헤더 한 줄/두 줄 — **실제로 넘칠 때만 접는다**(2026-11-15). 전에는 2,000px 미만이면 무조건 두 줄이었다
+  // (메뉴가 길던 때 정한 선). 한 줄로 그려 본 폭(needW)을 재 두고, 창이 그보다 좁으면 접는다.
+  // 메뉴 구성이 바뀌면(등급·이름) 다시 한 줄로 그려 재어 본다.
+  const [hdrWrap, setHdrWrap] = useState(false);
+  const needW = useRef(0);
+  const menuSig = visibleGroups.map((g) => g.label).join('|') + '#' + visibleIcons.length + role;
+  useLayoutEffect(() => { setHdrWrap(false); }, [menuSig]);
+  useLayoutEffect(() => {
+    const h = hdrRef.current;
+    if (!h || hdrWrap) return;
+    needW.current = oneLineWidth(h);
+    if (needW.current > h.clientWidth + 1) setHdrWrap(true);
+  });
+  useEffect(() => {
+    const onResize = () => {
+      const h = hdrRef.current;
+      if (!h) return;
+      if (hdrWrap) { if (needW.current && h.clientWidth >= needW.current + 4) setHdrWrap(false); }
+      else if (oneLineWidth(h) > h.clientWidth + 1) setHdrWrap(true);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [hdrWrap]);
+
   const curLabel =
     navItems.find((it) => it.id === curCanon)?.label ??
     visibleIcons.find((it) => it.id === curCanon)?.label ??
@@ -264,7 +290,7 @@ function Shell() {
   return (
     <>
       <UpdateBanner />
-      <header id="hdr">
+      <header id="hdr" ref={hdrRef} className={hdrWrap ? 'wrap' : undefined}>
         <button
           type="button"
           onClick={() => goTab('home')}
@@ -417,21 +443,26 @@ function Shell() {
             </div>
           )}
           {role !== 'external' && <NotificationBell onNavigate={goTab} />}
-          <span className="h-title">
-            <span className="h-email">{user?.email}</span>
-            <span className="bdg b-on" style={{ marginLeft: 6, fontSize: 'var(--fs-0)' }}>
-              {ROLE_LABELS[role]}
-            </span>
-          </span>
-          <button className="ha" onClick={() => setShowPw(true)}>
-            비밀번호 변경
-          </button>
-          <button className="ha" onClick={() => setShowMfa(true)} title="로그인할 때 인증 앱의 숫자 6자리를 함께 묻습니다">
-            2차 인증
-          </button>
-          <button className="ha" onClick={signOut}>
-            로그아웃
-          </button>
+          {/* 계정 — 이메일·비밀번호 변경·2차 인증·로그아웃을 단추 하나에(2026-11-15 헤더를 한 줄로). */}
+          <div ref={accountRef} style={{ position: 'relative' }}>
+            <button className="h-acct" aria-expanded={openMenu === '__account'} title={user?.email ?? ''}
+              onClick={() => setOpenMenu((m) => (m === '__account' ? null : '__account'))}>
+              <span className="h-acct-av">{(profileName || user?.email || '?')[0]!.toUpperCase()}</span>
+              <span className="bdg b-on" style={{ fontSize: 'var(--fs-0)' }}>{ROLE_LABELS[role]}</span>
+              <span className="caret" style={{ fontSize: 8, opacity: .65 }}>{openMenu === '__account' ? '▲' : '▼'}</span>
+            </button>
+            {openMenu === '__account' && (
+              <div className="h-dropdown" role="menu" style={{ left: 'auto', right: 0 }}>
+                <div style={{ padding: '6px 13px 8px', fontSize: 'var(--fs-1)', color: 'rgba(255,255,255,.6)', borderBottom: '1px solid rgba(255,255,255,.10)', marginBottom: 2 }}>
+                  {profileName && <b style={{ color: '#fff', marginRight: 6 }}>{profileName}</b>}{user?.email}
+                </div>
+                <button className="h-dropdown-item" role="menuitem" onClick={() => { setOpenMenu(null); setShowPw(true); }}>🔑 비밀번호 변경</button>
+                <button className="h-dropdown-item" role="menuitem" title="로그인할 때 인증 앱의 숫자 6자리를 함께 묻습니다"
+                  onClick={() => { setOpenMenu(null); setShowMfa(true); }}>📱 2차 인증</button>
+                <button className="h-dropdown-item" role="menuitem" onClick={() => { setOpenMenu(null); void signOut(); }}>🚪 로그아웃</button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -609,4 +640,13 @@ function TabContent({
         </div>
       );
   }
+}
+
+/** 헤더를 한 줄로 그렸을 때 필요한 폭 — 넘치면 scrollWidth, 남으면 오른쪽 덩어리 앞의 빈 자리(margin auto)를 뺀 것. */
+function oneLineWidth(h: HTMLElement): number {
+  const right = h.querySelector<HTMLElement>('.h-right');
+  const prev = right?.previousElementSibling as HTMLElement | null;
+  if (!right || !prev) return h.scrollWidth;
+  const free = right.offsetLeft - (prev.offsetLeft + prev.offsetWidth) - 10;   // 10 = #hdr gap
+  return h.scrollWidth - Math.max(0, free);
 }
