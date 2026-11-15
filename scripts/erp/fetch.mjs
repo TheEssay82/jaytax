@@ -47,19 +47,20 @@ const arg = (k, d = null) => { const i = argv.indexOf(`--${k}`); return i >= 0 ?
 const has = (k) => argv.includes(`--${k}`);
 
 /**
- * 계정별 크롬 프로필 — taxteam 은 정남지, 감사팀은 정우철 계정이라 세션을 나눠 둔다.
+ * 계정별 크롬 프로필 — taxteam 은 기장24팀 부서 계정(1024), 감사팀은 정우철 계정이라 세션을 나눠 둔다.
+ * (2026-11-16 정남지 개인 계정 → 1024 부서 계정으로 바꿈: 11/23 부터 ERP 2차 인증이라 개인 계정 대리 로그인 불가.
+ *  10월분을 두 계정으로 받아 4종 전부 줄 단위 동일 확인.)
  * 하나로 쓰면 팀을 바꿀 때마다 로그아웃했다 다시 들어가야 한다.
  *   --profile tax(기본) | audit | 아무 이름
  */
 const profile = arg('profile', 'tax');
 const BASE = process.env.LOCALAPPDATA || os.tmpdir();
-// 예전에 쓰던 단일 프로필이 남아 있으면 tax 는 그걸 그대로 쓴다(다시 로그인하지 않게).
-const LEGACY = path.join(BASE, 'jaytax-erp-profile');
-const PROFILE_DIR = (profile === 'tax' && fs.existsSync(LEGACY))
-  ? LEGACY : path.join(BASE, `jaytax-erp-${profile}`);
+// tax = 1024 부서 계정 프로필. 예전 정남지 프로필(jaytax-erp-profile)은 더 쓰지 않는다.
+const PROFILE_DIR = path.join(BASE, `jaytax-erp-${profile === 'tax' ? 'tax1024' : profile}`);
 // 팀마다 폴더가 다르다. --out 으로 언제든 바꿀 수 있다.
 const OUT_BY_PROFILE = {
   tax: 'D:/Dropbox/4.영업관리/5520_사업부관리/기장사업부/기장24팀ERP데이터',
+  tax1024: 'D:/Dropbox/4.영업관리/5520_사업부관리/기장사업부/기장24팀ERP데이터',
   audit: 'D:/Dropbox/4.영업관리/5520_사업부관리/2본부5팀',
 };
 const OUT_DIR = arg('out') || process.env.ERP_OUT_DIR || OUT_BY_PROFILE[profile] || OUT_BY_PROFILE.tax;
@@ -128,7 +129,7 @@ async function waitLogin(page) {
   if (await done()) return;
   console.log('');
   console.log(`  🔐 열린 크롬에서 직접 로그인해 주세요. 최대 5분 대기. [프로필 ${profile}]`);
-  console.log('     taxteam = 정남지 계정 · 감사팀 = 정우철 계정');
+  console.log('     taxteam = 기장24팀(1024) 계정 · 감사팀 = 정우철 계정');
   console.log('     프로필이 계정별로 나뉘어 있어 한 번 로그인하면 다음부터는 생략됩니다.');
   console.log('');
   for (let i = 0; i < 200; i++) {
