@@ -3,7 +3,7 @@
 // AppShell 에서 떼어 냈다 — 사용자/계정관리의 **권한 현황** 화면이 같은 정의를 읽어야
 // 화면과 설명이 어긋나지 않기 때문이다. 메뉴를 고치면 그 화면도 저절로 따라온다.
 import type { Capability } from './roles';
-import { can, PER_HEAD_ALLOWED_GROUPS, PER_HEAD_HIDDEN_TABS, EXTERNAL_ALLOWED_TABS, type Role } from './roles';
+import { can, PER_HEAD_ALLOWED_GROUPS, PER_HEAD_ALLOWED_ICONS, PER_HEAD_HIDDEN_TABS, EXTERNAL_ALLOWED_TABS, type Role } from './roles';
 
 // ── 메뉴 구조 (대분류 → 하부메뉴) ───────────────────────────────
 // children: 중분류가 하위 소분류를 가지면 클릭·호버 시 플라이아웃 서브메뉴로 펼친다(컨테이너 자체는 페이지 없음).
@@ -20,10 +20,12 @@ export type MenuItem = {
 };
 export type MenuGroup = { id: string; label: string; items: MenuItem[] };
 
+// 대분류 이름은 짧게(사용자 2026-11-15 「메뉴판이 너무 복잡하다」) — 옛 이름: 거래처관리 · 기장등청구관리 ·
+// 세무조정수수료관리 · 회계및세무상담관리 · 감사업무관리 · 일반업무관리. 그룹 id 는 그대로다.
 export const MENU_GROUPS: MenuGroup[] = [
   {
     id: 'clients-hub',
-    label: '거래처관리',
+    label: '거래처',
     items: [
       { id: 'biz-register', label: '🏢 거래처등록' },
       { id: 'biz-contract', label: '📄 매출계약등록' },
@@ -32,7 +34,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   },
   {
     id: 'billing-req',
-    label: '기장등청구관리',
+    label: '청구·수금',
     items: [
       { id: 'invoice-request', label: '🧾 발행요청 · 기장팀' },
       { id: 'audit-invoice', label: '🧾 발행요청 · 감사팀' },
@@ -42,7 +44,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   },
   {
     id: 'billing',
-    label: '세무조정수수료관리',
+    label: '세무조정수수료',
     items: [
       { id: 'targets', label: '🎯 세무조정 대상선정', cap: 'viewClients' },
       { id: 'wizard', label: '📝 청구서 작성' },
@@ -54,7 +56,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   },
   {
     id: 'advisory',
-    label: '회계및세무상담관리',
+    label: '상담·검색',
     items: [
       { id: 'std-kifrs', label: '📚 회계기준 검색' },
       { id: 'std-tax', label: '⚖️ 세법 검색' },
@@ -71,7 +73,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     // 권한(사용자 같은 날): **감사팀(최고관리자·회계사·인당회계사)은 모두**, 기장팀은 **조회서 발송관리만**
     // — 조회서는 기장팀 담당자가 발송·회수 업무를 처리해 준다. 나머지는 viewAuditPapers 로 감사팀만.
     id: 'audit',
-    label: '감사업무관리',
+    label: '감사업무',
     items: [
       // 소제목으로 나눠 보인다(사용자 2026-11-15 「메뉴판이 너무 복잡하다」) — 일정·관리 / 조서 / 조회서 / 고객사.
       // section 은 같은 소제목 묶음의 첫 항목에만 적지 않고 **항목마다** 적는다(권한으로 앞 항목이 빠져도 소제목이 남게).
@@ -106,7 +108,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   },
   {
     id: 'general',
-    label: '일반업무관리',
+    label: '업무지원',
     items: [
       {
         id: 'doc-send',
@@ -121,8 +123,11 @@ export const MENU_GROUPS: MenuGroup[] = [
         ],
       },
       { id: 'evidence', label: '📁 자료실' },
-      { id: 'vacation', label: '🌴 휴가관리 (개발중)' },
-      { id: 'estimate', label: '🧮 견적산출 시스템 (개발중)' },
+      // 🌴 휴가관리 · 🧮 견적산출 시스템은 **완성될 때까지 메뉴에서 뺐다**(사용자 2026-11-15 「메뉴판이 너무 복잡하다」).
+      // 자리표시 화면(AppShell 의 case 'vacation'·'estimate')은 남겨 두었다 — 만들기 시작하면 아래 줄을 되살린다.
+      // 견적산출이 생기면 세무조정수수료 산정도 그 안으로 들어간다(사용자 같은 날).
+      // { id: 'vacation', label: '🌴 휴가관리' },
+      // { id: 'estimate', label: '🧮 견적산출 시스템' },
     ],
   },
   {
@@ -205,4 +210,40 @@ export function tabAllowed(role: Role, profileName: string, id: string): boolean
 /** 그 등급이 이 대분류를 보는가(인당회계사는 허용 그룹만). */
 export function groupAllowed(role: Role, g: MenuGroup): boolean {
   return role !== 'per_head_accountant' || PER_HEAD_ALLOWED_GROUPS.has(g.id);
+}
+
+/** 한 화면 — 홈 ⭐ 즐겨찾기에서 고를 거리. emoji 는 메뉴 글자 앞의 그림을 떼어 낸 것이다. */
+export type Screen = { id: string; label: string; emoji: string; groupId: string; group: string };
+
+function splitEmoji(label: string): { emoji: string; label: string } {
+  const m = label.match(/^(\S+)\s+(.+)$/);
+  // 첫 덩어리에 글자(한글·영문·숫자)가 없으면 그림이다.
+  if (m && !/[\p{L}\p{N}]/u.test(m[1]!)) return { emoji: m[1]!, label: m[2]! };
+  return { emoji: '📄', label };
+}
+
+/**
+ * 이 사람이 메뉴에서 여는 화면 전부(대분류 차례대로, 오른쪽 아이콘·⚙ 관리까지).
+ * AppShell 의 메뉴 필터와 **같은 규칙**(groupAllowed · menuAllowed · 인당회계사 아이콘)을 쓴다 —
+ * 즐겨찾기에 못 여는 화면이 끼면 눌러도 안 열리는 타일이 된다.
+ */
+export function screensFor(role: Role, profileName: string): Screen[] {
+  const out: Screen[] = [];
+  for (const g of MENU_GROUPS) {
+    if (!groupAllowed(role, g)) continue;
+    for (const it of g.items) {
+      for (const c of it.children ?? [it]) {
+        if (!menuAllowed(role, profileName, c)) continue;
+        out.push({ id: c.id, ...splitEmoji(c.label), groupId: g.id, group: g.label });
+      }
+    }
+  }
+  if (role !== 'external' && role !== 'client_user') {
+    for (const it of ICON_ITEMS) {
+      if (!menuAllowed(role, profileName, it)) continue;
+      if (role === 'per_head_accountant' && !PER_HEAD_ALLOWED_ICONS.has(it.id)) continue;
+      out.push({ id: it.id, emoji: it.icon, label: it.label, groupId: 'icons', group: '관리' });
+    }
+  }
+  return out;
 }

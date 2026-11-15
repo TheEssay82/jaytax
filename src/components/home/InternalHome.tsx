@@ -4,7 +4,8 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { can, ROLE_LABELS, type Role } from '../../lib/roles';
-import { tabAllowed } from '../../lib/menu';
+import { tabAllowed, screensFor, type Screen } from '../../lib/menu';
+import { loadFavorites, saveFavorites } from '../../lib/favoritesApi';
 import { CHANGELOG } from '../../lib/changelog';
 import { emphasize } from '../../lib/emphasis';
 import AnnouncementBar from './AnnouncementBar';
@@ -73,6 +74,12 @@ const READY: ShortcutDef[] = [
 ];
 
 // 체험 계정(심리실 등) — 감사업무관리만 쓰므로 바로가기도 그것만(2026-10-06).
+/** 즐겨찾기 타일 색 — 대분류마다(바로가기와 같은 결). */
+const GROUP_COLOR: Record<string, ColorKey> = {
+  'clients-hub': 'purple', 'billing-req': 'amber', billing: 'amber', advisory: 'teal',
+  audit: 'blue', general: 'blue', mgmt: 'green', icons: 'purple',
+};
+
 const SANDBOX: ShortcutDef[] = [
   { key: 'wtb', label: '정산표 관리', emoji: '📒', color: 'amber', tab: 'wtb', allow: () => true },
   { key: 'dsd', label: '주석·DSD 관리', emoji: '📗', color: 'teal', tab: 'dsd', allow: () => true },
@@ -99,6 +106,29 @@ export default function InternalHome({
   const [loaded, setLoaded] = useState(false);
 
   const myTodos = TODO_DEFS.filter((t) => t.roles.includes(role));
+
+  // ⭐ 즐겨찾기 — 체험 계정·외부인은 쓰지 않는다(볼 화면이 정해져 있다).
+  const canFav = !sandbox && role !== 'external' && role !== 'client_user';
+  const [favs, setFavs] = useState<string[]>([]);
+  const [editFav, setEditFav] = useState(false);
+  const [favErr, setFavErr] = useState('');
+  useEffect(() => {
+    if (!canFav) return;
+    let active = true;
+    loadFavorites().then((ids) => { if (active) setFavs(ids); }).catch((e: Error) => { if (active) setFavErr(e.message); });
+    return () => { active = false; };
+  }, [canFav, user?.id]);
+  const screens: Screen[] = canFav ? screensFor(role, profileName) : [];
+  const byId = new Map(screens.map((s) => [s.id, s]));
+  // 고른 뒤 권한이 바뀌어 못 여는 화면은 조용히 뺀다(저장값은 그대로 — 권한이 돌아오면 다시 보인다).
+  const favScreens = favs.map((id) => byId.get(id)).filter((s): s is Screen => !!s);
+  const favGroups = [...screens.reduce((m, s) => m.set(s.group, [...(m.get(s.group) ?? []), s]), new Map<string, Screen[]>())];
+  function toggleFav(id: string) {
+    const next = favs.includes(id) ? favs.filter((x) => x !== id) : [...favs, id];
+    const prev = favs;
+    setFavs(next); setFavErr('');
+    saveFavorites(next).catch((e: Error) => { setFavs(prev); setFavErr(`저장 못 함 — ${e.message}`); });
+  }
 
   useEffect(() => {
     let active = true;
@@ -181,6 +211,62 @@ export default function InternalHome({
             </button>
           ))}
         </div>
+      )}
+
+      {/* ⭐ 즐겨찾기 — 사람마다 자주 여는 화면(사용자 2026-11-15 「메뉴판이 너무 복잡하다」).
+          메뉴를 뒤지지 않고 홈에서 바로 간다. 고른 차례대로 놓이고, 계정에 붙어 어느 PC에서나 같다. */}
+      {canFav && (
+        <>
+          <SectionTitle hint={editFav ? '눌러서 넣고 빼기 · 넣은 차례대로 놓입니다' : undefined}>
+            ⭐ 즐겨찾기
+            <button className="btn-sm" style={{ marginLeft: 8, fontSize: 'var(--fs-1)', padding: '1px 8px', fontWeight: 400 }}
+              onClick={() => setEditFav((v) => !v)}>{editFav ? '다 골랐어요' : favs.length ? '편집' : '⭐ 고르기'}</button>
+            {favErr && <span className="err" style={{ marginLeft: 8, fontWeight: 400, fontSize: 'var(--fs-1)' }}>{favErr}</span>}
+          </SectionTitle>
+          {favScreens.length > 0 ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 11, marginBottom: editFav ? 10 : 22 }}>
+              {favScreens.map((s) => {
+                const c = C[GROUP_COLOR[s.groupId] ?? 'blue'];
+                return (
+                  <div key={s.id} style={{ position: 'relative' }}>
+                    <button onClick={() => onNavigate(s.id)} title={`${s.group} › ${s.label}`}
+                      style={{ width: '100%', background: '#fff', border: '1px solid var(--rule)', borderRadius: 14, padding: '15px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9, cursor: 'pointer' }}>
+                      <span style={{ width: 40, height: 40, borderRadius: 11, background: c[0], border: `1px solid ${c[1]}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--fs-5)' }}>{s.emoji}</span>
+                      <span style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', fontWeight: 500, textAlign: 'center' }}>{s.label}</span>
+                    </button>
+                    {editFav && (
+                      <button onClick={() => toggleFav(s.id)} title="즐겨찾기에서 빼기" aria-label={`${s.label} 빼기`}
+                        style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', border: '1px solid var(--rule)', background: '#fff', cursor: 'pointer', fontSize: 12, lineHeight: 1, color: 'var(--ink-3)' }}>✕</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : !editFav && (
+            <button onClick={() => setEditFav(true)}
+              style={{ display: 'block', width: '100%', textAlign: 'left', background: '#fff', border: '1px dashed var(--rule)', borderRadius: 14, padding: '13px 15px', cursor: 'pointer', color: 'var(--ink-3)', fontSize: 'var(--fs-2)', marginBottom: 22 }}>
+              자주 여는 화면을 ⭐ 로 골라 두면 여기 모입니다 — 메뉴를 뒤지지 않고 바로 갑니다. <b style={{ color: 'var(--navy)' }}>고르기 ↗</b>
+            </button>
+          )}
+          {editFav && (
+            <div style={{ display: 'grid', gap: 8, padding: 12, background: '#faf8f4', border: '1px solid var(--rule-2)', borderRadius: 14, marginBottom: 22 }}>
+              {favGroups.map(([g, list]) => (
+                <div key={g} style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <b style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', width: 92, flexShrink: 0 }}>{g}</b>
+                  {list.map((s) => {
+                    const on = favs.includes(s.id);
+                    return (
+                      <button key={s.id} onClick={() => toggleFav(s.id)} className={on ? 'btn-p' : 'btn-sm'}
+                        style={{ fontSize: 'var(--fs-1)', padding: '2px 9px' }}>
+                        {on ? '⭐' : '☆'} {s.emoji} {s.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* 바로가기 */}

@@ -181,7 +181,7 @@ export default function BizStatusTab() {
       </div>
       <div className="rep-hint">
         💡 <b>앞을 보는 화면</b>입니다 — 계약이 이대로 굴러갈 때의 숫자입니다.
-        실제로 청구·발행한 금액은 기장등청구관리 › <b>매출통계</b>에서 봅니다.
+        실제로 청구·발행한 금액은 경영 › <b>매출통계</b>에서 봅니다.
         <b> 두 숫자가 다른 것이 정상입니다</b> — 이쪽은 <b>계약</b>에서, 저쪽은 <b>청구 기록</b>에서 나옵니다.
       </div>
       {error && <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)', marginBottom: 8 }}>{error}</div>}

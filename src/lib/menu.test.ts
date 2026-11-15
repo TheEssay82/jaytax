@@ -100,7 +100,7 @@ test('막힌 사람의 접근 가능 탭 목록에 그 id 가 아예 없다', ()
 test('감사업무관리에 조회서 발송관리·정산표·주석·DSD·일반조서·감사이슈 LOG·Journal Entry·1118 월결산이 있고, 일반업무관리에는 없다', () => {
   const audit = MENU_GROUPS.find((g) => g.id === 'audit')!;
   const general = MENU_GROUPS.find((g) => g.id === 'general')!;
-  assert.equal(audit.label, '감사업무관리');
+  assert.equal(audit.label, '감사업무');
   assert.deepEqual(audit.items.map((i) => i.id), ['schedule', 'issue', 'wtb', 'gwp', 'je', 'dsd', 'inquiry-send', 'ifrs18']);
   for (const id of ['inquiry-send', 'wtb', 'dsd', 'gwp', 'issue', 'schedule', 'je', 'ifrs18']) assert.equal(general.items.some((i) => i.id === id), false);
 });
@@ -175,4 +175,22 @@ test('기초 미수금 입력은 여전히 정우철만', async () => {
 test('감사업무관리 소제목 — 일정·관리 / 조서 / 조회서 / 고객사, 같은 소제목끼리 붙어 있다', () => {
   const audit = MENU_GROUPS.find((g) => g.id === 'audit')!;
   assert.deepEqual(audit.items.map((i) => i.section), ['일정·관리', '일정·관리', '조서', '조서', '조서', '조서', '조회서', '고객사']);
+});
+
+// ── 홈 ⭐ 즐겨찾기(2026-11-15) — 고를 거리는 메뉴에서 여는 화면과 같다 ──
+
+test('screensFor — 메뉴 필터와 같은 화면만, 그림은 떼어 낸다', async () => {
+  const { screensFor } = await import('./menu');
+  const su = screensFor('superuser', '정우철');
+  assert.ok(su.some((s) => s.id === 'users' && s.emoji === '👤'));
+  assert.ok(su.some((s) => s.id === 'schedule' && s.emoji === '📅' && s.label === '기말감사일정'));
+  assert.equal(su.some((s) => s.id === 'inquiry-send'), false, '컨테이너는 고를 거리가 아니다');
+  assert.equal(su.some((s) => s.id === 'vacation' || s.id === 'estimate'), false, '개발중은 메뉴에서 뺐다');
+  const nam = screensFor('team_member', '정남지');
+  assert.equal(nam.some((s) => s.id === 'biz-status'), false);
+  assert.equal(nam.some((s) => s.id === 'users'), false);
+  assert.equal(nam.some((s) => s.id === 'gwp'), false);
+  const ph = screensFor('per_head_accountant', '조현규');
+  assert.deepEqual(ph.filter((s) => s.groupId === 'icons').map((s) => s.id), ['requests']);
+  assert.equal(screensFor('external', '').some((s) => s.groupId === 'icons'), false);
 });

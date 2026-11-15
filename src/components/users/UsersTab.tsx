@@ -42,7 +42,7 @@ export default function UsersTab() {
   async function toggleSandbox(r: UserProfile) {
     const next = !r.sandbox;
     if (!confirm(next
-      ? `‘${r.name || r.email}’ 계정을 체험 계정으로 바꿀까요?\n감사업무관리만 보이고, 저장은 (시연) 데모산업에서만 됩니다(서버에서 차단).\n등급은 인당회계사로 두시면 감사업무관리 전부가 보입니다.`
+      ? `‘${r.name || r.email}’ 계정을 체험 계정으로 바꿀까요?\n감사업무 메뉴만 보이고, 저장은 (시연) 데모산업에서만 됩니다(서버에서 차단).\n등급은 인당회계사로 두시면 감사업무 메뉴 전부가 보입니다.`
       : `‘${r.name || r.email}’ 계정의 체험 계정 표시를 풀까요?\n등급대로 실제 회사에 저장할 수 있게 됩니다.`)) return;
     setLockingId(r.id);
     try {
@@ -250,7 +250,7 @@ export default function UsersTab() {
                       {lockingId === r.id ? '…' : r.readonly ? '🔒 잠김' : '🔓 쓰기가능'}
                     </button>
                     <button className="btn-sm" disabled={isMe || lockingId === r.id} onClick={() => void toggleSandbox(r)}
-                      title={r.sandbox ? '체험 계정 — 저장은 (시연) 데모산업에서만. 누르면 풉니다' : '체험 계정으로 — 감사업무관리만, 저장은 데모산업에서만'}
+                      title={r.sandbox ? '체험 계정 — 저장은 (시연) 데모산업에서만. 누르면 풉니다' : '체험 계정으로 — 감사업무 메뉴만, 저장은 데모산업에서만'}
                       style={{ fontSize: 'var(--fs-0)', padding: '2px 8px', marginLeft: 4, fontWeight: 700, ...(r.sandbox ? { background: '#E6F0FC', color: '#1F4E8C' } : { color: 'var(--ink-4)' }) }}>
                       {r.sandbox ? '🧪 체험' : '체험'}
                     </button>
