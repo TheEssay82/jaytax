@@ -101,7 +101,7 @@ test('감사업무관리에 조회서 발송관리·정산표·주석·DSD·일�
   const audit = MENU_GROUPS.find((g) => g.id === 'audit')!;
   const general = MENU_GROUPS.find((g) => g.id === 'general')!;
   assert.equal(audit.label, '감사업무관리');
-  assert.deepEqual(audit.items.map((i) => i.id), ['inquiry-send', 'wtb', 'dsd', 'gwp', 'issue', 'schedule', 'je', 'ifrs18']);
+  assert.deepEqual(audit.items.map((i) => i.id), ['schedule', 'issue', 'wtb', 'gwp', 'je', 'dsd', 'inquiry-send', 'ifrs18']);
   for (const id of ['inquiry-send', 'wtb', 'dsd', 'gwp', 'issue', 'schedule', 'je', 'ifrs18']) assert.equal(general.items.some((i) => i.id === id), false);
 });
 
@@ -170,4 +170,9 @@ test('기초 미수금 입력은 여전히 정우철만', async () => {
   assert.equal(menuAllowed('superuser', '정우철', it), true);
   assert.equal(menuAllowed('accountant', '송현주', it), false);
   assert.equal(menuAllowed('team_member', '정남지', it), false);
+});
+
+test('감사업무관리 소제목 — 일정·관리 / 조서 / 조회서 / 고객사, 같은 소제목끼리 붙어 있다', () => {
+  const audit = MENU_GROUPS.find((g) => g.id === 'audit')!;
+  assert.deepEqual(audit.items.map((i) => i.section), ['일정·관리', '일정·관리', '조서', '조서', '조서', '조서', '조회서', '고객사']);
 });

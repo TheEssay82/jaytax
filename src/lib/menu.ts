@@ -11,6 +11,8 @@ export type MenuItem = {
   id: string; label: string; cap?: Capability; children?: MenuItem[];
   /** 우측 아이콘 중 ⚙ 관리 단추 하나에 묶어 펼치는 것(2026-11-15 — 아이콘 줄이 길었다). */
   admin?: boolean;
+  /** 드롭다운 안의 소제목. 바로 앞 항목과 다르면 그 위에 소제목 줄을 긋는다. */
+  section?: string;
   /** 이 사람들에게는 내놓지 않는다(권한이 아니라 '볼 일이 없다'는 뜻의 가림). */
   hideFor?: readonly string[];
   /** 이 사람에게만 내놓는다. */
@@ -71,8 +73,24 @@ export const MENU_GROUPS: MenuGroup[] = [
     id: 'audit',
     label: '감사업무관리',
     items: [
+      // 소제목으로 나눠 보인다(사용자 2026-11-15 「메뉴판이 너무 복잡하다」) — 일정·관리 / 조서 / 조회서 / 고객사.
+      // section 은 같은 소제목 묶음의 첫 항목에만 적지 않고 **항목마다** 적는다(권한으로 앞 항목이 빠져도 소제목이 남게).
+      // 기말감사일정 — 감사 대상 연도의 다음 해 1~3월 달력에 회사 × 일을 배정(사용자 2026-11-15, 엑셀 기말일정검토26). 감사팀만.
+      { section: '일정·관리', id: 'schedule', label: '📅 기말감사일정', cap: 'viewAuditPapers' },
+      // 감사 건마다 이슈를 아이템으로 쌓고 경과를 남기는 자리(2026-10-14, 옛 엑셀 ISSUELOG). 우리 내부용 — 감사팀만.
+      { section: '일정·관리', id: 'issue', label: '📝 감사이슈 LOG', cap: 'viewAuditPapers' },
+      // 정산표 — 중간 이월·기말 갱신. 일반조서와 주석·DSD 가 함께 쓰는 줄기라 따로 둔다(사용자 2026-10-05).
+      { section: '조서', id: 'wtb', label: '📒 정산표 관리', cap: 'viewAuditPapers' },
+      // 한공회 표준 일반조서(1000~9000)를 회사·사업연도마다 짓고 이어 가는 자리(2026-09-15). 정산표 이월은 📒 정산표 관리로 옮겼다.
+      // 위험평가·독립성 같은 내부 정보라 감사팀만 본다.
+      { section: '조서', id: 'gwp', label: '📘 일반조서 관리', cap: 'viewAuditPapers' },
+      // 분개장 전수 검토(JE Test) — 1차(사용자 2026-10-21): 분개장 · 잔액표 올리기 → 필수 검증 · 시나리오 → 보완할 점 → 조서 엑셀. 감사팀만.
+      { section: '조서', id: 'je', label: '🔍 Journal Entry 시스템', cap: 'viewAuditPapers' },
+      // 감사 주석을 엑셀에서 검증하고 DSD 파일로 옮기는 자리(v3.0). 감사팀만(외부인 시연은 EXTERNAL_ALLOWED_TABS 로 따로).
+      { section: '조서', id: 'dsd', label: '📗 주석·DSD 관리', cap: 'viewAuditPapers' },
       {
         id: 'inquiry-send',
+        section: '조회서',
         label: '📮 조회서 발송관리',
         children: [
           { id: 'conf-register', label: '📝 조회서등록' },
@@ -81,22 +99,9 @@ export const MENU_GROUPS: MenuGroup[] = [
           { id: 'conf-status', label: '📊 조회현황' },
         ],
       },
-      // 정산표 — 중간 이월·기말 갱신. 일반조서와 주석·DSD 가 함께 쓰는 줄기라 따로 둔다(사용자 2026-10-05).
-      { id: 'wtb', label: '📒 정산표 관리', cap: 'viewAuditPapers' },
-      // 감사 주석을 엑셀에서 검증하고 DSD 파일로 옮기는 자리(v3.0). 감사팀만(외부인 시연은 EXTERNAL_ALLOWED_TABS 로 따로).
-      { id: 'dsd', label: '📗 주석·DSD 관리', cap: 'viewAuditPapers' },
-      // 한공회 표준 일반조서(1000~9000)를 회사·사업연도마다 짓고 이어 가는 자리(2026-09-15). 정산표 이월은 📒 정산표 관리로 옮겼다.
-      // 위험평가·독립성 같은 내부 정보라 감사팀만 본다.
-      { id: 'gwp', label: '📘 일반조서 관리', cap: 'viewAuditPapers' },
-      // 감사 건마다 이슈를 아이템으로 쌓고 경과를 남기는 자리(2026-10-14, 옛 엑셀 ISSUELOG). 우리 내부용 — 감사팀만.
-      { id: 'issue', label: '📝 감사이슈 LOG', cap: 'viewAuditPapers' },
-      // 기말감사일정 — 감사 대상 연도의 다음 해 1~3월 달력에 회사 × 일을 배정(사용자 2026-11-15, 엑셀 기말일정검토26). 감사팀만.
-      { id: 'schedule', label: '📅 기말감사일정', cap: 'viewAuditPapers' },
-      // 분개장 전수 검토(JE Test) — 1차(사용자 2026-10-21): 분개장 · 잔액표 올리기 → 필수 검증 · 시나리오 → 보완할 점 → 조서 엑셀. 감사팀만.
-      { id: 'je', label: '🔍 Journal Entry 시스템', cap: 'viewAuditPapers' },
       // K-IFRS 1118 월결산 — 회사가 SAP 분개장 하나로 1118 손익계산서를 만든다(사용자 2026-11-09). 분개장은 브라우저 안에서만.
       // 회사 담당자(외부인)는 EXTERNAL_ALLOWED_TABS 로 이 화면만 열고, 데이터는 ifrs18_access 로 연결된 회사만 보인다(0189).
-      { id: 'ifrs18', label: '📐 K-IFRS 1118 월결산', cap: 'viewAuditPapers' },
+      { section: '고객사', id: 'ifrs18', label: '📐 K-IFRS 1118 월결산', cap: 'viewAuditPapers' },
     ],
   },
   {

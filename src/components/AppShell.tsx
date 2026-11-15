@@ -310,7 +310,14 @@ function Shell() {
               </button>
               {openMenu === g.id && (
                 <div className="h-dropdown" role="menu">
-                  {g.items.map((it) =>
+                  {g.items.map((it, i) => [
+                    // 소제목 — 바로 앞 항목과 다를 때만. 보이는 소제목이 하나뿐이면(기장팀은 조회서만) 긋지 않는다.
+                    it.section && it.section !== g.items[i - 1]?.section && new Set(g.items.map((x) => x.section)).size > 1 && (
+                      <div key={`sec-${it.section}`} className="h-dropdown-sec" role="presentation"
+                        style={{ padding: i === 0 ? '4px 13px 2px' : '10px 13px 2px', fontSize: 'var(--fs-0)', fontWeight: 700, letterSpacing: '.04em', color: 'rgba(255,255,255,.45)', borderTop: i === 0 ? 'none' : '1px solid rgba(255,255,255,.10)', marginTop: i === 0 ? 0 : 4 }}>
+                        {it.section}
+                      </div>
+                    ),
                     it.children ? (
                       // 중분류(컨테이너): 클릭/호버 시 하위 소분류를 바로 아래로 펼침(아코디언).
                       <div key={it.id}>
@@ -349,7 +356,7 @@ function Shell() {
                         {it.label}
                       </button>
                     ),
-                  )}
+                  ])}
                 </div>
               )}
             </div>
