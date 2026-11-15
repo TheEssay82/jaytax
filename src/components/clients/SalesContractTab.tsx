@@ -41,6 +41,11 @@ const commaNum = (s: string) => {
 };
 const digitsOnly = (s: string) => s.replace(/[^\d]/g, '');
 // 연환산 계수(청구주기→연 횟수). 월환산 = 연환산/12.
+const cycBtn: React.CSSProperties = { fontSize: 'var(--fs-1)', padding: '2px 9px' };
+const cycGrp: React.CSSProperties = { fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginRight: 2 };
+const cycSep: React.CSSProperties = { width: 1, height: 16, background: '#d6d0c4', margin: '0 6px' };
+/** 「발생시」가 뜻하는 조건 — 단추 풍선말과 고른 뒤 안내가 같은 말을 하도록 한 곳에. */
+const HAPPEN_HINT = '언제 · 몇 번 청구할지 계약할 때 정할 수 없고, 일이 생길 때마다 정해진 단가로 청구하는 계약(예: 건별 수시 자문). 계약금액 = 1회 단가. 매출 예상 · 예산 · 발행요청 제안에는 잡히지 않습니다.';
 const CYCLE_ANN: Record<string, number> = { '월': 12, '분기': 4, '반기': 2, '연': 1, '발생시': 1, '건': 1 };
 const annualize = (c: SalesContract) => c.amount * (CYCLE_ANN[c.billingCycle] ?? 1);
 // 운영 시작 = 2026-07(정산연도 2026). 계속계약(종료 없음·귀속 null)은 이 연도부터 매 귀속연도에 포함.
@@ -1034,7 +1039,6 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
   const entLabel = (e: BizEntityFull) => `${e.code} ${corpDisplayName(e.name, e.corpForm, e.corpFormPosition)}`;
   const [entityText, setEntityText] = useState(() => (entity ? entLabel(entity) : ''));
   const [showDetail, setShowDetail] = useState(false);
-  const canInstallment = f.billingCycle === '연' || f.billingCycle === '건'; // 분할은 연·건 계약에서만
 
   // 거래처 입력(타입/선택) → id·CPA 상속
   function onEntityText(v: string) {
@@ -1161,10 +1165,27 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
 
       {/* 청구주기 · 계약금액 · 귀속연도 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 14px', marginTop: 8 }}>
-        <div className="frow"><span className="fl">청구주기</span>
-          <select value={f.billingCycle} onChange={(e) => pickCycle(e.target.value as BillingCycle)} style={selStyle}>
-            {BILLING_CYCLES.map((c) => <option key={c}>{c}</option>)}
-          </select></div>
+        {/* 청구주기 — 6개를 한 줄에 같은 무게로 두었더니 「발생시」와 「건」이 늘 헷갈렸다(사용자 2026-11-15).
+            「어떻게 청구하나요?」 세 묶음으로 묻는다. 저장값(월·분기·반기·연·건·발생시 + 분할)은 그대로라
+            매출통계·발행요청·예측은 바뀌지 않는다. 한 번에 = 건, 나눠서 = 건 + 분할, 그때그때 = 발생시. */}
+        <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">청구주기</span>
+          <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={cycGrp}>정기적으로</span>
+            {(['월', '분기', '반기', '연'] as BillingCycle[]).map((c) => (
+              <button key={c} type="button" className={f.billingCycle === c ? 'btn-p' : 'btn-sm'} style={cycBtn} onClick={() => pickCycle(c)}>{c}</button>
+            ))}
+            <span style={cycSep} />
+            <span style={cycGrp}>한 건</span>
+            <button type="button" className={f.billingCycle === '건' && !f.isInstallment ? 'btn-p' : 'btn-sm'} style={cycBtn}
+              title="일을 마치면 한 번에 청구합니다(계약금액 = 그 건의 총액)"
+              onClick={() => { pickCycle('건'); set('isInstallment', false); }}>한 번에 청구</button>
+            <button type="button" className={f.billingCycle === '건' && f.isInstallment ? 'btn-p' : 'btn-sm'} style={cycBtn}
+              title="계약금 · 중도금 · 잔금처럼 회차를 정해 나눠 청구합니다(계약금액 = 총액)"
+              onClick={() => { pickCycle('건'); set('isInstallment', true); }}>나눠서 청구</button>
+            <span style={cycSep} />
+            <button type="button" className={f.billingCycle === '발생시' ? 'btn-p' : 'btn-sm'} style={{ ...cycBtn, opacity: f.billingCycle === '발생시' ? 1 : 0.75 }}
+              title={HAPPEN_HINT} onClick={() => pickCycle('발생시')}>그때그때(발생시)</button>
+          </span></div>
         <div className="frow"><span className="fl">청구단위</span>
           <select value={f.billingUnit} onChange={(e) => set('billingUnit', e.target.value as BillingUnit | '')} style={selStyle}>
             <option value="">(선택)</option>{BILL_UNITS.map((u) => <option key={u}>{u}</option>)}
@@ -1195,7 +1216,7 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
           <>
             <input value={f.fiscalYear} onChange={(e) => pickYear(e.target.value)} placeholder="연단위 신고만 (예: 2025)" maxLength={4} />
           </></div>
-        {canInstallment && (
+        {f.billingCycle === '연' && (
           <div className="frow"><span className="fl">분할청구</span>
             <label style={{ fontSize: 'var(--fs-1)', display: 'flex', gap: 4, alignItems: 'center' }}>
               <input type="checkbox" checked={f.isInstallment} onChange={(e) => set('isInstallment', e.target.checked)} /> 계약금/중도금/잔금 분할
@@ -1204,11 +1225,13 @@ function ContractForm({ entities, staff, contracts, initial, onSubmit, onCancel 
       </div>
       <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)', marginTop: 2 }}>※ 귀속연도 = 정산기간(<b>7/1~익년 6/30</b>) 기준. <b>종료월을 넣으면 자동</b>(종료 7~12월→그 해, 1~6월→전년). 월 기장 등 계속거래는 비워둡니다.</div>
 
-      {f.billingCycle === '발생시' && !f.isInstallment && (
+      {f.billingCycle === '발생시' && (
         <div style={{ fontSize: 'var(--fs-1)', color: '#8a5a00', background: '#FFF8E6', border: '1px solid #F2DDA4', borderRadius: 5, padding: '6px 9px', marginTop: 6, lineHeight: 1.6 }}>
-          ※ <b>발생시 · 분할 없음</b>은 언제 청구할지 몰라 <b>매출통계 「예상」과 현황및예산조회에 잡히지 않습니다</b>.
-          {' '}한 번에 끝나는 용역이면 청구주기를 <b>「건」</b>으로, 나눠 청구하면 <b>분할</b>을 켜고 회차·청구기한을 넣으십시오 — 감사팀 발행요청 「제안」에도 그때 뜹니다.
-          {' '}매출통계 「실적」에는 발행요청을 하면 잡힙니다.
+          <b>그때그때(발생시)는 이럴 때만 고릅니다</b> — 계약은 맺었는데 <b>① 언제 청구할지</b>도, <b>② 몇 번 청구할지</b>도 계약할 때 정할 수 없고,
+          {' '}<b>③ 일이 생길 때마다 정해진 단가로</b> 청구하는 계약입니다. 예: 건별 단가로 정한 수시 자문 · 요청 올 때마다 발급하는 확인서.
+          {' '}계약금액에는 <b>1회 단가</b>를 넣습니다.
+          <br />※ 언제 얼마나 청구할지 몰라 <b>매출통계 「예상」 · 현황및예산조회 · 감사팀 발행요청 「제안」에 잡히지 않습니다</b> — 청구할 때마다 발행요청을 손으로 냅니다(그러면 「실적」에는 잡힙니다).
+          {' '}한 번 하고 끝나는 일이면 <b>「한 번에 청구」</b>, 회차가 정해져 있으면 <b>「나눠서 청구」</b>가 맞습니다.
         </div>
       )}
       {f.isInstallment && <InstallmentsEditor rows={f.installments} onChange={(r) => set('installments', r)} sum={instSum} target={amountNum} />}

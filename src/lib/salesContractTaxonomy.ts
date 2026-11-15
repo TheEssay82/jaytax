@@ -25,31 +25,48 @@ export const TAXONOMY: Record<Team, TaxNode[]> = {
       code: 'AUD.SVC', label: '용역', children: [
         {
           code: 'AUD.SVC.FILING', label: '신고(세무조정포함)', children: [
-            { code: 'AUD.SVC.FILING.CORP', label: '법인세', defaultUnit: '법인' },
-            { code: 'AUD.SVC.FILING.INCOME', label: '소득세', defaultUnit: '개인' },
-            { code: 'AUD.SVC.FILING.TRANSFER', label: '양도세', defaultUnit: '개인' },
-            { code: 'AUD.SVC.FILING.INHERIT', label: '상증세', defaultUnit: '개인' },
-            { code: 'AUD.SVC.FILING.SECURITIES', label: '증권거래세' },
-            { code: 'AUD.SVC.FILING.RECTIFY', label: '경정청구' },
-            { code: 'AUD.SVC.FILING.ETC', label: '기타', needsEtcName: true },
+            { code: 'AUD.SVC.FILING.CORP', label: '법인세', defaultUnit: '법인', defaultCycle: '건' },
+            { code: 'AUD.SVC.FILING.INCOME', label: '소득세', defaultUnit: '개인', defaultCycle: '건' },
+            { code: 'AUD.SVC.FILING.TRANSFER', label: '양도세', defaultUnit: '개인', defaultCycle: '건' },
+            { code: 'AUD.SVC.FILING.INHERIT', label: '상증세', defaultUnit: '개인', defaultCycle: '건' },
+            { code: 'AUD.SVC.FILING.SECURITIES', label: '증권거래세', defaultCycle: '건' },
+            { code: 'AUD.SVC.FILING.RECTIFY', label: '경정청구', defaultCycle: '건' },
+            { code: 'AUD.SVC.FILING.ETC', label: '기타', needsEtcName: true, defaultCycle: '건' },
           ],
         },
         {
           code: 'AUD.SVC.VALUATION', label: '평가', children: [
-            { code: 'AUD.SVC.VAL.ENTERPRISE', label: '기업가치(CGU포함)평가' },
-            { code: 'AUD.SVC.VAL.INTANGIBLE', label: '무형자산(영업권·PPA포함)' },
-            { code: 'AUD.SVC.VAL.INHERIT', label: '상증세' },
-            { code: 'AUD.SVC.VAL.DERIVATIVE', label: '파생상품(옵션포함)' },
-            { code: 'AUD.SVC.VAL.ETC', label: '기타', needsEtcName: true },
+            { code: 'AUD.SVC.VAL.ENTERPRISE', label: '기업가치(CGU포함)평가', defaultCycle: '건' },
+            { code: 'AUD.SVC.VAL.INTANGIBLE', label: '무형자산(영업권·PPA포함)', defaultCycle: '건' },
+            { code: 'AUD.SVC.VAL.INHERIT', label: '상증세', defaultCycle: '건' },
+            { code: 'AUD.SVC.VAL.DERIVATIVE', label: '파생상품(옵션포함)', defaultCycle: '건' },
+            { code: 'AUD.SVC.VAL.ETC', label: '기타', needsEtcName: true, defaultCycle: '건' },
+          ],
+        },
+        // 「컨설팅」 하나를 회계자문 · 내부회계 · 실사·확인 셋으로 나눴다(사용자 2026-11-15 — 「컨설팅 › 기타」에
+        // K-IFRS 1118 검토·PA·업무감사·약식실사·확인서가 쌓였다). **code 는 그대로 두고 자리·이름만 옮겼다**
+        // (AUD.SVC.CON.ICFR_* 는 내부회계 밑으로) — 계약에 저장된 code 와 매출계약코드가 바뀌지 않는다.
+        {
+          code: 'AUD.SVC.CONSULT', label: '회계자문', children: [
+            { code: 'AUD.SVC.CON.IFRS', label: 'IFRS전환', defaultCycle: '건' },
+            { code: 'AUD.SVC.CON.STD', label: 'K-IFRS 기준서 적용검토', defaultCycle: '건' },
+            { code: 'AUD.SVC.CON.CLOSE', label: '결산지원(PA)', defaultCycle: '건' },
+            { code: 'AUD.SVC.CON.ADVISORY', label: '자문', defaultCycle: '건' },
+            { code: 'AUD.SVC.CON.ETC', label: '기타', needsEtcName: true, defaultCycle: '건' },
           ],
         },
         {
-          code: 'AUD.SVC.CONSULT', label: '컨설팅', children: [
-            { code: 'AUD.SVC.CON.IFRS', label: 'IFRS전환' },
-            { code: 'AUD.SVC.CON.ICFR_BUILD', label: '내부회계구축' },
-            { code: 'AUD.SVC.CON.ICFR_PA', label: '내부회계PA' },
-            { code: 'AUD.SVC.CON.ADVISORY', label: '자문' },
-            { code: 'AUD.SVC.CON.ETC', label: '기타', needsEtcName: true },
+          code: 'AUD.SVC.ICFR', label: '내부회계', children: [
+            { code: 'AUD.SVC.CON.ICFR_BUILD', label: '구축', defaultCycle: '건' },
+            { code: 'AUD.SVC.CON.ICFR_PA', label: '운영지원(PA)', defaultCycle: '건' },
+          ],
+        },
+        {
+          code: 'AUD.SVC.DUE', label: '실사·확인', children: [
+            { code: 'AUD.SVC.DUE.FDD', label: '재무실사(약식 포함)', defaultCycle: '건' },
+            { code: 'AUD.SVC.DUE.AUP', label: '업무감사(합의된 절차)', defaultCycle: '건' },
+            { code: 'AUD.SVC.DUE.CERT', label: '확인서 발급', defaultCycle: '건' },
+            { code: 'AUD.SVC.DUE.ETC', label: '기타', needsEtcName: true, defaultCycle: '건' },
           ],
         },
       ],
@@ -134,6 +151,8 @@ export const TYPE_MNEMONIC: Record<string, string> = {
   'AUD.SVC.VAL.DERIVATIVE': 'VDRV', 'AUD.SVC.VAL.ETC': 'VETC',
   'AUD.SVC.CON.IFRS': 'CIFR', 'AUD.SVC.CON.ICFR_BUILD': 'CICB', 'AUD.SVC.CON.ICFR_PA': 'CICP',
   'AUD.SVC.CON.ADVISORY': 'CADV', 'AUD.SVC.CON.ETC': 'CETC',
+  'AUD.SVC.CON.STD': 'CSTD', 'AUD.SVC.CON.CLOSE': 'CCLS',
+  'AUD.SVC.DUE.FDD': 'DFDD', 'AUD.SVC.DUE.AUP': 'DAUP', 'AUD.SVC.DUE.CERT': 'DCRT', 'AUD.SVC.DUE.ETC': 'DETC',
   // taxteam
   'TAX.BOOK': 'BK',
   'TAX.FILING.VAT': 'VAT', 'TAX.FILING.WHT': 'WHT', 'TAX.FILING.CORP': 'CT', 'TAX.FILING.INCOME': 'IT',
