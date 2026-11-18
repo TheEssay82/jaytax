@@ -122,7 +122,8 @@ export default function SalesContractTab() {
   // 여기서 「내 것」은 **담당CPA 이거나 담당직원**이다 — 매출계약은 두 자리가 다 붙는다.
   const isMine = (c: SalesContract) =>
     c.effectiveCpa === profileName || c.effectiveStaff.some((st) => st.staffName === profileName);
-  const canWrite = !readonly && role !== 'per_head_accountant'; // 인당회계사는 조회 전용
+  const canWrite = !readonly; // 인당회계사도 등록·수정(2026-11-18, 서버 0198)
+  const canDelete = canWrite && role !== 'per_head_accountant'; // 계약 지우기는 인당회계사 제외(거래처등록과 같은 선)
   const canPivot = role !== 'team_member'; // 집계(피봇)는 기장팀원(김민섭·김동주 등)에게 숨김
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [staff, setStaff] = useState<StaffProfileLite[]>([]);
@@ -741,7 +742,7 @@ export default function SalesContractTab() {
                 {canWrite && (
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                     <button className="btn-sm btn-sm-blue" onClick={() => { setEditId(c.id); setShowAdd(false); setEditFrom('box'); }}>수정</button>
-                    <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
+                    {canDelete && <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>}
                   </span>
                 )}
               </div>
@@ -871,7 +872,7 @@ export default function SalesContractTab() {
                     <td style={{ ...tdc, borderTop: '1px solid var(--rule-2)' }}>
                       <span style={{ display: 'flex', gap: 3 }}>
                         <button className="btn-sm btn-sm-blue" onClick={() => { setViewMode('box'); setEditId(c.id); setShowAdd(false); setEditFrom('table'); }}>수정</button>
-                        <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
+                        {canDelete && <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>}
                       </span>
                     </td>
                   )}

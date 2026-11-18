@@ -21,7 +21,7 @@ const READ_ONLY: Rule = { all: null };
 export const MENU_PERMS: Record<string, MenuPerm> = {
   // ── 거래처관리 ── 인당회계사는 서버(is_perhead)가 거래처·계약 쓰기를 막는다.
   'biz-register': { write: { all: true, team_member: '일부: 고치기만(거래처·사업장 등록·삭제 불가)', per_head_accountant: '일부: 등록·수정(거래처·사업장 삭제 불가)' }, note: '주민번호·홈택스 비밀번호 열람은 서버가 따로 판단 · 엑셀 가져오기는 최고관리자' },
-  'biz-contract': { use: { all: true, team_member: '일부: 피벗·요약 표는 안 보임' }, write: { all: true, per_head_accountant: false } },
+  'biz-contract': { use: { all: true, team_member: '일부: 피벗·요약 표는 안 보임' }, write: { all: true, per_head_accountant: '일부: 등록·수정(계약 삭제 불가)' } },
   'biz-contacts': { write: { all: true, per_head_accountant: '일부: 등록·수정(삭제 불가)' } },
   'biz-status': { write: { ...SU_AC_TL, team_member: false, per_head_accountant: false, all: false }, note: '쓰기는 예산 편집뿐(회계사·팀장·최고관리자)' },
 

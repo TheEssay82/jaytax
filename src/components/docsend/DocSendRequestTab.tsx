@@ -383,8 +383,9 @@ export default function DocSendRequestTab() {
           {isSuper && <button className="btn-sm" onClick={openTrash} title="삭제된(휴지통) 발송요청 복원">🗑 휴지통</button>}
           <button className="btn-sm" style={{ fontSize: 'var(--fs-1)', padding: '2px 8px' }} onClick={() => void refresh()} disabled={busy} title="최신 내역을 다시 불러옵니다">{busy ? '⏳' : '🔄'} 새로고침</button>
           {canWrite && (
-            <button className="btn-sm" onClick={() => { setShowAdd((v) => !v); setEditId(null); }}>
-              + 새 발송요청
+            <button className="btn-p" style={{ fontSize: 'var(--fs-4)', padding: '10px 26px', fontWeight: 700 }}
+              onClick={() => { setShowAdd((v) => !v); setEditId(null); }}>
+              {showAdd ? '닫기' : '＋ 새 발송요청'}
             </button>
           )}
         </div>
