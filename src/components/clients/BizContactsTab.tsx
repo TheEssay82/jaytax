@@ -20,7 +20,8 @@ import { VIEW_KEYS } from '../../lib/tableViewApi';
 
 export default function BizContactsTab() {
   const { readonly, role } = useAuth();
-  const canWrite = !readonly && role !== 'per_head_accountant'; // 인당회계사는 조회 전용
+  const canWrite = !readonly; // 인당회계사도 등록·수정(2026-11-18, 서버 0197)
+  const canDelete = canWrite && role !== 'per_head_accountant'; // 지우기는 인당회계사 제외(거래처등록과 같은 선)
   const [entities, setEntities] = useState<BizEntityFull[]>([]);
   const [contacts, setContacts] = useState<BizContact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -238,7 +239,7 @@ export default function BizContactsTab() {
                         <button className="btn-sm btn-sm-blue" onClick={() => { setViewMode('box'); setEditId(c.id); setShowAdd(false); }}>수정</button>
                         <button className="btn-sm" title={c.active ? '이직·퇴사로 더 이상 쓰지 않는 연락처로 접습니다(기록은 남습니다)' : '다시 유효한 담당자로'}
                           onClick={() => void toggleActive(c)}>{c.active ? '이직·퇴사' : '되살리기'}</button>
-                        <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
+                        {canDelete && <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>}
                       </span>
                     </td>
                   )}
@@ -278,7 +279,7 @@ export default function BizContactsTab() {
                     <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                       <button className="btn-sm btn-sm-blue" onClick={() => { setEditId(c.id); setShowAdd(false); }}>수정</button>
                       <button className="btn-sm" onClick={() => void toggleActive(c)}>{c.active ? '이직·퇴사' : '되살리기'}</button>
-                      <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>
+                      {canDelete && <button className="btn-sm btn-sm-del" onClick={() => del(c)}>삭제</button>}
                     </span>
                   )}
                 </div>

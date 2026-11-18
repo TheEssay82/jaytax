@@ -18,6 +18,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.89.2',
+    date: '2026-11-18',
+    title: '거래처담당자등록 — 인당회계사도 신규 담당자 등록 · 수정',
+    highlights: [
+      '인당회계사(김준성 · 조현규)에게 「＋ 신규 담당자」와 수정 · 이직·퇴사 처리를 열었습니다. 삭제는 계속 막습니다(거래처등록과 같은 선).',
+    ],
+  },
+  {
     version: '3.89.1',
     date: '2026-11-18',
     title: '거래처등록 — 인당회계사도 신규 등록 · 수정',
