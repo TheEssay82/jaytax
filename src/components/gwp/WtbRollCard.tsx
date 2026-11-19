@@ -12,7 +12,7 @@ import type { Engagement } from '../../lib/dsdApi';
 import { findEngagement } from '../../lib/dsdApi';
 import { readWorkbook, type SheetData } from '../../lib/xlsxRead';
 import { unzip, zip } from '../../lib/xlsxTransplant';
-import { rollWtb, refreshWtb, tbFromSheet, fsFromSheet, wtbOutline, wtbA500People, pairKey, type TbLine, type WtbPlace, type WtbRollReport, type WtbRow, type TableKind } from '../../lib/wtbRoll';
+import { rollWtb, refreshWtb, tbFromSheet, fsFromSheet, suggestMcPairs, wtbOutline, wtbA500People, pairKey, type TbLine, type WtbPlace, type WtbRollReport, type WtbRow, type TableKind } from '../../lib/wtbRoll';
 import { listFiles, latestFile, uploadFile, type EngFile } from '../../lib/gwpStageApi';
 import { fileBytes, fileUrl } from '../../lib/gwpApi';
 import { wtbChecks, type WtbCheckResult } from '../../lib/wtbCheck';
@@ -116,14 +116,24 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
 
   const mcTables = outline.tables.filter((t) => t.kind === 'MC');
   // 제조원가 표 ↔ 회사 자료 시트 — 이름이 같으면 저절로, 하나씩뿐이면 그것끼리. 사람이 고친 것은 그대로.
+  //   이름이 다르면(더그림 「유튜브원가」 ↔ 「영상원가명세서」) 작년 금액이 맞는 시트로(suggestMcPairs) — 짝이 비어 원가표가 통째로 0 이 되던 것(2026-11-19).
   useEffect(() => {
     const mcSrc = srcs.filter((s) => s.kind === 'MC');
+    let byAmount: Record<string, string> = {};
+    if (prior && mcSrc.length) {
+      try {
+        const lines = mcSrc.flatMap((s) => { try { return fsFromSheet(s.sheet, 'MC', `MC:${s.key}`); } catch { return []; } });
+        byAmount = suggestMcPairs(prior.bytes, lines);
+      } catch { byAmount = {}; }
+    }
     setPair((old) => {
       const next: Record<string, string> = {};
       for (const t of mcTables) {
-        if (old[t.sheet] && mcSrc.some((s) => s.key === old[t.sheet])) { next[t.sheet] = old[t.sheet]; continue; }
+        if (old[t.sheet] !== undefined && (old[t.sheet] === '' || mcSrc.some((s) => s.key === old[t.sheet]))) { next[t.sheet] = old[t.sheet]; continue; }
         const same = mcSrc.find((s) => nameKey(s.sheet.name) === nameKey(t.sheet));
+        const amt = byAmount[t.sheet]?.replace(/^MC:/, '');
         if (same) next[t.sheet] = same.key;
+        else if (amt && mcSrc.some((s) => s.key === amt)) next[t.sheet] = amt;
         else if (mcSrc.length === 1 && mcTables.filter((x) => !x.hidden).length === 1 && !t.hidden) next[t.sheet] = mcSrc[0].key;
       }
       return next;
@@ -324,6 +334,9 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
                     <option value="">— 짝 없음(회사제시 0) —</option>
                     {srcs.filter((s) => s.kind === 'MC').map((s) => <option key={s.key} value={s.key}>{s.file} · {s.sheet.name}</option>)}
                   </select>
+                  {!pair[t.sheet] && !t.hidden && srcs.some((s) => s.kind === 'MC') && (
+                    <span style={{ color: 'var(--bad)', fontSize: 'var(--fs-1)' }}>⚠ 짝이 없어 이 표의 올해 회사제시가 모두 0 이 됩니다</span>
+                  )}
                 </div>
               ))}
             </div>

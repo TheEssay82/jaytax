@@ -45,7 +45,7 @@ test('재무제표 시트 — 들여 쓴 계정 줄만, 안쪽 열 먼저, 차�
   ]);
   const t = fsFromSheet({ name: '재무상태표', cells: bs } as unknown as SheetData, 'BS').filter((x) => !x.subtotal);   // 합계 줄은 표시만 하고 묻지 않는다
   assert.deepEqual(t.map((x) => [x.name, x.section, x.current, x.bal]), [
-    ['보통예금', '자산', true, 3495683], ['건물', '자산', false, 2913327108], ['감가상각누계액', '자산', false, -321810611],
+    ['보통예금', '자산', true, 3495683], ['건물', '자산', false, 2913327108], ['감가상각누계액-건물', '자산', false, -321810611],
     ['장기차입금', '부채', true, -25000000000],
   ]);
   const pl = new Map<string, { text?: string; num?: number }>([
@@ -160,4 +160,45 @@ test('표 머리 — 날짜가 위 줄, 「제 23 기 | DR | CR」가 아래 줄
   assert.equal(L.curTerm, 23);
   assert.equal(L.history.get(2024), 14);
   assert.deepEqual(L.accounts, [10]);
+});
+
+test('더존 재무상태표(더그림 2026-09) — 같은 이름 감가상각누계액은 위 자산 이름을 달고, 자산 쪽 퇴직연금운용자산은 차감이 아니며, 금액 있는 줄은 머리가 아니다', async () => {
+  const { fsFromSheet, netIncomeOf } = await import('./wtbRoll');
+  const bs = new Map<string, { text?: string; num?: number }>([
+    ['A8', { text: '과    목' }], ['B8', { text: '제 10 (당)기' }], ['D8', { text: '제 9 (전)기' }],
+    ['A10', { text: ' 자             산 ' }], ['A37', { text: ' Ⅱ. 비  유  동  자  산  ' }],
+    ['A38', { text: ' (1) 투  자    자  산  ' }], ['C38', { num: 155415159 }],
+    ['A40', { text: '      지분법적용투자주식' }], ['C40', { num: 34517110 }],
+    ['A41', { text: '        퇴직연금운용자산' }], ['C41', { num: 120898049 }],
+    ['A42', { text: ' (2) 유  형    자  산  ' }], ['C42', { num: 1 }],
+    ['A43', { text: '      기계장치' }], ['B43', { num: 11160000 }],
+    ['A44', { text: '      감가상각누계액' }], ['B44', { num: 372000 }], ['C44', { num: 10788000 }],
+    ['A45', { text: '      차량운반구' }], ['B45', { num: 73803280 }],
+    ['A46', { text: '      감가상각누계액' }], ['B46', { num: 70727394 }], ['C46', { num: 3075886 }],
+    ['A50', { text: ' 부             채 ' }], ['A51', { text: ' Ⅱ. 비  유  동  부  채  ' }],
+    ['A52', { text: '      퇴직급여충당부채' }], ['B52', { num: 1691195304 }],
+    ['A53', { text: '      퇴직연금운용자산' }], ['B53', { num: 1691195304 }], ['C53', { num: 0 }],
+  ]);
+  const t = fsFromSheet({ name: '재무상태표', cells: bs } as unknown as SheetData, 'BS').filter((x) => !x.subtotal);
+  assert.deepEqual(t.map((x) => [x.name, x.section, x.bal]), [
+    ['지분법적용투자주식', '자산', 34517110], ['퇴직연금운용자산', '자산', 120898049],
+    ['기계장치', '자산', 11160000], ['감가상각누계액-기계장치', '자산', -372000],
+    ['차량운반구', '자산', 73803280], ['감가상각누계액-차량운반구', '자산', -70727394],
+    ['퇴직급여충당부채', '부채', -1691195304], ['퇴직연금운용자산', '부채', 1691195304],
+  ]);
+  // 손익계산서 — 영업외수익의 국고보조금은 수익(차감 아님), 순이익은 「당기순손실」 줄에서
+  const pl = new Map<string, { text?: string; num?: number }>([
+    ['A7', { text: '과목' }], ['B7', { text: '제 10 (당)기' }],
+    ['A8', { text: 'Ⅰ. 매  출  액' }], ['C8', { num: 1000 }], ['A9', { text: '      상품매출' }], ['B9', { num: 1000 }],
+    ['A10', { text: 'Ⅱ. 매  출  원  가' }], ['C10', { num: 900 }],
+    ['A11', { text: '    상품매출원가' }], ['C11', { num: 900 }],
+    ['A12', { text: '      기초 상품 재고액' }], ['B12', { num: 500 }], ['A13', { text: '      당기 상품 매입액' }], ['B13', { num: 800 }],
+    ['A14', { text: '      기말 상품 재고액' }], ['B14', { num: 400 }],
+    ['A15', { text: 'Ⅵ. 영  업  외  수  익' }], ['C15', { num: 30 }], ['A16', { text: '      국고보조금' }], ['B16', { num: 30 }],
+    ['A17', { text: 'Ⅹ. 당  기  순  이  익' }], ['C17', { num: 130 }],
+  ]);
+  const p = fsFromSheet({ name: '손익계산서', cells: pl } as unknown as SheetData, 'PL');
+  assert.equal(p.find((x) => x.name === '국고보조금')?.bal, -30);
+  assert.equal(netIncomeOf(p), 130);
+  assert.equal(netIncomeOf(p.filter((x) => !x.subtotal)), 130);   // 순이익 줄이 없으면 더하되 기말재고는 뺀다
 });

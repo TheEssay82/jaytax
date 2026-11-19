@@ -60,6 +60,35 @@ export type WtbPlace =
 
 export interface WtbRow { sheet: string; row: number; fsli: string; label: string; section: TbLine['section']; kind: TableKind }
 
+/**
+ * 제조원가 표 ↔ 회사 원가명세서 짝 추천 — 회사 원가명세서의 **전기 금액**이 정산표 그 표의 작년 금액(회사제시·수정후)과 몇 줄 맞는지로 고른다.
+ * 이름이 달라도 된다(더그림 「유튜브원가」 ↔ 회사 「영상원가명세서」(도급원가명세서), 「웹툰원가」 ↔ 「웹툰원가명세서」).
+ * 짝이 비면 회사제시가 0 으로 남는다(더그림 2026-09 — 두 표가 통째로 0). 반환: 표 이름 → TbLine.src.
+ */
+export function suggestMcPairs(bytes: Uint8Array, tb: TbLine[]): Record<string, string> {
+  const srcs = [...new Set(tb.filter((t) => t.section === '원가' && t.src).map((t) => t.src!))];
+  const out: Record<string, string> = {};
+  if (!srcs.length) return out;
+  const scores: { sheet: string; src: string; n: number }[] = [];
+  for (const sh of readWorkbook(bytes)) {
+    const L = readLayout(sh);
+    if (!L || L.kind !== 'MC') continue;
+    const have = new Set<number>();
+    for (const r of L.accounts) for (const c of [L.cur, L.adj]) { const v = sh.cells.get(`${colName(c)}${r}`)?.num; if (v) have.add(Math.round(v)); }
+    for (const src of srcs) {
+      const n = tb.filter((t) => t.src === src && t.prior && !t.subtotal && have.has(Math.round(t.prior))).length;
+      if (n) scores.push({ sheet: L.sheet, src, n });
+    }
+  }
+  // 점수 높은 것부터 — 한 회사 시트는 한 표에만.
+  const used = new Set<string>();
+  for (const x of scores.sort((a, b) => b.n - a.n)) {
+    if (out[x.sheet] || used.has(x.src) || x.n < 2) continue;
+    out[x.sheet] = x.src; used.add(x.src);
+  }
+  return out;
+}
+
 /** 화면용 — 정산표의 표(WBS·WPL·제조원가)와 계정 줄. 새 계정을 어디에 둘지 고를 목록·시트 짝 고르기. */
 export function wtbOutline(bytes: Uint8Array): { rows: WtbRow[]; term: number | null; tables: { sheet: string; kind: TableKind; hidden: boolean }[] } {
   const rows: WtbRow[] = [];
@@ -200,6 +229,15 @@ export function readLayout(sh: SheetData): TableLayout | null {
     if (!f || new RegExp(String.raw`(^|[^A-Z$])\$?${curL}\$?${r}(?!\d)`).test(f) || /!/.test(f)) return false;
     return new RegExp(String.raw`(^|[^A-Z$])\$?${adjL}\$?\d`).test(f);
   });
+  // 회사제시 칸이 비어 있는데 수정후는 다른 줄을 더하는 머리 줄(더그림 WBS 「IV.기타포괄손익누계액」 =L91) — 회사제시에도 같은 식을 넣는다.
+  //   비워 두면 자본총계 식(…+J93)이 빈칸을 더해 회사 재무상태표와 11,213,320 어긋났다(2026-11-19).
+  for (let r = dateRow + 1; r <= end; r++) {
+    if (accounts.includes(r)) continue;
+    const c = sh.cells.get(`${curL}${r}`);
+    const f = sh.cells.get(`${adjL}${r}`)?.formula;
+    if (c?.formula || c?.num != null || (c?.text ?? '').trim() || !f || /!/.test(f)) continue;
+    if (new RegExp(String.raw`(^|[^A-Z$])\$?${adjL}\$?\d`).test(f) && !new RegExp(String.raw`(^|[^A-Z$])\$?${curL}\$?${r}(?!\d)`).test(f)) derived.push(r);
+  }
   const acc2 = accounts.filter((r) => !derived.includes(r));
   return { sheet: sh.name, kind, head, dateRow, termRow, yearRow, acct, fsli, headCol, cur, dr: cur + 1, cr: cur + 2, adj: cur + 3, inc, ratio, curTerm, curYear, history, accounts: acc2, derived, last };
 }
@@ -280,7 +318,12 @@ function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], alias: Map<string,
   const samePrior = (r: number, t: TbLine) => t.prior != null && t.prior !== 0 && priorsOf(r).some((p) => Math.abs(p - t.prior!) < 1);
   let prevName = '';
   for (const t of tb) {
-    const n = norm(t.name), nb = bare(t.name);
+    let n = norm(t.name);
+    const nb = bare(t.name);
+    // 재무제표에서 온 차감 계정은 「감가상각누계액-차량운반구」처럼 위 계정 이름을 달고 온다(fsFromSheet) — 이름과 짝 계정으로 나눈다.
+    const cm = /^(감가상각누계액|대손충당금|정부보조금|국고보조금|현재가치할인차금|손상차손누계액)-(.+)$/.exec(n);
+    const full = n;
+    if (cm) { n = cm[1]; prevName = cm[2]; }
     const contra = /^(감가상각누계액|대손충당금|정부보조금|국고보조금|현재가치할인차금|손상차손누계액)$/.test(n);
     const pool = rows.filter((r) => isPl || (sec.get(r)?.section === t.section));
     const byCurrent = (cands: number[]) => (cands.length > 1 && t.current != null ? (cands.filter((r) => sec.get(r)?.current === t.current).length ? cands.filter((r) => sec.get(r)?.current === t.current) : cands) : cands);
@@ -295,7 +338,8 @@ function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], alias: Map<string,
       how = '고른 짝';
       if (!cands.length) { if (t.bal) unmatched.push(t); continue; }
     } else if (contra) {
-      cands = pool.filter((r) => { const c = norm(label(r)) + '|' + norm(flabel(r)); return c.split('|').some((x) => { if (!x.startsWith(n)) return false; const suf = x.slice(n.length).replace(/^-/, ''); return !!suf && (prevName.includes(suf) || suf.includes(prevName)); }); });
+      cands = pool.filter((r) => norm(label(r)) === full);
+      if (!cands.length) cands = pool.filter((r) => { const c = norm(label(r)) + '|' + norm(flabel(r)); return c.split('|').some((x) => { if (!x.startsWith(n)) return false; const suf = x.slice(n.length).replace(/^-/, ''); return !!suf && (prevName.includes(suf) || suf.includes(prevName)); }); });
     } else {
       // ① 계정 열 이름이 같은 줄
       const tries = [n, nb, n.replace(/_.*$/, ''), n.replace(/\(.*?\)/g, ''),
@@ -307,6 +351,8 @@ function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], alias: Map<string,
         cands = pool.filter((r) => hit(label(r)) || hit(flabel(r)));
       }
       if (!cands.length) for (const k of tries) { cands = byCurrent(pool.filter((r) => norm(label(r)) === k || bare(label(r)) === k)); if (cands.length) break; }
+      // 「퇴직연금운용자산」 → 같은 부분의 「퇴직연금운용자산-부채」·「퇴직연금운용자산-자산」 줄(하나뿐일 때). 없으면 아래에서 다른 부분 줄로 넘어가 자산에 섞였다(더그림 2026-09).
+      if (!cands.length) { const c = pool.filter((r) => norm(label(r)).startsWith(n + '-') || norm(flabel(r)).startsWith(n + '-')); if (c.length === 1) cands = c; }
       // 이름은 같은데 유동·비유동이 다른 줄 하나뿐이고 전기 금액도 다르면 — 전기 금액이 같은 줄이 따로 있으면 그 줄(「임대보증금」 유동분 → 「임대보증금(유동)」).
       if (cands.length === 1 && t.current != null && sec.get(cands[0])?.current !== t.current && t.prior && !samePrior(cands[0], t)) {
         const same = rows.filter((r) => samePrior(r, t) && !sums.has(r) && sec.get(r)?.current === t.current);
@@ -324,7 +370,9 @@ function matchTb(sh: SheetData, L: TableLayout, tb: TbLine[], alias: Map<string,
       // ③ 과목(공시) 열 이름 — 하나뿐일 때만(「원재료」처럼 과목이 같은 줄이 여럿이면 고르지 않는다)
       if (!cands.length) for (const k of tries) {
         const c = byCurrent(pool.filter((r) => norm(flabel(r)) === k));
-        if (c.length === 1 || (c.length > 1 && t.prior == null)) { cands = c; how = '과목'; break; }
+        // 여럿일 때 첫 줄로 가는 것은 전기 금액을 모르는 시산표뿐 — 재무제표에서 온 새 세목(작년에 없던 「웹툰매출(해외직매출)」)은
+        //   첫 줄(국내이용권)에 섞지 않고 「넣을 곳」으로 묻는다(더그림 2026-09).
+        if (c.length === 1 || (c.length > 1 && t.prior == null && t.src === 'TB')) { cands = c; how = '과목'; break; }
       }
       prevName = n;
     }
@@ -602,7 +650,7 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
   }
 
   // ③ 표마다 — 새 전기 열 채우기, 올해 회사제시 0·회사 자료, DR·CR 비우기, 수정후·증감 식 통일, 머리.
-  const ni = (o.tb ?? []).filter((t) => t.section === '손익' && !t.subtotal).reduce((a, t) => a - t.bal, 0);
+  const ni = netIncomeOf(o.tb ?? []);
   for (const t of tables) {
     let fill: Map<number, { value: number; from: string[]; how: string }> | undefined;
     if (o.tb?.length) {
@@ -770,7 +818,7 @@ export function refreshWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Ui
   const report: WtbRollReport = { term: 0, tables: [], filled: [], unmatched: [], renamed: [], notes: [...notes] };
   const closing = excelSerial(o.closing)!;
   const prevYear = Number(o.prevEnd.slice(0, 4));
-  const ni = (o.tb ?? []).filter((t) => t.section === '손익' && !t.subtotal).reduce((a, t) => a - t.bal, 0);
+  const ni = netIncomeOf(o.tb ?? []);
   let found = 0;
   for (const sh of book) {
     const L = readLayout(sh);
@@ -1022,6 +1070,20 @@ export function wtbA500People(bytes: Uint8Array): { author: string | null; revie
 // 더존 재무상태표는 차감 계정도 양수로 적는다 — 이름으로 차감임을 안다. 알티스트(사용자 2026-10-28):
 // 「제품 평가 충당금」·「매도가능증권손상차손누계액」·「유형자산손상차손누계액」·「국고보조금(기 계)」·「전환권조정」(부채 차감)·「미처리결손금」(자본 차감).
 const CONTRA = /^(감가상각누계액|대손충당금|정부보조금|국고보조금|현재가치할인차금|손상차손누계액|퇴직연금운용자산|국민연금전환금|사채할인발행차금|전환권조정|신주인수권조정)$|감가상각누계액$|대손충당금$|손상차손누계액$|평가충당금$|^(국고|정부)보조금\(|결손금$/;
+/**
+ * 당기순이익 — 회사 손익계산서의 「당기순이익(손실)」 줄이 있으면 그 금액, 없으면(시산표) 손익 줄을 더한다.
+ * 손익계산서 줄을 그냥 더하면 상품매출원가 안의 「타계정으로대체액 · 기말상품재고액」(양수로 적고 빼는 줄)을 더해 버린다
+ * (더그림 2026-09: 회사 −103,061,011 인데 −2,103,435,823 — 미처분이익잉여금 · 당기순이익 나눔이 틀어졌다).
+ */
+export function netIncomeOf(tb: TbLine[]): number {
+  const line = tb.find((t) => t.section === '손익' && t.subtotal && /^당기순(이익|손실|손익)/.test(norm(t.name).replace(/[()]/g, '')));
+  if (line) return /손실/.test(norm(line.name)) && !/이익/.test(norm(line.name)) ? -Math.abs(line.bal) : line.bal;
+  return tb.filter((t) => t.section === '손익' && !t.subtotal)
+    .reduce((a, t) => a - (/^(기말|타계정)/.test(norm(t.name)) ? -t.bal : t.bal), 0);
+}
+
+/** 어느 자산의 것인지 이름만으로는 모르는 차감 계정 — 바로 위 계정과 짝을 짓는다. */
+const GENERIC_CONTRA = /^(감가상각누계액|대손충당금|정부보조금|국고보조금|현재가치할인차금|손상차손누계액)$/;
 /** 매출의 차감 계정 — 더존 손익계산서는 「매출액」 아래에 양수로 적고 합계에서 뺀다(알티스트 매출할인·상품매출에누리와환입, 사용자 2026-10-28). */
 const CONTRA_SALES = /매출(할인|에누리|환입)|에누리와?환입$/;
 const PAGE_HEAD = /^(재무상태표|대차대조표|손익계산서|포괄손익계산서|제조원가명세서|계정과목|과목|회계단위명.*|회사명.*|\(단위.*)$|^제\d+기/;
@@ -1056,7 +1118,8 @@ export function fsFromSheet(sh: SheetData, kind: 'BS' | 'PL' | 'MC', src?: strin
   for (let r = headRow + 1; r <= maxRow; r++) {
     const raw = (sh.cells.get(`${colName(labelCol)}${r}`)?.text ?? '').replace(/\s+$/, '');
     const t = norm(raw);
-    if (!t || PAGE_HEAD.test(t) || /^\(?당기순이익\)?$|^당기:|^전기:/.test(t)) continue;
+    // 재무상태표 결손금 아래 「(당기순이익)」 덧줄은 뺀다. 손익계산서의 「당기순이익」 줄은 남긴다 — 순이익을 그 줄에서 읽는다(netIncomeOf).
+    if (!t || PAGE_HEAD.test(t) || /^\(당기순이익\)$|^당기:|^전기:/.test(t) || (kind !== 'PL' && /^당기순이익$/.test(t))) continue;
     const lead = /^\s*/.exec(raw)![0].length;
     const body = raw.trim();
     const rank = /^[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]/.test(body) || /^[IVX]+\s*\./.test(body) ? 1 : /^\(\d+\)/.test(body) ? 2 : /^\d+\./.test(body) ? 3 : /^\d+\)/.test(body) ? 4 : 9;
@@ -1073,13 +1136,26 @@ export function fsFromSheet(sh: SheetData, kind: 'BS' | 'PL' | 'MC', src?: strin
     // 아래 줄이 번호 없이 한 단 더 깊으면 — 이 줄은 계정, 아래 줄은 차감 계정(ERP). 더존의 「(1) 당좌자산」 아래 계정 줄과 가르려고 이 줄이 「1.」「1)」일 때만.
     const contraBelow = !!nx && nx.rank === 9 && nx.depth > L.depth && (L.rank === 3 || L.rank === 4);
     // 「자산총계」 다음 줄 「 부 채 」가 한 칸 들여 쓰여도 총계 줄은 머리가 아니다(알티스트 — 검증표가 회사 합계를 읽는다).
-    const deeper = !!nx && !contraBelow && !/총계$/.test(b) && (nx.depth > L.depth || (nx.depth === L.depth && nx.rank > L.rank && L.rank < 9));
+    let deeper = !!nx && !contraBelow && !/총계$/.test(b) && (nx.depth > L.depth || (nx.depth === L.depth && nx.rank > L.rank && L.rank < 9));
+    // 번호 없는 줄이 제 금액을 갖고 있는데 아래 더 깊은 줄들의 합과 다르면 머리가 아니라 계정이다
+    // (더그림 2026-09: 「지분법적용투자주식 34,517,110」 아래에 「퇴직연금운용자산 120,898,049」가 한 단 더 들여 쓰여 있었다 — 머리로 읽어 지분법이 빠졌다).
+    if (kind === 'BS' && deeper && L.rank === 9 && nx.depth > L.depth) {
+      const own = firstNum(L.r, curCol, curEnd) ?? (priorCol ? firstNum(L.r, priorCol, priorEnd) : undefined);
+      if (own != null && own !== 0) {
+        let sum = 0;
+        for (let j = i + 1; j < lines.length && lines[j].depth > L.depth; j++) if (lines[j].depth === nx.depth) sum += firstNum(lines[j].r, curCol, curEnd) ?? 0;
+        if (Math.abs(sum - own) >= 1) deeper = false;
+      }
+    }
     const prev = lines[i - 1];
-    const isContra = CONTRA.test(b) || (L.rank === 9 && !!prev && (prev.rank === 3 || prev.rank === 4) && L.depth > prev.depth);
     if (kind === 'BS') {
       if (/^자산$/.test(b)) section = '자산'; else if (/^부채$/.test(b)) { section = '부채'; current = true; } else if (/^자본$/.test(b)) section = '자본';
       if (deeper && /비유동/.test(b)) current = false; else if (deeper && /유동/.test(b)) current = true;
     } else if (kind === 'PL' && L.rank === 1) credit = /(매출액|수익)$/.test(b) && !/원가|총이익/.test(b);
+    // 차감 계정은 재무상태표에서만 — 손익계산서 영업외수익의 「국고보조금」은 수익이다(더그림 2026-09 음수로 들어갔다).
+    //   퇴직연금운용자산 · 국민연금전환금은 부채 쪽에서만 차감이다 — 자산 쪽에 있으면 충당부채를 넘는 순액(자산)이다(더그림 투자자산 120,898,049).
+    const isContra = kind === 'BS' && (CONTRA.test(b) || (L.rank === 9 && !!prev && (prev.rank === 3 || prev.rank === 4) && L.depth > prev.depth))
+      && !(section === '자산' && /^(퇴직연금운용자산|국민연금전환금)$/.test(b));
     if (deeper) { stack.push(L); continue; }
     const amt0 = firstNum(L.r, curCol, curEnd);
     const pr0 = priorCol ? firstNum(L.r, priorCol, priorEnd) : undefined;
@@ -1090,7 +1166,11 @@ export function fsFromSheet(sh: SheetData, kind: 'BS' | 'PL' | 'MC', src?: strin
     const amt = sgn(amt0) ?? 0, prior = sgn(pr0);
     const flip = kind === 'BS' ? section !== '자산' : kind === 'PL' ? credit : false;
     const group = stack.length ? stack[stack.length - 1].name : undefined;
-    const name = isContra && !CONTRA.test(b) && group ? `${L.name}(차감 — ${group})` : L.name;
+    // 같은 이름 차감 계정(더존은 자산마다 「감가상각누계액」)은 바로 위 계정 이름을 붙여 가른다 — 「감가상각누계액-차량운반구」.
+    //   이름이 같으면 사람이 고른 짝(새 줄 · 이 줄에 더하기)이 네 줄 모두에 걸려 한 줄에 몰린다(더그림 2026-09 −4,706,231,410).
+    const lastAcc = [...out].reverse().find((x) => x.section === section && !x.subtotal && !GENERIC_CONTRA.test(norm(x.name).replace(/-.*$/, '')));
+    const name = isContra && !CONTRA.test(b) && group ? `${L.name}(차감 — ${group})`
+      : isContra && GENERIC_CONTRA.test(b) && lastAcc ? `${L.name}-${lastAcc.name}` : L.name;
     const line: TbLine = { name, section, current: kind === 'BS' ? current : undefined, bal: flip ? -amt : amt, prior, src: src ?? kind, group };
     // 합계 줄 — 재무상태표는 「총계·합계」만(「당기순이익」은 자본 계정이다), 손익·제조원가는 이익·합계 줄까지.
     if (kind === 'BS' ? /총계|합계/.test(b) : SUBTOTAL.test(b) || (kind === 'MC' && /총제조|제품제조원가|^합계/.test(b))) line.subtotal = true;
