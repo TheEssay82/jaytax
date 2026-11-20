@@ -35,3 +35,12 @@ test('도구 — 고치기·지우기·취소·승인 도구가 없다', () => {
   ]);
   for (const n of names) assert.doesNotMatch(n, /update|delete|cancel|approve|remove/);
 });
+
+test('텔레그램 — 업무 내용 없이 결재함 주소만, 설정 없으면 건너뜀', async () => {
+  const { telegramText, notifyTelegram } = await import('../lib/telegram.js');
+  const t = telegramText('sales_contract');
+  assert.match(t, /매출계약 등록/);
+  assert.match(t, /tab=ssong-inbox/);
+  delete process.env.TELEGRAM_BOT_TOKEN; delete process.env.TELEGRAM_CHAT_ID;
+  assert.equal(await notifyTelegram('doc_send'), 'skipped');
+});

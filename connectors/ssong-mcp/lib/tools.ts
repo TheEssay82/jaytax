@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { CATEGORIES } from './categories.js';
 import { JaytaxError, rpc } from './jaytax.js';
+import { notifyTelegram } from './telegram.js';
 
 // 문서발송 선택지 — 앱 src/lib/docSendApi.ts 와 같아야 한다(승인 때 앱이 다시 확인한다).
 export const WORK_TYPES = ['우체국', '퀵서비스', '회계사책상'] as const;
@@ -143,7 +144,8 @@ export function buildServer(): McpServer {
       };
       const title = `${i.client_name} · ${cat.label} · ${won(i.amount)}`;
       const id = await rpc<string>('ssong_submit', { p_kind: 'sales_contract', p_title: title, p_payload: payload, p_reason: i.reason ?? null });
-      return ok({ requestId: id, status: '대기', title, next: '대표님이 JAYTAX ⚙ 관리 › 쏭비서 결재함에서 승인하면 등록됩니다. list_my_requests 로 결과를 봅니다.' });
+      const phone = await notifyTelegram('sales_contract');
+      return ok({ requestId: id, status: '대기', title, phoneAlert: phone, next: '대표님이 JAYTAX ⚙ 관리 › 쏭비서 결재함에서 승인하면 등록됩니다. list_my_requests 로 결과를 봅니다.' });
     } catch (e) { return fail(e); }
   });
 
@@ -173,7 +175,8 @@ export function buildServer(): McpServer {
       };
       const title = `${i.company_name} · ${i.send_kind}${i.doc_name ? ` «${i.doc_name}»` : ''} · ${i.work_type} · 수신 ${i.recipients.length}곳`;
       const id = await rpc<string>('ssong_submit', { p_kind: 'doc_send', p_title: title, p_payload: payload, p_reason: i.reason ?? null });
-      return ok({ requestId: id, status: '대기', title, next: '대표님 승인 뒤 발송요청이 만들어집니다. 등기번호는 get_doc_send_status 로 봅니다.' });
+      const phone = await notifyTelegram('doc_send');
+      return ok({ requestId: id, status: '대기', title, phoneAlert: phone, next: '대표님 승인 뒤 발송요청이 만들어집니다. 등기번호는 get_doc_send_status 로 봅니다.' });
     } catch (e) { return fail(e); }
   });
 
