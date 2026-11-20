@@ -25,6 +25,7 @@ const ICONS: Record<string, string> = {
   dispatch_done: '✅',      // 발송·재발송 완료(요청자에게)
   dispatch_returned: '↩️',  // 반송(요청자에게)
   dispatch_resend: '🔄',    // 재발송요청(처리자에게)
+  ssong_new: '🤖',          // 쏭비서 결재 요청(최고관리자에게, 0201)
 };
 const icon = (kind: string) => ICONS[kind] ?? '🔔';
 

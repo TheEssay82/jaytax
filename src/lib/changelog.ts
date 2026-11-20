@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.90.1',
+    date: '2026-11-21',
+    title: '🤖 쏭비서 결재 — 홈 카드와 알림',
+    highlights: [
+      '홈 화면 맨 앞에 「쏭비서 결재 대기」 카드를 두어 한 번에 결재함으로 갑니다(최고관리자).',
+      '쏭비서가 결재를 올리면 🔔 알림이 옵니다. 누르면 결재함이 열립니다.',
+    ],
+  },
+  {
     version: '3.90.0',
     date: '2026-11-20',
     title: '🤖 쏭비서 결재함 — 비서 AI 는 결재만 올리고 대표님이 승인',

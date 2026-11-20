@@ -13,6 +13,7 @@ import {
   countDispatchPending,
   countMyDispatchActive,
   countOpenRequests,
+  countSsongPending,
   countMyConsultDrafts,
   countMyBillingDrafts,
 } from '../../lib/homeApi';
@@ -41,6 +42,8 @@ type TodoDef = {
 };
 
 const TODO_DEFS: TodoDef[] = [
+  // 쏭비서 결재 — 맨 앞(대표님 2026-11-21 「결재함이 너무 열기 어렵다」). 0건이어도 아래 줄에서 바로 연다.
+  { key: 'ssong', label: '쏭비서 결재 대기', emoji: '🤖', color: 'amber', tab: 'ssong-inbox', roles: ['superuser'], fetch: () => countSsongPending() },
   { key: 'dispatch_wait', label: '처리 대기 발송요청', emoji: '🖨️', color: 'blue', tab: 'doc-process', roles: ['superuser', 'team_lead', 'team_member'], fetch: () => countDispatchPending() },
   { key: 'dispatch_mine', label: '내가 요청한 발송 진행중', emoji: '✉️', color: 'blue', tab: 'doc-status', roles: ['superuser', 'accountant', 'team_lead', 'team_member', 'per_head_accountant'], fetch: (uid) => countMyDispatchActive(uid) },
   { key: 'consult', label: '진행중 상담 초안', emoji: '🧑‍💼', color: 'teal', tab: 'consult-log', roles: ['superuser', 'accountant', 'team_lead', 'team_member'], fetch: (uid) => countMyConsultDrafts(uid) },

@@ -27,6 +27,10 @@ export const countMyDispatchActive = (uid: string) =>
     .eq('requester_id', uid)
     .not('status', 'in', '("발송완료","재발송완료","취소")'));
 
+/** 쏭비서 결재 대기 — 최고관리자용(0200). RLS 로 다른 사람에게는 0. */
+export const countSsongPending = () =>
+  countOf(supabase.from('ssong_requests').select('*', { count: 'exact', head: true }).eq('status', '대기'));
+
 /** 미완료 업데이트요청(미접수·개발중) — 최고관리자용. */
 export const countOpenRequests = () =>
   countOf(supabase.from('update_requests').select('*', { count: 'exact', head: true }).in('status', ['미접수', '개발중']));
