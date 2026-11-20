@@ -60,6 +60,17 @@ node -e "const c=require('crypto');const k=c.randomBytes(32).toString('hex');con
 
 ## Vercel 에 올리기 (팀 jaytax-firm)
 
+### 대시보드로 (권장 — CLI 가 이 PC 에서 안 될 때)
+
+이 PC 는 컴퓨터 이름이 한글이라 Vercel CLI 가 `Cannot convert argument to a ByteString` 로 멈춘다(2026-11-21).
+대시보드로 하면 CLI 가 필요 없고, main 에 올릴 때마다 저절로 다시 배포된다.
+
+1. vercel.com → 팀 **jaytax-firm** → **Add New › Project** → GitHub `TheEssay82/jaytax` 가져오기.
+2. **Project Name** `jaytax-ssong-mcp`, **Root Directory** `connectors/ssong-mcp`, Framework **Other**(빌드 명령 비움).
+3. **Environment Variables** 네 개(아래 표)를 넣고 **Deploy**.
+
+### CLI 로
+
 ```powershell
 cd connectors/ssong-mcp
 npx vercel link --scope jaytax-firm --project jaytax-ssong-mcp
