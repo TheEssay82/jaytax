@@ -29,6 +29,7 @@ import SettingsTab from './settings/SettingsTab';
 import StatsTab from './stats/StatsTab';
 import UsersTab from './users/UsersTab';
 import AccessLogTab from './users/AccessLogTab';
+import SsongInboxTab from './users/SsongInboxTab';
 import RetentionTab from './users/RetentionTab';
 import BacklogTab from './common/BacklogTab';
 import ServiceLimitsTab from './common/ServiceLimitsTab';
@@ -538,6 +539,8 @@ function TabContent({
       return <UsersTab />;
     case 'access-log':
       return <AccessLogTab />;
+    case 'ssong-inbox':
+      return <SsongInboxTab />;
     case 'retention':
       return <RetentionTab />;
     case 'backlog':

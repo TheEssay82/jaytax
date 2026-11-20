@@ -156,9 +156,9 @@ test('경영 — 인당회계사 조현규는 팀결산을 계속 연다(일반�
 
 // ── ⚙ 관리(2026-11-15) — 관리·설정 화면을 단추 하나에 묶었다 ──
 
-test('⚙ 관리 — 관리 아이콘 5개와 기초 미수금 입력이 묶이고, 업데이트요청은 아이콘으로 남는다', async () => {
+test('⚙ 관리 — 관리 아이콘 6개와 기초 미수금 입력이 묶이고, 업데이트요청은 아이콘으로 남는다', async () => {
   const { ICON_ITEMS } = await import('./menu');
-  assert.deepEqual(ICON_ITEMS.filter((i) => i.admin).map((i) => i.id), ['users', 'access-log', 'retention', 'backlog', 'service-limits', 'receivable-opening']);
+  assert.deepEqual(ICON_ITEMS.filter((i) => i.admin).map((i) => i.id), ['users', 'access-log', 'ssong-inbox', 'retention', 'backlog', 'service-limits', 'receivable-opening']);
   assert.deepEqual(ICON_ITEMS.filter((i) => !i.admin).map((i) => i.id), ['requests']);
   for (const g of MENU_GROUPS) assert.equal(g.items.some((i) => i.id === 'receivable-opening'), false, g.id);
   assert.equal(MENU_GROUPS.find((g) => g.id === 'billing')!.items.some((i) => i.id === 'settings'), true, '세무조정 설정은 제자리');

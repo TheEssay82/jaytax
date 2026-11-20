@@ -1,0 +1,26 @@
+{
+  "name": "jaytax-ssong-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "쏭비서 전용 JAYTAX 연결 — 매출계약·문서발송 결재 올리기와 꼭 필요한 조회만",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "start": "tsx server.ts",
+    "gen:categories": "npx tsx scripts/gen-categories.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@vercel/node": "^5.0.0",
+    "typescript": "^5.9.0",
+    "tsx": "^4.19.0"
+  }
+}

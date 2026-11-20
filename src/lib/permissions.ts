@@ -95,6 +95,7 @@ export const MENU_PERMS: Record<string, MenuPerm> = {
   'requests': { write: { all: '일부: 올리기·댓글, 지우기는 본인 요청만', superuser: true }, note: '처리 상태 바꾸기는 최고관리자' },
   'users': { write: { all: true }, note: '본인 등급·잠금은 못 바꾼다' },
   'access-log': { write: READ_ONLY },
+  'ssong-inbox': { write: { all: true }, note: '승인·반려만 — 쏭비서 요청을 고치지는 않는다' },
   'retention': { write: { all: true } },
   'backlog': { write: READ_ONLY },
   'service-limits': { write: READ_ONLY },
