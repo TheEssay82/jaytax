@@ -470,7 +470,7 @@ export default function SalesContractTab() {
         cpa: TAX_ADJ_CPA,
         fiscalYear: o.year,
         startDate: `${o.year}-07-01`,
-        endDate: `${o.year + 1}-06-01`,
+        endDate: `${o.year + 1}-06-30`,
         note: '기장계약 등록 시 함께 생성 — 금액은 세무조정수수료관리 청구 확정 시 반영',
       });
       setTaxOffer(null);

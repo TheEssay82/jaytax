@@ -1,7 +1,7 @@
 // 매출계약(biz_sales_contract) + 위성(담당직원·분할·할인) 데이터 접근 레이어. 거래처관리 2.0.0 step2.
 import { supabase, assertWrote } from './supabase';
 import { typeMnemonic, teamCode, type Team } from './salesContractTaxonomy';
-import { settlementYearOfDate, pickTaxFilingContract, type TaxFilingRow } from './fiscalYear';
+import { settlementYearOfDate, pickTaxFilingContract, contractEndDate, type TaxFilingRow } from './fiscalYear';
 import { buildStaffIndex, resolveStaff, staffActiveOn as staffActiveOnRow } from './contractStaff';
 
 export type OccurrenceUnit = '사업장' | '법인' | '개인';
@@ -237,7 +237,7 @@ function toRow(c: Partial<ContractInput>): Record<string, unknown> {
   set('advisory_type', c.advisoryType ?? undefined); set('parent_contract_id', c.parentContractId ?? undefined);
   set('fiscal_year', c.fiscalYear ?? undefined); set('billing_cycle', c.billingCycle); set('is_installment', c.isInstallment);
   set('amount', c.amount); set('cpa', c.cpa); set('contract_date', c.contractDate ?? undefined);
-  set('start_date', c.startDate ?? undefined); set('end_date', c.endDate ?? undefined); set('note', c.note);
+  set('start_date', c.startDate ?? undefined); set('end_date', c.endDate === undefined ? undefined : contractEndDate(c.endDate) ?? undefined); set('note', c.note);
   set('included_codes', c.includedCodes); set('date_estimated', c.dateEstimated); set('confirmed', c.confirmed); set('billing_month', c.billingMonth ?? undefined);
   return r;
 }
@@ -431,7 +431,7 @@ export async function renewTaxContracts(rows: RenewCandidate[], toYear: number):
       cpa: src.cpa,                       // 원본이 비어 있으면 그대로 비워 상속을 유지한다
       fiscalYear: toYear,
       startDate: `${toYear}-07-01`,
-      endDate: `${toYear + 1}-06-01`,
+      endDate: `${toYear + 1}-06-30`,
       includesVat: src.includesVat,
       includesWht: src.includesWht,
       confirmed: false,                   // 갱신분은 아직 체결 전 — 미계약으로 시작

@@ -41,3 +41,17 @@ export function pickTaxFilingContract(rows: TaxFilingRow[], onDate: string): Tax
   if (!cands.length) return null;
   return cands.find((c) => !Number(c.amount)) ?? cands[0];
 }
+
+/**
+ * 매출계약 종료일 — 화면은 「연-월」만 받으므로 그 달의 **말일**로 저장한다(사용자 2026-11-20).
+ * 1일로 두면 「종료월 안의 날짜가 계약기간 안인가」(세무조정 확정일 → 계약 찾기)가 그 달 2일부터 틀린다.
+ * 「2027-06」·「2027-06-01」 → 「2027-06-30」. 다른 날짜(이미 말일 · 중간 날짜)는 그대로.
+ */
+export function contractEndDate(d: string | null | undefined): string | null | undefined {
+  if (d == null || d === '') return d === '' ? null : d;
+  const m = /^(\d{4})-(\d{2})(?:-01)?$/.exec(d);
+  if (!m) return d;
+  const y = Number(m[1]), mo = Number(m[2]);
+  const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  return `${m[1]}-${m[2]}-${String(last).padStart(2, '0')}`;
+}
