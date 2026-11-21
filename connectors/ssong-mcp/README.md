@@ -82,6 +82,16 @@ https://api.telegram.org/bot<봇토큰>/setWebhook?url=https://jaytax-ssong-mcp.
 - 환경변수 `CRON_SECRET`(16자 이상 무작위) — Vercel 이 `Authorization: Bearer` 로 붙여 부른다. 없으면 브리핑은 안 온다.
 - 같은 날 두 번 불려도 `ssong_tg_seen`(`brief:날짜`)으로 한 번만. 텔레그램에서 「브리핑」 또는 `/brief` 로 아무 때나 받을 수 있다.
 
+## 문서발송 진행 알림
+
+대표님이 의뢰인이거나 쏭비서 결재로 만든 발송요청의 **상태·등기번호가 바뀌면** 텔레그램으로 한 줄(대표님 2026-11-21). `lib/notify.ts`
+
+- DB 트리거(`0204`, pg_net)가 `POST /notify` 를 부른다. 비동기라 앱 저장을 막거나 늦추지 않고, 실패해도 저장은 그대로.
+- 인증: 헤더 `x-ssong-notify` = 쏭비서 열쇠(`ssong_keys` label `vercel`)의 sha256 — 서버는 `SSONG_DB_KEY` 의 sha256 과 맞춘다. 새 환경변수 없음.
+  열쇠를 바꾸면(label 이 `vercel` 이 아니게 되면) 트리거의 label 도 같이 바꾼다.
+- 보내는 것: 거래처명·송부종류·문서명·상태·발송일·등기번호(우체국 조회 링크)·상태메모. 주소·전화·수신자 이름은 안 보낸다.
+- 같은 상태·등기번호는 `ssong_tg_seen` 으로 한 번만.
+
 ## 환경변수
 
 | 이름 | 값 |

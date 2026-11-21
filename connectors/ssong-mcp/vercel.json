@@ -1,17 +1,45 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/mcp", "destination": "/api/mcp" },
-    { "source": "/telegram", "destination": "/api/telegram" },
-    { "source": "/briefing", "destination": "/api/briefing" },
-    { "source": "/", "destination": "/api/index" }
+    {
+      "source": "/mcp",
+      "destination": "/api/mcp"
+    },
+    {
+      "source": "/telegram",
+      "destination": "/api/telegram"
+    },
+    {
+      "source": "/briefing",
+      "destination": "/api/briefing"
+    },
+    {
+      "source": "/notify",
+      "destination": "/api/notify"
+    },
+    {
+      "source": "/",
+      "destination": "/api/index"
+    }
   ],
   "functions": {
-    "api/mcp.ts": { "maxDuration": 30 },
-    "api/telegram.ts": { "maxDuration": 120 },
-    "api/briefing.ts": { "maxDuration": 60 }
+    "api/mcp.ts": {
+      "maxDuration": 30
+    },
+    "api/telegram.ts": {
+      "maxDuration": 120
+    },
+    "api/briefing.ts": {
+      "maxDuration": 60
+    },
+    "api/notify.ts": {
+      "maxDuration": 30
+    }
   },
   "crons": [
-    { "path": "/api/briefing", "schedule": "0 0 * * 1-5" }
+    {
+      "path": "/api/briefing",
+      "schedule": "0 0 * * 1-5"
+    }
   ]
 }

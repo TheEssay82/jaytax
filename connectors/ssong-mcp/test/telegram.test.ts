@@ -175,3 +175,20 @@ test('아침 브리핑 — 웍스 요약을 위에 합친다', async () => {
   assert.equal(mergeBriefing('🌅 JAYTAX', '  '), '🌅 JAYTAX');
   assert.match(mergeBriefing('🌅 JAYTAX', '• 메일 3통'), /^📬 네이버웍스 \(메일·일정·연차·회의\)\n• 메일 3통\n\n────────\n🌅 JAYTAX$/);
 });
+
+test('문서발송 진행 알림 — 열쇠 해시로만, 글 모양', async () => {
+  const { createHash } = await import('node:crypto');
+  const { notifyAuthOk, docSendText, handleDocSendEvent } = await import('../lib/notify.js');
+  const prev = process.env.SSONG_DB_KEY;
+  process.env.SSONG_DB_KEY = 'k'.repeat(64);
+  const good = createHash('sha256').update('k'.repeat(64)).digest('hex');
+  assert.equal(notifyAuthOk(good), true);
+  assert.equal(notifyAuthOk(good.toUpperCase()), true);
+  assert.equal(notifyAuthOk('0'.repeat(64)), false);
+  assert.equal(notifyAuthOk(undefined), false);
+  process.env.SSONG_DB_KEY = prev;
+  const t = docSendText({ kind: 'doc_send', id: 'x', company: '명진산업개발㈜', sendKind: '계약서', docName: '감사계약서', status: '발송완료', sentDate: '2026-11-24', trackingNo: '18990-5111-8259', viaSsong: true });
+  assert.equal(t, '📮 발송 진행 (쏭비서 결재건)\n명진산업개발㈜ · 계약서 «감사계약서»\n✅ 발송완료 (11/24)\n등기번호 18990-5111-8259\n조회: https://service.epost.go.kr/trace.RetrieveDomRigiTraceList.comm?sid1=1899051118259');
+  assert.equal(docSendText({ kind: 'doc_send', id: 'x', company: 'A', sendKind: '기타', status: '진행중' }), '📮 발송 진행\nA · 기타\n⏳ 진행중');
+  assert.equal(await handleDocSendEvent({ kind: 'doc_send', id: 'not-a-uuid' }), 'bad');
+});

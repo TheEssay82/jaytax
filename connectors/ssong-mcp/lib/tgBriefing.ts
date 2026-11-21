@@ -91,7 +91,7 @@ export async function buildBriefing(now = new Date()): Promise<string> {
   return fmtBriefing(t.ymd, d, audit, bill, list(pending));
 }
 
-async function sendTelegram(text: string): Promise<boolean> {
+export async function sendTelegram(text: string): Promise<boolean> {
   const token = (process.env.TELEGRAM_BOT_TOKEN ?? '').trim();
   const chatId = (process.env.TELEGRAM_CHAT_ID ?? '').trim();
   if (!token || !chatId) return false;
