@@ -9,7 +9,8 @@
 //   · 읽기는 쏭비서와 같은 ssong_* 함수로만 → 접속기록에 「쏭비서」로 남는다. 승인·고치기·지우기는 없다.
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { REPORTS, isReportKey, runReport, type ReportKey } from './tgReports.js';
-import { askSsong, chatEnabled, splitConfirm, type Turn } from './tgChat.js';
+import { askSsong, chatEnabled, type Turn } from './tgChat.js';
+import { rpc } from './jaytax.js';
 
 const LIMIT = 4000; // 텔레그램 한 메시지 4096자
 
@@ -76,8 +77,26 @@ async function reply(chatId: number | string, text: string, confirm = false) {
   }
 }
 
-// 짧은 대화 기억 — 같은 서버 인스턴스가 살아 있는 동안 최근 8마디·30분만(서버가 바뀌면 잊는다).
-// 「답장」으로 보낸 글은 그 쏭비서 메시지를 확실히 이어받는다.
+// 짧은 대화 기억 — DB(ssong_tg_memory, 0203)에 최근 8마디·30분. Vercel 은 메시지마다 서버가 바뀌어서
+// 서버 안 기억만으로는 잊었다(2026-11-21 18:09). DB 를 못 쓰면 서버 안 기억으로 버틴다.
+async function loadHistory(chatId: string): Promise<Turn[]> {
+  try {
+    const t = await rpc<Turn[]>('ssong_tg_recall', { p_chat: chatId });
+    return Array.isArray(t) ? t : [];
+  } catch (e) { console.warn('memory recall failed', e instanceof Error ? e.message : e); return recall(chatId); }
+}
+async function saveTurns(chatId: string, turns: Turn[], reset = false) {
+  if (reset) forget(chatId); else remember(chatId, ...turns);
+  try { await rpc('ssong_tg_remember', { p_chat: chatId, p_turns: reset ? [] : turns, p_reset: reset }); }
+  catch (e) { console.warn('memory save failed', e instanceof Error ? e.message : e); }
+}
+/** 같은 메시지·단추를 서버가 몇 대든 한 번만 — DB(ssong_tg_seen) 로 막는다. */
+export async function claimOnce(key: string): Promise<boolean> {
+  if (!firstTime(key)) return false;
+  try { return await rpc<boolean>('ssong_tg_claim', { p_key: key }); }
+  catch (e) { console.warn('claim failed', e instanceof Error ? e.message : e); return true; }
+}
+
 const MEMORY_TURNS = 8;
 const MEMORY_MS = 30 * 60_000;
 const memory = new Map<string, { at: number; turns: Turn[] }>();
@@ -94,8 +113,8 @@ export function forget(chatId: string) { memory.delete(chatId); }
 async function chat(chatId: string, text: string, history: Turn[], allowSubmit: boolean) {
   await tg('sendChatAction', { chat_id: chatId, action: 'typing' });
   try {
-    const { text: answer, confirm } = splitConfirm(await askSsong({ text, history, allowSubmit }));
-    remember(chatId, { role: 'user', text }, { role: 'assistant', text: answer });
+    const { text: answer, confirm } = await askSsong({ text, history, allowSubmit });
+    await saveTurns(chatId, [{ role: 'user', text }, { role: 'assistant', text: answer }]);
     await reply(chatId, answer, confirm && !allowSubmit);
   } catch (e) {
     console.error('chat failed', e instanceof Error ? e.message : e);
@@ -118,8 +137,7 @@ const HELP = [
   '결재를 올리라고 하시면 요약을 먼저 보여 드리고, 「✅ 이대로 결재 올리기」를 누르셔야 한 건 올라갑니다.',
 ].join('\n');
 
-// 같은 텔레그램 메시지를 두 번 처리하지 않는다(2026-11-21 시험 때 한 지시로 결재 2건이 올라옴).
-// 같은 서버 인스턴스 안에서만 막는다 — 다른 인스턴스로 간 중복은 로그(update_id)로 확인한다.
+// 같은 서버 안에서의 빠른 중복 막기(DB 확인 전 1차). 진짜 막기는 claimOnce 의 DB(ssong_tg_seen).
 const seen = new Map<string, number>();
 export function firstTime(id: unknown): boolean {
   if (id === undefined || id === null) return true;
@@ -135,12 +153,13 @@ async function handleCallback(cq: any, allowed: string): Promise<'ignored' | 'ch
   const chatId = cq?.message?.chat?.id;
   if (String(chatId) !== allowed || String(cq?.from?.id) !== allowed) return 'ignored';
   await tg('answerCallbackQuery', { callback_query_id: cq.id });
-  if (!firstTime(`cb:${cq.id}`) || !firstTime(`cbmsg:${cq.message.message_id}`)) return 'ignored';
+  // 같은 요약의 단추는 서버가 몇 대든 한 번만 처리한다.
+  if (!(await claimOnce(`cbmsg:${chatId}:${cq.message.message_id}`))) return 'ignored';
   // 단추를 바로 지워 두 번 누를 수 없게 한다.
   await tg('editMessageReplyMarkup', { chat_id: chatId, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } });
   const summary: string = cq.message.text ?? '';
   if (cq.data !== 'ssong:ok') {
-    remember(String(chatId), { role: 'assistant', text: summary }, { role: 'user', text: '그만. 올리지 마.' }, { role: 'assistant', text: '올리지 않았습니다.' });
+    await saveTurns(String(chatId), [{ role: 'user', text: '그만. 올리지 마.' }, { role: 'assistant', text: '올리지 않았습니다.' }]);
     await reply(chatId, '올리지 않았습니다.');
     return 'chat';
   }
@@ -156,11 +175,11 @@ export async function handleUpdate(update: any): Promise<'ignored' | 'report' | 
   const msg = update?.message;
   const chatId = msg?.chat?.id;
   if (!msg || String(chatId) !== allowed) return 'ignored';
-  if (!firstTime(update.update_id ?? `${chatId}:${msg.message_id}`)) { console.warn('telegram duplicate', update.update_id); return 'ignored'; }
+  if (!(await claimOnce(`msg:${chatId}:${msg.message_id}`))) { console.warn('telegram duplicate', update.update_id, msg.message_id); return 'ignored'; }
   console.log('telegram update', update.update_id, msg.message_id);
   const text: string = typeof msg.text === 'string' ? msg.text : '';
   if (!text.trim()) { await reply(chatId, '글로 보내 주세요. 음성은 핸드폰 키보드의 🎤 받아쓰기를 쓰시면 됩니다.'); return 'help'; }
-  if (/^\/(start|menu|help)\b/i.test(text.trim())) { forget(String(chatId)); await reply(chatId, HELP); return 'help'; }
+  if (/^\/(start|menu|help)\b/i.test(text.trim())) { await saveTurns(String(chatId), [], true); await reply(chatId, HELP); return 'help'; }
 
   const key = reportOf(text);
   if (key) {
@@ -174,7 +193,7 @@ export async function handleUpdate(update: any): Promise<'ignored' | 'report' | 
     return 'off';
   }
   // 「답장」으로 찍은 쏭비서 메시지가 기억에 없으면(서버가 바뀐 경우) 그것을 앞 대화로 쓴다.
-  let history = recall(String(chatId));
+  let history = await loadHistory(String(chatId));
   const quoted: string | null = msg.reply_to_message?.from?.is_bot ? (msg.reply_to_message.text ?? null) : null;
   if (quoted && !history.some((t) => t.role === 'assistant' && t.text === quoted)) history = [{ role: 'assistant', text: quoted }];
   await chat(String(chatId), text, history, false);

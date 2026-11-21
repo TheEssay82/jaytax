@@ -2,11 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fmtAudit, fmtDigest, fmtReceivables, fmtRevenue, money, seoulToday } from '../lib/tgReports.js';
 import { firstTime, forget, handleUpdate, recall, remember, reportOf, splitMessage, webhookSecretOk } from '../lib/tgBot.js';
-import { splitConfirm, toMessages, toolsetFor } from '../lib/tgChat.js';
+import { ASK_APPROVAL, approvalOf, toMessages, toolsetFor } from '../lib/tgChat.js';
 
 test('결재 확인 단추·짧은 기억', () => {
-  assert.deepEqual(splitConfirm('요약\n• 수신처 명진\n[결재확인]'), { text: '요약\n• 수신처 명진', confirm: true });
-  assert.equal(splitConfirm('그냥 답').confirm, false);
+  // 모델이 ask_approval 을 부르면 요약 + 단추 안내, 안 부르면 null
+  const blocks = [
+    { type: 'text', text: '확인했습니다.', citations: null },
+    { type: 'tool_use', id: 't1', name: 'ask_approval', input: { summary: '• 수신처: 명진\n• 문서명: 감사계약서' } },
+  ] as unknown as Parameters<typeof approvalOf>[0];
+  assert.equal(approvalOf(blocks), '확인했습니다.\n\n• 수신처: 명진\n• 문서명: 감사계약서\n\n이대로 올릴까요? 아래 단추를 눌러 주세요.');
+  assert.equal(approvalOf([blocks[0]]), null);
+  assert.equal(ASK_APPROVAL.strict, true);
   const m = toMessages([{ role: 'assistant', text: '요약' }], '네');
   assert.deepEqual(m.map((x) => x.role), ['user', 'assistant', 'user']);
   assert.deepEqual(toMessages([{ role: 'user', text: 'a' }, { role: 'user', text: 'b' }], 'c'), [{ role: 'user', content: 'a\nb\nc' }]);
