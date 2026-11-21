@@ -1,8 +1,32 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fmtAudit, fmtDigest, fmtReceivables, fmtRevenue, money, seoulToday } from '../lib/tgReports.js';
-import { firstTime, handleUpdate, reportOf, splitMessage, webhookSecretOk } from '../lib/tgBot.js';
-import { toolsetFor } from '../lib/tgChat.js';
+import { firstTime, forget, handleUpdate, recall, remember, reportOf, splitMessage, webhookSecretOk } from '../lib/tgBot.js';
+import { splitConfirm, toMessages, toolsetFor } from '../lib/tgChat.js';
+
+test('결재 확인 단추·짧은 기억', () => {
+  assert.deepEqual(splitConfirm('요약\n• 수신처 명진\n[결재확인]'), { text: '요약\n• 수신처 명진', confirm: true });
+  assert.equal(splitConfirm('그냥 답').confirm, false);
+  const m = toMessages([{ role: 'assistant', text: '요약' }], '네');
+  assert.deepEqual(m.map((x) => x.role), ['user', 'assistant', 'user']);
+  assert.deepEqual(toMessages([{ role: 'user', text: 'a' }, { role: 'user', text: 'b' }], 'c'), [{ role: 'user', content: 'a\nb\nc' }]);
+  forget('7');
+  remember('7', { role: 'user', text: 'q' }, { role: 'assistant', text: 'a' });
+  assert.equal(recall('7').length, 2);
+  for (let i = 0; i < 10; i++) remember('7', { role: 'user', text: String(i) });
+  assert.equal(recall('7').length, 8);
+});
+
+test('✅ 단추 — 대표님 대화방에서만, 같은 메시지 두 번 안 됨', async () => {
+  const prev = { ...process.env };
+  process.env.TELEGRAM_CHAT_ID = '111';
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  const cb = (id: string, from: number, mid: number) => ({ callback_query: { id, data: 'ssong:no', from: { id: from }, message: { message_id: mid, chat: { id: 111 }, text: '요약' } } });
+  assert.equal(await handleUpdate(cb('x', 222, 5)), 'ignored');
+  assert.equal(await handleUpdate(cb('y', 111, 6)), 'chat');
+  assert.equal(await handleUpdate(cb('y2', 111, 6)), 'ignored');
+  process.env = prev;
+});
 
 test('금액 — 억·만으로 짧게', () => {
   assert.equal(money(959300000), '9.59억');
