@@ -52,6 +52,10 @@ export const JAYTAX_MAP = {
       "covers": "아침 브리핑을 대표님 텔레그램으로 — 네이버웍스 요약 + JAYTAX 브리핑, 하루 한 번"
     },
     {
+      "tool": "invoice_requests",
+      "covers": "세금계산서 발행의뢰 — 건별 상태(요청·발행완료·수정발행·취소)·의뢰자·발행일, 상태별 합계"
+    },
+    {
       "tool": "engagement_status",
       "covers": "감사 업무 진행 — 거래처·연도별 일반조서·주석/DSD·JET·감사이슈"
     },

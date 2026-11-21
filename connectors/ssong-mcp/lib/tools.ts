@@ -118,6 +118,24 @@ export function buildServer(): McpServer {
   });
 
   // ── 조회 ──────────────────────────────────────────────
+  server.registerTool('invoice_requests', {
+    title: '세금계산서 발행의뢰·처리 여부',
+    description: '세금계산서 발행의뢰 한 건씩: 귀속월·거래처·사업장·팀·담당회계사·직원·공급가액·부가세·합계·상태(요청=아직 발행 전, 발행완료, 수정발행, 취소)·의뢰자·의뢰일·발행일·승인번호·적요. summary 에 상태별 건수·공급가액. company 로 거래처를, status 로 상태를, from/to(YYYY-MM)로 귀속월을, team 으로 팀을 좁힙니다. 「아직 발행 안 된 의뢰」는 status=요청. 의뢰자가 비어 있는 건은 ERP 에서 거꾸로 채운 발행분입니다.',
+    inputSchema: {
+      company: z.string().optional().describe('거래처·사업장명 일부'),
+      status: z.enum(['요청', '발행완료', '수정발행', '취소']).optional(),
+      from: z.string().regex(/^\d{4}-\d{2}$/).optional().describe('귀속월 시작 YYYY-MM'),
+      to: z.string().regex(/^\d{4}-\d{2}$/).optional().describe('귀속월 끝 YYYY-MM'),
+      team: z.enum(['감사team', 'taxteam']).optional().describe('감사팀=감사team, 기장팀=taxteam'),
+      limit: z.number().int().min(1).max(100).optional().describe('목록 최대(기본 30, 최근 의뢰부터)'),
+    },
+    annotations: { readOnlyHint: true },
+  }, async ({ company, status, from, to, team, limit }) => {
+    try {
+      return ok(await rpc('ssong_invoice_requests', { p_q: company ?? null, p_status: status ?? null, p_from: from ?? null, p_to: to ?? null, p_team: team ?? null, p_limit: limit ?? 30 }));
+    } catch (e) { return fail(e); }
+  });
+
   server.registerTool('engagement_status', {
     title: '감사 업무 진행 현황',
     description: '감사 건(거래처·연도)마다 진행 상황: 일반조서 단계·조서 수/확인 수·최근 확정, 주석·DSD 주석 상태별 수, JET(중요성·분개장·선정·증빙요청·회신·결론 수), 감사이슈(미결·판단 필요·중요). company 로 거래처를 좁히고 fiscal_year 로 감사 연도를 고릅니다(비우면 전부, 최대 60건). 「알티스트 감사 어디까지 왔어?」 같은 질문에 씁니다.',

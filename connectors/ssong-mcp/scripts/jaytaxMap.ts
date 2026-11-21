@@ -31,6 +31,7 @@ const SSONG_TOOLS = [
   { tool: 'billing_watch', covers: '청구·수금 — 그 달 발행요청 상태 · 미수금(ERP 대장 기준)·오래된 미수, 거래처별' },
   { tool: 'audit_watch', covers: '감사업무 — 기말감사일정 · 조회서 미발송/미회수 · 미결 감사이슈' },
   { tool: 'send_morning_briefing', covers: '아침 브리핑을 대표님 텔레그램으로 — 네이버웍스 요약 + JAYTAX 브리핑, 하루 한 번' },
+  { tool: 'invoice_requests', covers: '세금계산서 발행의뢰 — 건별 상태(요청·발행완료·수정발행·취소)·의뢰자·발행일, 상태별 합계' },
   { tool: 'engagement_status', covers: '감사 업무 진행 — 거래처·연도별 일반조서·주석/DSD·JET·감사이슈' },
   { tool: 'consult_history', covers: '상담 — 자문 회신 이력(제목·거래처·태그·날짜만)' },
   { tool: 'list_my_requests', covers: '쏭비서 결재함 — 내가 올린 결재의 결과' },

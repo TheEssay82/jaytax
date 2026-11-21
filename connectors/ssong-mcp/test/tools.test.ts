@@ -31,7 +31,7 @@ test('도구 — 고치기·지우기·취소·승인 도구가 없다', () => {
   const names = Object.keys(s._registeredTools).sort();
   assert.deepEqual(names, [
     'about_jaytax', 'audit_watch', 'billing_watch', 'consult_history', 'daily_digest', 'engagement_status',
-    'get_doc_send_status', 'list_contract_categories', 'list_my_requests', 'list_sales_contracts',
+    'get_doc_send_status', 'invoice_requests', 'list_contract_categories', 'list_my_requests', 'list_sales_contracts',
     'list_staff', 'revenue_summary', 'search_clients', 'search_contacts', 'send_morning_briefing', 'submit_doc_send', 'submit_sales_contract',
   ]);
   for (const n of names) assert.doesNotMatch(n, /update|delete|cancel|approve|remove/);
