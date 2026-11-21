@@ -61,10 +61,11 @@ export function previewOf(p: Pending): string {
       '📮 문서발송 의뢰 결재',
       `• 거래처: ${a.company_name}`,
       `• 송부종류: ${a.send_kind}${a.doc_name ? ` · 문서명 ${a.doc_name}` : ''}`,
-      `• 업무구분: ${a.work_type} · 발송기한 ${a.deadline}${a.copies ? ` · ${a.copies}부` : ''}${a.seal_required ? ' · 날인' : ''}`,
+      `• 업무구분: ${a.work_type} · 발송기한 ${a.deadline}`,
+      `• 발송부수: ${a.copies ?? 1}부 · 날인: ${a.seal_required ? '필요' : '없음'}`,
+      `• 기타요청: ${a.etc_request?.trim() ? a.etc_request : '없음'}`,
       `• 수신: ${Array.isArray(a.recipients) ? a.recipients.length : 0}곳`,
       `• 의뢰인: ${a.requester}`,
-      ...(a.etc_request ? [`• 기타요청: ${a.etc_request}`] : []),
       ...(a.reason ? [`💬 ${a.reason}`] : []),
     ].join('\n');
   }

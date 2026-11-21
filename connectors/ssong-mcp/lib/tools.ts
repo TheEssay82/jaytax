@@ -214,7 +214,7 @@ export function buildServer(): McpServer {
 
   server.registerTool('submit_doc_send', {
     title: '문서발송 의뢰 결재 올리기',
-    description: '문서발송 의뢰(업무지원 > 문서발송관리 > + 새 발송요청)를 대표님 결재함에 올립니다. 바로 의뢰되지 않고 대표님 승인 뒤 만들어집니다. 수신자 주소·전화는 승인 때 JAYTAX 가 연락처에서 채웁니다. 첨부파일은 승인 뒤 문서발송관리에서 붙입니다.',
+    description: '문서발송 의뢰(업무지원 > 문서발송관리 > + 새 발송요청)를 대표님 결재함에 올립니다. 바로 의뢰되지 않고 대표님 승인 뒤 만들어집니다. 수신자 주소·전화는 승인 때 JAYTAX 가 연락처에서 채웁니다. 첨부파일은 승인 뒤 문서발송관리에서 붙입니다. 올리기 전에 날인 필요 여부·발송부수·특별 요청(예: 2부 날인 후 1부만 발송)을 대표님께 확인하고, 칸이 없는 세부는 etc_request 에 적으세요.',
     inputSchema: {
       company_name: z.string().min(1).describe('수신 거래처명(결재함 요약에 씀)'),
       request_date: ymd.optional().describe('의뢰일자. 비우면 승인한 날'),
@@ -222,7 +222,7 @@ export function buildServer(): McpServer {
       work_type: z.enum(WORK_TYPES).describe('업무구분'),
       send_kind: z.enum(SEND_KINDS).describe('송부종류'),
       doc_name: z.string().max(200).optional().describe('문서명'),
-      copies: z.number().int().min(1).max(50).optional().describe('발송부수(기본 1)'),
+      copies: z.number().int().min(1).max(50).optional().describe('실제로 보내는 부수(기본 1). 날인·보관 부수는 etc_request 에'),
       seal_required: z.boolean().optional().describe('날인 필요'),
       deadline: z.enum(DEADLINES).describe('발송기한'),
       etc_request: z.string().max(500).optional().describe('기타요청'),

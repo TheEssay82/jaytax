@@ -14,7 +14,10 @@ test('결재 제안 — submit_* 호출을 꺼내 실제 올릴 값으로 요약
   const p = pendingOf(blocks)!;
   assert.equal(p.tool, 'submit_doc_send');
   assert.equal(p.args.company_name, '명진산업개발㈜'); // 여러 개여도 첫 하나만
-  assert.match(previewOf(p), /거래처: 명진산업개발㈜\n• 송부종류: 계약서 · 문서명 감사계약서\n• 업무구분: 우체국 · 발송기한 보통\n• 수신: 1곳\n• 의뢰인: 정우철/);
+  assert.match(previewOf(p), /거래처: 명진산업개발㈜\n• 송부종류: 계약서 · 문서명 감사계약서\n• 업무구분: 우체국 · 발송기한 보통\n• 발송부수: 1부 · 날인: 없음\n• 기타요청: 없음\n• 수신: 1곳\n• 의뢰인: 정우철/);
+  // 날인·부수 세부는 늘 보인다
+  assert.match(previewOf({ tool: 'submit_doc_send', args: { ...p.args, copies: 1, seal_required: true, etc_request: '2부 날인 후 1부 발송, 1부 보관' } }),
+    /발송부수: 1부 · 날인: 필요\n• 기타요청: 2부 날인 후 1부 발송, 1부 보관/);
   assert.equal(pendingOf([blocks[0]]), null);
   // MCP 쪽 submit 은 늘 꺼짐, 대신 같은 모양의 클라이언트 도구 2개
   assert.deepEqual(Object.keys(TOOLSET.configs ?? {}).sort(), ['submit_doc_send', 'submit_sales_contract']);
