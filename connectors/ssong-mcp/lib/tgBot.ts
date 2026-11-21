@@ -81,12 +81,26 @@ const HELP = [
   '앞 답에 이어 물으려면 그 메시지를 길게 눌러 「답장」으로 보내 주세요.',
 ].join('\n');
 
+// 같은 텔레그램 메시지를 두 번 처리하지 않는다(2026-11-21 시험 때 한 지시로 결재 2건이 올라옴).
+// 같은 서버 인스턴스 안에서만 막는다 — 다른 인스턴스로 간 중복은 로그(update_id)로 확인한다.
+const seen = new Map<string, number>();
+export function firstTime(id: unknown): boolean {
+  if (id === undefined || id === null) return true;
+  const k = String(id); const now = Date.now();
+  for (const [key, t] of seen) if (now - t > 10 * 60_000) seen.delete(key);
+  if (seen.has(k)) return false;
+  seen.set(k, now);
+  return true;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export async function handleUpdate(update: any): Promise<'ignored' | 'report' | 'chat' | 'help' | 'off'> {
   const msg = update?.message;
   const chatId = msg?.chat?.id;
   const allowed = (process.env.TELEGRAM_CHAT_ID ?? '').trim();
   if (!msg || !allowed || String(chatId) !== allowed) return 'ignored';
+  if (!firstTime(update.update_id ?? `${chatId}:${msg.message_id}`)) { console.warn('telegram duplicate', update.update_id); return 'ignored'; }
+  console.log('telegram update', update.update_id, msg.message_id);
   const text: string = typeof msg.text === 'string' ? msg.text : '';
   if (!text.trim()) { await reply(chatId, '글로 보내 주세요. 음성은 핸드폰 키보드의 🎤 받아쓰기를 쓰시면 됩니다.'); return 'help'; }
   if (/^\/(start|menu|help)\b/i.test(text.trim())) { await reply(chatId, HELP); return 'help'; }

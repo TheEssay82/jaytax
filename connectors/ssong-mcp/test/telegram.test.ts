@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fmtAudit, fmtDigest, fmtReceivables, fmtRevenue, money, seoulToday } from '../lib/tgReports.js';
-import { handleUpdate, reportOf, splitMessage, webhookSecretOk } from '../lib/tgBot.js';
+import { firstTime, handleUpdate, reportOf, splitMessage, webhookSecretOk } from '../lib/tgBot.js';
+import { toolsetFor } from '../lib/tgChat.js';
 
 test('금액 — 억·만으로 짧게', () => {
   assert.equal(money(959300000), '9.59억');
@@ -82,7 +83,15 @@ test('웹훅 비밀·대표님 대화방만', async () => {
   assert.equal(await handleUpdate({ message: { chat: { id: 222 }, text: '/ar' } }), 'ignored');
   assert.equal(await handleUpdate({}), 'ignored');
   delete process.env.ANTHROPIC_API_KEY;
-  assert.equal(await handleUpdate({ message: { chat: { id: 111 }, text: '매출 알려줘' } }), 'off');
-  assert.equal(await handleUpdate({ message: { chat: { id: 111 }, text: '/start' } }), 'help');
+  assert.equal(await handleUpdate({ update_id: 1, message: { message_id: 1, chat: { id: 111 }, text: '매출 알려줘' } }), 'off');
+  assert.equal(await handleUpdate({ update_id: 2, message: { message_id: 2, chat: { id: 111 }, text: '/start' } }), 'help');
   process.env = prev;
+});
+
+test('결재 올리기 — 답장일 때만 켜지고, 같은 메시지는 한 번만', () => {
+  assert.deepEqual(toolsetFor(false).configs, { submit_sales_contract: { enabled: false }, submit_doc_send: { enabled: false } });
+  assert.equal(toolsetFor(true).configs, undefined);
+  assert.equal(firstTime(9001), true);
+  assert.equal(firstTime(9001), false);
+  assert.equal(firstTime(9002), true);
 });
