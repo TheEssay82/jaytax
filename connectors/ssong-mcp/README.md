@@ -50,7 +50,7 @@ claude.ai(쏭비서) ──Authorization: Bearer MCP_SECRET──▶ 이 서버(
 대표님 결정 2026-11-21 「버튼형·대화형 둘 다」. 주소는 `https://jaytax-ssong-mcp.vercel.app/telegram`.
 
 - **단추 4개**(어제오늘 생긴 일 · 올해 매출 · 90일 넘은 미수금 · 이번 주 감사)는 AI 없이 바로 보고한다. 비용 없음. `lib/tgReports.ts`
-- **그 밖의 글**은 Claude API(`claude-opus-5-5`, effort low)가 MCP 연결로 **이 서버의 /mcp** 를 붙여 답한다.
+- **그 밖의 글**은 Claude API(`claude-sonnet-5-5`, effort low — 대표님 결정: 비용)가 MCP 연결로 **이 서버의 /mcp** 를 붙여 답한다.
   도구·마스킹·접속기록이 claude.ai 쏭비서와 똑같다. `ANTHROPIC_API_KEY` 가 없으면 꺼지고 단추만 된다. `lib/tgChat.ts`
 - 앞 대화는 기억하지 않는다. 이어 물으려면 쏭비서 메시지에 **답장**으로 보내면 그 메시지 하나를 이어받는다.
 - 웹훅 비밀이 맞는 요청, `TELEGRAM_CHAT_ID` 대화방의 메시지만 받는다. 다른 사람이 말을 걸면 답하지 않는다.

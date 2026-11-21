@@ -5,7 +5,7 @@
 // ANTHROPIC_API_KEY 가 없으면 대화는 꺼지고 단추 보고만 된다.
 import Anthropic from '@anthropic-ai/sdk';
 
-const MODEL = 'claude-opus-5-5';
+const MODEL = 'claude-sonnet-5-5'; // 대표님 2026-11-21: Opus 는 비싸다 → Sonnet
 const MCP_URL = process.env.SSONG_MCP_URL?.trim() || 'https://jaytax-ssong-mcp.vercel.app/mcp';
 
 const SYSTEM = [
