@@ -118,6 +118,30 @@ export function buildServer(): McpServer {
   });
 
   // ── 조회 ──────────────────────────────────────────────
+  server.registerTool('engagement_status', {
+    title: '감사 업무 진행 현황',
+    description: '감사 건(거래처·연도)마다 진행 상황: 일반조서 단계·조서 수/확인 수·최근 확정, 주석·DSD 주석 상태별 수, JET(중요성·분개장·선정·증빙요청·회신·결론 수), 감사이슈(미결·판단 필요·중요). company 로 거래처를 좁히고 fiscal_year 로 감사 연도를 고릅니다(비우면 전부, 최대 60건). 「알티스트 감사 어디까지 왔어?」 같은 질문에 씁니다.',
+    inputSchema: {
+      company: z.string().optional().describe('거래처명 일부'),
+      fiscal_year: z.number().int().min(2020).max(2100).optional().describe('감사 연도(예: 2026)'),
+    },
+    annotations: { readOnlyHint: true },
+  }, async ({ company, fiscal_year }) => {
+    try { return ok(await rpc('ssong_engagement_status', { p_q: company ?? null, p_fy: fiscal_year ?? null })); } catch (e) { return fail(e); }
+  });
+
+  server.registerTool('consult_history', {
+    title: '자문 상담 이력',
+    description: 'JAYTAX 상담(세무·감사·회계 자문 회신) 이력: 제목·거래처·태그·상태·날짜. query 로 제목·거래처·태그를 찾습니다. 질문·답 본문은 주지 않습니다(필요하면 JAYTAX 상담 화면에서).',
+    inputSchema: {
+      query: z.string().optional().describe('제목·거래처·태그 일부'),
+      limit: z.number().int().min(1).max(50).optional(),
+    },
+    annotations: { readOnlyHint: true },
+  }, async ({ query, limit }) => {
+    try { return ok(await rpc('ssong_consult_history', { p_q: query ?? null, p_limit: limit ?? 20 })); } catch (e) { return fail(e); }
+  });
+
   server.registerTool('search_clients', {
     title: '거래처 검색',
     description: 'JAYTAX 거래처를 이름 일부나 거래처코드로 찾습니다. 거래처 id(entityId)·코드·사업장(placeId·이름·상태·담당회계사)만 돌려줍니다. 매출계약을 올리기 전에 entityId·placeId 를 여기서 확인하세요.',
