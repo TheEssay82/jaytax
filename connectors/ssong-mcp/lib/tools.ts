@@ -144,7 +144,7 @@ export function buildServer(): McpServer {
       };
       const title = `${i.client_name} · ${cat.label} · ${won(i.amount)}`;
       const id = await rpc<string>('ssong_submit', { p_kind: 'sales_contract', p_title: title, p_payload: payload, p_reason: i.reason ?? null });
-      const phone = await notifyTelegram('sales_contract');
+      const phone = await notifyTelegram('sales_contract', title, i.reason);
       return ok({ requestId: id, status: '대기', title, phoneAlert: phone, next: '대표님이 JAYTAX ⚙ 관리 › 쏭비서 결재함에서 승인하면 등록됩니다. list_my_requests 로 결과를 봅니다.' });
     } catch (e) { return fail(e); }
   });
@@ -175,7 +175,7 @@ export function buildServer(): McpServer {
       };
       const title = `${i.company_name} · ${i.send_kind}${i.doc_name ? ` «${i.doc_name}»` : ''} · ${i.work_type} · 수신 ${i.recipients.length}곳`;
       const id = await rpc<string>('ssong_submit', { p_kind: 'doc_send', p_title: title, p_payload: payload, p_reason: i.reason ?? null });
-      const phone = await notifyTelegram('doc_send');
+      const phone = await notifyTelegram('doc_send', title, i.reason);
       return ok({ requestId: id, status: '대기', title, phoneAlert: phone, next: '대표님 승인 뒤 발송요청이 만들어집니다. 등기번호는 get_doc_send_status 로 봅니다.' });
     } catch (e) { return fail(e); }
   });
