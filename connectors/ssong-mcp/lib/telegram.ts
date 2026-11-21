@@ -6,7 +6,7 @@
 // 봇 토큰·대화방 번호는 서버 환경변수에만 둔다. 둘 중 하나라도 없으면 조용히 건너뛴다.
 // 알림이 실패해도 결재 올리기는 실패시키지 않는다.
 
-const KIND_LABEL: Record<string, string> = { sales_contract: '매출계약 등록', doc_send: '문서발송 의뢰' };
+const KIND_LABEL: Record<string, string> = { sales_contract: '매출계약 등록', doc_send: '문서발송 의뢰', invoice_request: '세금계산서 발행의뢰' };
 const INBOX_URL = 'https://www.jaytax.co.kr/?tab=ssong-inbox';
 
 export function telegramText(kind: string, title: string, reason?: string | null): string {

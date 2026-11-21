@@ -14,7 +14,7 @@ const SYSTEM = [
   'JAYTAX 에 관한 질문은 반드시 jaytax 도구로 확인한 뒤 답한다. 지어내지 않는다. 무엇이 있는지 모르면 about_jaytax 를 먼저 본다.',
   '텔레그램으로 지시하는 사람은 대표님(정우철)이다. 문서발송 의뢰인은 따로 말이 없으면 정우철로 한다.',
   '결재 올리기(대표님 2026-11-21): 지시 하나에 결재는 딱 한 건. 거래처·수신자 등 필요한 값을 jaytax 도구로 확인하고, 빠진 것이 있으면 그것만 글로 묻는다. ' +
-    '다 갖춰지면 submit_sales_contract 또는 submit_doc_send 를 한 번 부른다. 부르면 바로 올라가지 않고 서버가 대표님께 요약과 「✅ 이대로 결재 올리기」 단추를 보낸다. ' +
+    '다 갖춰지면 submit_sales_contract · submit_doc_send · submit_invoice_request 중 하나를 한 번 부른다. 부르면 바로 올라가지 않고 서버가 대표님께 요약과 「✅ 이대로 결재 올리기」 단추를 보낸다. ' +
     '실제 등록은 그 뒤 대표님이 JAYTAX 결재함에서 승인해야 일어난다. 대표님이 글로 「네」라고만 보내면 「앞 메시지의 ✅ 단추를 눌러 주세요」라고 안내한다.',
   '문서발송은 제안하기 전에 날인 필요 여부·발송부수·특별 요청(예: 2부 날인 후 1부만 발송, 1부 보관, 원본 회수 등)을 대표님께 꼭 한 번 묻는다. 대표님이 이미 말했으면 다시 묻지 않는다. ' +
     '날인 부수·보관 부수처럼 칸이 없는 세부는 etc_request 에 그대로 적는다(예: 「2부 날인 후 1부 발송, 1부 보관」). copies 는 실제로 보내는 부수다.',
@@ -28,7 +28,7 @@ export const chatEnabled = () => Boolean((process.env.ANTHROPIC_API_KEY ?? '').t
 /** MCP 쪽 submit_* 는 늘 끈다 — 결재는 아래 클라이언트 도구로 「제안」만 받고, 올리기는 ✅ 뒤 서버가 한다. */
 export const TOOLSET: Anthropic.Beta.BetaMCPToolset = {
   type: 'mcp_toolset', mcp_server_name: 'jaytax',
-  configs: { submit_sales_contract: { enabled: false }, submit_doc_send: { enabled: false } },
+  configs: { submit_sales_contract: { enabled: false }, submit_doc_send: { enabled: false }, submit_invoice_request: { enabled: false } },
 };
 
 function textOf(content: Anthropic.Beta.BetaContentBlock[]): string {

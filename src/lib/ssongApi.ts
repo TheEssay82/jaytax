@@ -13,10 +13,16 @@ import { createSendRequests, WORK_TYPES, DEADLINES, SEND_KINDS, type SendCommon,
 import { listDocClients } from './docClientsApi';
 import { pickTitle } from './honorific';
 import { todayYmd } from './format';
+import { createManualInvoiceRequest, ERP_ACCOUNTS } from './invoiceRequestApi';
+import { listBizEntities, corpDisplayName } from './bizRegistryApi';
+import { listSalesContracts } from './salesContractApi';
+import { listEmailCandidates, joinEmails } from './taxEmailApi';
+import { notifyRequested } from './auditInvoiceApi';
+import { FINAL_APPROVER } from './invoiceMonthApi';
 
-export type SsongKind = 'sales_contract' | 'doc_send';
+export type SsongKind = 'sales_contract' | 'doc_send' | 'invoice_request';
 export type SsongStatus = '대기' | '처리중' | '승인' | '반려';
-export const SSONG_KIND_LABEL: Record<SsongKind, string> = { sales_contract: '매출계약 등록', doc_send: '문서발송 의뢰' };
+export const SSONG_KIND_LABEL: Record<SsongKind, string> = { sales_contract: '매출계약 등록', doc_send: '문서발송 의뢰', invoice_request: '세금계산서 발행의뢰' };
 
 /** 쏭비서가 올리는 매출계약 내용(커넥터 submit_sales_contract 와 같은 모양). */
 export interface SsongContractPayload {
@@ -36,6 +42,15 @@ export interface SsongDocSendPayload {
   copies?: number; sealRequired?: boolean; deadline: string; etcRequest?: string;
   recipients: { clientId: string; contactId: string }[];
 }
+
+/** 쏭비서가 올리는 세금계산서 발행의뢰(커넥터 submit_invoice_request 와 같은 모양) — 감사팀 「건별 등록」과 같은 칸. */
+export interface SsongInvoicePayload {
+  entityId: string; placeId?: string | null; contractId?: string | null; team: Team;
+  supplyAmount: number; erpAccount: string; phase: string; summary: string;
+  /** 발행 희망일 YYYY-MM-DD — 귀속월은 이 날의 달. */
+  issueDate: string; needsInvoiceDoc?: boolean; note?: string;
+}
+export const INVOICE_PHASES = ['계약금', '중도금', '잔금', '총액'] as const;
 
 export interface SsongRequest {
   id: string; kind: SsongKind; title: string; payload: Record<string, unknown>; reason: string;
@@ -90,6 +105,28 @@ export function checkDocSendPayload(p: SsongDocSendPayload): string[] {
   if (!(SEND_KINDS as readonly string[]).includes(p.sendKind)) errs.push(`송부종류가 올바르지 않습니다: ${p.sendKind}`);
   if (!p.recipients?.length) errs.push('수신자가 없습니다');
   return errs;
+}
+
+export function checkInvoicePayload(p: SsongInvoicePayload): string[] {
+  const errs: string[] = [];
+  if (!(p.supplyAmount > 0)) errs.push('공급가액이 올바르지 않습니다');
+  if (!(ERP_ACCOUNTS as readonly string[]).includes(p.erpAccount)) errs.push(`ERP 매출계정이 올바르지 않습니다: ${p.erpAccount}`);
+  if (!(INVOICE_PHASES as readonly string[]).includes(p.phase)) errs.push(`구분(계약금·중도금·잔금·총액)이 올바르지 않습니다: ${p.phase}`);
+  if (!p.summary?.trim()) errs.push('적요가 없습니다');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.issueDate ?? '')) errs.push('발행일이 올바르지 않습니다');
+  return errs;
+}
+
+/**
+ * 세금계산서 받을 메일 — 사업장 「세금계산서 메일」(정본)이 있으면 그것 전부, 없으면 가장 많이 쓴 과거 발행 주소 하나.
+ * 거래처담당자 메일은 참고용이라 자동으로 고르지 않는다(없으면 승인을 멈추고 화면에서 직접 등록하게 한다).
+ */
+export async function resolveInvoiceEmails(entityId: string, placeId: string | null, companyName: string): Promise<string[]> {
+  const c = await listEmailCandidates(entityId, placeId, companyName);
+  const place = c.filter((x) => x.source === '거래처정보').map((x) => x.email);
+  if (place.length) return place;
+  const past = c.find((x) => x.source === '과거발행');
+  return past ? [past.email] : [];
 }
 
 // ── 승인 ────────────────────────────────────────────────
@@ -159,6 +196,39 @@ async function createDocSendFrom(p: SsongDocSendPayload): Promise<Made> {
   return { ids: (data ?? []).map((r: { id: string }) => r.id) };
 }
 
+async function createInvoiceFrom(p: SsongInvoicePayload): Promise<Made> {
+  const errs = checkInvoicePayload(p);
+  if (errs.length) throw new Error(errs.join(' · '));
+  const e = (await listBizEntities()).find((x) => x.id === p.entityId);
+  if (!e) throw new Error('거래처를 찾지 못했습니다');
+  // 사업장 — 정해 왔으면 그곳, 아니면 본사(감사팀 건별 등록 화면과 같은 규칙).
+  const place = p.placeId ? e.places.find((x) => x.id === p.placeId) : (e.places.find((x) => x.isHeadquarters) ?? e.places[0]);
+  if (p.placeId && !place) throw new Error('사업장을 찾지 못했습니다');
+  let contractCode = '';
+  if (p.contractId) {
+    const c = (await listSalesContracts()).find((x) => x.id === p.contractId);
+    if (!c || c.entityId !== e.id) throw new Error('매출계약을 찾지 못했습니다');
+    contractCode = c.contractCode;
+  }
+  const companyName = corpDisplayName(e.name, e.corpForm, e.corpFormPosition);
+  const emails = await resolveInvoiceEmails(e.id, place?.id ?? null, companyName);
+  if (!emails.length) throw new Error('세금계산서 받을 메일 주소가 없습니다 — 거래처정보의 세금계산서 메일을 넣거나, 발행요청 화면에서 직접 등록해 주세요');
+  // 청구 시점의 담당을 굳힌다 — 화면과 같이 사업장 담당에서.
+  const id = await createManualInvoiceRequest({
+    ym: p.issueDate.slice(0, 7), team: p.team, entityId: e.id, placeId: place?.id ?? null,
+    contractId: p.contractId ?? null, contractCode, supplyAmount: p.supplyAmount, erpAccount: p.erpAccount,
+    phase: p.phase, summary: p.summary.trim(), issueDate: p.issueDate, docEmail: joinEmails(emails),
+    needsInvoiceDoc: !!p.needsInvoiceDoc, cpa: place?.cpa ?? '', staff: (place?.staff ?? []).map((x) => x.staffName).join(','),
+    companyName, placeName: place?.placeName ?? '', note: p.note,
+  });
+  // 끊는 분께 알림(감사팀 건별 등록 화면과 같이). 실패해도 발행요청은 이미 생겼으니 메모로만 남긴다.
+  if (p.team === '감사team') {
+    try { await notifyRequested(FINAL_APPROVER, [{ companyName, supplyAmount: p.supplyAmount }], '쏭비서(대표님 승인)'); }
+    catch (err) { return { ids: [id], warn: `${FINAL_APPROVER}께 알림 실패 — 직접 알려 주세요 (${err instanceof Error ? err.message : String(err)})` }; }
+  }
+  return { ids: [id] };
+}
+
 /** 승인 — 실제 행을 만들고 결재를 닫는다. 만들어진 id 를 돌려준다. */
 export async function approveSsongRequest(id: string, note?: string): Promise<Made> {
   const claimed = toReq(await rpc('ssong_claim', { p_id: id }));
@@ -166,14 +236,17 @@ export async function approveSsongRequest(id: string, note?: string): Promise<Ma
   try {
     made = claimed.kind === 'sales_contract'
       ? await createContractFrom(claimed.payload as unknown as SsongContractPayload)
-      : await createDocSendFrom(claimed.payload as unknown as SsongDocSendPayload);
+      : claimed.kind === 'invoice_request'
+        ? await createInvoiceFrom(claimed.payload as unknown as SsongInvoicePayload)
+        : await createDocSendFrom(claimed.payload as unknown as SsongDocSendPayload);
   } catch (e) {
     // 아무것도 만들어지지 않았다 — '대기'로 되돌린다.
     const msg = e instanceof Error ? e.message : String(e);
     await supabase.rpc('ssong_fail', { p_id: id, p_error: msg });
     throw new Error(msg);
   }
-  const table = claimed.kind === 'sales_contract' ? 'biz_sales_contract' : 'doc_send_requests';
+  const table = claimed.kind === 'sales_contract' ? 'biz_sales_contract'
+    : claimed.kind === 'invoice_request' ? 'biz_invoice_request' : 'doc_send_requests';
   const memo = [note?.trim(), made.warn].filter(Boolean).join(' / ') || null;
   await rpc('ssong_finish', { p_id: id, p_created_table: table, p_created_ids: made.ids, p_note: memo });
   return made;

@@ -8,14 +8,14 @@ import { kstDateTime } from '../../lib/format';
 import { pathLabel } from '../../lib/salesContractTaxonomy';
 import { supabase } from '../../lib/supabase';
 import {
-  listSsongRequests, approveSsongRequest, rejectSsongRequest, checkContractPayload, checkDocSendPayload,
-  SSONG_KIND_LABEL, type SsongRequest, type SsongContractPayload, type SsongDocSendPayload,
+  listSsongRequests, approveSsongRequest, rejectSsongRequest, checkContractPayload, checkDocSendPayload, checkInvoicePayload,
+  SSONG_KIND_LABEL, type SsongRequest, type SsongContractPayload, type SsongDocSendPayload, type SsongInvoicePayload,
 } from '../../lib/ssongApi';
 
 const won = (n: unknown) => (typeof n === 'number' ? `${n.toLocaleString('ko-KR')}원` : '—');
 const yn = (b: unknown) => (b ? '예' : '아니오');
 
-type Names = { entity: Map<string, string>; place: Map<string, string>; client: Map<string, string>; contact: Map<string, string> };
+type Names = { entity: Map<string, string>; place: Map<string, string>; client: Map<string, string>; contact: Map<string, string>; contract: Map<string, string> };
 
 /** 결재 카드에 보여 줄 줄들 — id 대신 이름으로. */
 function rowsOf(r: SsongRequest, n: Names): [string, string][] {
@@ -32,6 +32,23 @@ function rowsOf(r: SsongRequest, n: Names): [string, string][] {
       ['귀속연도', p.fiscalYear ? String(p.fiscalYear) : '—'],
       ['계약일 · 기간', `${p.contractDate ?? '—'} · ${p.startDate ?? '?'} ~ ${p.endDate ?? '계속'}`],
       ['계약확정', p.confirmed === false ? '미계약(예정)' : '확정'],
+      ['비고', p.note || '—'],
+    ];
+  }
+  if (r.kind === 'invoice_request') {
+    const p = r.payload as unknown as SsongInvoicePayload;
+    const vat = Math.round((p.supplyAmount || 0) * 0.1);
+    return [
+      ['거래처', n.entity.get(p.entityId) ?? p.entityId],
+      ['사업장', p.placeId ? (n.place.get(p.placeId) ?? p.placeId) : '본사(자동)'],
+      ['팀 · 구분', `${p.team} · ${p.phase}`],
+      ['공급가액 · 부가세 · 합계', `${won(p.supplyAmount)} · ${won(vat)} · ${won((p.supplyAmount || 0) + vat)}`],
+      ['ERP 매출계정', p.erpAccount],
+      ['적요', p.summary],
+      ['발행일(귀속월)', `${p.issueDate} (${p.issueDate?.slice(0, 7)})`],
+      ['매출계약', p.contractId ? (n.contract.get(p.contractId) ?? p.contractId) : '—'],
+      ['청구서(서면)', yn(p.needsInvoiceDoc)],
+      ['받는 메일', '승인할 때 거래처정보(세금계산서 메일) → 과거 발행 순으로 채움'],
       ['비고', p.note || '—'],
     ];
   }
@@ -56,7 +73,7 @@ const STATUS_STYLE: Record<string, React.CSSProperties> = {
 
 export default function SsongInboxTab() {
   const [rows, setRows] = useState<SsongRequest[]>([]);
-  const [names, setNames] = useState<Names>({ entity: new Map(), place: new Map(), client: new Map(), contact: new Map() });
+  const [names, setNames] = useState<Names>({ entity: new Map(), place: new Map(), client: new Map(), contact: new Map(), contract: new Map() });
   const [show, setShow] = useState<'대기' | '전체'>('대기');
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -70,10 +87,14 @@ export default function SsongInboxTab() {
       const list = await listSsongRequests();
       setRows(list);
       // id → 이름(카드 표시용)
-      const ent = new Set<string>(), pl = new Set<string>(), cl = new Set<string>(), ct = new Set<string>();
+      const ent = new Set<string>(), pl = new Set<string>(), cl = new Set<string>(), ct = new Set<string>(), co = new Set<string>();
       for (const r of list) {
         const p = r.payload as Record<string, unknown>;
-        if (r.kind === 'sales_contract') { if (p.entityId) ent.add(String(p.entityId)); if (p.placeId) pl.add(String(p.placeId)); }
+        if (r.kind === 'sales_contract' || r.kind === 'invoice_request') {
+          if (p.entityId) ent.add(String(p.entityId));
+          if (p.placeId) pl.add(String(p.placeId));
+          if (p.contractId) co.add(String(p.contractId));
+        }
         else for (const x of (p.recipients as { clientId: string; contactId: string }[]) ?? []) { cl.add(x.clientId); ct.add(x.contactId); }
       }
       const q = async (t: string, col: string, ids: Set<string>) => {
@@ -81,10 +102,11 @@ export default function SsongInboxTab() {
         const { data } = await supabase.from(t).select(`id, ${col}`).in('id', [...ids]);
         return new Map(((data ?? []) as unknown as Record<string, string>[]).map((d) => [d.id, d[col]]));
       };
-      const [e, p, c, k] = await Promise.all([
+      const [e, p, c, k, s] = await Promise.all([
         q('biz_entity', 'name', ent), q('biz_place', 'place_name', pl), q('doc_clients', 'company_name', cl), q('doc_contacts', 'contact_name', ct),
+        q('biz_sales_contract', 'contract_code', co),
       ]);
-      setNames({ entity: e, place: p, client: c, contact: k });
+      setNames({ entity: e, place: p, client: c, contact: k, contract: s });
     } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) }); }
   }
   useEffect(() => { void load(); }, []);
@@ -112,10 +134,11 @@ export default function SsongInboxTab() {
     <div className="card">
       <div className="chdr">🤖 쏭비서 결재함</div>
       <Guide id="ssong-inbox" label="어떻게 도는지"
-        summary={<>쏭비서는 <b>결재만 올립니다</b>. [승인]을 누르면 그때 매출계약·발송요청이 만들어집니다.</>}>
-        · 쏭비서가 할 수 있는 일은 <b>매출계약 등록 요청</b>과 <b>문서발송 의뢰 요청</b> 두 가지뿐입니다. 고치기·지우기·취소는 못 합니다.
+        summary={<>쏭비서는 <b>결재만 올립니다</b>. [승인]을 누르면 그때 매출계약·발송요청·발행요청이 만들어집니다.</>}>
+        · 쏭비서가 할 수 있는 일은 <b>매출계약 등록</b>·<b>문서발송 의뢰</b>·<b>세금계산서 발행의뢰</b> 요청 세 가지뿐입니다. 고치기·지우기·취소는 못 합니다.
         <br />· 승인하면 매출계약등록·문서발송관리 화면과 <b>같은 코드</b>로 등록됩니다(계약코드·알림·감사로그 동일). 등록한 사람은 승인한 분으로 남습니다.
         <br />· 고칠 게 있으면 <b>반려</b>하고 사유를 적어 주세요. 쏭비서가 사유를 보고 다시 올립니다.
+        <br />· 세금계산서 발행의뢰는 감사팀 「건별 등록」과 같은 코드로 들어가고, 받는 메일은 승인할 때 거래처정보에서 채웁니다(없으면 승인이 멈춥니다).
         <br />· 문서발송 수신자의 주소·전화는 쏭비서에게 주지 않고, 승인할 때 연락처에서 채웁니다. 첨부파일은 승인 뒤 문서발송관리에서 붙입니다.
         <br />· 쏭비서의 조회·요청과 대표님의 승인·반려는 모두 <b>접속기록</b>에 남습니다.
       </Guide>
@@ -132,7 +155,9 @@ export default function SsongInboxTab() {
 
       {view.map((r) => {
         const problems = r.status === '대기'
-          ? (r.kind === 'sales_contract' ? checkContractPayload(r.payload as unknown as SsongContractPayload) : checkDocSendPayload(r.payload as unknown as SsongDocSendPayload))
+          ? (r.kind === 'sales_contract' ? checkContractPayload(r.payload as unknown as SsongContractPayload)
+            : r.kind === 'invoice_request' ? checkInvoicePayload(r.payload as unknown as SsongInvoicePayload)
+            : checkDocSendPayload(r.payload as unknown as SsongDocSendPayload))
           : [];
         return (
           <div key={r.id} style={{ border: '1px solid var(--line)', borderRadius: 8, padding: 10, margin: '8px 0' }}>
@@ -154,7 +179,7 @@ export default function SsongInboxTab() {
               <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-2)' }}>
                 {r.status} · {r.decidedByName} · {kstDateTime(r.decidedAt)}
                 {r.decisionNote && <> · {r.decisionNote}</>}
-                {r.createdIds.length > 0 && <> · 만든 행 {r.createdIds.length}건 ({r.createdTable === 'biz_sales_contract' ? '매출계약' : '발송요청'})</>}
+                {r.createdIds.length > 0 && <> · 만든 행 {r.createdIds.length}건 ({r.createdTable === 'biz_sales_contract' ? '매출계약' : r.createdTable === 'biz_invoice_request' ? '발행요청' : '발송요청'})</>}
               </div>
             )}
             {r.status === '처리중' && <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>승인 처리 중입니다. 10분 넘게 이대로면 다시 승인할 수 있습니다.</div>}

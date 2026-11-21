@@ -20,9 +20,9 @@ test('결재 제안 — submit_* 호출을 꺼내 실제 올릴 값으로 요약
     /발송부수: 1부 · 날인: 필요\n• 기타요청: 2부 날인 후 1부 발송, 1부 보관/);
   assert.equal(pendingOf([blocks[0]]), null);
   // MCP 쪽 submit 은 늘 꺼짐, 대신 같은 모양의 클라이언트 도구 2개
-  assert.deepEqual(Object.keys(TOOLSET.configs ?? {}).sort(), ['submit_doc_send', 'submit_sales_contract']);
+  assert.deepEqual(Object.keys(TOOLSET.configs ?? {}).sort(), ['submit_doc_send', 'submit_invoice_request', 'submit_sales_contract']);
   const defs = await submitToolDefs();
-  assert.deepEqual(defs.map((d) => d.name).sort(), ['submit_doc_send', 'submit_sales_contract']);
+  assert.deepEqual(defs.map((d) => d.name).sort(), ['submit_doc_send', 'submit_invoice_request', 'submit_sales_contract']);
   assert.ok((defs[0].input_schema as { properties?: object }).properties);
   // 서버 쪽 검사는 그대로 — 모양이 틀리면 올라가지 않는다
   const bad = await runSubmit({ tool: 'submit_doc_send', args: { company_name: 'x' } });
@@ -191,4 +191,10 @@ test('문서발송 진행 알림 — 열쇠 해시로만, 글 모양', async () 
   assert.equal(t, '📮 발송 진행 (쏭비서 결재건)\n명진산업개발㈜ · 계약서 «감사계약서»\n✅ 발송완료 (11/24)\n등기번호 18990-5111-8259\n조회: https://service.epost.go.kr/trace.RetrieveDomRigiTraceList.comm?sid1=1899051118259');
   assert.equal(docSendText({ kind: 'doc_send', id: 'x', company: 'A', sendKind: '기타', status: '진행중' }), '📮 발송 진행\nA · 기타\n⏳ 진행중');
   assert.equal(await handleDocSendEvent({ kind: 'doc_send', id: 'not-a-uuid' }), 'bad');
+});
+
+test('세금계산서 발행의뢰 — 확인 요약', async () => {
+  const { previewOf } = await import('../lib/tgSubmit.js');
+  const t = previewOf({ tool: 'submit_invoice_request', args: { client_name: '평안정공㈜', team: '감사team', phase: '잔금', erp_account: '회계감사수입', supply_amount: 7000000, summary: '2026년 회계감사 잔금', issue_date: '2026-12-15' } });
+  assert.equal(t, '🧾 세금계산서 발행의뢰 결재\n• 거래처: 평안정공㈜ (감사팀)\n• 구분: 잔금 · ERP 회계감사수입\n• 공급가액: 7,000,000원 (부가세 700,000원, 합계 7,700,000원)\n• 적요: 2026년 회계감사 잔금\n• 발행일: 2026-12-15\n• 청구서(서면): 없음\n• 받는 메일: 승인 때 거래처정보에서');
 });

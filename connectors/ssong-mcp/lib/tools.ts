@@ -14,6 +14,9 @@ export const SEND_KINDS = [
   '기타보고서', '기타증명서', '기타',
 ] as const;
 export const DEADLINES = ['긴급', '보통', '지연가능'] as const;
+// 세금계산서 발행의뢰 선택지 — 앱 src/lib/invoiceRequestApi.ts ERP_ACCOUNTS · ssongApi.ts INVOICE_PHASES 와 같아야 한다(0207 DB 도 같은 목록을 검사).
+export const ERP_ACCOUNTS = ['회계감사수입', '세무조정수입', '기업진단수입', '기장대리수입', '경영자문수입', '기타용역수입', '임의감사수입'] as const;
+export const INVOICE_PHASES = ['계약금', '중도금', '잔금', '총액'] as const;
 
 const ok = (data: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] });
 const fail = (e: unknown) => ({
@@ -265,6 +268,38 @@ export function buildServer(): McpServer {
       const id = await rpc<string>('ssong_submit', { p_kind: 'sales_contract', p_title: title, p_payload: payload, p_reason: i.reason ?? null });
       const phone = await notifyTelegram('sales_contract', title, i.reason);
       return ok({ requestId: id, status: '대기', title, phoneAlert: phone, next: '대표님이 JAYTAX ⚙ 관리 › 쏭비서 결재함에서 승인하면 등록됩니다. list_my_requests 로 결과를 봅니다.' });
+    } catch (e) { return fail(e); }
+  });
+
+  server.registerTool('submit_invoice_request', {
+    title: '세금계산서 발행의뢰 결재 올리기',
+    description: '세금계산서 발행의뢰(감사팀 「건별 등록」과 같은 칸)를 대표님 결재함에 올립니다. 바로 의뢰되지 않고, 대표님이 승인하면 발행요청이 만들어져 끊는 분께 넘어갑니다. 받는 메일은 승인 때 JAYTAX 가 거래처정보에서 채웁니다. 올리기 전에 금액·구분(계약금/중도금/잔금/총액)·적요·발행일을 대표님께 확인하세요. 매출계약이 있으면 list_sales_contracts 의 id 를 contract_id 로 넣습니다.',
+    inputSchema: {
+      client_name: z.string().min(1).describe('거래처명(결재함 요약에 씀)'),
+      entity_id: uuid.describe('search_clients 의 entityId'),
+      place_id: uuid.optional().describe('사업장 placeId. 비우면 본사'),
+      contract_id: uuid.optional().describe('매출계약 id(list_sales_contracts)'),
+      team: z.enum(['감사team', 'taxteam']),
+      supply_amount: z.number().positive().describe('공급가액(원, 부가세 별도)'),
+      erp_account: z.enum(ERP_ACCOUNTS).describe('ERP 매출계정 — 감사=회계감사수입, 세무조정=세무조정수입, 기장·부가세·원천=기장대리수입, 가치평가·실사·자문=기타용역수입'),
+      phase: z.enum(INVOICE_PHASES).describe('구분'),
+      summary: z.string().min(1).max(200).describe('발행 시 적요(예: 2026년 회계감사 잔금)'),
+      issue_date: ymd.describe('발행 희망일(YYYY-MM-DD) — 귀속월은 이 날의 달'),
+      needs_invoice_doc: z.boolean().optional().describe('청구서(서면)도 보내야 하면 true'),
+      note: z.string().max(500).optional(),
+      reason: z.string().max(1000).optional().describe('결재함에 보일 근거·메모'),
+    },
+  }, async (i) => {
+    try {
+      const payload = {
+        entityId: i.entity_id, placeId: i.place_id ?? null, contractId: i.contract_id ?? null, team: i.team,
+        supplyAmount: i.supply_amount, erpAccount: i.erp_account, phase: i.phase, summary: i.summary,
+        issueDate: i.issue_date, needsInvoiceDoc: !!i.needs_invoice_doc, note: i.note,
+      };
+      const title = `${i.client_name} · ${i.phase} · ${won(i.supply_amount)} (${i.issue_date} 발행)`;
+      const id = await rpc<string>('ssong_submit', { p_kind: 'invoice_request', p_title: title, p_payload: payload, p_reason: i.reason ?? null });
+      const phone = await notifyTelegram('invoice_request', title, i.reason);
+      return ok({ requestId: id, status: '대기', title, phoneAlert: phone, next: '대표님이 결재함에서 승인하면 발행요청이 만들어집니다. 처리 여부는 invoice_requests 로 봅니다.' });
     } catch (e) { return fail(e); }
   });
 

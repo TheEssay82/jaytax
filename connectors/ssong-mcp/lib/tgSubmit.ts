@@ -8,7 +8,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type Anthropic from '@anthropic-ai/sdk';
 import { buildServer } from './tools.js';
 
-export const SUBMIT_TOOLS = ['submit_sales_contract', 'submit_doc_send'] as const;
+export const SUBMIT_TOOLS = ['submit_sales_contract', 'submit_doc_send', 'submit_invoice_request'] as const;
 export type SubmitTool = typeof SUBMIT_TOOLS[number];
 export const isSubmitTool = (n: string): n is SubmitTool => (SUBMIT_TOOLS as readonly string[]).includes(n);
 export interface Pending { tool: SubmitTool; args: Record<string, unknown> }
@@ -66,6 +66,20 @@ export function previewOf(p: Pending): string {
       `• 기타요청: ${a.etc_request?.trim() ? a.etc_request : '없음'}`,
       `• 수신: ${Array.isArray(a.recipients) ? a.recipients.length : 0}곳`,
       `• 의뢰인: ${a.requester}`,
+      ...(a.reason ? [`💬 ${a.reason}`] : []),
+    ].join('\n');
+  }
+  if (p.tool === 'submit_invoice_request') {
+    const vat = Math.round(Number(a.supply_amount ?? 0) * 0.1);
+    return [
+      '🧾 세금계산서 발행의뢰 결재',
+      `• 거래처: ${a.client_name} (${a.team === 'taxteam' ? '기장팀' : '감사팀'})`,
+      `• 구분: ${a.phase} · ERP ${a.erp_account}`,
+      `• 공급가액: ${won(a.supply_amount)} (부가세 ${won(vat)}, 합계 ${won(Number(a.supply_amount ?? 0) + vat)})`,
+      `• 적요: ${a.summary}`,
+      `• 발행일: ${a.issue_date}`,
+      `• 청구서(서면): ${a.needs_invoice_doc ? '보냄' : '없음'}`,
+      '• 받는 메일: 승인 때 거래처정보에서',
       ...(a.reason ? [`💬 ${a.reason}`] : []),
     ].join('\n');
   }
