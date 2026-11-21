@@ -2,17 +2,31 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fmtAudit, fmtDigest, fmtReceivables, fmtRevenue, money, seoulToday } from '../lib/tgReports.js';
 import { firstTime, forget, handleUpdate, recall, remember, reportOf, splitMessage, webhookSecretOk } from '../lib/tgBot.js';
-import { ASK_APPROVAL, approvalOf, toMessages, toolsetFor } from '../lib/tgChat.js';
+import { TOOLSET, pendingOf, toMessages } from '../lib/tgChat.js';
+import { previewOf, runSubmit, submitToolDefs } from '../lib/tgSubmit.js';
 
-test('결재 확인 단추·짧은 기억', () => {
-  // 모델이 ask_approval 을 부르면 요약 + 단추 안내, 안 부르면 null
+test('결재 제안 — submit_* 호출을 꺼내 실제 올릴 값으로 요약', async () => {
   const blocks = [
     { type: 'text', text: '확인했습니다.', citations: null },
-    { type: 'tool_use', id: 't1', name: 'ask_approval', input: { summary: '• 수신처: 명진\n• 문서명: 감사계약서' } },
-  ] as unknown as Parameters<typeof approvalOf>[0];
-  assert.equal(approvalOf(blocks), '확인했습니다.\n\n• 수신처: 명진\n• 문서명: 감사계약서\n\n이대로 올릴까요? 아래 단추를 눌러 주세요.');
-  assert.equal(approvalOf([blocks[0]]), null);
-  assert.equal(ASK_APPROVAL.strict, true);
+    { type: 'tool_use', id: 't1', name: 'submit_doc_send', input: { company_name: '명진산업개발㈜', requester: '정우철', work_type: '우체국', send_kind: '계약서', doc_name: '감사계약서', deadline: '보통', recipients: [{ client_id: 'a', contact_id: 'b' }] } },
+    { type: 'tool_use', id: 't2', name: 'submit_doc_send', input: { company_name: '두 번째' } },
+  ] as unknown as Parameters<typeof pendingOf>[0];
+  const p = pendingOf(blocks)!;
+  assert.equal(p.tool, 'submit_doc_send');
+  assert.equal(p.args.company_name, '명진산업개발㈜'); // 여러 개여도 첫 하나만
+  assert.match(previewOf(p), /거래처: 명진산업개발㈜\n• 송부종류: 계약서 · 문서명 감사계약서\n• 업무구분: 우체국 · 발송기한 보통\n• 수신: 1곳\n• 의뢰인: 정우철/);
+  assert.equal(pendingOf([blocks[0]]), null);
+  // MCP 쪽 submit 은 늘 꺼짐, 대신 같은 모양의 클라이언트 도구 2개
+  assert.deepEqual(Object.keys(TOOLSET.configs ?? {}).sort(), ['submit_doc_send', 'submit_sales_contract']);
+  const defs = await submitToolDefs();
+  assert.deepEqual(defs.map((d) => d.name).sort(), ['submit_doc_send', 'submit_sales_contract']);
+  assert.ok((defs[0].input_schema as { properties?: object }).properties);
+  // 서버 쪽 검사는 그대로 — 모양이 틀리면 올라가지 않는다
+  const bad = await runSubmit({ tool: 'submit_doc_send', args: { company_name: 'x' } });
+  assert.equal(bad.ok, false);
+});
+
+test('짧은 기억', () => {
   const m = toMessages([{ role: 'assistant', text: '요약' }], '네');
   assert.deepEqual(m.map((x) => x.role), ['user', 'assistant', 'user']);
   assert.deepEqual(toMessages([{ role: 'user', text: 'a' }, { role: 'user', text: 'b' }], 'c'), [{ role: 'user', content: 'a\nb\nc' }]);
@@ -118,9 +132,7 @@ test('웹훅 비밀·대표님 대화방만', async () => {
   process.env = prev;
 });
 
-test('결재 올리기 — 답장일 때만 켜지고, 같은 메시지는 한 번만', () => {
-  assert.deepEqual(toolsetFor(false).configs, { submit_sales_contract: { enabled: false }, submit_doc_send: { enabled: false } });
-  assert.equal(toolsetFor(true).configs, undefined);
+test('같은 메시지는 한 번만', () => {
   assert.equal(firstTime(9001), true);
   assert.equal(firstTime(9001), false);
   assert.equal(firstTime(9002), true);

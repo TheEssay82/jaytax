@@ -11,6 +11,7 @@ import { timingSafeEqual, createHash } from 'node:crypto';
 import { REPORTS, isReportKey, runReport, type ReportKey } from './tgReports.js';
 import { askSsong, chatEnabled, type Turn } from './tgChat.js';
 import { rpc } from './jaytax.js';
+import { runSubmit } from './tgSubmit.js';
 
 const LIMIT = 4000; // 텔레그램 한 메시지 4096자
 
@@ -47,17 +48,20 @@ export function splitMessage(text: string, limit = LIMIT): string[] {
   return parts.length ? parts : [''];
 }
 
-async function tg(method: string, body: Record<string, unknown>): Promise<void> {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+async function tg(method: string, body: Record<string, unknown>): Promise<any> {
   const token = (process.env.TELEGRAM_BOT_TOKEN ?? '').trim();
-  if (!token) return;
+  if (!token) return null;
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) console.warn('telegram', method, res.status);
+    if (!res.ok) { console.warn('telegram', method, res.status, (await res.text()).slice(0, 200)); return null; }
+    return ((await res.json()) as { result?: unknown }).result ?? null;
   } catch (e) {
     console.warn('telegram', method, e instanceof Error ? e.name : 'error'); // 토큰 든 주소는 남기지 않는다
+    return null;
   }
 }
 
@@ -65,16 +69,19 @@ export const CONFIRM_KEYBOARD = {
   inline_keyboard: [[{ text: '✅ 이대로 결재 올리기', callback_data: 'ssong:ok' }, { text: '그만', callback_data: 'ssong:no' }]],
 };
 
-/** 보낸다. confirm 이면 마지막 조각 밑에 ✅ 단추를 붙인다. */
-async function reply(chatId: number | string, text: string, confirm = false) {
+/** 보낸다. confirm 이면 마지막 조각 밑에 ✅ 단추를 붙인다. 마지막 조각의 메시지 번호를 돌려준다. */
+async function reply(chatId: number | string, text: string, confirm = false): Promise<number | undefined> {
   const parts = splitMessage(text);
+  let id: number | undefined;
   for (let i = 0; i < parts.length; i++) {
     const last = i === parts.length - 1;
-    await tg('sendMessage', {
+    const sent = await tg('sendMessage', {
       chat_id: chatId, text: parts[i], disable_web_page_preview: true,
       reply_markup: confirm && last ? CONFIRM_KEYBOARD : KEYBOARD,
     });
+    if (last) id = sent?.message_id;
   }
+  return id;
 }
 
 // 짧은 대화 기억 — DB(ssong_tg_memory, 0203)에 최근 8마디·30분. Vercel 은 메시지마다 서버가 바뀌어서
@@ -110,12 +117,13 @@ export function remember(chatId: string, ...turns: Turn[]) {
 }
 export function forget(chatId: string) { memory.delete(chatId); }
 
-async function chat(chatId: string, text: string, history: Turn[], allowSubmit: boolean) {
+async function chat(chatId: string, text: string, history: Turn[]) {
   await tg('sendChatAction', { chat_id: chatId, action: 'typing' });
   try {
-    const { text: answer, confirm } = await askSsong({ text, history, allowSubmit });
-    await saveTurns(chatId, [{ role: 'user', text }, { role: 'assistant', text: answer }]);
-    await reply(chatId, answer, confirm && !allowSubmit);
+    const { text: answer, pending } = await askSsong({ text, history });
+    const msgId = await reply(chatId, answer, Boolean(pending));
+    // 결재 제안이면 ✅ 를 눌렀을 때 올릴 내용을 그 메시지 번호와 함께 기억해 둔다(DB, 30분).
+    await saveTurns(chatId, [{ role: 'user', text }, { role: 'assistant', text: answer, ...(pending ? { pending, msgId } : {}) }]);
   } catch (e) {
     console.error('chat failed', e instanceof Error ? e.message : e);
     await reply(chatId, '지금 답을 만들지 못했습니다. 잠시 뒤 다시 물어봐 주세요. (단추 보고는 계속 됩니다)');
@@ -157,14 +165,21 @@ async function handleCallback(cq: any, allowed: string): Promise<'ignored' | 'ch
   if (!(await claimOnce(`cbmsg:${chatId}:${cq.message.message_id}`))) return 'ignored';
   // 단추를 바로 지워 두 번 누를 수 없게 한다.
   await tg('editMessageReplyMarkup', { chat_id: chatId, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } });
-  const summary: string = cq.message.text ?? '';
   if (cq.data !== 'ssong:ok') {
     await saveTurns(String(chatId), [{ role: 'user', text: '그만. 올리지 마.' }, { role: 'assistant', text: '올리지 않았습니다.' }]);
     await reply(chatId, '올리지 않았습니다.');
     return 'chat';
   }
-  if (!chatEnabled()) { await reply(chatId, '말로 묻기가 꺼져 있어 결재를 올리지 못했습니다.'); return 'chat'; }
-  await chat(String(chatId), '네, 위 요약 그대로 결재 한 건 올려 주세요.', [{ role: 'assistant', text: summary }], true);
+  // ✅ — 모델을 부르지 않고, 그 메시지에 묶어 둔 내용을 서버가 그대로 올린다.
+  const turn = (await loadHistory(String(chatId))).find((t) => t.msgId === cq.message.message_id && t.pending);
+  if (!turn?.pending) { await reply(chatId, '시간이 지나(30분) 올릴 내용을 잊었습니다. 다시 말씀해 주세요.'); return 'chat'; }
+  const r = await runSubmit(turn.pending);
+  const done = r.ok
+    ? `✅ 결재를 올렸습니다${r.text ? `: ${r.text}` : ''}
+JAYTAX 쏭비서 결재함에서 승인하시면 실제로 만들어집니다.`
+    : `결재를 올리지 못했습니다: ${r.text}`;
+  await saveTurns(String(chatId), [{ role: 'user', text: '(✅ 이대로 결재 올리기)' }, { role: 'assistant', text: done }]);
+  await reply(chatId, done);
   return 'chat';
 }
 
@@ -196,6 +211,6 @@ export async function handleUpdate(update: any): Promise<'ignored' | 'report' | 
   let history = await loadHistory(String(chatId));
   const quoted: string | null = msg.reply_to_message?.from?.is_bot ? (msg.reply_to_message.text ?? null) : null;
   if (quoted && !history.some((t) => t.role === 'assistant' && t.text === quoted)) history = [{ role: 'assistant', text: quoted }];
-  await chat(String(chatId), text, history, false);
+  await chat(String(chatId), text, history);
   return 'chat';
 }
