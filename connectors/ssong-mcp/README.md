@@ -45,6 +45,29 @@ claude.ai(쏭비서) ──Authorization: Bearer MCP_SECRET──▶ 이 서버(
 
 환경변수를 바꾼 뒤에는 Vercel 에서 **Redeploy** 해야 반영된다.
 
+## 텔레그램에서 묻기 (단추 + 말로)
+
+대표님 결정 2026-11-21 「버튼형·대화형 둘 다」. 주소는 `https://jaytax-ssong-mcp.vercel.app/telegram`.
+
+- **단추 4개**(어제오늘 생긴 일 · 올해 매출 · 90일 넘은 미수금 · 이번 주 감사)는 AI 없이 바로 보고한다. 비용 없음. `lib/tgReports.ts`
+- **그 밖의 글**은 Claude API(`claude-opus-5-5`, effort low)가 MCP 연결로 **이 서버의 /mcp** 를 붙여 답한다.
+  도구·마스킹·접속기록이 claude.ai 쏭비서와 똑같다. `ANTHROPIC_API_KEY` 가 없으면 꺼지고 단추만 된다. `lib/tgChat.ts`
+- 앞 대화는 기억하지 않는다. 이어 물으려면 쏭비서 메시지에 **답장**으로 보내면 그 메시지 하나를 이어받는다.
+- 웹훅 비밀이 맞는 요청, `TELEGRAM_CHAT_ID` 대화방의 메시지만 받는다. 다른 사람이 말을 걸면 답하지 않는다.
+
+| 환경변수 | 값 |
+|---|---|
+| `TELEGRAM_WEBHOOK_SECRET` | 32자 이상 무작위(`node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`) |
+| `ANTHROPIC_API_KEY` | console.anthropic.com 에서 만든 키(말로 묻기용, 없으면 단추만). 콘솔에서 월 사용 한도를 걸어 둔다 |
+
+웹훅 등록은 한 번만 — 브라우저 주소창에(토큰·비밀은 대표님 값으로, 채팅에 붙여 넣지 않는다):
+
+```
+https://api.telegram.org/bot<봇토큰>/setWebhook?url=https://jaytax-ssong-mcp.vercel.app/telegram&secret_token=<TELEGRAM_WEBHOOK_SECRET>
+```
+
+`{"ok":true,...}` 가 나오면 끝. 봇에게 `/start` 를 보내면 단추가 뜬다. (웹훅을 걸면 getUpdates 는 더 이상 안 된다.)
+
 ## 환경변수
 
 | 이름 | 값 |

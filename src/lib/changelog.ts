@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.90.3',
+    date: '2026-11-21',
+    title: '🤖 쏭비서 텔레그램 — 단추로 바로 보고, 말로 묻기',
+    highlights: [
+      '텔레그램 쏭비서 봇 입력창 아래 단추 4개(어제오늘 생긴 일·올해 매출·90일 넘은 미수금·이번 주 감사)로 바로 보고를 받습니다. AI 를 쓰지 않아 비용이 없습니다.',
+      '그 밖의 글은 쏭비서가 JAYTAX 를 읽고 답합니다(Claude API 키를 넣었을 때). 대표님 대화방의 메시지만 받고, 읽은 기록은 접속기록에 남습니다.',
+    ],
+  },
+  {
     version: '3.90.2',
     date: '2026-11-21',
     title: '🤖 쏭비서 읽기 도구 — 생긴 일·매출·청구/미수·감사 보고, JAYTAX 지도',

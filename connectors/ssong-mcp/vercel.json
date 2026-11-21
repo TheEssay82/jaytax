@@ -2,7 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     { "source": "/mcp", "destination": "/api/mcp" },
+    { "source": "/telegram", "destination": "/api/telegram" },
     { "source": "/", "destination": "/api/index" }
   ],
-  "functions": { "api/mcp.ts": { "maxDuration": 30 } }
+  "functions": {
+    "api/mcp.ts": { "maxDuration": 30 },
+    "api/telegram.ts": { "maxDuration": 120 }
+  }
 }

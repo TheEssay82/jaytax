@@ -11,5 +11,5 @@
     "allowImportingTsExtensions": false,
     "types": ["node"]
   },
-  "include": ["api/**/*.ts", "lib/**/*.ts", "server.ts"]
+  "include": ["api/**/*.ts", "lib/**/*.ts", "server.ts", "test/**/*.ts"]
 }
