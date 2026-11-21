@@ -140,3 +140,31 @@ test('같은 메시지는 한 번만', () => {
   assert.equal(firstTime(9001), false);
   assert.equal(firstTime(9002), true);
 });
+
+test('아침 브리핑 — 기간·모양·크론 비밀', async () => {
+  const { digestRange, fmtBriefing } = await import('../lib/tgBriefing.js');
+  const { cronOk } = await import('../api/briefing.js');
+  assert.deepEqual(digestRange('2026-11-23'), { from: '2026-11-20', to: '2026-11-22' }); // 월요일 → 금~일
+  assert.deepEqual(digestRange('2026-11-24'), { from: '2026-11-23', to: '2026-11-23' });
+  const text = fmtBriefing('2026-11-23',
+    { newContracts: [{ company: '님블뉴런', amount: 6000000 }], docSends: [], invoicesIssued: [], receipts: [], confirmationsCollected: [], auditIssues: [] },
+    { schedule: { days: [{ company: '알티스트', task: '기말감사', staff: ['김준성'] }] },
+      openIssues: [{ company: '알티스트', no: 3, title: '손상검토', decisionNeeded: true, importance: '높음' }],
+      confirmationsOutstanding: [{ notCollected: 2 }, { notCollected: 0 }] },
+    { receivables: { asOfLedger: '2026-10', overdue: [{ balance: 500000 }, { balance: 700000 }] } },
+    [{ title: '명진산업개발㈜ · 계약서 «감사계약서»' }]);
+  assert.match(text, /^🌅 아침 브리핑 · 11\/23\(월\)/);
+  assert.match(text, /결재 대기 1건[^\n]*\n• 명진산업개발/);
+  assert.match(text, /오늘 감사 일정 1건\n• 알티스트 기말감사 \(김준성\)/);
+  assert.match(text, /11\/20~11\/22 생긴 일\n🆕 새 계약 1건 600만: 님블뉴런 600만/);
+  assert.match(text, /판단 필요한 감사이슈 1건\n• 알티스트 #3 손상검토 \(중요\)/);
+  assert.match(text, /조회서 남은 회사 2곳 \(미회수 2건\)\n🧾 90일 넘은 미수금 2건 120만/);
+  const prev = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'c'.repeat(32);
+  assert.equal(cronOk(`Bearer ${'c'.repeat(32)}`), true);
+  assert.equal(cronOk('Bearer nope'), false);
+  assert.equal(cronOk(undefined), false);
+  process.env.CRON_SECRET = 'short';
+  assert.equal(cronOk('Bearer short'), false);
+  process.env.CRON_SECRET = prev;
+});

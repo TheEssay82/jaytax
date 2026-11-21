@@ -12,6 +12,7 @@ import { REPORTS, isReportKey, runReport, type ReportKey } from './tgReports.js'
 import { askSsong, chatEnabled, type Turn } from './tgChat.js';
 import { rpc } from './jaytax.js';
 import { runSubmit } from './tgSubmit.js';
+import { buildBriefing } from './tgBriefing.js';
 
 const LIMIT = 4000; // 텔레그램 한 메시지 4096자
 
@@ -142,6 +143,7 @@ const HELP = [
   '🤖 쏭비서입니다.',
   '아래 단추를 누르면 바로 보고드립니다(무료).',
   '그 밖에는 말로 물어보세요. 예: 「명진 올해 계약 얼마야?」, 「알티스트 조회서 어디까지 왔어?」',
+  '평일 아침에는 브리핑을 보내 드립니다. 아무 때나 받으시려면 「브리핑」이라고 보내세요.',
   '결재를 올리라고 하시면 요약을 먼저 보여 드리고, 「✅ 이대로 결재 올리기」를 누르셔야 한 건 올라갑니다.',
 ].join('\n');
 
@@ -196,6 +198,12 @@ export async function handleUpdate(update: any): Promise<'ignored' | 'report' | 
   if (!text.trim()) { await reply(chatId, '글로 보내 주세요. 음성은 핸드폰 키보드의 🎤 받아쓰기를 쓰시면 됩니다.'); return 'help'; }
   if (/^\/(start|menu|help)\b/i.test(text.trim())) { await saveTurns(String(chatId), [], true); await reply(chatId, HELP); return 'help'; }
 
+  if (/^\/brief(@\w+)?$/i.test(text.trim()) || text.trim() === '브리핑') {
+    await tg('sendChatAction', { chat_id: chatId, action: 'typing' });
+    try { await reply(chatId, await buildBriefing()); }
+    catch (e) { await reply(chatId, `JAYTAX 를 읽지 못했습니다: ${e instanceof Error ? e.message : '오류'}`); }
+    return 'report';
+  }
   const key = reportOf(text);
   if (key) {
     await tg('sendChatAction', { chat_id: chatId, action: 'typing' });
@@ -213,4 +221,17 @@ export async function handleUpdate(update: any): Promise<'ignored' | 'report' | 
   if (quoted && !history.some((t) => t.role === 'assistant' && t.text === quoted)) history = [{ role: 'assistant', text: quoted }];
   await chat(String(chatId), text, history);
   return 'chat';
+}
+
+/** 아침 브리핑 보내기(Vercel Cron). 같은 날 두 번 불려도 한 번만. */
+export async function sendMorningBriefing(now = new Date()): Promise<'sent' | 'duplicate' | 'off'> {
+  const chatId = (process.env.TELEGRAM_CHAT_ID ?? '').trim();
+  if (!chatId) return 'off';
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(now);
+  if (!(await claimOnce(`brief:${day}`))) return 'duplicate';
+  let text: string;
+  try { text = await buildBriefing(now); }
+  catch (e) { text = `🌅 아침 브리핑을 만들지 못했습니다: ${e instanceof Error ? e.message : '오류'}`; }
+  await reply(chatId, text);
+  return 'sent';
 }

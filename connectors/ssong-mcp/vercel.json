@@ -3,10 +3,15 @@
   "rewrites": [
     { "source": "/mcp", "destination": "/api/mcp" },
     { "source": "/telegram", "destination": "/api/telegram" },
+    { "source": "/briefing", "destination": "/api/briefing" },
     { "source": "/", "destination": "/api/index" }
   ],
   "functions": {
     "api/mcp.ts": { "maxDuration": 30 },
-    "api/telegram.ts": { "maxDuration": 120 }
-  }
+    "api/telegram.ts": { "maxDuration": 120 },
+    "api/briefing.ts": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/briefing", "schedule": "0 22 * * 0-4" }
+  ]
 }

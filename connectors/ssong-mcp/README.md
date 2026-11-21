@@ -69,6 +69,15 @@ https://api.telegram.org/bot<봇토큰>/setWebhook?url=https://jaytax-ssong-mcp.
 
 `{"ok":true,...}` 가 나오면 끝. 봇에게 `/start` 를 보내면 단추가 뜬다. (웹훅을 걸면 getUpdates 는 더 이상 안 된다.)
 
+## 아침 브리핑
+
+평일(월~금) 아침 7~8시에 텔레그램으로 보낸다(대표님 2026-11-21). AI 없이 읽기 함수만 → 비용 없음. `lib/tgBriefing.ts`
+
+- 결재 대기 · 오늘 감사 일정 · 지난 근무일 이후 생긴 일(월요일은 금~일) · 판단 필요한 감사이슈 · 조회서 미회수 · 90일 넘은 미수금
+- Vercel Cron(`vercel.json` `crons`, `0 22 * * 0-4` UTC = 한국 평일 07시). Hobby 요금제라 그 시각부터 한 시간 안에 온다.
+- 환경변수 `CRON_SECRET`(16자 이상 무작위) — Vercel 이 `Authorization: Bearer` 로 붙여 부른다. 없으면 브리핑은 안 온다.
+- 같은 날 두 번 불려도 `ssong_tg_seen`(`brief:날짜`)으로 한 번만. 텔레그램에서 「브리핑」 또는 `/brief` 로 아무 때나 받을 수 있다.
+
 ## 환경변수
 
 | 이름 | 값 |
