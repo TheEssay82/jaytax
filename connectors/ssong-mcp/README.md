@@ -71,10 +71,14 @@ https://api.telegram.org/bot<봇토큰>/setWebhook?url=https://jaytax-ssong-mcp.
 
 ## 아침 브리핑
 
-평일(월~금) 아침 7~8시에 텔레그램으로 보낸다(대표님 2026-11-21). AI 없이 읽기 함수만 → 비용 없음. `lib/tgBriefing.ts`
+평일 아침 텔레그램으로 한 통(대표님 2026-11-21). JAYTAX 부분은 AI 없이 읽기 함수만 → 비용 없음. `lib/tgBriefing.ts`
+
+- **네이버웍스 요약과 합치기:** Claude 앱 예약 작업 「웍스 아침 브리핑 (메일·일정·연차·회의)」(평일 08:50)이 마지막에
+  쏭비서 커넥터 `send_morning_briefing(works_summary)` 를 부른다 → 서버가 웍스 요약 아래 JAYTAX 브리핑을 붙여 보낸다.
+- **대비:** 그 작업이 안 돌면(PC·앱 꺼짐) Vercel Cron(`0 0 * * 1-5` UTC = 평일 09시대)이 JAYTAX 부분만 보낸다.
 
 - 결재 대기 · 오늘 감사 일정 · 지난 근무일 이후 생긴 일(월요일은 금~일) · 판단 필요한 감사이슈 · 조회서 미회수 · 90일 넘은 미수금
-- Vercel Cron(`vercel.json` `crons`, `0 22 * * 0-4` UTC = 한국 평일 07시). Hobby 요금제라 그 시각부터 한 시간 안에 온다.
+- Vercel Cron 은 Hobby 요금제라 그 시각부터 한 시간 안에 온다.
 - 환경변수 `CRON_SECRET`(16자 이상 무작위) — Vercel 이 `Authorization: Bearer` 로 붙여 부른다. 없으면 브리핑은 안 온다.
 - 같은 날 두 번 불려도 `ssong_tg_seen`(`brief:날짜`)으로 한 번만. 텔레그램에서 「브리핑」 또는 `/brief` 로 아무 때나 받을 수 있다.
 

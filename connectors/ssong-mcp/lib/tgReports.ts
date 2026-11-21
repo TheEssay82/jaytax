@@ -112,3 +112,19 @@ export async function runReport(key: ReportKey): Promise<string> {
     case 'audit': return fmtAudit(await rpc('ssong_audit_watch', { p_from: t.ymd, p_days: 7 }));
   }
 }
+
+/** 줄 단위로 4000자 안쪽 조각으로 나눈다. */
+export function splitMessage(text: string, limit = 4000): string[] {
+  const parts: string[] = [];
+  let cur = '';
+  for (const line of text.split('\n')) {
+    const add = cur ? `${cur}\n${line}` : line;
+    if (add.length <= limit) { cur = add; continue; }
+    if (cur) parts.push(cur);
+    let rest = line;
+    while (rest.length > limit) { parts.push(rest.slice(0, limit)); rest = rest.slice(limit); }
+    cur = rest;
+  }
+  if (cur) parts.push(cur);
+  return parts.length ? parts : [''];
+}

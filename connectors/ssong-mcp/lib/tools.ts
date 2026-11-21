@@ -4,6 +4,7 @@ import { CATEGORIES } from './categories.js';
 import { JaytaxError, rpc } from './jaytax.js';
 import { notifyTelegram } from './telegram.js';
 import { JAYTAX_MAP } from './jaytaxMap.js';
+import { sendMorningBriefing } from './tgBriefing.js';
 
 // 문서발송 선택지 — 앱 src/lib/docSendApi.ts 와 같아야 한다(승인 때 앱이 다시 확인한다).
 export const WORK_TYPES = ['우체국', '퀵서비스', '회계사책상'] as const;
@@ -42,7 +43,7 @@ export function buildServer(): McpServer {
   const server = new McpServer({ name: 'jaytax-ssong', version: '0.2.0' }, {
     instructions:
       'JAYTAX(대표님 회계법인 업무 시스템) 연결. JAYTAX 에 무엇이 있는지 모르면 about_jaytax 를 먼저 읽는다. ' +
-      '보고·집계는 daily_digest · revenue_summary · billing_watch · audit_watch, 등록·발송은 submit_* 로 결재만 올린다(대표님 승인 뒤 실행). ' +
+      '아침 브리핑은 send_morning_briefing, 보고·집계는 daily_digest · revenue_summary · billing_watch · audit_watch, 등록·발송은 submit_* 로 결재만 올린다(대표님 승인 뒤 실행). ' +
       '금액은 원 단위, 정산연도는 7월~다음 해 6월이며 시작 연도로 부른다.',
   });
 
@@ -58,6 +59,19 @@ export function buildServer(): McpServer {
       rules: m.rules, tools: m.ssongTools, menus: m.menus, recent: m.recentChanges, planned: m.planned,
     };
     return ok(!part || part === 'all' ? m : { version: m.version, asOf: m.asOf, [part]: pick[part] });
+  });
+
+  // ── 아침 브리핑(텔레그램) ─────────────────────────────
+  server.registerTool('send_morning_briefing', {
+    title: '아침 브리핑 텔레그램으로 보내기',
+    description: '대표님 텔레그램으로 아침 브리핑을 보냅니다. works_summary 에 네이버웍스 요약(메일·일정·연차·회의)을 넣으면, 서버가 JAYTAX 브리핑(결재 대기·오늘 감사 일정·생긴 일·판단 필요 이슈·미수금)을 붙여 한 통으로 보냅니다. 받는 사람은 대표님 한 분으로 고정이고, 같은 날 두 번째부터는 보내지 않습니다. 평일 아침 「웍스 아침 브리핑」 예약 작업이 마지막에 한 번 부릅니다.',
+    inputSchema: { works_summary: z.string().max(3500).optional().describe('네이버웍스 요약 본문(텔레그램용 일반 글, 마크다운 표·별표 없이 줄바꿈과 • 로)') },
+  }, async ({ works_summary }) => {
+    try {
+      const r = await sendMorningBriefing(new Date(), works_summary ?? null);
+      const msg = { sent: '텔레그램으로 보냈습니다.', duplicate: '오늘 브리핑은 이미 보냈습니다(하루 한 번).', off: '텔레그램 설정이 없어 보내지 못했습니다.', failed: '텔레그램 전송에 실패했습니다.' }[r];
+      return r === 'sent' || r === 'duplicate' ? ok({ result: r, message: msg }) : fail(new Error(msg));
+    } catch (e) { return fail(e); }
   });
 
   // ── 보고·집계 ─────────────────────────────────────────

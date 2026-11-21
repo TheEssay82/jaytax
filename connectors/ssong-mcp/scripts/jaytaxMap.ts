@@ -30,6 +30,7 @@ const SSONG_TOOLS = [
   { tool: 'revenue_summary', covers: '매출 — 정산연도·팀별 계약금액 · 발행 공급가액 · 확정 실적, 거래처별' },
   { tool: 'billing_watch', covers: '청구·수금 — 그 달 발행요청 상태 · 미수금(ERP 대장 기준)·오래된 미수, 거래처별' },
   { tool: 'audit_watch', covers: '감사업무 — 기말감사일정 · 조회서 미발송/미회수 · 미결 감사이슈' },
+  { tool: 'send_morning_briefing', covers: '아침 브리핑을 대표님 텔레그램으로 — 네이버웍스 요약 + JAYTAX 브리핑, 하루 한 번' },
   { tool: 'list_my_requests', covers: '쏭비서 결재함 — 내가 올린 결재의 결과' },
 ];
 

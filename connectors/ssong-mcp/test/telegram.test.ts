@@ -168,3 +168,10 @@ test('아침 브리핑 — 기간·모양·크론 비밀', async () => {
   assert.equal(cronOk('Bearer short'), false);
   process.env.CRON_SECRET = prev;
 });
+
+test('아침 브리핑 — 웍스 요약을 위에 합친다', async () => {
+  const { mergeBriefing } = await import('../lib/tgBriefing.js');
+  assert.equal(mergeBriefing('🌅 JAYTAX', null), '🌅 JAYTAX');
+  assert.equal(mergeBriefing('🌅 JAYTAX', '  '), '🌅 JAYTAX');
+  assert.match(mergeBriefing('🌅 JAYTAX', '• 메일 3통'), /^📬 네이버웍스 \(메일·일정·연차·회의\)\n• 메일 3통\n\n────────\n🌅 JAYTAX$/);
+});

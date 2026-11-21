@@ -14,7 +14,6 @@ import { rpc } from './jaytax.js';
 import { runSubmit } from './tgSubmit.js';
 import { buildBriefing } from './tgBriefing.js';
 
-const LIMIT = 4000; // 텔레그램 한 메시지 4096자
 
 export const KEYBOARD = {
   keyboard: [
@@ -33,21 +32,8 @@ export function webhookSecretOk(given: string | string[] | undefined): boolean {
   return timingSafeEqual(h(g), h(expected));
 }
 
-/** 줄 단위로 4000자 안쪽 조각으로 나눈다. */
-export function splitMessage(text: string, limit = LIMIT): string[] {
-  const parts: string[] = [];
-  let cur = '';
-  for (const line of text.split('\n')) {
-    const add = cur ? `${cur}\n${line}` : line;
-    if (add.length <= limit) { cur = add; continue; }
-    if (cur) parts.push(cur);
-    let rest = line;
-    while (rest.length > limit) { parts.push(rest.slice(0, limit)); rest = rest.slice(limit); }
-    cur = rest;
-  }
-  if (cur) parts.push(cur);
-  return parts.length ? parts : [''];
-}
+export { splitMessage } from './tgReports.js';
+import { splitMessage } from './tgReports.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 async function tg(method: string, body: Record<string, unknown>): Promise<any> {
@@ -223,15 +209,4 @@ export async function handleUpdate(update: any): Promise<'ignored' | 'report' | 
   return 'chat';
 }
 
-/** 아침 브리핑 보내기(Vercel Cron). 같은 날 두 번 불려도 한 번만. */
-export async function sendMorningBriefing(now = new Date()): Promise<'sent' | 'duplicate' | 'off'> {
-  const chatId = (process.env.TELEGRAM_CHAT_ID ?? '').trim();
-  if (!chatId) return 'off';
-  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(now);
-  if (!(await claimOnce(`brief:${day}`))) return 'duplicate';
-  let text: string;
-  try { text = await buildBriefing(now); }
-  catch (e) { text = `🌅 아침 브리핑을 만들지 못했습니다: ${e instanceof Error ? e.message : '오류'}`; }
-  await reply(chatId, text);
-  return 'sent';
-}
+export { sendMorningBriefing } from './tgBriefing.js';

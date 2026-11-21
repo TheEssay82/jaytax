@@ -48,6 +48,10 @@ export const JAYTAX_MAP = {
       "covers": "감사업무 — 기말감사일정 · 조회서 미발송/미회수 · 미결 감사이슈"
     },
     {
+      "tool": "send_morning_briefing",
+      "covers": "아침 브리핑을 대표님 텔레그램으로 — 네이버웍스 요약 + JAYTAX 브리핑, 하루 한 번"
+    },
+    {
       "tool": "list_my_requests",
       "covers": "쏭비서 결재함 — 내가 올린 결재의 결과"
     }
