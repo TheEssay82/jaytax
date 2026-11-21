@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.90.2',
+    date: '2026-11-21',
+    title: '🤖 쏭비서 읽기 도구 — 생긴 일·매출·청구/미수·감사 보고, JAYTAX 지도',
+    highlights: [
+      '쏭비서가 JAYTAX 에 생긴 일(새 계약·발송·발행·수금·조회서 회수·감사이슈), 정산연도·팀·거래처별 매출, 청구·미수금, 감사 일정·조회서 미회수·미결 이슈를 읽어 보고합니다. 읽기만 합니다.',
+      '쏭비서가 JAYTAX 의 메뉴·최근 변경·계획을 「JAYTAX 지도」로 압니다. 지도는 앱 소스에서 자동으로 만들어지고, 앱이 바뀌었는데 지도를 안 고치면 테스트가 막습니다.',
+    ],
+  },
+  {
     version: '3.90.1',
     date: '2026-11-21',
     title: '🤖 쏭비서 결재 — 홈 카드와 알림',

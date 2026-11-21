@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { CATEGORIES } from './categories.js';
 import { JaytaxError, rpc } from './jaytax.js';
 import { notifyTelegram } from './telegram.js';
+import { JAYTAX_MAP } from './jaytaxMap.js';
 
 // 문서발송 선택지 — 앱 src/lib/docSendApi.ts 와 같아야 한다(승인 때 앱이 다시 확인한다).
 export const WORK_TYPES = ['우체국', '퀵서비스', '회계사책상'] as const;
@@ -38,7 +39,69 @@ export function checkContract(i: { team: string; category_code: string; category
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
 
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: 'jaytax-ssong', version: '0.1.0' });
+  const server = new McpServer({ name: 'jaytax-ssong', version: '0.2.0' }, {
+    instructions:
+      'JAYTAX(대표님 회계법인 업무 시스템) 연결. JAYTAX 에 무엇이 있는지 모르면 about_jaytax 를 먼저 읽는다. ' +
+      '보고·집계는 daily_digest · revenue_summary · billing_watch · audit_watch, 등록·발송은 submit_* 로 결재만 올린다(대표님 승인 뒤 실행). ' +
+      '금액은 원 단위, 정산연도는 7월~다음 해 6월이며 시작 연도로 부른다.',
+  });
+
+  // ── JAYTAX 지도 ───────────────────────────────────────
+  server.registerTool('about_jaytax', {
+    title: 'JAYTAX 지도',
+    description: `JAYTAX 에 어떤 메뉴·기능이 있고, 최근 무엇이 바뀌었고, 무엇이 아직 계획 단계인지, 쏭비서 도구가 어디를 보는지 알려줍니다(앱 v${JAYTAX_MAP.version} 기준, 앱 소스에서 자동 생성). JAYTAX 에 대해 답하기 전에 읽으세요.`,
+    inputSchema: { part: z.enum(['all', 'rules', 'tools', 'menus', 'recent', 'planned']).optional().describe('일부만(기본 all)') },
+    annotations: { readOnlyHint: true },
+  }, async ({ part }) => {
+    const m = JAYTAX_MAP;
+    const pick: Record<string, unknown> = {
+      rules: m.rules, tools: m.ssongTools, menus: m.menus, recent: m.recentChanges, planned: m.planned,
+    };
+    return ok(!part || part === 'all' ? m : { version: m.version, asOf: m.asOf, [part]: pick[part] });
+  });
+
+  // ── 보고·집계 ─────────────────────────────────────────
+  server.registerTool('daily_digest', {
+    title: 'JAYTAX 에 생긴 일',
+    description: '기간 동안 JAYTAX 에 생긴 일: 새 매출계약 · 문서발송(새 요청·상태 변화·등기번호) · 세금계산서 발행 · 수금 · 조회서 회수 · 감사이슈 · 쏭비서 결재 결과. 기본은 어제~오늘(한국 시각). 아침 브리핑에 씁니다.',
+    inputSchema: { from: ymd.optional().describe('시작일(기본 어제)'), to: ymd.optional().describe('끝일(기본 오늘), 두 달 이내') },
+    annotations: { readOnlyHint: true },
+  }, async ({ from, to }) => {
+    try { return ok(await rpc('ssong_daily_digest', { p_from: from ?? null, p_to: to ?? null })); } catch (e) { return fail(e); }
+  });
+
+  server.registerTool('revenue_summary', {
+    title: '매출 현황',
+    description: '정산연도(7월~다음 해 6월, 시작 연도로 부름) 매출을 팀별·거래처별로: 매출계약 금액(contracts) · 발행된 세금계산서 공급가액(issued) · 결산 확정 실적(actual). notes 의 해석 주의를 함께 전하세요. 기본은 올해 정산연도, 전체 팀.',
+    inputSchema: {
+      fiscal_year: z.number().int().min(2020).max(2100).optional().describe('정산연도(예: 2026 = 2026-07~2027-06)'),
+      team: z.enum(['감사team', 'taxteam']).optional().describe('감사팀=감사team, 기장팀=taxteam'),
+    },
+    annotations: { readOnlyHint: true },
+  }, async ({ fiscal_year, team }) => {
+    try { return ok(await rpc('ssong_revenue_summary', { p_year: fiscal_year ?? null, p_team: team ?? null })); } catch (e) { return fail(e); }
+  });
+
+  server.registerTool('billing_watch', {
+    title: '청구·미수금 점검',
+    description: '그 달(YYYY-MM) 세금계산서 발행요청 상태·팀별 합계·미발행 대기, 월 마감 여부와 미수금(가장 최근 ERP 미수금대장 기준) 팀별 합계·거래처별 잔액·오래된 미수(기본 90일 이상). 기본은 이번 달.',
+    inputSchema: {
+      ym: z.string().regex(/^\d{4}-\d{2}$/).optional().describe('YYYY-MM'),
+      overdue_days: z.number().int().min(0).max(3650).optional().describe('이 날수 이상 지난 미수만 overdue 에(기본 90)'),
+    },
+    annotations: { readOnlyHint: true },
+  }, async ({ ym, overdue_days }) => {
+    try { return ok(await rpc('ssong_billing_watch', { p_ym: ym ?? null, p_min_days: overdue_days ?? 90 })); } catch (e) { return fail(e); }
+  });
+
+  server.registerTool('audit_watch', {
+    title: '감사업무 점검',
+    description: '기말감사일정(기간 안의 날짜별 회사·업무·투입인원), 조회서 미발송·미회수(회사별·기관), 아직 닫히지 않은 감사이슈. 기본은 오늘부터 7일.',
+    inputSchema: { from: ymd.optional().describe('일정 시작일(기본 오늘)'), days: z.number().int().min(1).max(60).optional().describe('일정 날수(기본 7)') },
+    annotations: { readOnlyHint: true },
+  }, async ({ from, days }) => {
+    try { return ok(await rpc('ssong_audit_watch', { p_from: from ?? null, p_days: days ?? 7 })); } catch (e) { return fail(e); }
+  });
 
   // ── 조회 ──────────────────────────────────────────────
   server.registerTool('search_clients', {

@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
     "start": "tsx server.ts",
-    "gen:categories": "npx tsx scripts/gen-categories.ts"
+    "gen:categories": "npx tsx scripts/gen-categories.ts",
+    "gen:map": "npx tsx scripts/gen-jaytax-map.ts && npx tsx scripts/gen-categories.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
