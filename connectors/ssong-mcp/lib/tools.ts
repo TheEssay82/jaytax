@@ -67,7 +67,7 @@ export function buildServer(): McpServer {
   // ── 아침 브리핑(텔레그램) ─────────────────────────────
   server.registerTool('send_morning_briefing', {
     title: '아침 브리핑 텔레그램으로 보내기',
-    description: '대표님 텔레그램으로 아침 브리핑을 보냅니다. works_summary 에 네이버웍스 요약(메일·일정·연차·회의)을 넣으면, 서버가 JAYTAX 브리핑(결재 대기·오늘 감사 일정·생긴 일·판단 필요 이슈·미수금)을 붙여 한 통으로 보냅니다. 받는 사람은 대표님 한 분으로 고정이고, 같은 날 두 번째부터는 보내지 않습니다. 평일 아침 「웍스 아침 브리핑」 예약 작업이 마지막에 한 번 부릅니다.',
+    description: '대표님 텔레그램으로 아침 브리핑을 보냅니다. works_summary 에 네이버웍스 요약(메일·일정·연차·회의)을 넣으면, 서버가 JAYTAX 브리핑(결재 대기·오늘 감사 일정·생긴 일·1주 안 감사 회사의 판단 필요 이슈·미수금)을 붙여 한 통으로 보냅니다. 받는 사람은 대표님 한 분으로 고정이고, 같은 날 두 번째부터는 보내지 않습니다. 평일 아침 쏭비서 예약 작업(ssong-morning-briefing)이 마지막에 한 번 부릅니다.',
     inputSchema: { works_summary: z.string().max(3500).optional().describe('네이버웍스 요약 본문(텔레그램용 일반 글, 마크다운 표·별표 없이 줄바꿈과 • 로)') },
   }, async ({ works_summary }) => {
     try {

@@ -148,8 +148,12 @@ test('아침 브리핑 — 기간·모양·크론 비밀', async () => {
   assert.deepEqual(digestRange('2026-11-24'), { from: '2026-11-23', to: '2026-11-23' });
   const text = fmtBriefing('2026-11-23',
     { newContracts: [{ company: '님블뉴런', amount: 6000000 }], docSends: [], invoicesIssued: [], receipts: [], confirmationsCollected: [], auditIssues: [] },
-    { schedule: { days: [{ company: '알티스트', task: '기말감사', staff: ['김준성'] }] },
-      openIssues: [{ company: '알티스트', no: 3, title: '손상검토', decisionNeeded: true, importance: '높음' }],
+    { schedule: { days: [{ day: '2026-11-23', company: '알티스트', entityId: 'e1', task: '기말감사', staff: ['김준성'] },
+                         { day: '2026-11-27', company: '명진', entityId: 'e2', task: '중간감사' }] },
+      openIssues: [{ company: '알티스트', entityId: 'e1', no: 3, title: '손상검토', decisionNeeded: true, importance: '높음' },
+        { company: '명진', entityId: 'e2', no: 1, title: '재고', decisionNeeded: true },
+        { company: '명진', entityId: 'e2', no: 2, title: '판단 안 함', decisionNeeded: false },
+        { company: '더그림', entityId: 'e9', no: 4, title: '일정 없음', decisionNeeded: true }],
       confirmationsOutstanding: [{ notCollected: 2 }, { notCollected: 0 }] },
     { receivables: { asOfLedger: '2026-10', overdue: [{ balance: 500000 }, { balance: 700000 }] } },
     [{ title: '명진산업개발㈜ · 계약서 «감사계약서»' }]);
@@ -157,7 +161,12 @@ test('아침 브리핑 — 기간·모양·크론 비밀', async () => {
   assert.match(text, /결재 대기 1건[^\n]*\n• 명진산업개발/);
   assert.match(text, /오늘 감사 일정 1건\n• 알티스트 기말감사 \(김준성\)/);
   assert.match(text, /11\/20~11\/22 생긴 일\n🆕 새 계약 1건 600만: 님블뉴런 600만/);
-  assert.match(text, /판단 필요한 감사이슈 1건\n• 알티스트 #3 손상검토 \(중요\)/);
+  assert.match(text, /1주 안 감사 회사의 판단 필요 이슈 2건\n• 알티스트 #3 손상검토 \(중요\)\n• 명진 #1 재고/);
+  assert.match(text, /오늘 감사 일정 1건\n/);
+  assert.doesNotMatch(text, /더그림|판단 안 함|명진 중간감사/);
+  const none = fmtBriefing('2026-11-23', {}, { schedule: { days: [] },
+    openIssues: [{ company: '더그림', entityId: 'e9', no: 4, title: '일정 없음', decisionNeeded: true }] }, {}, []);
+  assert.doesNotMatch(none, /🧭/);
   assert.match(text, /조회서 남은 회사 2곳 \(미회수 2건\)\n🧾 90일 넘은 미수금 2건 120만/);
   const prev = process.env.CRON_SECRET;
   process.env.CRON_SECRET = 'c'.repeat(32);

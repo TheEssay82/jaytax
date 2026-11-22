@@ -1,9 +1,11 @@
 // 아침 브리핑 — 평일 아침 대표님 텔레그램으로(대표님 2026-11-21). AI 없이 읽기 함수만 → 비용 없음.
 //
-//   · 지난 근무일 이후 생긴 일(월요일은 금~일) · 오늘 감사 일정 · 결재 대기 · 판단 필요한 감사이슈 · 오래된 미수금
+//   · 지난 근무일 이후 생긴 일(월요일은 금~일) · 오늘 감사 일정 · 결재 대기 · 오래된 미수금
+//   · 판단 필요 감사이슈는 오늘부터 7일 안에 감사(중간·기말) 일정이 있는 회사 것만(대표님 2026-11-22).
+//     일정은 📅 기말감사일정(audit_schedule_*) 하나만 본다. 회사는 거래처 id(entityId)로 맞춘다. 해당 없으면 칸을 뺀다.
 //   · Vercel Cron(vercel.json) 이 /briefing 을 부른다. CRON_SECRET 이 맞아야 하고, 같은 날 두 번 오면 한 번만 보낸다.
 //   · 텔레그램에서 /brief 로 아무 때나 받아 볼 수도 있다.
-//   · 네이버웍스 요약(메일·일정·연차·회의)은 Claude 앱 예약 작업 「웍스 아침 브리핑」(평일 08:50)이 만들어
+//   · 네이버웍스 요약(메일·일정·연차·회의)은 Code 예약 작업 `ssong-morning-briefing`(평일 08:40 전후, 쏭비서 작업실)이 만들어
 //     쏭비서 커넥터 send_morning_briefing 으로 넘긴다 → 여기서 JAYTAX 브리핑과 합쳐 한 통으로 보낸다.
 //     그 작업이 안 돌면(PC·앱 꺼짐 등) Vercel Cron(평일 09시대)이 JAYTAX 부분만 보낸다. 같은 날 한 번만.
 import { rpc } from './jaytax.js';
@@ -28,6 +30,9 @@ export function digestRange(today: string): { from: string; to: string } {
   return { from: addDays(today, -back), to: addDays(today, -1) };
 }
 
+/** 판단 필요 이슈를 볼 감사 일정 범위 — 오늘 포함 7일. */
+export const ISSUE_WINDOW_DAYS = 7;
+
 const short = (ymd: string) => `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}`;
 
 export function fmtBriefing(today: string, d: J, audit: J, bill: J, pending: J[]): string {
@@ -39,8 +44,9 @@ export function fmtBriefing(today: string, d: J, audit: J, bill: J, pending: J[]
     out.push('', `🤖 결재 대기 ${pending.length}건 (JAYTAX 쏭비서 결재함)`, ...pending.slice(0, 5).map((p) => `• ${p.title}`));
   }
 
-  // 2. 오늘 감사 일정
-  const days = list(audit?.schedule?.days);
+  // 2. 오늘 감사 일정 (audit 는 7일 치를 받으므로 오늘 것만)
+  const week = list(audit?.schedule?.days);
+  const days = week.filter((x) => x.day === today);
   out.push('', days.length ? `📅 오늘 감사 일정 ${days.length}건` : '📅 오늘 감사 일정 없음');
   out.push(...days.slice(0, 8).map((x) => `• ${x.company} ${x.task ?? x.kind ?? ''}${x.staff ? ` (${Array.isArray(x.staff) ? x.staff.join(', ') : x.staff})` : ''}`));
 
@@ -62,9 +68,10 @@ export function fmtBriefing(today: string, d: J, audit: J, bill: J, pending: J[]
     out.push(`${label} ${xs.length}건${sum}: ${xs.slice(0, 3).map(line).join(' / ')}${xs.length > 3 ? ` 외 ${xs.length - 3}` : ''}`);
   }
 
-  // 4. 판단 필요한 감사이슈
-  const hot = list(audit?.openIssues).filter((x) => x.decisionNeeded);
-  if (hot.length) out.push('', `🧭 대표님 판단 필요한 감사이슈 ${hot.length}건`, ...hot.slice(0, 5).map((x) => `• ${x.company} #${x.no} ${x.title}${x.importance === '높음' ? ' (중요)' : ''}`));
+  // 4. 1주 안에 감사 일정이 있는(시작하거나 진행 중인) 회사의 판단 필요 이슈
+  const soon = new Set(week.map((x) => x.entityId).filter(Boolean));
+  const hot = list(audit?.openIssues).filter((x) => x.decisionNeeded && x.entityId && soon.has(x.entityId));
+  if (hot.length) out.push('', `🧭 1주 안 감사 회사의 판단 필요 이슈 ${hot.length}건`, ...hot.slice(0, 5).map((x) => `• ${x.company} #${x.no} ${x.title}${x.importance === '높음' ? ' (중요)' : ''}`));
 
   // 5. 조회서 미회수 · 오래된 미수금(한 줄씩)
   const co = list(audit?.confirmationsOutstanding);
@@ -84,7 +91,7 @@ export async function buildBriefing(now = new Date()): Promise<string> {
   const r = digestRange(t.ymd);
   const [d, audit, bill, pending] = await Promise.all([
     rpc('ssong_daily_digest', { p_from: r.from, p_to: r.to }),
-    rpc('ssong_audit_watch', { p_from: t.ymd, p_days: 1 }),
+    rpc('ssong_audit_watch', { p_from: t.ymd, p_days: ISSUE_WINDOW_DAYS }),
     rpc('ssong_billing_watch', { p_ym: t.ym, p_min_days: 90 }),
     rpc<J[]>('ssong_my_requests', { p_status: '대기', p_limit: 30 }),
   ]);
@@ -122,7 +129,7 @@ ${jaytax}`;
 
 /**
  * 아침 브리핑 보내기. 같은 날 두 번 불려도 한 번만(DB ssong_tg_seen 「brief:날짜」).
- * works 가 있으면(Claude 예약 작업) 합쳐서, 없으면(Cron 대비) JAYTAX 부분만.
+ * works 가 있으면(Code 예약 작업 ssong-morning-briefing) 합쳐서, 없으면(Cron 대비) JAYTAX 부분만.
  */
 export async function sendMorningBriefing(now = new Date(), works?: string | null): Promise<'sent' | 'duplicate' | 'off' | 'failed'> {
   if (!(process.env.TELEGRAM_CHAT_ID ?? '').trim()) return 'off';
