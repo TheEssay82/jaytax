@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { checkSecret } from './auth.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { buildServer } from './tools.js';
 
 /** 비밀은 요청 헤더로만 받는다(주소에 넣지 않는다). Bearer 뒤 공백은 빠져도 받는다. */
@@ -23,7 +24,7 @@ const send = (res: ServerResponse, code: number, body: string, type = 'text/plai
  * Vercel 함수와 맥미니 Node 서버(server.ts)가 같이 쓰는 MCP 처리.
  * 상태 없는 Streamable HTTP — 요청마다 새 서버·전송.
  */
-export async function handleMcp(req: IncomingMessage, res: ServerResponse, body: unknown) {
+export async function handleMcp(req: IncomingMessage, res: ServerResponse, body: unknown, build: () => McpServer = buildServer) {
   const given = secretFromHeaders(req.headers);
   if (!checkSecret(given)) {
     // 비밀 자체는 절대 적지 않는다.
@@ -36,7 +37,7 @@ export async function handleMcp(req: IncomingMessage, res: ServerResponse, body:
     send(res, 405, JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed.' }, id: null }), 'application/json');
     return;
   }
-  const server = buildServer();
+  const server = build();
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on('close', () => { void transport.close(); void server.close(); });
   try {

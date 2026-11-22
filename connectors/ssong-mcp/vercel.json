@@ -6,6 +6,10 @@
       "destination": "/api/mcp"
     },
     {
+      "source": "/personal",
+      "destination": "/api/personal"
+    },
+    {
       "source": "/telegram",
       "destination": "/api/telegram"
     },
@@ -24,6 +28,9 @@
   ],
   "functions": {
     "api/mcp.ts": {
+      "maxDuration": 30
+    },
+    "api/personal.ts": {
       "maxDuration": 30
     },
     "api/telegram.ts": {

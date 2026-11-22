@@ -4,12 +4,13 @@
 import { createServer } from 'node:http';
 import { handleMcp } from './lib/handler.js';
 import { handleUpdate, webhookSecretOk } from './lib/tgBot.js';
+import { buildPersonalServer } from './lib/personalTools.js';
 
 const port = Number(process.env.PORT ?? 8787);
 createServer((req, res) => {
   const path = (req.url ?? '/').split('?')[0];
   if (path === '/' ) { res.end('ok'); return; }
-  if (path !== '/mcp' && path !== '/telegram') { res.statusCode = 404; res.end('Not found'); return; }
+  if (path !== '/mcp' && path !== '/personal' && path !== '/telegram') { res.statusCode = 404; res.end('Not found'); return; }
   const chunks: Buffer[] = [];
   req.on('data', (c: Buffer) => { chunks.push(c); if (chunks.reduce((n, b) => n + b.length, 0) > 1_000_000) req.destroy(); });
   req.on('end', () => {
@@ -22,6 +23,6 @@ createServer((req, res) => {
       void handleUpdate(body).catch((e) => console.error('telegram update failed', e instanceof Error ? e.message : e));
       return;
     }
-    void handleMcp(req, res, body);
+    void handleMcp(req, res, body, path === '/personal' ? buildPersonalServer : undefined);
   });
 }).listen(port, () => console.log(`ssong-mcp listening on :${port}`));

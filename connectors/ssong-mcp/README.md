@@ -61,6 +61,24 @@ claude.ai(쏭비서) ──Authorization: Bearer MCP_SECRET──▶ 이 서버(
 | `TELEGRAM_WEBHOOK_SECRET` | 32자 이상 무작위(`node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`) |
 | `ANTHROPIC_API_KEY` | console.anthropic.com 에서 만든 키(말로 묻기용, 없으면 단추만). 콘솔에서 월 사용 한도를 걸어 둔다 |
 
+### 쏭비서로 넓히기 (2026-11-22)
+
+말로 묻기는 JAYTAX 만이 아니라 쏭비서 일(「오늘 할 일 보여줘」)도 한다.
+
+- **규칙**: 정본은 GitHub 비공개 `TheEssay82/ssong` 의 `CLAUDE.md`. 런타임에 읽어 10분 캐시하고(`lib/ssongRules.ts`), 「이 PC에서 주의할 것」·「연결된 것」 절은 뺀다. 그 뒤에 텔레그램 전용 규칙(`lib/tgChat.ts` BOT)이 붙고 다르면 이쪽이 우선이다. 못 읽으면 마지막으로 읽은 것 → 짧은 기본 규칙.
+- **붙는 MCP 서버 3곳**: `jaytax`(/mcp), `personal`(/personal — 업무 장부·캘린더, `lib/personalTools.ts`, claude.ai 커넥터에는 안 보임), `toodledo`(jay-toodledo-mcp, `delete_tasks` 끔). 열쇠가 없는 곳은 빠지고 봇은 그대로 돈다.
+- **업무 장부**(`lib/notionLedger.ts`): `ledger_list` · `ledger_update`. 최근 경과는 **코드가** 맨 앞에 `날짜 사용자 확인: 한 줄 / ` 을 붙이고 원래 조각(서식)은 그대로 둔다. 지우기·새 줄은 없다.
+- **캘린더**(`lib/gcal.ts`): 비공개 iCal 주소를 읽어 반복·예외를 펼친다. 제목·시간·장소만 내보낸다(참석자·설명 없음).
+- **빠진 것**: 네이버웍스(서비스 계정은 메일 못 읽음, 개인 OAuth 는 인덕 웍스 앱 등록이 필요 — 아침 브리핑이 대신), 할 일 영구 삭제, 일정 쓰기.
+- 비용: 메시지마다 사용량을 `ssong chat usage` 로그에 남긴다(Vercel 로그). 도구 설명·규칙은 캐시.
+
+| 환경변수 | 값 |
+|---|---|
+| `SSONG_GITHUB_TOKEN` | GitHub fine-grained 토큰 — 저장소 `TheEssay82/ssong` 하나, Contents: Read-only |
+| `TOODLEDO_MCP_SECRET` | jay-toodledo-mcp 프로젝트의 `MCP_SECRET` 과 같은 값 |
+| `NOTION_TOKEN` | Notion 내부 통합 토큰(기능: 콘텐츠 읽기·업데이트만), 「쏭비서」 페이지 ··· › 연결에 그 통합을 추가 |
+| `GCAL_ICS_INDUK` · `GCAL_ICS_PRIMARY` | Google 캘린더 설정 › 각 캘린더 › 캘린더 통합 › 「iCal 형식의 비공개 주소」 |
+
 웹훅 등록은 한 번만 — 브라우저 주소창에(토큰·비밀은 대표님 값으로, 채팅에 붙여 넣지 않는다):
 
 ```
