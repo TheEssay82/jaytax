@@ -4,7 +4,7 @@ import { FALLBACK_RULES, _resetRulesCache, pickSections, ssongRules } from '../l
 import { buildProperties, chunks, progressPrefix, rowOf } from '../lib/notionLedger.js';
 import { eventsFromIcs } from '../lib/gcal.js';
 import { buildPersonalServer } from '../lib/personalTools.js';
-import { TOODLEDO_TOOLSET, mcpSetup, todayLine } from '../lib/tgChat.js';
+import { TOODLEDO_TOOLSET, failedServer, mcpSetup, todayLine, withoutServer } from '../lib/tgChat.js';
 
 test('규칙 — PC 전용 절은 빼고 권한·오늘 질문은 남긴다, 열쇠 없으면 기본 규칙', async () => {
   const md = '# 쏭비서\n\n## 권한\nA\n\n## 오늘·이번 주 질문\nB\n\n## 연결된 것\nC\n\n## 이 PC에서 주의할 것\nD\n';
@@ -82,4 +82,16 @@ test('연결 — Toodledo 는 열쇠 있을 때만, 영구 삭제는 끔 / 개�
   const tools = Object.keys((buildPersonalServer() as unknown as { _registeredTools: Record<string, unknown> })._registeredTools).sort();
   assert.deepEqual(tools, ['calendar_events', 'ledger_list', 'ledger_update']);
   assert.match(todayLine(new Date('2026-11-22T03:00:00Z')), /^오늘은 2026-11-22\(일\) 한국 시각 12:00/);
+});
+
+test('연결 실패 — 거절한 곳만 빼고 다시, JAYTAX 는 안 뺀다', () => {
+  const names = ['jaytax', 'personal', 'toodledo'];
+  assert.equal(failedServer(new Error('400 Connection error while communicating with MCP server toodledo'), names), 'toodledo');
+  assert.equal(failedServer(new Error('400 MCP server personal returned 404'), names), 'personal');
+  assert.equal(failedServer(new Error('400 MCP server jaytax returned 404'), names), null);
+  assert.equal(failedServer(new Error('529 overloaded'), names), null);
+  const on = mcpSetup({ MCP_SECRET: 's', TOODLEDO_MCP_SECRET: 't' });
+  const w = withoutServer(on.servers, on.toolsets, 'toodledo');
+  assert.deepEqual(w.servers.map((s) => s.name), ['jaytax', 'personal']);
+  assert.equal(w.toolsets.length, 2);
 });

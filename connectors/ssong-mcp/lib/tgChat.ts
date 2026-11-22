@@ -109,16 +109,34 @@ export function toMessages(history: Turn[], text: string): Anthropic.Beta.BetaMe
   return out;
 }
 
+const LABELS: Record<string, string> = { toodledo: 'Toodledo', personal: '업무 장부·캘린더', jaytax: 'JAYTAX' };
+const label = (n: string) => LABELS[n] ?? n;
+
+/** 오류가 붙인 곳 중 하나 때문인지 — JAYTAX 는 빼지 않는다(빼면 봇 구실을 못 함). */
+export function failedServer(e: unknown, names: string[]): string | null {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (!/mcp|server|connect/i.test(msg)) return null;
+  const optional = names.filter((n) => n !== 'jaytax');
+  return optional.find((n) => msg.includes(n)) ?? (optional.includes('toodledo') && /mcp/i.test(msg) && !msg.includes('jaytax') ? 'toodledo' : null);
+}
+
+export function withoutServer(
+  servers: Anthropic.Beta.BetaRequestMCPServerURLDefinition[], toolsets: Anthropic.Beta.BetaMCPToolset[], name: string,
+) {
+  return { servers: servers.filter((s) => s.name !== name), toolsets: toolsets.filter((t) => t.mcp_server_name !== name) };
+}
+
 /** 대표님 말 하나에 답한다. 결재를 제안하면 pending 이 붙어 온다(✅ 단추용). */
 export async function askSsong({ text, history = [] }: { text: string; history?: Turn[] }): Promise<Answer> {
   const client = new Anthropic();
   const messages = toMessages(history, text);
   const [submitDefs, system] = await Promise.all([submitToolDefs(), systemBlocks()]);
-  const { servers, toolsets } = mcpSetup();
+  let { servers, toolsets } = mcpSetup();
+  const dropped: string[] = [];
 
   // 서버 쪽 도구 호출이 길어지면 pause_turn 으로 끊겨 온다 — 그대로 이어 보낸다(최대 3번).
   for (let i = 0; i < 4; i++) {
-    const res = await client.beta.messages.create({
+    const req = () => client.beta.messages.create({
       model: MODEL,
       max_tokens: 8000,
       betas: ['mcp-client-2025-11-20', 'server-side-fallback-2026-07-01'],
@@ -130,14 +148,29 @@ export async function askSsong({ text, history = [] }: { text: string; history?:
       tools: [...toolsets, ...submitDefs],
       messages,
     });
+    let res: Awaited<ReturnType<typeof req>>;
+    try {
+      res = await req();
+    } catch (e) {
+      // 붙인 곳 하나(Toodledo 등)가 연결을 거절하면 요청 전체가 실패한다 — 그곳만 빼고 한 번 더.
+      const bad = failedServer(e, servers.map((s) => s.name));
+      if (!bad) throw e;
+      console.warn('ssong chat: mcp server dropped', bad, e instanceof Error ? e.message.slice(0, 300) : e);
+      dropped.push(bad);
+      ({ servers, toolsets } = withoutServer(servers, toolsets, bad));
+      i--;
+      continue;
+    }
     const u = res.usage;
     console.log('ssong chat usage', { in: u.input_tokens, out: u.output_tokens, cacheRead: u.cache_read_input_tokens, cacheWrite: u.cache_creation_input_tokens, stop: res.stop_reason });
     if (res.stop_reason === 'pause_turn') { messages.push({ role: 'assistant', content: res.content }); continue; }
     if (res.stop_reason === 'refusal') return { text: '이 질문에는 답할 수 없다고 합니다. 다르게 물어봐 주세요.' };
     const pending = pendingOf(res.content);
     if (pending) return { text: `${previewOf(pending)}\n\n이대로 올릴까요? 아래 단추를 눌러 주세요.`, pending };
-    const out = textOf(res.content);
-    return { text: out || '답을 만들지 못했습니다. 다시 물어봐 주세요.' };
+    const out = textOf(res.content) || '답을 만들지 못했습니다. 다시 물어봐 주세요.';
+    return { text: dropped.length ? `${out}
+
+(이번에는 ${dropped.map(label).join('·')}에 연결하지 못해 빼고 답했습니다)` : out };
   }
   return { text: '답이 너무 길어져 멈췄습니다. 범위를 좁혀 물어봐 주세요.' };
 }
