@@ -12,6 +12,7 @@ import { supabase } from './supabase';
 export const ACTIONS = {
   login: '로그인',
   logout: '로그아웃',
+  view: '화면 열람',
   login_failed: '로그인 실패',
   login_locked: '로그인 차단',
   reveal_resident: '주민번호 열람',

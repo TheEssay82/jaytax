@@ -22,6 +22,7 @@ import StaffRevenueTab from './billing/StaffRevenueTab';
 import CommandPalette, { type PaletteTarget } from './common/CommandPalette';
 import { DangerConfirmHost } from './common/DangerConfirm';
 import { useFitTableHeights } from '../lib/fillHeight';
+import { logAccess } from '../lib/accessLogApi';
 import { unsavedLabels, useBeforeUnloadGuard } from '../lib/unsaved';
 import { setMineOnly, useMineOnly } from '../lib/mineOnly';
 import ReceivableOpeningTab from './billing/ReceivableOpeningTab';
@@ -287,6 +288,18 @@ function Shell() {
     navItems.find((it) => it.id === curCanon)?.label ??
     visibleIcons.find((it) => it.id === curCanon)?.label ??
     '';
+
+  // 화면 열람 기록(사용자 2026-11-23 「테스트-팀장이 뭘 봤는지」) — 화면을 열 때마다 접속기록에 한 줄.
+  //   같은 화면을 메뉴로 다시 눌러 새로 열어도(reloadKey) 남긴다. IP 는 서버가 적는다.
+  const curLabelRef = useRef(curLabel);
+  curLabelRef.current = curLabel;
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const label = curCanon === 'home' ? '홈' : curLabelRef.current;
+      void logAccess('view', { target: label ? `${label} (${curCanon})` : curCanon });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [curCanon, reloadKey]);
 
   return (
     <>

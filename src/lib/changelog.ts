@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.90.6',
+    date: '2026-11-23',
+    title: '접속기록 — 화면 열람도 남깁니다',
+    highlights: [
+      '누가 · 언제 · 어디서(IP) 어떤 화면을 열었는지 접속기록에 「화면 열람」으로 한 줄씩 남습니다(같은 화면을 메뉴로 다시 열어도). 자료 칸에 화면 이름이 보입니다.',
+      '⚙️ 접속기록 점검에서 수행업무 「화면 열람」으로 거를 수 있습니다.',
+    ],
+  },
+  {
     version: '3.90.5',
     date: '2026-11-23',
     title: '🧾 거래처등록 — 사업장마다 세금계산서 받는 메일',
