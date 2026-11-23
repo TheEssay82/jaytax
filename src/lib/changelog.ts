@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.90.7',
+    date: '2026-11-23',
+    title: '접속기록 — 개발 서버에서 들어온 기록 표시',
+    highlights: [
+      '운영 사이트(jaytax.co.kr)가 아닌 개발 서버(localhost)에서 들어온 로그인 · 화면 열람에 「🛠 개발 서버」 표시가 붙습니다 — 대개 Claude 세션이 화면을 확인하려고 테스트 계정으로 들어온 것입니다.',
+      '서버가 요청 머리(Origin)로 적으므로 화면에서 꾸밀 수 없고, 무결성 검증도 그대로 됩니다.',
+    ],
+  },
+  {
     version: '3.90.6',
     date: '2026-11-23',
     title: '접속기록 — 화면 열람도 남깁니다',

@@ -134,6 +134,11 @@ export default function AccessLogTab() {
                 <td style={{ whiteSpace: 'nowrap' }}>{kstDateTime(r.at)}</td>
                 <td>
                   {r.actorName}
+                  {/* 개발 서버(localhost)에서 들어온 기록 — 대개 Claude 세션의 화면 확인(서버가 Origin 헤더로 적는다, 0209) */}
+                  {typeof r.detail?.origin === 'string' && (
+                    <span className="bdg" title={`${String(r.detail.origin)} 에서 접속 — 운영 사이트가 아닌 개발 서버(대개 Claude 세션의 화면 확인)`}
+                      style={{ marginLeft: 6, background: '#EEF2FF', color: '#3730A3', fontSize: 'var(--fs-0)' }}>🛠 개발 서버</span>
+                  )}
                   <div style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }}>{r.actorEmail}</div>
                 </td>
                 <td style={{ fontFamily: 'monospace', fontSize: 'var(--fs-1)' }} title={r.userAgent}>
