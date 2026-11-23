@@ -66,6 +66,8 @@ export interface BizPlace {
   staffStatus: StaffStatus | null;
   /** ERP(IBCENTER) 거래처코드 5자리 — 원장 대사(입금)의 유일한 키. 원장에는 사업자번호가 없다. */
   erpClientCode: string;
+  /** 전자세금계산서 받는 메일 — 발행요청·쏭비서 결재가 이것부터 쓴다. */
+  taxEmails: string[];
   staff: BizStaff[];
   createdAt?: string;
   updatedAt?: string;
@@ -209,6 +211,7 @@ const toPlace = (r: any): BizPlace => ({
   note: r.note || '',
   staffStatus: r.staff_status ?? null,
   erpClientCode: r.erp_client_code || '',
+  taxEmails: r.tax_emails || [],
   staff: [],
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -394,6 +397,7 @@ export interface PlaceInput {
   hometaxId?: string;
   note?: string;
   staffStatus?: StaffStatus | null;
+  taxEmails?: string[];
   /** 홈텍스 PW — 제공 시 생성 직후 암호화 RPC 로 저장. */
   hometaxPw?: string;
 }
@@ -422,6 +426,7 @@ function placeToRow(p: Partial<PlaceInput>): Record<string, unknown> {
   if (p.hometaxId !== undefined) row.hometax_id = p.hometaxId || null;
   if (p.note !== undefined) row.note = p.note || null;
   if (p.staffStatus !== undefined) row.staff_status = p.staffStatus || null;
+  if (p.taxEmails !== undefined) row.tax_emails = p.taxEmails;
   return row;
 }
 export async function createBizPlace(input: PlaceInput): Promise<string> {

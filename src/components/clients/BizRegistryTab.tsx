@@ -61,6 +61,7 @@ import { ColFilter, useTableView, ColumnSettings, ResizeHandle, clip } from './t
 import DateParts from '../common/DateParts';
 import { VIEW_KEYS } from '../../lib/tableViewApi';
 import { teamLabel } from '../../lib/teams';
+import { isEmail, joinEmails, splitEmails } from '../../lib/taxEmailApi';
 
 const TAX_TYPES: TaxType[] = ['과세', '겸영', '면세'];
 const WITHHOLDINGS: Withholding[] = ['월별', '반기별', 'N/A'];
@@ -88,6 +89,8 @@ interface PlaceDraft {
   cpa: string;
   hometaxId: string;
   hometaxPw: string;
+  /** 세금계산서 받는 메일 — 여러 개면 쉼표로. */
+  taxEmails: string;
   note: string;
   staffIds: string[];
   staffStatus: '' | StaffStatus;
@@ -96,7 +99,7 @@ const emptyPlace = (branchType: '본점' | '지점' = '본점'): PlaceDraft => (
   placeName: '', branchType, unitTaxation: false, filingPlaceId: '', bizRegNo: '', noBiz: false, address: '',
   nature: '매출', salesTeams: [], taxType: '', withholding: '', openedDate: '',
   status: '정상', statusMonth: '', transferTo: '', transferContact: '', transferManager: '',
-  cpa: '', hometaxId: '', hometaxPw: '', note: '', staffIds: [], staffStatus: '',
+  cpa: '', hometaxId: '', hometaxPw: '', taxEmails: '', note: '', staffIds: [], staffStatus: '',
 });
 const placeToDraft = (p: BizPlace): PlaceDraft => ({
   placeName: p.placeName, branchType: p.branchType ?? '본점', unitTaxation: p.unitTaxation,
@@ -104,7 +107,7 @@ const placeToDraft = (p: BizPlace): PlaceDraft => ({
   nature: p.nature, salesTeams: p.salesTeams, taxType: p.taxType ?? '', withholding: p.withholding ?? '',
   openedDate: p.openedDate ?? '', status: p.status, statusMonth: p.statusMonth,
   transferTo: p.transferTo, transferContact: p.transferContact, transferManager: p.transferManager,
-  cpa: p.cpa, hometaxId: p.hometaxId, hometaxPw: '', note: p.note, staffIds: [], staffStatus: p.staffStatus ?? '',
+  cpa: p.cpa, hometaxId: p.hometaxId, hometaxPw: '', taxEmails: joinEmails(p.taxEmails), note: p.note, staffIds: [], staffStatus: p.staffStatus ?? '',
 });
 
 /** 주민번호 표기 통일 — 원본이 하이픈 유무가 섞여 있어 타이핑용으로 ######-####### 로 맞춘다. */
@@ -227,6 +230,8 @@ export default function BizRegistryTab() {
     { key: 'htid', label: '홈텍스ID', val: (_e, p) => p?.hometaxId ?? '', w: 88 },
     { key: 'htpw', label: '홈텍스PW', w: 82, opts: ['있음'],
       val: (_e, p) => (hometaxPws ? (p ? hometaxPws.get(p.id) ?? '' : '') : (p?.hasHometaxPw ? '있음' : '')) },
+    // 세금계산서 받는 메일 — 글자로 찾으면 주소로, 빈칸 찾기는 정렬로.
+    { key: 'taxmail', label: '계산서메일', val: (_e, p) => (p?.taxEmails ?? []).join(', '), w: 150 },
     { key: 'nature', label: '성격', val: (_e, p) => p?.nature ?? '', w: 50, opts: ['매출', '일반'] },
     { key: 'teams', label: '매출팀', val: (_e, p) => (p?.salesTeams ?? []).map(teamLabel).join(','), w: 88, opts: SALES_TEAMS.map(teamLabel) },
     { key: 'tax', label: '과세', val: (_e, p) => p?.taxType ?? '', w: 50, opts: TAX_TYPES },
@@ -559,6 +564,9 @@ export default function BizRegistryTab() {
                       {p.address && <span>📮 {p.address} · </span>}
                       {p.cpa && <span>CPA {p.cpa} · </span>}
                       {p.hometaxId && <span>홈텍스 {p.hometaxId} · </span>}
+                      {p.taxEmails.length > 0
+                        ? <span>🧾 {p.taxEmails.join(', ')} · </span>
+                        : p.status === '정상' && <span style={{ color: '#b45309' }}>🧾 세금계산서 메일 없음 · </span>}
                       {p.openedDate && <span>개업 {p.openedDate}</span>}
                     </div>
                     {/* 매출계약이 있으면 최근 계약의 담당직원이 실제 담당(등록 담당보다 우선 표시) */}
@@ -714,6 +722,8 @@ export default function BizRegistryTab() {
 function validatePlace(d: PlaceDraft): string | null {
   if (!d.placeName.trim()) return '사업장명은 필수입니다.';
   if ((d.status === '폐업' || d.status === '이관') && !d.statusMonth) return `${d.status} 귀속월을 입력하세요.`;
+  const badMail = splitEmails(d.taxEmails).filter((m) => !isEmail(m));
+  if (badMail.length) return `세금계산서 메일 형식이 맞지 않습니다: ${badMail.join(', ')}`;
   return null;
 }
 
@@ -735,6 +745,7 @@ function placeInput(entityId: string, d: PlaceDraft, isHq: boolean) {
     transferManager: d.status === '이관' ? (d.transferManager.trim() || null) : null,
     cpa: d.cpa.trim(), hometaxId: d.hometaxId.trim(),
     hometaxPw: d.hometaxPw.trim(), note: d.note.trim(),
+    taxEmails: [...new Set(splitEmails(d.taxEmails).map((m) => m.toLowerCase()))],
     staffStatus: d.staffStatus || null,
   };
 }
@@ -915,6 +926,9 @@ function PlaceFieldsInline({ d, setD, staff, siblings = [] }: { d: PlaceDraft; s
         <input value={d.hometaxId} onChange={(e) => setD((p) => ({ ...p, hometaxId: e.target.value }))} placeholder="(선택)" /></div>
       <div className="frow"><span className="fl">홈텍스 PW 🔒</span>
         <input value={d.hometaxPw} onChange={(e) => setD((p) => ({ ...p, hometaxPw: e.target.value }))} placeholder="암호화 저장 (선택)" /></div>
+      <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">세금계산서 메일</span>
+        <input value={d.taxEmails} onChange={(e) => setD((p) => ({ ...p, taxEmails: e.target.value }))}
+          placeholder="전자세금계산서 받는 메일 — 여러 개면 쉼표로 (발행요청·쏭비서 결재가 이 주소를 씁니다)" /></div>
       <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">비고</span>
         <input value={d.note} onChange={(e) => setD((p) => ({ ...p, note: e.target.value }))} placeholder="(선택)" /></div>
       <div className="frow" style={{ gridColumn: '1 / -1' }}><span className="fl">담당직원</span>
