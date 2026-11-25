@@ -3,6 +3,7 @@
 // 마감 때와 다르면(마감 뒤 소급 기표 등) ⚠ 로 알린다.
 import { useState } from 'react';
 import type { Ifrs18CloseRow, Ifrs18LogRow } from '../../lib/ifrs18Api';
+import { closeExcelDisplayName } from '../../lib/ifrs18Api';
 
 const won = (n: number) => (n < 0 ? `(${Math.abs(Math.round(n)).toLocaleString()})` : Math.round(n).toLocaleString());
 const td: React.CSSProperties = { padding: '3px 5px', borderBottom: '1px solid var(--rule)', fontSize: 'var(--fs-0)', textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
@@ -66,7 +67,7 @@ export default function Ifrs18Dashboard({ year, month, closes, logs, drift, onPi
               return (
                 <td key={m} style={{ ...td, textAlign: 'center' }}>
                   {c?.excelPath
-                    ? <button className="btn-sm" style={{ padding: '1px 6px' }} title={`${c.excelPath.split('/').pop()}\n보관 ${c.excelAt ? new Date(c.excelAt).toLocaleString('ko-KR') : ''}`} onClick={() => onExcel(c)}>⬇ 엑셀</button>
+                    ? <button className="btn-sm" style={{ padding: '1px 6px' }} title={`${closeExcelDisplayName(c.excelPath)}\n보관 ${c.excelAt ? new Date(c.excelAt).toLocaleString('ko-KR') : ''}`} onClick={() => onExcel(c)}>⬇ 엑셀</button>
                     : c ? <span style={{ fontSize: 'var(--fs-0)', color: 'var(--ink-3)' }} title="이 달은 엑셀 보관 전에 마감했습니다 — 분개장을 올리고 STEP 6 「마감 엑셀 보관」을 누르면 채워집니다">미보관</span> : ''}
                 </td>
               );

@@ -75,8 +75,11 @@ export async function reopenIfrs18Month(clientKey: string, year: number, month: 
 const CLOSE_BUCKET = 'ifrs18-close';
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 /** 마감한 달의 엑셀을 비공개 저장소에 두고 마감 줄에 경로를 적는다. 같은 달 이전 파일은 지운다. */
+/** 저장소 경로는 영문·숫자만 받는다(한글 → Invalid key). 파일명의 「월결산」은 경로에선 close 로 두고, 내려받을 때 되돌린다. */
+export const closeExcelStorageName = (fileName: string) => fileName.replace(/월결산/g, 'close').replace(/[^A-Za-z0-9._-]/g, '_');
+export const closeExcelDisplayName = (path: string) => (path.split('/').pop() ?? 'ifrs18.xlsx').replace(/_close_/g, '_월결산_');
 export async function storeIfrs18CloseExcel(clientKey: string, year: number, month: number, buf: ArrayBuffer, fileName: string): Promise<string> {
-  const path = `${clientKey}/${year}/${String(month).padStart(2, '0')}/${fileName}`;
+  const path = `${clientKey}/${year}/${String(month).padStart(2, '0')}/${closeExcelStorageName(fileName)}`;
   const { data: prev } = await supabase.from('ifrs18_close').select('excel_path').eq('client_key', clientKey).eq('year', year).eq('month', month).maybeSingle();
   const { error: upErr } = await supabase.storage.from(CLOSE_BUCKET).upload(path, new Blob([buf], { type: XLSX_MIME }), { contentType: XLSX_MIME, upsert: true });
   if (upErr) throw upErr;
@@ -88,7 +91,7 @@ export async function storeIfrs18CloseExcel(clientKey: string, year: number, mon
 }
 /** 보관 엑셀 내려받기 — 짧은 서명 URL 로 받는다. */
 export async function downloadIfrs18CloseExcel(path: string): Promise<void> {
-  const name = path.split('/').pop() ?? 'ifrs18.xlsx';
+  const name = closeExcelDisplayName(path);
   const { data, error } = await supabase.storage.from(CLOSE_BUCKET).createSignedUrl(path, 60, { download: name });
   if (error || !data?.signedUrl) throw error ?? new Error('내려받기 주소를 만들지 못했습니다.');
   const a = document.createElement('a');

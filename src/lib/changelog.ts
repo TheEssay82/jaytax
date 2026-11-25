@@ -18,6 +18,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '3.91.1',
+    date: '2026-11-25',
+    title: 'K-IFRS 1118 월결산 — 마감 엑셀 보관 오류(Invalid key) 수정 · 배포 직후 자동 새로고침',
+    highlights: [
+      '마감 엑셀 보관 때 파일명의 한글(월결산) 때문에 저장소가 「Invalid key」로 거절하던 문제를 고쳤습니다. 저장소에는 영문 이름으로 두고, 내려받을 때는 원래 이름(…_월결산_YYYYMM.xlsx)으로 받습니다.',
+      '배포 직후 열려 있던 화면이 옛 파일을 찾아 「Failed to fetch dynamically imported module」이 나면 한 번 자동으로 새로고침합니다.',
+    ],
+  },
+  {
     version: '3.91.0',
     date: '2026-11-25',
     title: 'K-IFRS 1118 월결산 — 조정전표 요약(20_조정전표) · 2026 귀속분부터 · 권고코드 단순화',

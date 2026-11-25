@@ -12,6 +12,7 @@ import {
   listIfrs18Closes, closeIfrs18Month, reopenIfrs18Month, close2Ifrs18Month, listIfrs18Log, logIfrs18,
   storeIfrs18CloseExcel, downloadIfrs18CloseExcel,
   type Ifrs18ClientRow, type Ifrs18CloseRow, type Ifrs18LogRow,
+  closeExcelDisplayName,
 } from '../../lib/ifrs18Api';
 import Ifrs18Dashboard, { type Drift } from './Ifrs18Dashboard';
 
@@ -225,7 +226,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
   }
   async function downloadStored(c: Ifrs18CloseRow) {
     if (!key || !c.excelPath) return;
-    try { await downloadIfrs18CloseExcel(c.excelPath); await logIfrs18(key, c.year, c.month, '엑셀 내려받기', { file: c.excelPath.split('/').pop(), 보관본: true }, profileName); }
+    try { await downloadIfrs18CloseExcel(c.excelPath); await logIfrs18(key, c.year, c.month, '엑셀 내려받기', { file: closeExcelDisplayName(c.excelPath), 보관본: true }, profileName); }
     catch (e) { setErr(e instanceof Error ? e.message : '내려받지 못했습니다.'); }
   }
   async function closeMonth() {
