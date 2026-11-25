@@ -154,16 +154,16 @@ test('조정전표(권고코드) 반영 — 기표한 만큼 덜 옮기고 결�
   const jd = [{ docNo: '9', gl: '72030101', decision: '조정' as const, target: '대여금 손상차손' as const, reason: '대여금 손상' }];
   const before = compute(journal, cfg2, jd, 2026, 6);
   const m0 = before.moves.find((m) => m.kind === '판단')!;
-  assert.equal(m0.code, '1118-J-9-72030101'); assert.equal(m0.required, 900); assert.equal(m0.posted, 0);
+  assert.equal(m0.code, '1118-J-9'); assert.equal(m0.required, 900); assert.equal(m0.posted, 0);
   assert.equal(m0.reclassGl, '72030199');
-  assert.equal(tagOf('KADP 1118-J-9-72030101 재분류'), '1118-J-9-72030101');
+  assert.equal(tagOf('KADP 1118-J-9 재분류'), '1118-J-9');
   const posted = [...journal,
-    L('40', '72030199', 900, 0, { memo: '1118-J-9-72030101 재분류' }), L('40', '72030101', 0, 900, { memo: '1118-J-9-72030101 재분류' }),
+    L('40', '72030199', 900, 0, { memo: '1118-J-9 재분류' }), L('40', '72030101', 0, 900, { memo: '1118-J-9 재분류' }),
     // 계리: 6개월분 -600 을 퇴직급여 → 순이자원가(재무)로 기표
-    L('41', '51030101', 600, 0, { memo: '1118-A-pa' }), L('41', '74010115', 0, 600, { memo: '1118-A-pa' }),
+    L('41', '51030101', 600, 0, { memo: '1118-A01' }), L('41', '74010115', 0, 600, { memo: '1118-A01' }),
   ];
   const after = compute(posted, cfg2, jd, 2026, 6);
-  for (const m of after.moves) assert.equal(m.amount, 0, m.code);
+  for (const m of after.moves) if (m.kind !== '계정') assert.equal(m.amount, 0, m.code);
   for (const k of ['영업손익', '대여금 손상차손', '재무비용', '당기순손익']) assert.equal(after.pl1118[k], before.pl1118[k], k);
   assert.ok(after.checks.find((c) => c.id === 'tag')!.ok);
   const bad = compute([...posted, L('42', '51020101', 10, 0, { memo: '1118-X-zz' }), L('42', '11100001', 0, 10)], cfg2, jd, 2026, 6);
@@ -191,7 +191,7 @@ test('표시 계정 — 같은 전표에 미지급금(투자)가 있으면 주�
   const w = r.watch.find((x) => x.docNo === '50')!;
   assert.equal(w.via, '표시 계정'); assert.equal(w.suggest, '기타투자비용');
   const r2 = compute(j, c4, [{ docNo: '50', gl: '51020101', decision: '조정', target: '기타투자비용', reason: 'M&A' }], 2026, 6);
-  const m = r2.moves.find((x) => x.code === '1118-J-50-51020101')!;
+  const m = r2.moves.find((x) => x.code === '1118-J-50')!;
   assert.equal(m.reclassGl, ''); assert.equal(m.advise, 0); assert.equal(m.amount, 300);
   assert.equal(r2.pl1118['기타투자비용'], -300 + (r.pl1118['기타투자비용'] ?? 0));
 });
@@ -213,4 +213,26 @@ test('기표 시작일(날짜) · 계리 직접 기표 — 시작일 전 판단 
   assert.ok(r3.checks.find((c) => c.id === 'actdirect')!.ok);
   const r4 = compute(journal.map((l) => ({ ...l, date: '2026-12-10' })), c5, [], 2026, 12);
   assert.equal(r4.checks.find((c) => c.id === 'actdirect')!.ok, false);   // 74010115 에 직접 기표가 있는데 directFrom 없음
+});
+
+test('계정 판단(넵튠 판단 ≠ 크래프톤 매핑) — 그 계정 거래를 판단 범주 계정으로 옮기도록 권고 · 1118 표시 효과 0 · 기표하면 권고 0', async () => {
+  const c: Ifrs18Config = { ...cfg, adjustFrom: '2026-01-01', accounts: [...cfg.accounts, A('71320102', '파생상품자산평가이익(영업)', '금융수익', '영업')] };
+  const before = compute(journal, c, [], 2026, 6);
+  const o = before.moves.find((m) => m.kind === '계정')!;
+  assert.equal(o.code, '1118-O01'); assert.equal(o.srcGl, '71320101'); assert.equal(o.reclassGl, '71320102');
+  assert.equal(o.src, o.target); assert.equal(o.same1001, true);
+  assert.ok(o.advise !== 0); assert.equal(o.advise, o.required);
+  const base = compute(journal, { ...c, accounts: c.accounts }, [], 2026, 6);
+  assert.equal(before.pl1118['영업손익'], base.pl1118['영업손익']);
+  // 회사가 71320101 → 71320102 로 옮겨 기표(권고코드)
+  const amt = o.required;
+  const posted = [...journal,
+    L('60', '71320101', amt < 0 ? -amt : 0, amt > 0 ? amt : 0, { memo: '1118-O01 6월 파생 영업 계정으로' }),
+    L('60', '71320102', amt > 0 ? amt : 0, amt < 0 ? -amt : 0, { memo: '1118-O01 6월 파생 영업 계정으로' }),
+  ];
+  const after = compute(posted, c, [], 2026, 6);
+  const o2 = after.moves.find((m) => m.code === '1118-O01')!;
+  assert.equal(o2.required, amt, 'req'); assert.equal(o2.posted, amt, 'posted ' + JSON.stringify(after.tagIssues)); assert.equal(o2.advise, 0, 'adv');
+  for (const k of ['영업손익', '기타영업수익', '투자수익', '당기순손익']) assert.equal(after.pl1118[k], before.pl1118[k], k);
+  assert.ok(after.checks.find((x) => x.id === 'tag')!.ok);
 });

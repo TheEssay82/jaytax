@@ -486,7 +486,7 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
             {lines.length > 0 && unstored.length > 0 && <button className="btn-sm" disabled={busy || readonly} title="마감은 했지만 엑셀이 서버에 없는 달 — 지금 올린 누적 분개장으로 그 달 말까지 잘라 만들어 보관합니다" onClick={() => void restoreExcel(unstored)}>마감 엑셀 보관({unstored.join('·')}월)</button>}
             {closedRow?.excelPath && <button className="btn-sm" disabled={busy || readonly} title="이 달의 보관 엑셀을 지금 분개장으로 다시 만들어 바꿉니다" onClick={() => void restoreExcel([month])}>{month}월 마감 엑셀 다시 보관</button>}
             {openEarlier.length > 0 && <button className="btn-sm" disabled={busy || readonly} title="같은 누적 분개장을 각 달 말까지 잘라 계산해 달마다 마감합니다" onClick={() => void closeEarlier()}>앞선 달({openEarlier[0]}~{openEarlier[openEarlier.length - 1]}월) 각각 마감</button>}
-            {!cfg.close2 && res.moves.some((m) => m.advise !== 0) && <span style={{ fontSize: 'var(--fs-1)', color: '#B45309' }}>정정 후보(참고) {res.moves.filter((m) => m.advise !== 0).length}건 — 엑셀 20_정정후보</span>}
+            {res.moves.some((m) => m.advise !== 0) && <span style={{ fontSize: 'var(--fs-1)', color: '#B45309' }}>이 달 기표할 조정전표 {res.moves.filter((m) => m.advise !== 0).length}건 — 엑셀 20_조정전표</span>}
             <span style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)' }}>엑셀만으로 다시 계산 · 검증되는 파일입니다(00_읽는법 → 01_검증체크 → 02_사용안내 → 보고 · 검토 · 근거 시트).{!allOk && ' 확인이 남아 있어도 내려받을 수 있습니다(진행 중 표시). 마감은 모두 ✔ 일 때만 됩니다.'}</span>
           </div>
         </div>
@@ -497,14 +497,14 @@ export default function Ifrs18Tab({ fixedKey }: { fixedKey?: string } = {}) {
           return (
             <div className="card">
               {stepHead(7, '조정전표 반영 검증 · 2차 마감', !!closedRow?.close2,
-                cfg.adjustFrom ? (due ? `1118 계정 기표 시작일(${fmtAdjustFrom(cfg)})이 든 달부터 매월 — 정정 권고가 있으면 기표 → 분개장 다시 올리기 → 2차 마감` : `이 달은 대상 아님 — 1118 계정 기표 시작일(${fmtAdjustFrom(cfg)})이 든 달부터`) : '정정 전표를 기표한 달에만')}
+                cfg.adjustFrom ? (due ? `조정기표 대상(${fmtAdjustFrom(cfg)} 이후 전표) — 매월 조정전표 기표 → 분개장 다시 올리기 → 2차 마감` : `이 달은 대상 아님 — ${fmtAdjustFrom(cfg)}이 든 달부터`) : '조정전표를 기표한 달에만')}
               <div style={{ fontSize: 'var(--fs-1)', lineHeight: 1.7, marginBottom: 6 }}>
-                ① STEP 6 에서 1차 마감하고 엑셀을 내려받습니다 → ② 엑셀 <b>20_조정권고전표</b>에 정정 권고가 있으면 SAP 에 기표합니다(<b>라인텍스트 맨 앞에 권고코드</b>) →
+                ① STEP 6 에서 1차 마감하고 엑셀을 내려받습니다 → ② 엑셀 <b>20_조정전표</b>의 「이번 기표 금액」을 그 달 말일자로 SAP 에 기표합니다(<b>라인텍스트 맨 앞에 권고코드</b>, 전월분은 반제하지 않음) →
                 ③ 같은 기준월 분개장을 다시 받아 아래에서 올립니다 → ④ 확인이 모두 ✔ 이면 2차 마감.
-                {cfg.adjustFrom && <> {fmtAdjustFrom(cfg)} 전 전표는 장부를 고치지 않고 1118 표시에서만 옮깁니다(「기표 시작 전 몫」 — 그룹 추가 지침 전까지). 권고는 그 뒤 전표가 1118 기준과 다르게 기표된 경우의 정정뿐입니다.</>}
+                 이번 기표 금액 = 1118 기준 옮길 금액(누적) − 이미 기표(누적)라, 앞선 달 기표가 빠지면 그 차이가 이 달에 들어갑니다.
               </div>
               <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 6 }}>
-                <thead><tr>{['권고코드', '구분', '원천 → 대상', '대상 G/L 제안', '1001 같음', '옮길 금액(누적)', '기표 시작 전 몫', '이미 기표', '이번 기표 권고액'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                <thead><tr>{['권고코드', '구분', '원천 → 대상', '대상 G/L 제안', '1001 같음', '옮길 금액(누적)', '대상 시작 전 몫', '이미 기표', '이번 기표 금액'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
                 <tbody>{res.moves.map((m) => (
                   <tr key={m.code} style={{ background: m.advise !== 0 && due ? '#FEF2F2' : undefined }}>
                     <td style={td}><code>{m.code}</code></td><td style={td}>{m.kind}</td><td style={td}>{m.srcGl} {m.src} → {m.target}</td><td style={td}>{m.reclassGl || <span style={{ color: 'var(--ink-3)' }}>기표 대상 아님(대상 손익 계정 없음)</span>}</td>

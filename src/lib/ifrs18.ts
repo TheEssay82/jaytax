@@ -64,16 +64,15 @@ export interface Ifrs18Config {
   actuarial: ActuarialItem[];
   manual?: ManualAdj[];
   /**
-   * 1118 계정(크래프톤 신설 CoA)으로 기표하기 시작한 날(YYYY-MM-DD, 또는 YYYY-MM = 그달 1일). 넵튠 2026-10-21.
-   * 이 날 전 전표는 장부를 고치지 않고 1118 표시에서만 옮긴다(크래프톤 추가 지침 전까지 — 사용자 2026-11-09).
-   * 이 날 뒤 전표가 1118 기준과 다르게 기표됐으면 정정 전표를 권고하고, 이 날이 든 달부터 2차 마감을 한다.
+   * 조정기표 대상 시작일(YYYY-MM-DD, 또는 YYYY-MM = 그달 1일). 넵튠 2026-01-01(2026-11-25 크래프톤 지침: 2026 귀속분부터).
+   * 이 날 전 전표는 장부를 고치지 않고 1118 표시에서만 옮기고, 이 날 뒤 전표는 1118 기준과 다른 금액을 조정전표로 권고한다. 이 날이 든 달부터 2차 마감.
    */
   adjustFrom?: string;
   /** 재분류 대상 GL 지정 — 키 「원천GL>대상 1118 항목」 */
   reclassGl?: Record<string, string>;
   /** 표시 계정 — 같은 전표에 있으면 그 전표의 영업 범주 손익 줄을 모두 주의 라인으로 올리는 BS 계정(크래프톤 신설 미지급금 · 미지급비용 (투자)/(재무)) */
   markerBs?: string[];
-  /** 2차 마감(정정 전표 반영 검증)을 쓰는가 — 기본 끔(사용자 2026-11-09: 장부 정정은 원칙적으로 없고, 상대계정으로 분류한다) */
+  /** 2차 마감(조정전표 기표 검증)을 쓰는가 — 넵튠은 2026-11-25 크래프톤 지침(2026 귀속분부터 월 손익계산서 1118)으로 켬 */
   close2?: boolean;
 }
 export type Decision = '영업 유지' | '조정';
@@ -217,8 +216,8 @@ export interface WatchLine {
   decision: Decision | '미판단';
 }
 export interface Move {
-  kind: '계리' | '판단' | '수동';
-  /** 권고코드 — 회사가 조정전표 라인텍스트에 적는 값(1118-A-… · 1118-J-전표-GL · 1118-M-GL) */ code: string;
+  kind: '계리' | '판단' | '수동' | '계정';
+  /** 권고코드 — 회사가 조정전표 라인텍스트에 적는 값(1118-A01 계리 · 1118-M01 수동 · 1118-O01 계정 판단 · 1118-J-전표번호 주의 라인 판단) */ code: string;
   label: string;
   srcGl: string;
   /** 판단 건의 원 전표번호 */ docNo?: string;
@@ -257,6 +256,14 @@ export function startCutMonth(cfg: Ifrs18Config, year: number, month: number): n
   if (year < ay) return month;
   return Math.min(month, am - 1);
 }
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+/** 권고코드(사용자 2026-11-25 「짧게」) — 계리 1118-A01 · 수동 1118-M01 · 계정 판단 1118-O01 · 주의 라인 판단 1118-J-전표번호(같은 전표에 조정이 둘 이상이면 -G/L) */
+export const actCode = (cfg: Ifrs18Config, key: string) => `1118-A${pad2(cfg.actuarial.findIndex((x) => x.key === key) + 1)}`;
+export const manualCode = (i: number) => `1118-M${pad2(i + 1)}`;
+export const overrideCode = (i: number) => `1118-O${pad2(i + 1)}`;
+/** 계정 판단 — 넵튠 판단 범주가 크래프톤 매핑 범주와 다른 손익 계정(그 계정의 거래를 판단 범주로 매핑된 계정으로 옮겨 기표한다). G/L 순. */
+export const overrideAccounts = (cfg: Ifrs18Config) => cfg.accounts.filter((a) => a.ncat && a.ncat !== a.kcat && isPl(a.gl)).sort((a, b) => a.gl.localeCompare(b.gl));
 
 /** 라인텍스트에서 권고코드를 꺼낸다 — 엑셀 식과 같은 규칙: 「1118-」부터 40자 안에서 첫 공백 전까지. */
 export function tagOf(memo: string): string {
@@ -363,25 +370,36 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
   const req: Omit<Move, 'posted' | 'amount' | 'beforeStart' | 'advise' | 'same1001'>[] = [];
   for (const x of cfg.actuarial) {
     const amt = x.override != null ? x.override : r0((x.annual * Math.min(month, actuarialLastMonth(x, year))) / 12);
-    req.push({ kind: '계리', code: `1118-A-${x.key}`, label: x.label, srcGl: x.srcGl, src: srcLine(x.srcGl), target: x.target, required: amt,
+    req.push({ kind: '계리', code: actCode(cfg, x.key), label: x.label, srcGl: x.srcGl, src: srcLine(x.srcGl), target: x.target, required: amt,
       reclassGl: x.reclassGl || suggestReclassGl(cfg, x.srcGl, x.target), base: x.annual });
   }
   const docGl = new Map<string, number>();
   for (const l of live) docGl.set(keyOf(l.docNo, l.gl), (docGl.get(keyOf(l.docNo, l.gl)) ?? 0) + l.dr - l.cr);
+  const adjByDoc = new Map<string, number>();
+  for (const j of judgments) if (j.decision === '조정' && docGl.has(keyOf(j.docNo, j.gl))) adjByDoc.set(j.docNo, (adjByDoc.get(j.docNo) ?? 0) + 1);
   for (const j of judgments) {
     if (j.decision !== '조정') continue;
     if (!docGl.has(keyOf(j.docNo, j.gl))) continue;
     const amt = r0(docGl.get(keyOf(j.docNo, j.gl)) ?? 0);
     const w = watch.find((x) => x.docNo === j.docNo && x.gl === j.gl);
     const target = j.target || w?.suggest || '확인필요';
-    req.push({ kind: '판단', code: `1118-J-${j.docNo}-${j.gl}`, label: `${j.docNo} ${j.reason}`.trim(), srcGl: j.gl, docNo: j.docNo, src: srcLine(j.gl), target, required: amt,
+    req.push({ kind: '판단', code: (adjByDoc.get(j.docNo) ?? 0) > 1 ? `1118-J-${j.docNo}-${j.gl}` : `1118-J-${j.docNo}`, label: `${j.docNo} ${j.reason}`.trim(), srcGl: j.gl, docNo: j.docNo, src: srcLine(j.gl), target, required: amt,
       reclassGl: suggestReclassGl(cfg, j.gl, target) });
   }
   (cfg.manual ?? []).forEach((m, i) => {
     const ds = m.docs?.length ? new Set(m.docs) : null;
     const amt = ds ? r0(live.filter((l) => l.gl === m.srcGl && ds.has(l.docNo)).reduce((t, l) => t + l.dr - l.cr, 0)) : r0(m.amount);
-    req.push({ kind: '수동', code: `1118-M-${m.srcGl}${i ? `-${i + 1}` : ''}`, label: m.reason, srcGl: m.srcGl, src: srcLine(m.srcGl), target: m.target, required: amt,
+    req.push({ kind: '수동', code: manualCode(i), label: m.reason, srcGl: m.srcGl, src: srcLine(m.srcGl), target: m.target, required: amt,
       reclassGl: m.reclassGl || suggestReclassGl(cfg, m.srcGl, m.target), base: ds ? undefined : r0(m.amount), docs: m.docs });
+  });
+  // 계정 판단(넵튠 판단 ≠ 크래프톤 매핑) — 1118 표시는 판단표 범주로 이미 맞으므로 옮김 효과는 0(원천 = 대상 항목).
+  // 장부는 크래프톤 매핑으로 묶이므로, 그 계정의 거래(권고코드 없는 줄)를 판단 범주로 매핑된 계정으로 옮기도록 권고한다(사용자 2026-11-25 「넵튠 별도 판단」).
+  overrideAccounts(cfg).forEach((a, i) => {
+    const target = line1118(a) as Line1118;
+    const amt = r0(live.filter((l) => l.gl === a.gl && !tagOf(l.memo)).reduce((t, l) => t + l.dr - l.cr, 0));
+    const fixed = cfg.reclassGl?.[`${a.gl}>${target}`];
+    const cand = fixed || (cfg.accounts.find((b) => b.gl !== a.gl && !b.ncat && b.kcat === a.ncat && b.l1001 === a.l1001 && b.gl.slice(0, 4) === a.gl.slice(0, 4) && b.gl.length === a.gl.length)?.gl ?? '');
+    req.push({ kind: '계정', code: overrideCode(i), label: `${a.name} — 넵튠 판단 ${a.ncat}(크래프톤 매핑 ${a.kcat})${a.note ? ` · ${a.note}` : ''}`, srcGl: a.gl, src: target, target, required: amt, reclassGl: cand });
   });
   const byCode = new Map(req.map((m) => [m.code, m]));
   const postedBy = new Map<string, number>();
@@ -392,16 +410,18 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
     const amt = r0(l.dr - l.cr);
     if (!m) { tagIssues.push({ docNo: l.docNo, gl: l.gl, code, amt, why: '미등록코드' }); continue; }
     const ln = lineOfGl(l.gl);
+    if (l.gl === m.srcGl) continue;   // 원천 계정 쪽 줄(반대 부호) — 기표 금액은 대상 쪽에서 센다(계정 판단은 원천 · 대상 항목이 같다)
     if (ln === m.target) postedBy.set(code, (postedBy.get(code) ?? 0) + l.dr - l.cr);
-    else if (l.gl !== m.srcGl) tagIssues.push({ docNo: l.docNo, gl: l.gl, code, amt, why: '계정 확인' });
+    else tagIssues.push({ docNo: l.docNo, gl: l.gl, code, amt, why: '계정 확인' });
   }
   const sc = startCutMonth(cfg, year, month);
   const cut = cutoverDate(cfg);
   const before = (m: (typeof req)[number]): number => {
     if (m.kind === '판단') return cut ? r0(live.filter((l) => l.docNo === m.docNo && l.gl === m.srcGl && l.date < cut).reduce((t, l) => t + l.dr - l.cr, 0)) : 0;
+    if (m.kind === '계정') return cut ? r0(live.filter((l) => l.gl === m.srcGl && !tagOf(l.memo) && l.date < cut).reduce((t, l) => t + l.dr - l.cr, 0)) : 0;
     if (m.kind === '수동' && m.docs?.length) { const ds = new Set(m.docs); return cut ? r0(live.filter((l) => l.gl === m.srcGl && ds.has(l.docNo) && l.date < cut).reduce((t, l) => t + l.dr - l.cr, 0)) : 0; }
     if (sc <= 0) return 0;
-    if (m.kind === '계리') { const x = cfg.actuarial.find((a) => `1118-A-${a.key}` === m.code); return x ? r0((x.annual * Math.min(sc, actuarialLastMonth(x, year))) / 12) : 0; }
+    if (m.kind === '계리') { const x = cfg.actuarial.find((a) => actCode(cfg, a.key) === m.code); return x ? r0((x.annual * Math.min(sc, actuarialLastMonth(x, year))) / 12) : 0; }
     return m.required;
   };
   const l1001Of = (gl: string) => acc.get(gl)?.l1001;
@@ -415,7 +435,7 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
 
   // 계리 대상 계정(예: 51030104 순이자원가)에 권고코드 없이 기표가 생겼는데 directFrom 이 없으면 — 회사가 직접 기표를 시작한 것. 그대로 두면 두 번 옮긴다.
   const actDirect = cfg.actuarial.filter((x) => !x.directFrom).flatMap((x) => {
-    const gl = moves.find((m) => m.code === `1118-A-${x.key}`)?.reclassGl;
+    const gl = moves.find((m) => m.code === actCode(cfg, x.key))?.reclassGl;
     if (!gl) return [];
     const hit = live.some((l) => l.gl === gl && !tagOf(l.memo) && (!cut || l.date >= cut));
     return hit ? [`${x.label}(${gl})`] : [];
@@ -466,7 +486,7 @@ export function compute(lines: JLine[], cfg: Ifrs18Config, judgments: Judgment[]
     noteMap.set(k, (noteMap.get(k) ?? 0) - t.amt);
   }
   for (const m of moves) {
-    if (!m.amount) continue;
+    if (!m.amount || m.src === m.target) continue;
     for (const [ln, sg] of [[m.src, 1], [m.target, -1]] as const) {
       if (ln === '영업수익' || ln === '영업비용' || ln === '법인세비용') continue;
       const k = `${ln}\u0000계리 금액 · 조정`;
