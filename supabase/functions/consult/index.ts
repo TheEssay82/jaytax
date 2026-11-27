@@ -67,6 +67,19 @@ function queryKeywords(q: string): string[] {
 const LIB_FETCH = 12;     // 자료실 후보 수
 const LIB_MIN_SIM = 0.40; // 자료실 채택 하한
 const LIB_MAX_KEEP = 6;   // 자료실 상한
+// 금감원 회계업무자료(fss_docs, 2026-11-28 인계 4단계) — 회계·공통에서만. 관련 없으면 0건(minKeep 0).
+//   순위: 질의회신(K-IFRS·일반기준) > 심사·감리 지적사례 > 그 밖(모범사례·내부회계·외부감사 자료·FAQ). 감사 질문이면 외부감사 자료·FAQ·내부회계를 앞에.
+const FSS_FETCH = 12;
+const FSS_MIN_SIM = 0.42; // 낱말 가산점을 더한 score 기준
+const FSS_MAX_KEEP = 4;
+const FSS_LABEL: Record<string, string> = {
+  kifrs: 'K-IFRS 질의회신', kgaap: '일반기업회계기준 질의회신', insp: '심사·감리 지적사례',
+  illust: '주석공시 모범사례', icfr: '내부회계관리제도 자료', auddata: '외부감사 업무자료', audfaq: '외부감사 FAQ',
+};
+const fssType = (api: string) => (api === 'kifrs' || api === 'kgaap' ? '금감원 질의회신' : api === 'insp' ? '금감원 감리지적사례' : '금감원 자료');
+const fssRank = (api: string, audit: boolean) => audit
+  ? ({ auddata: 0, audfaq: 0, icfr: 1, insp: 2, kifrs: 3, kgaap: 3, illust: 4 } as Record<string, number>)[api] ?? 5
+  : ({ kifrs: 0, kgaap: 0, insp: 1, illust: 2, icfr: 3, auddata: 3, audfaq: 3 } as Record<string, number>)[api] ?? 5;
 
 // RPC가 유사도 내림차순으로 준 행에서, 임계값 이상만 채택하되 미달이면 최소 minKeep개는 유지, 상한 maxKeep.
 function pickByThreshold<T extends { similarity: number }>(rows: T[], minSim: number, minKeep: number, maxKeep: number): T[] {
@@ -110,6 +123,10 @@ const SYSTEM = `당신은 한국 회계·세무 실무 회신을 작성하는 �
   · **적용 시점을 반드시 확인한다.** 예규는 "○년 ○월 이후 …하는 분부터 적용한다"처럼 적용 개시를 못박는 경우가 많고, 조문도 개정되면 문언이 달라진다. 근거들이 서로 다른 시점의 법을 말하고 있으면 **결론을 시점별로 나눠** 제시한다(예: "2024년 이전 발생분은 …, 2025.1.1. 이후 발생분은 …"). 특히 판례는 **선고 당시의 조문(구법)**을 판단한 것일 수 있으므로, 그 뒤 조문이 개정되었다면 판례의 결론을 현행법에 그대로 옮기지 않는다.
   · [판례]/[심판례]: 사건(의결)번호·선고(의결)일·요지를 적고, 사실관계 차이 가능성을 유의로 덧붙인다.
   · **판례와 심판례가 어긋나면 법원 판례가 우선이다.** 특히 대법원 판결이 있으면 그것이 최종 법리이고, 그보다 앞선(또는 그 취지에 반하는) 심판례·과세관청 해석은 그대로 따를 수 없다. 이때는 결론을 판례에 맞추고, 심판례는 "종전 심판례는 …였으나 대법원 ○○○ 판결로 정리되었다"처럼 시간 순서와 함께 설명한다. 심판례만 근거로 과세관청 쪽 결론을 내면서 상급심 판단을 빠뜨리는 일이 없도록 한다.
+  · [금감원 질의회신]: 금융감독원이 공개한 K-IFRS·일반기업회계기준 질의회신 요약 — **기준서 원문 다음 순위** 근거. 제목·등록일과 함께 인용하고, **근거에 적힌 원문 링크를 그대로 붙인다**(링크를 지어내지 않는다). 기준서 원문과 다르게 읽히면 **기준서를 우선**하고, 질의회신은 "(YYYY.MM.DD 등록 금감원 질의회신 — 기준서와 함께 판단)"처럼 참고로 표시한다.
+  · [금감원 감리지적사례]: 심사·감리에서 지적된 회계처리 사례 — 결론의 근거보다 **'실무 유의'에서 「이렇게 처리하면 지적받았다」**로 주로 쓴다. 제목·결정연도·쟁점분야와 원문 링크를 붙이고, 사실관계 차이 가능성을 유의로 덧붙인다.
+  · [금감원 자료]: 주석공시 모범사례·내부회계·외부감사 업무자료·FAQ — 실무 참고. 원문 링크를 붙인다.
+  · 금감원 자료의 본문이 "(요약 본문 없음 …)"이면 실내용은 첨부(hwp/pdf)에 있다 — 제목만으로 내용을 추정해 결론을 내지 말고, 관련 자료가 있다는 안내와 링크만 '실무 유의'에 적는다.
   · [자료실]: 사무소 내부 참고자료 발췌(예규·해석사례·개정세법·실무가이드 등 정리본) — 자료명과 함께 인용하되 "(내부자료)"로 표기하고, 결론의 핵심 근거는 가급적 법령·기준서·심판례 원문으로 뒷받침하고 내부자료는 보조로 삼는다(원출처 대조 권고).
 
 [형식] 아래 6블록을 마크다운으로 그대로 따른다:
@@ -126,6 +143,9 @@ const SYSTEM = `당신은 한국 회계·세무 실무 회신을 작성하는 �
 - **<법령명> 제○조 (시행 YYYY.MM.DD)** — "<원문 핵심 직접인용>" (→ 쉬운 말 풀이: 이 조문이 왜 결론의 근거인지)
 - **<기준서> 문단 N** — 요점 ((요지)면 표기·원문대조 권고)
 - **<심판례/판례> 번호 (기관, 선고·의결일)** — 요지 (사실관계 차이 유의)
+- (금감원 자료가 근거에 있으면 이 블록 안에 굵은 소제목 줄 **금감원 질의회신** · **심사·감리 지적사례** 를 두고 그 아래에 모은다)
+- **금감원 질의회신 「제목」 (등록 YYYY.MM.DD)** — 요지 ([원문](근거에 적힌 링크))
+- **심사·감리 지적사례 「제목」 (결정 YYYY · 쟁점분야)** — 지적 요지 ([원문](근거에 적힌 링크))
 - (근거를 못 찾은 항목은 [확인 불가]로 표기)
 ## 실무 유의
 <실무에서 어떻게 처리하는지 + 놓치기 쉬운 점을 구체적으로 여러 항목(- 불릿)으로. 입증·증빙·안분·업종특성 등 실행 지침 포함.>
@@ -744,6 +764,7 @@ Deno.serve(async (req) => {
     // 1) 회계기준 RAG 근거 (회계·공통에서만)
     let fullCites: { type: string; ref: string; text: string }[] = [];
     let gistCites: { type: string; ref: string; text: string }[] = [];
+    let fssCites: { type: string; ref: string; text: string }[] = [];
     if (doAccounting) {
       const nStd = standardNo || null; // 미지정 시 전 기준서 검색
 
@@ -797,6 +818,28 @@ Deno.serve(async (req) => {
         ref: `${r.standard_set} 제${r.standard_no}호 문단 ${r.paragraph_no} (요지)`,
         text: String(r.content),
       }));
+
+      // 1-c) 금감원 회계업무자료(fss_docs) — 질의회신 · 감리지적사례 등. 실패해도 회신은 막지 않는다.
+      try {
+        const { data: fssRows } = await caller.rpc('match_fss_docs', {
+          query_embedding: qe, match_count: FSS_FETCH, apis: null, keywords: queryKeywords(groundingQuery),
+        });
+        const audit = AUDIT_Q.test(groundingQuery);
+        const rows = ((fssRows ?? []) as Record<string, unknown>[]).map((r) => ({ ...r, similarity: Number(r.score ?? r.similarity) }));
+        const picked = pickByThreshold(rows, FSS_MIN_SIM, 0, FSS_MAX_KEEP)
+          .sort((a, b) => fssRank(String(a.api), audit) - fssRank(String(b.api), audit) || b.similarity - a.similarity);
+        fssCites = picked.map((r) => {
+          const api = String(r.api);
+          const day = r.reg_date ? new Date(String(r.reg_date)).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }).replace(/-/g, '.') : '';
+          const meta = [day && `등록 ${day}`, r.rel_stand && `관련기준서 ${r.rel_stand}`, r.iss_realm && `쟁점분야 ${r.iss_realm}`].filter(Boolean).join(' · ');
+          const body = String(r.body_text ?? '').trim();
+          return {
+            type: fssType(api),
+            ref: `금융감독원 ${FSS_LABEL[api] ?? api} 「${String(r.subject)}」${meta ? ` (${meta})` : ''} — 원문 ${String(r.origin_url ?? '(링크 없음)')}`,
+            text: body ? body.slice(0, 1500) : '(요약 본문 없음 — 실내용은 첨부(hwp/pdf). 제목만으로 결론을 내지 말 것)',
+          };
+        });
+      } catch { fssCites = []; }
     }
 
     // 1-a') 자료실 근거 (공통) — 사무소 내부 참고자료(reference) PDF 원문 청크. 회계·세무 모두에 유효.
@@ -848,7 +891,8 @@ Deno.serve(async (req) => {
       ]);
     }
 
-    const citations = [...fullCites, ...gistCites, ...libCites, ...taxCites, ...law, ...ntsCites, ...ttCites, ...precCites];
+    // 순서 = 모델이 무게를 두는 순서 — 기준서 원문 > 요지 > 금감원 질의회신·지적사례 > 자료실 > 세법 …
+    const citations = [...fullCites, ...gistCites, ...fssCites, ...libCites, ...taxCites, ...law, ...ntsCites, ...ttCites, ...precCites];
 
     // 2) 근거 블록 구성
     const groundingBlock = citations

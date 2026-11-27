@@ -2,6 +2,7 @@
 //  1) 통합검색: 질의 → 의미검색(standards-query) → 유사 문단
 //  2) 기준서 목록: 대분류 → 기준서 클릭 → 전체 문단 열람 + 관련 질의회신
 //  3) 질의회신: KASB 질의회신 제목 인덱스(본문은 KASB 원문 링크)
+//  4) 금감원 자료: 금감원 회계업무자료 Open API 7종(fss_docs, 매일 수집) — FssDocsView
 // 근거 문단은 요지 정리본이므로 인용 시 "(요지)"·원문 대조 권고를 함께 노출한다.
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -24,8 +25,9 @@ import {
 } from '../../lib/standardsApi';
 import { CATALOG, standardLabel, type CatalogItem, type StandardSet } from '../../lib/standardsCatalog';
 import { confirmDanger } from '../common/DangerConfirm';
+import FssDocsView from './FssDocsView';
 
-type Mode = 'search' | 'browse' | 'qna';
+type Mode = 'search' | 'browse' | 'qna' | 'fss';
 
 export default function StandardsTab() {
   const [mode, setMode] = useState<Mode>('browse');
@@ -53,6 +55,7 @@ export default function StandardsTab() {
               ['browse', '📂 기준서 목록'],
               ['search', '🔎 통합검색'],
               ['qna', '💬 질의회신'],
+              ['fss', '🏛 금감원 자료'],
             ] as [Mode, string][]
           ).map(([m, label]) => (
             <button
@@ -71,6 +74,7 @@ export default function StandardsTab() {
         <BrowseView loadedKeys={loadedKeys} qnaIndex={qnaIndex} pdfKeys={pdfKeys} onPdfChange={reloadPdfKeys} onOpenQna={setQnaOpen} />
       )}
       {mode === 'qna' && <QnaView items={qnaIndex} onOpenQna={setQnaOpen} />}
+      {mode === 'fss' && <FssDocsView />}
 
       {qnaOpen && <QnaModal item={qnaOpen} onClose={() => setQnaOpen(null)} />}
     </div>
