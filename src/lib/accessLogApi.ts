@@ -26,6 +26,7 @@ export const ACTIONS = {
   ssong_submit: '쏭비서 결재 올림',
   ssong_approve: '쏭비서 결재 승인',
   ssong_reject: '쏭비서 결재 반려',
+  fss_sync_failed: '금감원 수집 실패',
 } as const;
 export type ActionKey = keyof typeof ACTIONS;
 export const actionLabel = (a: string) => (ACTIONS as Record<string, string>)[a] ?? a;
