@@ -36,3 +36,7 @@ scripts/erp/_explore.json
 
 # 개인 작업물(세법자문 회신 초안)
 docs/세법자문/
+
+# 계정 복구 코드 — 절대 올리지 않는다(Vercel 복구 코드가 저장소 맨 위에 있었다, 2026-11-28).
+*recovery-codes*
+*recovery_codes*
