@@ -33,9 +33,15 @@ export function digestRange(today: string): { from: string; to: string } {
 /** 판단 필요 이슈를 볼 감사 일정 범위 — 오늘 포함 7일. */
 export const ISSUE_WINDOW_DAYS = 7;
 
+/** 금감원 자료 종류 짧은 이름(브리핑 한 줄용). */
+export const FSS_KIND: Record<string, string> = {
+  kifrs: 'K-IFRS 질의회신', kgaap: '일반기준 질의회신', insp: '감리지적', illust: '주석 모범사례',
+  icfr: '내부회계', auddata: '외감 자료', audfaq: '외감 FAQ',
+};
+
 const short = (ymd: string) => `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}`;
 
-export function fmtBriefing(today: string, d: J, audit: J, bill: J, pending: J[]): string {
+export function fmtBriefing(today: string, d: J, audit: J, bill: J, pending: J[], fss?: J): string {
   const r = digestRange(today);
   const out: string[] = [`🌅 아침 브리핑 · ${short(today)}(${DOW[dowOf(today)]})`];
 
@@ -68,6 +74,11 @@ export function fmtBriefing(today: string, d: J, audit: J, bill: J, pending: J[]
     out.push(`${label} ${xs.length}건${sum}: ${xs.slice(0, 3).map(line).join(' / ')}${xs.length > 3 ? ` 외 ${xs.length - 3}` : ''}`);
   }
 
+  // 3-2. 금감원 새 회계자료 — 지난 근무일 이후 금감원에 새로 등록된 것만(백필로 들어온 옛 자료는 등록일이 오래돼 빠진다). 0건이면 줄을 넣지 않는다.
+  const fi = list(fss?.items);
+  const fn = Number(fss?.count ?? fi.length);
+  if (fn > 0) out.push(`📰 금감원 새 회계자료 ${fn}건: ${fi.slice(0, 3).map((x) => `[${FSS_KIND[x.kind] ?? x.kind}] ${x.subject}`).join(' / ')}${fn > 3 ? ` 외 ${fn - 3}` : ''}`);
+
   // 4. 1주 안에 감사 일정이 있는(시작하거나 진행 중인) 회사의 판단 필요 이슈
   const soon = new Set(week.map((x) => x.entityId).filter(Boolean));
   const hot = list(audit?.openIssues).filter((x) => x.decisionNeeded && x.entityId && soon.has(x.entityId));
@@ -89,13 +100,15 @@ export function fmtBriefing(today: string, d: J, audit: J, bill: J, pending: J[]
 export async function buildBriefing(now = new Date()): Promise<string> {
   const t = seoulToday(now);
   const r = digestRange(t.ymd);
-  const [d, audit, bill, pending] = await Promise.all([
+  const [d, audit, bill, pending, fss] = await Promise.all([
     rpc('ssong_daily_digest', { p_from: r.from, p_to: r.to }),
     rpc('ssong_audit_watch', { p_from: t.ymd, p_days: ISSUE_WINDOW_DAYS }),
     rpc('ssong_billing_watch', { p_ym: t.ym, p_min_days: 90 }),
     rpc<J[]>('ssong_my_requests', { p_status: '대기', p_limit: 30 }),
+    // 금감원 줄이 실패해도 브리핑 전체는 나간다.
+    rpc('ssong_fss_updates', { p_from: r.from, p_to: r.to }).catch(() => null),
   ]);
-  return fmtBriefing(t.ymd, d, audit, bill, list(pending));
+  return fmtBriefing(t.ymd, d, audit, bill, list(pending), fss);
 }
 
 export async function sendTelegram(text: string): Promise<boolean> {

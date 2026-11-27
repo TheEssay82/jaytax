@@ -17,6 +17,8 @@ export const DEADLINES = ['긴급', '보통', '지연가능'] as const;
 // 세금계산서 발행의뢰 선택지 — 앱 src/lib/invoiceRequestApi.ts ERP_ACCOUNTS · ssongApi.ts INVOICE_PHASES 와 같아야 한다(0207 DB 도 같은 목록을 검사).
 export const ERP_ACCOUNTS = ['회계감사수입', '세무조정수입', '기업진단수입', '기장대리수입', '경영자문수입', '기타용역수입', '임의감사수입'] as const;
 export const INVOICE_PHASES = ['계약금', '중도금', '잔금', '총액'] as const;
+// 금감원 회계업무자료 종류 — fss_docs.api 와 같다(0210 check).
+export const FSS_APIS = ['kifrs', 'kgaap', 'insp', 'illust', 'icfr', 'auddata', 'audfaq'] as const;
 
 const ok = (data: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] });
 const fail = (e: unknown) => ({
@@ -46,7 +48,7 @@ export function buildServer(): McpServer {
   const server = new McpServer({ name: 'jaytax-ssong', version: '0.2.0' }, {
     instructions:
       'JAYTAX(대표님 회계법인 업무 시스템) 연결. JAYTAX 에 무엇이 있는지 모르면 about_jaytax 를 먼저 읽는다. ' +
-      '아침 브리핑은 send_morning_briefing, 보고·집계는 daily_digest · revenue_summary · billing_watch · audit_watch, 등록·발송은 submit_* 로 결재만 올린다(대표님 승인 뒤 실행). ' +
+      '아침 브리핑은 send_morning_briefing, 보고·집계는 daily_digest · revenue_summary · billing_watch · audit_watch, 금감원 질의회신·감리지적사례는 fss_search · fss_updates, 등록·발송은 submit_* 로 결재만 올린다(대표님 승인 뒤 실행). ' +
       '금액은 원 단위, 정산연도는 7월~다음 해 6월이며 시작 연도로 부른다.',
   });
 
@@ -161,6 +163,41 @@ export function buildServer(): McpServer {
     annotations: { readOnlyHint: true },
   }, async ({ query, limit }) => {
     try { return ok(await rpc('ssong_consult_history', { p_q: query ?? null, p_limit: limit ?? 20 })); } catch (e) { return fail(e); }
+  });
+
+  // ── 금감원 회계업무자료(공개자료, fss_docs — JAYTAX 가 매일 07:30 모은다) ──
+  server.registerTool('fss_updates', {
+    title: '금감원 새 회계자료',
+    description: '기간 안에 금융감독원이 새로 올린 회계업무자료 목록(종류·제목·등록일·관련기준서·쟁점분야·원문 링크). 종류: kifrs(K-IFRS 질의회신) · kgaap(일반기업회계기준 질의회신) · insp(심사·감리 지적사례) · illust(주석공시 모범사례) · icfr(내부회계관리제도) · auddata(외부감사 업무자료) · audfaq(외부감사 FAQ). 기본은 최근 7일. 지난 자료는 JAYTAX 가 날마다 채우는 중이라 오래된 기간은 비어 있을 수 있습니다.',
+    inputSchema: {
+      days: z.number().int().min(1).max(92).optional().describe('오늘부터 거슬러 볼 날수(기본 7)'),
+      api: z.enum(FSS_APIS).optional().describe('자료 종류 하나만'),
+    },
+    annotations: { readOnlyHint: true },
+  }, async ({ days, api }) => {
+    try {
+      const to = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
+      const from = new Date(Date.parse(`${to}T00:00:00Z`) - (days ?? 7) * 86400000).toISOString().slice(0, 10);
+      return ok(await rpc('ssong_fss_updates', { p_from: from, p_to: to, p_api: api ?? null }));
+    } catch (e) { return fail(e); }
+  });
+
+  server.registerTool('fss_search', {
+    title: '금감원 회계자료 검색',
+    description: '금융감독원 회계업무자료(질의회신·심사·감리 지적사례·주석공시 모범사례·내부회계·외부감사 자료·FAQ)를 낱말로 찾습니다(공백 = 모두 포함, 제목·본문·관련기준서·쟁점분야). 제목·등록일·관련기준서·쟁점분야·원문 링크·첨부·본문 앞 300자를 줍니다. 답할 때는 원문 링크(url)를 꼭 함께 주고, 실내용이 첨부(hwp/pdf)에 있는 자료는 링크만 안내하세요. 기준서와 다르게 읽히면 기준서를 우선합니다.',
+    inputSchema: {
+      q: z.string().optional().describe('낱말(예: 리스 변경 / 진행기준 / 재고자산)'),
+      api: z.enum(FSS_APIS).optional().describe('자료 종류 하나만'),
+      rel_stand: z.string().optional().describe('관련기준서 일부(예: 1115)'),
+      from: ymd.optional().describe('등록일 시작'),
+      to: ymd.optional().describe('등록일 끝'),
+      limit: z.number().int().min(1).max(30).optional().describe('기본 10'),
+    },
+    annotations: { readOnlyHint: true },
+  }, async ({ q, api, rel_stand, from, to, limit }) => {
+    try {
+      return ok(await rpc('ssong_fss_search', { p_q: q ?? null, p_api: api ?? null, p_rel_stand: rel_stand ?? null, p_from: from ?? null, p_to: to ?? null, p_limit: limit ?? 10 }));
+    } catch (e) { return fail(e); }
   });
 
   server.registerTool('search_clients', {

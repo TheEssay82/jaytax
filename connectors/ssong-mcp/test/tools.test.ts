@@ -30,11 +30,15 @@ test('도구 — 고치기·지우기·취소·승인 도구가 없다', () => {
   const s = buildServer() as unknown as { _registeredTools: Record<string, unknown> };
   const names = Object.keys(s._registeredTools).sort();
   assert.deepEqual(names, [
-    'about_jaytax', 'audit_watch', 'billing_watch', 'consult_history', 'daily_digest', 'engagement_status',
+    'about_jaytax', 'audit_watch', 'billing_watch', 'consult_history', 'daily_digest', 'engagement_status', 'fss_search', 'fss_updates',
     'get_doc_send_status', 'invoice_requests', 'list_contract_categories', 'list_my_requests', 'list_sales_contracts',
     'list_staff', 'revenue_summary', 'search_clients', 'search_contacts', 'send_morning_briefing', 'submit_doc_send', 'submit_invoice_request', 'submit_sales_contract',
   ]);
-  for (const n of names) assert.doesNotMatch(n, /update|delete|cancel|approve|remove/);
+  // fss_updates 는 「금감원 새 자료(updates) 목록」 읽기 도구다(인계 문서가 정한 이름, readOnlyHint) — 이것만 예외.
+  for (const n of names) if (n !== 'fss_updates') assert.doesNotMatch(n, /update|delete|cancel|approve|remove/);
+  const tools = (s as unknown as { _registeredTools: Record<string, { annotations?: { readOnlyHint?: boolean } }> })._registeredTools;
+  assert.equal(tools.fss_updates.annotations?.readOnlyHint, true);
+  assert.equal(tools.fss_search.annotations?.readOnlyHint, true);
 });
 
 test('텔레그램 — 결재 요약·메모·결재함 주소, 설정 없으면 건너뜀', async () => {

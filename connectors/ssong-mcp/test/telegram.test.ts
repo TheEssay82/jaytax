@@ -167,6 +167,11 @@ test('아침 브리핑 — 기간·모양·크론 비밀', async () => {
   const none = fmtBriefing('2026-11-23', {}, { schedule: { days: [] },
     openIssues: [{ company: '더그림', entityId: 'e9', no: 4, title: '일정 없음', decisionNeeded: true }] }, {}, []);
   assert.doesNotMatch(none, /🧭/);
+  assert.doesNotMatch(none, /금감원/);   // 금감원 새 자료 0건이면 줄을 넣지 않는다
+  const withFss = fmtBriefing('2026-11-23', {}, { schedule: { days: [] } }, {}, [],
+    { count: 4, items: [{ kind: 'kifrs', subject: '리스 변경' }, { kind: 'insp', subject: '수익인식 진행기준' }, { kind: 'audfaq', subject: '조회서' }] });
+  assert.match(withFss, /📰 금감원 새 회계자료 4건: \[K-IFRS 질의회신\] 리스 변경 \/ \[감리지적\] 수익인식 진행기준 \/ \[외감 FAQ\] 조회서 외 1/);
+  assert.doesNotMatch(fmtBriefing('2026-11-23', {}, {}, {}, [], { count: 0, items: [] }), /금감원/);
   assert.match(text, /조회서 남은 회사 2곳 \(미회수 2건\)\n🧾 90일 넘은 미수금 2건 120만/);
   const prev = process.env.CRON_SECRET;
   process.env.CRON_SECRET = 'c'.repeat(32);

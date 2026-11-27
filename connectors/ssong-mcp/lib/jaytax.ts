@@ -15,7 +15,8 @@ export type SsongRpc =
   | 'ssong_list_contracts' | 'ssong_doc_send_status' | 'ssong_list_staff'
   | 'ssong_daily_digest' | 'ssong_revenue_summary' | 'ssong_billing_watch' | 'ssong_audit_watch'
   | 'ssong_tg_claim' | 'ssong_tg_recall' | 'ssong_tg_remember'
-  | 'ssong_engagement_status' | 'ssong_consult_history' | 'ssong_invoice_requests';
+  | 'ssong_engagement_status' | 'ssong_consult_history' | 'ssong_invoice_requests'
+  | 'ssong_fss_updates' | 'ssong_fss_search';
 
 export async function rpc<T = unknown>(name: SsongRpc, args: Record<string, unknown> = {}): Promise<T> {
   const url = env('SUPABASE_URL').replace(/\/+$/, '');

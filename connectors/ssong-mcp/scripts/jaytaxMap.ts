@@ -36,6 +36,7 @@ const SSONG_TOOLS = [
   { tool: 'engagement_status', covers: '감사 업무 진행 — 거래처·연도별 일반조서·주석/DSD·JET·감사이슈' },
   { tool: 'consult_history', covers: '상담 — 자문 회신 이력(제목·거래처·태그·날짜만)' },
   { tool: 'list_my_requests', covers: '쏭비서 결재함 — 내가 올린 결재의 결과' },
+  { tool: 'fss_search · fss_updates', covers: '상담·검색 › 📚 회계기준 검색 「🏛 금감원 자료」 — 금감원 질의회신·심사·감리 지적사례·모범사례·외부감사 자료(공개자료, 매일 07:30 수집) 검색 · 기간 안 새 자료' },
 ];
 
 const RULES = [
