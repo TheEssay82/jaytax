@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { setCells, excelSerial } from './xlsxCells.ts';
+import { setCells, excelSerial, isoOfSerial } from './xlsxCells.ts';
 import { readSheet } from './xlsxRead.ts';
 
 const SHEET = '<worksheet><sheetData>'
@@ -48,4 +48,10 @@ test('엑셀 날짜 일련번호', () => {
   assert.equal(excelSerial('2026-12-31'), 46387);
   assert.equal(excelSerial('2025-04-14'), 45761);
   assert.equal(excelSerial('없음'), null);
+});
+
+test('날짜 일련번호 왕복 — 「2026-06-30」 ↔ 46203', () => {
+  assert.equal(excelSerial('2026-06-30'), 46203);
+  assert.equal(isoOfSerial(46203), '2026-06-30');
+  assert.equal(isoOfSerial(excelSerial('2025-12-31')!), '2025-12-31');
 });

@@ -22,7 +22,7 @@
 // (보고서BS D열 =SUMIF(WBS!$O…) → $P, SCE 전기초 =WBS!N82 → O82, WBS 당기 =O108 → P108). 단 WBS·WPL 의 과거 열 속 수식은 그대로.
 import { strFromU8, strToU8 } from 'fflate';
 import { readWorkbook, type SheetData } from './xlsxRead';
-import { setCells, excelSerial, type CellEdit } from './xlsxCells';
+import { setCells, excelSerial, isoOfSerial, type CellEdit } from './xlsxCells';
 import { sheetEntries, dropCalcChain, forceRecalc } from './xlsxTransplant';
 import { colName, colNum, insertColumns, insertRowsBook, mapFormulas, mapRefs, moveRelative, shiftColsInRef, unshareFormulas } from './xlsxCols';
 import { insertRowsAfter } from './xlsxRows';
@@ -52,6 +52,12 @@ export interface WtbRollOptions {
   /** 보이게 둘 해 수(올해 포함) — 기본 4 */ years?: number;
   /** 시산표에만 있는 계정을 어디에 — 이미 있는 줄에 더하기(label = 계정 열 이름) 또는 과목 끝에 새 줄 */
   place?: WtbPlace[];
+  /**
+   * 기말 갱신(refreshWtb) 전용 — **같은 해 반기 정산표에서 중간 정산표를 만들 때**(인코어 FY26, 사용자 2026-11-28
+   * 「반기때 정산표의 당기 부분을 비우고 반영」). 올해 A500 수정분개를 비워 DR·CR 이 0 이 되게 한다.
+   * 중간→기말 갱신에서는 쓰지 않는다(중간감사 때 수정분개가 생기지 않는다 — 사용자 2026-10-05).
+   */
+  clearAdj?: boolean;
 }
 
 export type WtbPlace =
@@ -686,30 +692,7 @@ export function rollWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Uint8
   }
 
   // ④ A500 — 수정분개 비우기, B2 = 올해 연말, 작성자·검토자.
-  const a500 = entries().find((e) => /^A500|수정(사항)?집계/.test(e.name));
-  if (a500) {
-    const sh = readSheetXml(dec(files[a500.part]));
-    const edits: CellEdit[] = [];
-    let headRow = 0, sumRow = 0;
-    const sstr = sharedStrings(files);
-    const ax = dec(files[a500.part]);
-    const txtOf = new Map([...sh.keys()].map((ref) => [ref, cellText(ax, ref, sstr)]));
-    for (const ref of [...sh.keys()].sort((a, b) => rowOf(a) - rowOf(b))) {
-      const t = (txtOf.get(ref) ?? '').replace(/\s/g, '');
-      if (!headRow && /계정과목/.test(t)) headRow = rowOf(ref);
-      if (!sumRow && headRow && t === '합계' && rowOf(ref) > headRow) sumRow = rowOf(ref);
-    }
-    for (const [ref, v] of sh) {
-      const r = rowOf(ref);
-      if (headRow && sumRow && r > headRow + 1 && r < sumRow && (v.num != null || v.text != null || v.formula)) edits.push({ ref, clear: true });
-      if (ref === 'B2') edits.push({ ref, num: yearEnd });
-      const txt = txtOf.get(ref) ?? '';
-      if (o.companyAuthor && /작성자\s*:/.test(txt)) edits.push({ ref, text: txt.replace(/(작성자\s*:\s*)([^님]*?)(\s*님|$)/, `$1${o.companyAuthor}$3`) });
-      if (o.companyReviewer && /검토자\s*:/.test(txt)) edits.push({ ref, text: txt.replace(/(검토자\s*:\s*)([^님]*?)(\s*님|$)/, `$1${o.companyReviewer}$3`) });
-    }
-    if (edits.length) files[a500.part] = enc(setCells(dec(files[a500.part]), edits));
-    if (!headRow || !sumRow) report.notes.push(`${a500.name}: 수정분개 표(머리 「계정과목」~「합계」)를 찾지 못해 비우지 않았습니다.`);
-  }
+  clearA500(files, entries(), o, yearEnd, report);
 
   // ⑤ SCE — 전기 자본변동표를 올해 것으로.
   const sce = entries().find((e) => /^SCE/.test(e.name));
@@ -837,6 +820,14 @@ export function refreshWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Ui
     const C = colName(L.cur);
     const d = sh.cells.get(`${C}${L.yearRow}`);
     if (d && !d.formula && d.num != null) edits.push({ ref: `${C}${L.yearRow}`, num: closing });
+    // 머리 A1~A3 의 기준일 글자(인코어 WBS A2 「2026-06-30」)가 옛 회사제시 날짜와 같으면 새 기준일로.
+    if (d?.num != null) {
+      const oldIso = isoOfSerial(d.num);
+      for (let r = 1; r <= 3; r++) {
+        const a = sh.cells.get(`A${r}`);
+        if (a && !a.formula && a.text?.trim() === oldIso) edits.push({ ref: `A${r}`, text: o.closing });
+      }
+    }
     let zeroed = 0;
     for (const r of L.accounts) {
       const old = sh.cells.get(`${C}${r}`);
@@ -849,6 +840,8 @@ export function refreshWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Ui
     report.tables.push({ sheet: L.sheet, insertedAt: '', prior: pc != null ? colName(pc) : '', company: `${C}열 → ${o.closing}`, zeroed, normalized: 0, hidden: '' });
   }
   if (!found) throw new Error('정산표 표(WBS·WPL — 머리 「과목」, 올해 묶음 「DR | CR」)를 찾지 못했습니다.');
+  // 같은 해 반기 정산표에서 시작 — 올해 A500 수정분개를 비운다(B2 는 올해 연말).
+  if (o.clearAdj) clearA500(files, sheetEntries(files), o, excelSerial(o.yearEnd)!, report);
   // SCE 는 「(당기말)」 날짜·「BS일」 칸만 기준일로(2026.09.30 → 2026.12.31). 금액·식은 그대로.
   const sce = sheetEntries(files).find((e) => /^SCE/.test(e.name));
   if (sce) {
@@ -859,6 +852,41 @@ export function refreshWtb(bytes: Uint8Array, o: WtbRollOptions, unzipFn: (b: Ui
   dropCalcChain(files);
   forceRecalc(files);
   return { bytes: zipFn(files), report };
+}
+
+/**
+ * A500(수정사항집계표) — 머리 「계정과목」~「합계」 사이 분개를 비우고, B2 = 올해 연말, 작성자·검토자(회사 담당).
+ * 수정집계 시트가 여럿이면(인코어 「수정집계_FY25」·「수정집계_FY26」) 올해 연도(FY26·2026)가 이름에 든 것 — 없으면 첫 장.
+ */
+function clearA500(files: Record<string, Uint8Array>, list: { name: string; part: string }[], o: WtbRollOptions, yearEnd: number, report: WtbRollReport): void {
+  const all = list.filter((e) => /^A500|수정(사항)?집계/.test(e.name));
+  const yy = o.yearEnd.slice(2, 4), yyyy = o.yearEnd.slice(0, 4);
+  const yearRe = new RegExp(`(?:FY\\s*(?:${yyyy}|${yy})|${yyyy})(?!\\d)`, 'i');
+  const a500 = all.find((e) => yearRe.test(e.name)) ?? all[0];
+  if (!a500) return;
+  const sh = readSheetXml(dec(files[a500.part]));
+  const edits: CellEdit[] = [];
+  let headRow = 0, sumRow = 0;
+  const sstr = sharedStrings(files);
+  const ax = dec(files[a500.part]);
+  const txtOf = new Map([...sh.keys()].map((ref) => [ref, cellText(ax, ref, sstr)]));
+  for (const ref of [...sh.keys()].sort((a, b) => rowOf(a) - rowOf(b))) {
+    const t = (txtOf.get(ref) ?? '').replace(/\s/g, '');
+    if (!headRow && /계정과목/.test(t)) headRow = rowOf(ref);
+    if (!sumRow && headRow && t === '합계' && rowOf(ref) > headRow) sumRow = rowOf(ref);
+  }
+  let cleared = 0;
+  for (const [ref, v] of sh) {
+    const r = rowOf(ref);
+    if (headRow && sumRow && r > headRow + 1 && r < sumRow && (v.num != null || v.text != null || v.formula)) { edits.push({ ref, clear: true }); if (v.num) cleared++; }
+    if (ref === 'B2') edits.push({ ref, num: yearEnd });
+    const txt = txtOf.get(ref) ?? '';
+    if (o.companyAuthor && /작성자\s*:/.test(txt)) edits.push({ ref, text: txt.replace(/(작성자\s*:\s*)([^님]*?)(\s*님|$)/, `$1${o.companyAuthor}$3`) });
+    if (o.companyReviewer && /검토자\s*:/.test(txt)) edits.push({ ref, text: txt.replace(/(검토자\s*:\s*)([^님]*?)(\s*님|$)/, `$1${o.companyReviewer}$3`) });
+  }
+  if (edits.length) files[a500.part] = enc(setCells(dec(files[a500.part]), edits));
+  if (!headRow || !sumRow) report.notes.push(`${a500.name}: 수정분개 표(머리 「계정과목」~「합계」)를 찾지 못해 비우지 않았습니다.`);
+  else if (o.clearAdj) report.notes.push(`${a500.name}: 반기 수정분개(금액 칸 ${cleared}개)를 비웠습니다 — WBS·WPL 의 DR·CR 이 0 이 됩니다.`);
 }
 
 const escXml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

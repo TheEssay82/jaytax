@@ -80,3 +80,8 @@ export function excelSerial(iso: string): number | null {
   const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   return Math.round(ms / 86400000) + 25569;
 }
+
+/** 엑셀 날짜 일련번호 → 「2026-06-30」. */
+export function isoOfSerial(n: number): string {
+  return new Date(Math.round(n - 25569) * 86400000).toISOString().slice(0, 10);
+}

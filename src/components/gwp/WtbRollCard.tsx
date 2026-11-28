@@ -58,7 +58,10 @@ const fmt = (n: number) => Math.round(n).toLocaleString('ko-KR');
 
 export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: Engagement; canWrite: boolean; mode?: '중간' | '기말' }) {
   const end = mode === '기말';
-  const run = end ? refreshWtb : rollWtb;
+  // 같은 해 반기 정산표에서 시작(인코어 FY26 — 전기 감사보고서가 없고 반기 보고서가 나감, 사용자 2026-11-28).
+  //   열을 밀지 않고 기말 갱신처럼 회사제시만 바꾸되, 반기 A500 수정분개는 비운다(clearAdj). 파일 이름은 _중간_.
+  const [half, setHalf] = useState(false);
+  const run = end || half ? refreshWtb : rollWtb;
   const [prior, setPrior] = useState<Src | null>(null);
   const [loadingPrior, setLoadingPrior] = useState(true);
   const [srcs, setSrcs] = useState<SrcSheet[]>([]);
@@ -107,12 +110,16 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
     return () => { off = true; };
   }, [eng.id, eng.entityId, eng.fy, eng.scope, end]);
 
-  useEffect(() => { setPreview(null); setMade(null); }, [prior, srcs, closing, pair, maps]);
+  useEffect(() => { setPreview(null); setMade(null); }, [prior, srcs, closing, pair, maps, half]);
   useEffect(() => {
     if (!prior) { setOutline({ rows: [], tables: [] }); return; }
-    try { const o = wtbOutline(prior.bytes); setOutline({ rows: o.rows, tables: o.tables }); } catch { setOutline({ rows: [], tables: [] }); }
+    try {
+      const o = wtbOutline(prior.bytes); setOutline({ rows: o.rows, tables: o.tables });
+      // 고른 정산표의 기수가 올해 기수와 같으면 같은 해 반기 정산표다 — 저절로 켠다(사람이 끌 수 있음).
+      if (!end) setHalf(o.term != null && eng.termNo != null && o.term === eng.termNo);
+    } catch { setOutline({ rows: [], tables: [] }); }
     try { const p = wtbA500People(prior.bytes); setLastPeople(p); setCompanyAuthor(p.author ?? ''); setCompanyReviewer(p.reviewer ?? ''); } catch { /* 없으면 빈칸 */ }
-  }, [prior]);
+  }, [prior]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mcTables = outline.tables.filter((t) => t.kind === 'MC');
   // 제조원가 표 ↔ 회사 자료 시트 — 이름이 같으면 저절로, 하나씩뿐이면 그것끼리. 사람이 고친 것은 그대로.
@@ -166,7 +173,8 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
     companyReviewer: companyReviewer.trim() && companyReviewer.trim() !== lastPeople.reviewer ? companyReviewer.trim() : undefined,
     tb: built.tb,
     pair: Object.fromEntries(Object.entries(pair).map(([t, k]) => [t, `MC:${k}`])),
-  }), [closing, eng.fy, eng.termNo, companyAuthor, companyReviewer, lastPeople, built, pair]);
+    clearAdj: !end && half,
+  }), [closing, eng.fy, eng.termNo, companyAuthor, companyReviewer, lastPeople, built, pair, end, half]);
 
   async function pickPrior(f: File | undefined) {
     if (!f) return;
@@ -254,7 +262,8 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
       }
       setMade(r.report);
       setMsg(`「${name}」을 만들어 내려받았습니다${canWrite ? ' — 자료함에도 남겼습니다' : ''}. `
-        + (end ? '회사제시 열만 기말 숫자로 바꿨습니다 — 주석 시트를 붙인 파일이면 파란 칸이 새 숫자를 따라옵니다. WBS 차대·이익잉여금·SCE·WCF 검증을 한 번 보세요.'
+        + (half ? '반기 정산표의 회사제시를 새 숫자로 바꾸고 반기 수정분개(A500)를 비웠습니다 — 열은 밀지 않았습니다. WBS 차대·이익잉여금·제조원가 검증을 한 번 보세요.'
+          : end ? '회사제시 열만 기말 숫자로 바꿨습니다 — 주석 시트를 붙인 파일이면 파란 칸이 새 숫자를 따라옵니다. WBS 차대·이익잉여금·SCE·WCF 검증을 한 번 보세요.'
           : '엑셀에서 WBS 차대·이익잉여금 검증·SCE·WCF 검증을 한 번 보세요.'));
     } catch (e) { setErr(e instanceof Error ? e.message : '만들지 못했습니다.'); } finally { setBusy(''); }
   }
@@ -274,6 +283,7 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
       <div className="chdr">{end ? '기말 갱신' : '중간 이월'}
         <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>
           {end ? '중간 정산표 + 기말 회사 재무제표 → 회사제시 열만 기말 숫자로(열 밀기·A500·SCE 는 그대로)'
+            : half ? '올해 반기 정산표 + 회사 제시 재무제표 → 올해 중간감사 정산표(열은 밀지 않고 회사제시만 새 숫자로, 반기 수정분개는 비움)'
             : '작년 확정 정산표 + 회사 제시 재무제표 → 올해 중간감사 정산표(WBS·WPL·제조원가·A500·SCE·보고서·WCF를 한 해 밀어 둠)'}
         </span>
       </div>
@@ -281,7 +291,7 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
       {msg && <div style={{ color: 'var(--good)', fontSize: 'var(--fs-2)', marginBottom: 6 }}>{msg}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '8px 12px', alignItems: 'start', fontSize: 'var(--fs-2)' }}>
-        <b>{end ? '① 중간 정산표' : '① 작년 확정 정산표'}</b>
+        <b>{end ? '① 중간 정산표' : half ? '① 올해 반기 정산표' : '① 작년 확정 정산표'}</b>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {prior ? <span>{prior.name} <span style={{ color: 'var(--ink-3)' }}>({prior.from}{outline.tables.length ? ` · 표 ${outline.tables.map((t) => t.sheet + (t.hidden ? '(숨김)' : '')).join('·')}` : ''})</span></span>
             : loadingPrior ? <span style={{ color: 'var(--ink-3)' }}>자료함에서 불러오는 중…</span>
@@ -290,6 +300,13 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
             <input type="file" accept=".xlsx,.xlsm" style={{ display: 'none' }} onChange={(e) => { void pickPrior(e.target.files?.[0]); e.target.value = ''; }} />
           </label>
           {end && <span style={{ color: 'var(--info)', fontSize: 'var(--fs-1)' }}>주석 시트를 붙인 파일(…_주석시트.xlsx)을 고르면 주석의 파란 칸이 기말 숫자를 따라옵니다.</span>}
+          {!end && (
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center', width: '100%', fontSize: 'var(--fs-1)', color: half ? 'var(--info)' : 'var(--ink-3)' }}>
+              <input type="checkbox" checked={half} onChange={(e) => setHalf(e.target.checked)} />
+              같은 해 반기 정산표에서 시작 — 전기 감사보고서가 없고 올해 반기 보고서가 나간 회사(인코어). 열을 밀지 않고 당기 회사제시를 새 숫자로 바꾸며, 반기 수정분개(A500)는 비웁니다.
+              {prior && half && eng.termNo != null && <span>(고른 정산표 제{eng.termNo}기 = 올해 기수)</span>}
+            </label>
+          )}
         </div>
 
         <b>② 회사 재무제표</b>
