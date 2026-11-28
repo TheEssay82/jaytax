@@ -455,3 +455,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
 
 /* 상담기록 목록 — 줄에 올리면 고를 수 있다는 표시(2026-11-04) */
 .consult-row:hover{background:var(--surface-3)}
+
+/* 말풍선 단계 안내(CoachBubble, 2026-11-28) — 감싼 자리(CoachSpot) 바로 위에 하나만 뜬다. */
+.coach-bubble{position:absolute;left:0;bottom:calc(100% + 10px);z-index:30;max-width:min(460px,92vw);
+  padding:8px 12px;border-radius:14px;background:var(--info,#2563eb);color:#fff;font-size:var(--fs-2);line-height:1.45;
+  box-shadow:0 6px 18px rgba(0,0,0,.18);animation:coach-pop .22s ease-out}
+.coach-bubble::after{content:"";position:absolute;left:22px;top:100%;border:9px solid transparent;border-top-color:var(--info,#2563eb)}
+.coach-no{flex:none;min-width:30px;padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.22);font-weight:700;text-align:center;font-size:var(--fs-1)}
+.coach-off{flex:none;background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:1px 6px;font-size:var(--fs-0);cursor:pointer}
+@keyframes coach-pop{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.coach-bubble{animation:none}}

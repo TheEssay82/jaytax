@@ -12,6 +12,7 @@ import type { Engagement } from '../../lib/dsdApi';
 import { findEngagement } from '../../lib/dsdApi';
 import { readWorkbook, type SheetData } from '../../lib/xlsxRead';
 import { unzip, zip } from '../../lib/xlsxTransplant';
+import { CoachBubble, CoachSpot, useCoach } from '../common/CoachBubble';
 import { rollWtb, refreshWtb, tbFromSheet, fsFromSheet, suggestMcPairs, wtbOutline, wtbA500People, pairKey, type TbLine, type WtbPlace, type WtbRollReport, type WtbRow, type TableKind } from '../../lib/wtbRoll';
 import { listFiles, latestFile, uploadFile, type EngFile } from '../../lib/gwpStageApi';
 import { fileBytes, fileUrl } from '../../lib/gwpApi';
@@ -36,7 +37,8 @@ export function wtbFileName(eng: Engagement, phase: '중간' | '기말', today =
 /** 「제 11기 2026년 08월 31일 현재」·「제 15기 당기: 2026년 08월 31일」·「… ~ 2026년 08월 31일」 → 2026-08-31 */
 function dateOf(sh: SheetData): string | null {
   for (const v of [...sh.cells.values()].slice(0, 80)) {
-    const all = [...(v.text ?? '').matchAll(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g)];
+    // 「2026년 6월 30일 현재」 또는 「제 2(당)기[2026/01/01 ~ 2026/06/30]」(인코어 — 빗금·점·붙임표 날짜) — 마지막 날짜가 기준일.
+    const all = [...(v.text ?? '').matchAll(/(\d{4})\s*(?:년\s*|[./-])(\d{1,2})\s*(?:월\s*|[./-])(\d{1,2})\s*일?/g)];
     if (all.length && /현재|까지|당기|~/.test(v.text ?? '')) { const m = all[all.length - 1]; return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`; }
   }
   return null;
@@ -278,6 +280,18 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
   const files = [...new Set(srcs.map((s) => s.file))];
 
   const box = { padding: '8px 10px', borderRadius: 8, background: 'var(--surface-2)', marginTop: 8 } as const;
+  // 말풍선 단계 안내 — 같은 해 반기 정산표 흐름(인코어). 한 번에 하나만, 마치면 다음 것(사용자 2026-11-28).
+  //   작년 정산표가 자료함에 없을 때(반기 정산표를 골라야 할 수 있음)부터 띄우고, 반기 갈래가 꺼지면 걷는다.
+  const tourOn = !end && (half || (!prior && !loadingPrior));
+  const coach = useCoach('wtb-half', [
+    { id: 'pick', done: !!prior },
+    { id: 'fs', done: srcs.length > 0 },
+    { id: 'check', done: !!preview },
+    { id: 'pairs', done: unresolved === 0, skip: !preview?.unmatched.length },
+    { id: 'make', done: !!made },
+  ]);
+  const at = (id: string) => tourOn && coach.step === id;
+  const off = () => coach.setOff(true);
   return (
     <div className="card">
       <div className="chdr">{end ? '기말 갱신' : '중간 이월'}
@@ -287,12 +301,16 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
             : '작년 확정 정산표 + 회사 제시 재무제표 → 올해 중간감사 정산표(WBS·WPL·제조원가·A500·SCE·보고서·WCF를 한 해 밀어 둠)'}
         </span>
       </div>
+      {tourOn && coach.off && <div style={{ fontSize: 'var(--fs-1)', marginBottom: 6 }}><button type="button" className="btn-sm" onClick={() => coach.setOff(false)}>💬 단계 안내 다시 켜기</button></div>}
       {err && <div style={{ color: 'var(--bad)', fontSize: 'var(--fs-2)', marginBottom: 6 }}>{err}</div>}
       {msg && <div style={{ color: 'var(--good)', fontSize: 'var(--fs-2)', marginBottom: 6 }}>{msg}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '8px 12px', alignItems: 'start', fontSize: 'var(--fs-2)' }}>
         <b>{end ? '① 중간 정산표' : half ? '① 올해 반기 정산표' : '① 작년 확정 정산표'}</b>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <CoachSpot style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <CoachBubble show={at('pick')} n={1} of={5} onOff={off}>
+            작년 정산표가 없습니다. 전기 감사보고서가 없고 올해 반기 보고서가 나간 회사면 <b>올해 반기 정산표</b>(예: WTB_인코어_FY2026Q2_v6)를 「파일 고르기」로 고르세요 — 기수가 올해와 같으면 반기 갈래가 저절로 켜집니다.
+          </CoachBubble>
           {prior ? <span>{prior.name} <span style={{ color: 'var(--ink-3)' }}>({prior.from}{outline.tables.length ? ` · 표 ${outline.tables.map((t) => t.sheet + (t.hidden ? '(숨김)' : '')).join('·')}` : ''})</span></span>
             : loadingPrior ? <span style={{ color: 'var(--ink-3)' }}>자료함에서 불러오는 중…</span>
             : <span style={{ color: 'var(--ink-3)' }}>{end ? '이 건 자료함에 중간 정산표가 없습니다 — 파일을 고르세요' : '작년 작업 건 자료함에 없습니다 — 파일을 고르세요'}</span>}
@@ -307,10 +325,13 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
               {prior && half && eng.termNo != null && <span>(고른 정산표 제{eng.termNo}기 = 올해 기수)</span>}
             </label>
           )}
-        </div>
+        </CoachSpot>
 
         <b>② 회사 재무제표</b>
-        <div>
+        <CoachSpot>
+          <CoachBubble show={at('fs')} n={2} of={5} onOff={off}>
+            회사가 준 중간 재무제표(반기 때와 같은 양식 — 재무상태표·손익계산서·제조원가명세서)를 넣으세요. 기준일은 제목에서 읽어 ③에 채웁니다.
+          </CoachBubble>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <label className="btn-sm" style={{ cursor: 'pointer' }}>{srcs.length ? '파일 더하기' : '파일 고르기(여러 개 가능)'}
               <input type="file" multiple accept=".xlsx,.xlsm,.xls" style={{ display: 'none' }} onChange={(e) => { void addFiles(e.target.files); e.target.value = ''; }} />
@@ -358,7 +379,7 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
               ))}
             </div>
           )}
-        </div>
+        </CoachSpot>
 
         <b>③ 기준일</b>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -376,9 +397,12 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
         </div>}
       </div>
 
-      <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <CoachSpot style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <CoachBubble show={at('check')} n={3} of={5} onOff={off}>
+          ③ 기준일(중간감사 기준월 말)이 맞는지 보고 「회사 자료 맞춰 보기」를 누르세요 — 회사제시만 새 숫자로 바꾸고 반기 수정분개는 비운 모습을 미리 보여 줍니다.
+        </CoachBubble>
         <button className="btn-p" disabled={!prior || !built.tb.length || !!busy} onClick={check}>{busy === 'preview' ? '맞춰 보는 중…' : '회사 자료 맞춰 보기'}</button>
-      </div>
+      </CoachSpot>
 
       {preview && (
         <div style={box}>
@@ -435,7 +459,10 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
             </details>
           )}
           {preview.unmatched.length > 0 ? (
-            <div style={{ marginTop: 8, fontSize: 'var(--fs-2)' }}>
+            <CoachSpot style={{ marginTop: 8, fontSize: 'var(--fs-2)' }}>
+              <CoachBubble show={at('pairs')} n={4} of={5} onOff={off}>
+                회사 자료 이름이 정산표와 달라 못 찾은 계정입니다. 줄마다 「이미 있는 줄에 더하기」로 받을 줄을 고르세요 — 한 번 고르면 이 회사는 다음부터 저절로 맞습니다.
+              </CoachBubble>
               <div style={{ color: 'var(--warn)', fontWeight: 700 }}>정산표에 받을 줄이 없는 계정 {preview.unmatched.length}개 — 이대로면 합계가 이만큼 어긋납니다. 어디에 넣을지 고르세요:</div>
               {preview.unmatched.map((t) => {
                 const k = ckey(t);
@@ -466,14 +493,17 @@ export default function WtbRollCard({ eng, canWrite, mode = '중간' }: { eng: E
                   </div>
                 );
               })}
-            </div>
+            </CoachSpot>
           ) : <div style={{ marginTop: 6, color: 'var(--good)', fontSize: 'var(--fs-2)' }}>회사 자료 계정이 모두 정산표 줄에 맞았습니다.</div>}
-          <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <CoachSpot style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <CoachBubble show={at('make')} n={5} of={5} onOff={off}>
+              검증표를 보고 「만들기」를 누르세요 — A500 회사 담당을 한 번 묻고, 중간 정산표를 내려받으며 자료함에도 남깁니다.
+            </CoachBubble>
             <button className="btn-p" disabled={!!busy || unresolved > 0} onClick={() => void make()}>
               {busy === 'make' ? '만드는 중…' : `${end ? '기말 정산표' : '이월 정산표'} 만들기 — ${wtbFileName(eng, mode)}`}
             </button>
             {unresolved > 0 && <span style={{ color: 'var(--warn)', fontSize: 'var(--fs-1)' }}>받을 줄이 없는 계정 {unresolved}개를 먼저 고르세요</span>}
-          </div>
+          </CoachSpot>
         </div>
       )}
 
