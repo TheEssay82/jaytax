@@ -14,6 +14,7 @@
 import { colName, INDEX_SHEET, type SheetPlan, type SheetCell } from './noteSheet';
 import { readLayout } from './wtbRoll';
 import type { SheetData } from './xlsxRead';
+import { excelSerial } from './xlsxCells';
 
 export interface WtbSource {
   /** 작년(전기) 값 — 원 */ v: number;
@@ -63,10 +64,23 @@ export function wtbSources(book: SheetData[], prevYear: number | null): WtbSourc
     const L = readLayout(sh); if (!L) continue;
     const pc = prevYear != null ? L.history.get(prevYear) : undefined;
     if (pc == null) continue;
+    out.push(...tableSources(sh, L, pc, L.adj));
+  }
+  return out;
+}
+
+/**
+ * 정산표 표 한 장(WBS·WPL·WMS)의 짝 후보 — `keyCol` 의 값으로 줄을 찾고 `toCol` 칸을 가리킨다.
+ * 계정 줄 하나 · 자산 + 바로 아래 차감계정(순액) · 과목 묶음 합(SUMIF).
+ */
+function tableSources(sh: SheetData, L: NonNullable<ReturnType<typeof readLayout>>, pc: number, toCol: number): WtbSource[] {
+  const out: WtbSource[] = [];
+  const cell = (c: number, r: number) => sh.cells.get(`${colName(c)}${r}`);
+  {
     const pl = L.kind !== 'BS';
     const num = (r: number) => cell(pc, r)?.num ?? 0;
     const txt = (c: number | null, r: number) => (c == null ? '' : (cell(c, r)?.text ?? '').trim());
-    const adj = (r: number) => `${q(sh.name)}!${colName(L.adj)}${r}`;
+    const adj = (r: number) => `${q(sh.name)}!${colName(toCol)}${r}`;
     const groups = new Map<string, number[]>();
     L.accounts.forEach((r, i) => {
       const v = num(r);
@@ -79,7 +93,7 @@ export function wtbSources(book: SheetData[], prevYear: number | null): WtbSourc
       const g = txt(L.fsli, r); if (g) groups.set(g, [...(groups.get(g) ?? []), r]);
     });
     if (L.fsli != null) {
-      const fc = colName(L.fsli), ac = colName(L.adj);
+      const fc = colName(L.fsli), ac = colName(toCol);
       for (const [g, rows] of groups) {
         if (rows.length < 2) continue;
         const v = rows.reduce((s, r) => s + num(r), 0);
@@ -88,6 +102,81 @@ export function wtbSources(book: SheetData[], prevYear: number | null): WtbSourc
     }
   }
   return out;
+}
+
+/**
+ * 같은 해 반기 틀(dsdHalf)의 짝 후보 셋 — 반기 정산표를 이어 만든 중간 정산표(📒 정산표 관리 「같은 해 반기 정산표에서 시작」)에서.
+ *   end       전기말 값(작년 수정후 열)으로 줄을 찾아 → 올해 수정후   · 잔액 주석의 당기 칸
+ *   halfCur   전반기 값(작년 6월 30일 열)으로 줄을 찾아 → 올해 수정후 · 흐름 주석의 당기 칸
+ *   halfPrev  전반기 값으로 줄을 찾아 → 작년 수정후                    · 흐름 주석의 전기 칸(전반기 → 전기 1년 치)
+ * 보고서 시트는 쓰지 않는다 — 반기 정산표의 보고서 열이 무슨 기간인지 틀마다 다르다.
+ */
+export interface HalfSources { end: WtbSource[]; halfCur: WtbSource[]; halfPrev: WtbSource[] }
+export function wtbHalfSources(book: SheetData[], fy: number): HalfSources {
+  const out: HalfSources = { end: [], halfCur: [], halfPrev: [] };
+  const half = excelSerial(`${fy - 1}-06-30`);
+  for (const sh of book) {
+    if (/^보고서/.test(sh.name)) continue;
+    const L = readLayout(sh); if (!L) continue;
+    const pc = L.history.get(fy - 1);
+    if (pc == null) continue;
+    if (L.kind === 'BS') out.end.push(...tableSources(sh, L, pc, L.adj));
+    let hc: number | null = null;
+    for (let c = Math.max(L.acct, L.fsli ?? 0) + 1; c < L.cur; c += 1) {
+      if (sh.cells.get(`${colName(c)}${L.yearRow}`)?.num === half) { hc = c; break; }
+    }
+    if (hc == null) continue;
+    out.halfCur.push(...tableSources(sh, L, hc, L.adj));
+    out.halfPrev.push(...tableSources(sh, L, hc, pc));
+  }
+  return out;
+}
+
+/** 금액 하나에 맞는 후보 — 하나로 정해지면 그것, 여럿이면 'many', 없으면 null. */
+function matchOne(v: number, flow: boolean, src: WtbSource[]): WtbSource | 'many' | null {
+  const k = v % 1000 === 0 ? 1000 : 1;
+  const hit = src.filter((s) => (!flow || s.pl) && Math.round(Math.abs(s.v) / k) * k === Math.abs(v));
+  const uniq = (xs: WtbSource[]) => [...new Map(xs.map((x) => [x.f, x])).values()];
+  const rep = uniq(hit.filter((s) => s.rep));
+  const pick = rep.length ? rep : uniq(hit);
+  return pick.length === 1 ? pick[0] : pick.length > 1 ? 'many' : null;
+}
+
+/**
+ * 같은 해 반기 틀의 노란 칸을 정산표에 미리 잇는다. 칸마다 layoutNote 가 적어 둔 **열쇠**(SheetCell.key)를 본다 —
+ * 당기 칸은 같은 줄의 전기말·전반기 값으로, 전반기 칸은 제 값으로 정산표 줄을 찾는다(올해 반기 값은 중간 정산표에 없다).
+ * 거르는 규칙(기초·날짜·차이 줄, 약정·현금흐름 주석, 흐름 줄은 손익 줄과만)은 linkToWtb 와 같다.
+ */
+export function linkHalfToWtb(rolled: SheetPlan[], plain: SheetPlan[], src: HalfSources):
+  { plans: SheetPlan[]; links: WtbLink[]; ambiguous: number } {
+  const links: WtbLink[] = []; let ambiguous = 0;
+  const plans = rolled.map((p, i) => {
+    const pl = plain[i];
+    if (!pl || SKIP_NOTE.test(p.note ?? p.name)) return p;
+    const was = new Map(pl.cells.map((c) => [`${c.row}:${c.col}`, c]));
+    const label = new Map<number, string>();
+    for (const c of p.cells) if (c.col === 3 && c.kind !== 'input' && c.text) label.set(c.row, c.text.trim());
+    const heads = p.cells.filter((c) => c.kind === 'head');
+    const headOf = (c: SheetCell) => heads.filter((h) => h.col === c.col && h.row < c.row).map((h) => h.text).join(' ');
+    const cells = p.cells.map((c) => {
+      if (c.kind !== 'input' || c.formula != null || !c.key) return c;
+      const v = was.get(`${c.row}:${c.key.col}`)?.num;
+      if (v == null || Math.abs(v) < 10000) return c;
+      const lab = label.get(c.row) ?? '', head = headOf(c);
+      const L = sq(lab), Hd = sq(head);
+      if (OPENING.test(L) || /기초/.test(Hd) || DATED.test(L) || DIFF.test(Hd)) return c;
+      const flow = FLOW.test(L) || FLOW.test(Hd);
+      const list = !c.key.flow ? src.end : c.key.to === 'cur' ? src.halfCur : src.halfPrev;
+      const s = matchOne(v, flow, list);
+      if (s === 'many') { ambiguous++; return c; }
+      if (!s) return c;
+      const f = Math.sign(s.v) === Math.sign(v) ? s.f : `-(${s.f})`;
+      links.push({ sheet: p.name, at: `${colName(c.col)}${c.row}`, note: p.note ?? p.name, label: [lab, head].filter(Boolean).join(' · '), value: v, to: f, what: s.what });
+      return { ...c, formula: f, kind: 'linked' as const };
+    });
+    return { ...p, cells };
+  });
+  return { plans, links, ambiguous };
 }
 
 /**

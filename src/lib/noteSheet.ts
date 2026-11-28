@@ -12,6 +12,7 @@
 // A열에는 **자리표**를 숨겨 둔다 — 이 칸이 DSD 의 몇 번째 글자칸인지다. 그게 있어야
 // 엑셀에서 고친 값을 DSD 제자리에 도로 넣을 수 있다.
 import { gridWidth, type Block, type NoteBlocks } from './dsdBlocks';
+import { halfAll, halfHead } from './dsdHalf';
 
 /** 어떤 서식으로 그릴 칸인가 — xlsxStyles 의 이름과 같다. */
 export type CellKind = 'label' | 'title' | 'para' | 'head' | 'text' | 'num' | 'input' | 'link'
@@ -27,6 +28,12 @@ export interface SheetCell {
   /** 누르면 갈 시트 이름 — 목록 ↔ 주석 사이를 오간다. 파일 안 링크라 시트 이름이 열쇠다. */ link?: string;
   /** 그 시트의 어느 칸으로 가나. 없으면 B2. 종단형은 시트가 하나라 행까지 가리켜야 한다. */ linkAt?: string;
   kind?: CellKind;
+  /**
+   * 같은 해 반기 틀(halfRoll)에서 비운 칸 — 정산표 줄을 찾을 **열쇠 칸**. 이 칸 대신 같은 줄의 그 열(반기 값)로 정산표 줄을 찾는다.
+   *   flow  열쇠가 전반기 값인가(정산표 전반기 열로 찾음) · 아니면 전기말 값(정산표 작년 열로 찾음)
+   *   to    수식이 가리킬 정산표 열 — 'cur' 올해 수정후 · 'prev' 작년 수정후
+   */
+  key?: { col: number; flow: boolean; to: 'cur' | 'prev' };
 }
 
 /** 1=A, 2=B, … 27=AA */
@@ -270,6 +277,11 @@ export interface LayoutOptions {
    * 넣게 되고, 그러면 아래 자리가 전부 밀려 되돌릴 수 없게 된다. 미리 깔아 두는 편이 낫다.
    */
   spare?: number;
+  /**
+   * **같은 해 반기 보고서를 틀로** — 그 해(사업연도). roll 과 함께 켠다(dsdHalf 의 규칙).
+   * 당기 칸은 비우고 전기로 밀지 않는다. 전기말 칸은 그대로, 전반기 칸은 비운다. 머리·서술의 반기 말을 기말 말로 바꾼다.
+   */
+  half?: number | null;
 }
 
 /** 「D4」·「D4:E4」 — 행을 by 만큼 민다. */
@@ -347,7 +359,10 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
   const spares: SpareRow[] = [];
   const drops: DropRow[] = [];
   // 「<전기>」 표는 같은 주석의 앞선 「<당기>」 표에서 값을 받아 온다 — 행 모양이 같을 때만.
-  const prevOf = opts.roll === true ? pairCurrentTables(note) : new Map<Block, Map<number, string>[]>();
+  const half = opts.roll === true && opts.half != null ? opts.half : null;
+  /** 반기 틀이면 반기 말을 기말 말로 — 아니면 그대로 */
+  const hx = (t: string) => (half != null ? halfAll(t, half) : t);
+  const prevOf = opts.roll === true && half == null ? pairCurrentTables(note) : new Map<Block, Map<number, string>[]>();
   let r = 3;
   let prevWasTable = false;
 
@@ -359,7 +374,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
       const many = b.from > 0 || b.parts.length > 1 || b.lead != null;
       b.parts.forEach((p, i) => {
         cells.push({ row: r, col: 1, text: addrOf(b.slot, many ? b.from + i : undefined) });
-        cells.push({ row: r, col: 3, text: p, kind: 'para' });
+        cells.push({ row: r, col: 3, text: hx(p), kind: 'para' });
         back.push({
           at: `${colName(3)}${r}`, slot: b.slot, part: b.from + i, orig: p,
           lead: i === 0 && b.leadShare ? (b.leadRaw ?? b.lead) : undefined,
@@ -374,7 +389,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     // **표지판은 이월하지 않는다.** 「(단위: 원)」·「<당기>」는 자료가 아니라 안내판이다.
     // 이것도 「전기 열이 없는 표」라서 통째로 비우는 규칙에 걸려 단위 글자가 지워지고
     // 노랗게 칠해졌다 — 명진 15. 부가가치계산(2026-09-13 지적).
-    const roll = opts.roll === true && !b.isUnitMark;
+    const roll = opts.roll === true && !b.isUnitMark && !(half != null && b.markText);
     r += 1;                                          // 표 앞에 빈 줄
     const blankRow = r - 1;
     const width = Math.max(gridWidth(b.rows), 1);
@@ -423,9 +438,17 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     // COLSPAN 을 펼쳐 두었으므로 덮는 열이 그대로 나온다.
     const curCols: number[] = [];
     const priCols: number[] = [];
+    /** 반기 틀 — 열마다 당기 · 전반기(흐름) · 전기말(잔액) */
+    const hk = new Map<number, 'cur' | 'flow' | 'end'>();
     b.rows.forEach((line, i) => {
       if (!isHeadRow[i]) return;
       for (const c of line) {
+        if (half != null) {
+          const k = halfHead(c.text);
+          if (!k) continue;
+          for (let j = 0; j < c.colspan; j += 1) { hk.set(c.col + j, k); (k === 'cur' ? curCols : priCols).push(c.col + j); }
+          continue;
+        }
         const p = periodOfHead(c.text);
         if (!p) continue;
         for (let k = 0; k < c.colspan; k += 1) (p === '당기' ? curCols : priCols).push(c.col + k);
@@ -438,7 +461,8 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     // **당기 자료는 모두 비운다.** 전기로 이름 붙은 열만 남긴다(거기에 작년 당기 값이 내려온다).
     // 이자율·지분율·금액처럼 이름에 「당기」가 안 붙은 열도 결국 올해 값이라 채워 넣어야 한다 —
     // 명진 9. 차입금의 이자율이 작년 값 그대로 남아 있었다(2026-09-13 지적).
-    const priSet = new Set(priCols);
+    // 반기 틀은 **전기말(잔액) 열만** 남긴다 — 전반기(흐름) 열은 기말에 1년 치로 다시 채운다.
+    const priSet = new Set(half != null ? priCols.filter((c) => hk.get(c) === 'end') : priCols);
     // 머리에 「당기」가 **들어 있기만 해도** 올해 값이다 — 「당기말 현재 연이자율(%)」이 그렇다.
     // 짝을 지을 때는 딱 맞는 이름만 썼지만(안전), **비울 때는 느슨하게 본다.**
     // 알티스트 9. 차입금의 이자율이 글자라서 안 비워졌었다(2026-09-13 지적).
@@ -447,7 +471,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
       if (!isHeadRow[i]) return;
       for (const c of line) {
         const t = c.text.replace(/\s/g, '');
-        if (!/당기|당분기/.test(t) || /전기|전분기/.test(t)) continue;
+        if (!/당기|당분기|당반기/.test(t) || /전기|전분기|전반기/.test(t)) continue;
         for (let k = 0; k < c.colspan; k += 1) looseCur.add(c.col + k);
       }
     });
@@ -459,12 +483,30 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
     // **전기 열이 하나도 없는 표는 통째로 올해 자료다.** 담보제공·보증 내역이 그렇다 —
     // 제공받은자·내용·성격까지 해마다 새로 적는다. 첫 열(구분)만 남기고 비운다.
     // 정책 주석은 빼 둔다 — 내용연수처럼 해마다 안 바뀌는 것이 들어 있다(2026-09-13 지적).
-    if (roll && priCols.length === 0 && !isPolicyNote(note.title)) {
+    // 반기 틀에서는 표지판이 가른다 — 「<전기말>」 표는 잔액이라 그대로, 「<전반기>」 표는 숫자만 비운다.
+    const tp = half != null ? halfHead(b.periodText ?? '') : null;
+    if (roll && half != null && tp === 'end') blankCols.clear();
+    else if (roll && half != null && tp === 'flow') { /* 숫자 열만 — 위에서 이미 골랐다 */ }
+    else if (roll && priCols.length === 0 && !isPolicyNote(note.title)) {
       for (let c = 1; c < width; c += 1) blankCols.add(c);
     }
+    /** 비운 칸의 열쇠 — 어느 열(반기 값)로 정산표 줄을 찾고, 어느 정산표 열을 가리킬지(noteWtbLink.linkHalfToWtb) */
+    const keyOf = (gc: number, excelOf: (g: number) => number | null): SheetCell['key'] | undefined => {
+      if (half == null) return undefined;
+      const i = curCols.indexOf(gc);
+      if (i >= 0 && curCols.length === priCols.length) {
+        const pc = priCols[i]; const at = excelOf(pc);
+        return at == null ? undefined : { col: at, flow: hk.get(pc) === 'flow', to: 'cur' };
+      }
+      if (hk.get(gc) === 'flow' || tp === 'flow') {
+        const at = excelOf(gc);
+        return at == null ? undefined : { col: at, flow: true, to: 'prev' };
+      }
+      return undefined;
+    };
     // 전기 표(「<전기>」 표지판)는 같은 주석의 당기 표에서 값을 받아 온다.
     const fromCurrent = roll ? prevOf.get(b) : undefined;
-    const grid = !roll ? orig
+    const grid = !roll || half != null ? orig
       : fromCurrent ?? rollGrid(orig, pairs, false, []);
     if (fromCurrent) blankCols.clear();
 
@@ -509,7 +551,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
         const dated = head && /\d{4}\s*년|\d{4}-\d{2}-\d{2}/.test(c.text);
         const rolls = !head || dated;
         // 기수를 올리는 것도 **이월할 때만** 한다 — 그대로 옮길 때는 「제12(당) 기」 그대로다.
-        const val = rolls ? (grid[i].get(c.col) ?? '') : (roll ? bumpTerm(c.text) : c.text);
+        const val = hx(rolls ? (grid[i].get(c.col) ?? '') : (roll && half == null ? bumpTerm(c.text) : c.text));
         const blank = rolls && (blankCols.has(c.col) || (dated && curCols.includes(c.col)));
         // 「-」는 재무제표에서 0 이다. 숫자 0 으로 넣고 화면에는 숫자꼴이 「-」로 보여 준다.
         const num = blank ? undefined
@@ -518,6 +560,7 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
           row: rowNo[i], col: at, text: blank ? '' : val, num,
           kind: blank ? 'input' : head ? 'head' : num != null ? 'num' : 'text',
         };
+        if (blank && !head) { const k = keyOf(c.col, (g) => 3 + g); if (k) cell.key = k; }
         if (!head && dual && srcCols.includes(c.col) && (num != null || blank)) {
           const k = srcCols.indexOf(c.col);
           const src = `${colName(srcBase + k)}${rowNo[i]}`;
@@ -559,12 +602,13 @@ export function layoutNote(note: NoteBlocks, name: string, opts: LayoutOptions =
         const col = srcBase + k;
         if (head) {
           const hit = line.find((c) => c.col <= gc && gc < c.col + c.colspan);
-          cells.push({ row: rowNo[i], col, text: bumpTerm(hit?.text ?? ''), kind: 'head' });
+          cells.push({ row: rowNo[i], col, text: half != null ? hx(hit?.text ?? '') : bumpTerm(hit?.text ?? ''), kind: 'head' });
           return;
         }
         // 합계 행은 비우지 않는다 — 항목만 채우면 합계가 저절로 따라와야 한다.
         if (blankCols.has(gc) && !(canSum && i === sumAt)) {
-          cells.push({ row: rowNo[i], col, text: '', kind: 'input' });
+          const key = keyOf(gc, (g) => (srcCols.includes(g) ? srcBase + srcCols.indexOf(g) : null));
+          cells.push({ row: rowNo[i], col, text: '', kind: 'input', ...(key ? { key } : {}) });
           return;
         }
         if (canSum && i === sumAt) {

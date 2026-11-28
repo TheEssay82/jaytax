@@ -36,6 +36,7 @@ import {
   useDsdFile, DsdBar, DsdTabs, NeedDsd, WorkSettings, StepHead, More, type TabDef, type NoteFrom,
 } from './DsdShell';
 import DateParts from '../common/DateParts';
+import { useCoach, CoachBubble } from '../common/CoachBubble';
 import { pickEngagementFor, takePickedEngagement } from '../gwp/WtbTab';
 
 const TABS: TabDef[] = [
@@ -85,6 +86,10 @@ export default function DsdEngagementTab({ onNavigate }: { onNavigate?: (tab: st
   const [book, setBook] = useState<NoteBook | null>(null);
   // ① 목록이 비면 고를 것이 없다. 첫 해거나, 남의 보고서를 그냥 떠 보는 자리다.
   const useFrom: NoteFrom = notes.length === 0 ? 'file' : from;
+  // 같은 해 반기 보고서를 틀로(dsdHalf) — 그 해. ②③④ 가 같은 값을 쓴다.
+  const half = dsdFile.dsd?.half && pickedId ? (engs.find((e) => e.id === pickedId)?.fy ?? null) : null;
+  // 말풍선 — 반기 틀이면 ① 에서 한 번 알려 주고 ② 로 넘긴다(② 의 말풍선과 같은 열쇠라 한 번 끄면 둘 다 꺼진다).
+  const coach = useCoach('dsd-half', [{ id: 'half', done: at !== '1' }]);
 
   async function load(keep?: string) {
     try {
@@ -322,16 +327,16 @@ export default function DsdEngagementTab({ onNavigate }: { onNavigate?: (tab: st
             />
           )}
           {at === '2' && dsdFile.dsd && (
-            <NotePrepareTab onWtb={() => { pickEngagementFor(picked.id); onNavigate?.('wtb'); }} eng={picked} notes={notes} dsd={dsdFile.dsd} from={useFrom} spare={spare} layout={picked.sheetLayout} roll={roll}
+            <NotePrepareTab onWtb={() => { pickEngagementFor(picked.id); onNavigate?.('wtb'); }} eng={picked} notes={notes} dsd={dsdFile.dsd} from={useFrom} spare={spare} layout={picked.sheetLayout} roll={roll} half={half}
               canWrite={!lockWrite} onStarted={() => void listEngagements().then(setEngs).catch(() => undefined)} />
           )}
           {at === '3' && dsdFile.dsd && (
-            <NoteVerifyCard notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} spare={spare} layout={picked.sheetLayout} roll={roll} />
+            <NoteVerifyCard notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} spare={spare} layout={picked.sheetLayout} roll={roll} half={half} />
           )}
           {at === '4' && dsdFile.dsd && (
             <>
               <NoteDsdCard eng={picked} notes={notes} dsd={dsdFile.dsd} xl={filled} setXl={setFilled} from={useFrom} spare={spare}
-                layout={picked.sheetLayout} book={book} onBook={setBook} readOnly={lockWrite} roll={roll} />
+                layout={picked.sheetLayout} book={book} onBook={setBook} readOnly={lockWrite} roll={roll} half={half} />
               <div className="card">
                 <StepHead no="+" title="내년 준비 · 표준주석엑셀" when="완성 뒤"
                   line="DSD 까지 낸 엑셀을 등록해 두면, 내년 ② 가 노란 칸의 수식(정산표 링크)을 그대로 이어받습니다." />
@@ -357,7 +362,12 @@ export default function DsdEngagementTab({ onNavigate }: { onNavigate?: (tab: st
               )}
             />
 
-            <DsdBar {...dsdFile} expect={picked.entityName} />
+            <DsdBar {...dsdFile} expect={picked.entityName} fy={picked.fy}
+              coach={(
+                <CoachBubble show={!!dsdFile.dsd?.half && coach.step === 'half'} n={1} of={4} onOff={() => coach.setOff(true)}>
+                  <b>반기 보고서</b>로 읽었습니다. 이대로 두면 ②③④ 가 <b>FY{picked.fy} 기말 서식</b>으로 바꿔 씁니다. 맞으면 아래 「다음 — ②」를 누르세요.
+                </CoachBubble>
+              )} />
 
             {isExternal && (
               <div style={{ margin: '10px 0', padding: '9px 11px', borderRadius: 'var(--r-sm)', lineHeight: 1.7, background: 'var(--warn-bg)', color: 'var(--warn)', fontSize: 'var(--fs-2)' }}>

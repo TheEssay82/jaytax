@@ -44,10 +44,13 @@ export function CoachSpot({ children, style }: { children: ReactNode; style?: CS
 }
 
 /** 말풍선 하나. `show` 가 참일 때만 그린다(나타날 때 살짝 튀어 오른다). */
-export function CoachBubble({ show, n, of, children, onOff }: { show: boolean; n?: number; of?: number; children: ReactNode; onOff?: () => void }) {
+export function CoachBubble({ show, n, of, children, onOff, align = 'left' }: {
+  show: boolean; n?: number; of?: number; children: ReactNode; onOff?: () => void;
+  /** 오른쪽 끝의 단추를 가리킬 때 'right' — 말풍선이 오른쪽에 붙어 왼쪽 입력란을 가리지 않는다 */ align?: 'left' | 'right';
+}) {
   if (!show) return null;
   return (
-    <div role="status" aria-live="polite" className="coach-bubble">
+    <div role="status" aria-live="polite" className={`coach-bubble${align === 'right' ? ' coach-right' : ''}`}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
         {n != null && <span className="coach-no">{n}{of ? `/${of}` : ''}</span>}
         <div style={{ flex: 1 }}>{children}</div>

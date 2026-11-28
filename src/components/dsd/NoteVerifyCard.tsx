@@ -34,12 +34,13 @@ const TONE: Record<Level, { bg: string; ink: string }> = {
 export interface Filled { name: string; bytes: Uint8Array }
 
 export default function NoteVerifyCard(
-  { notes, dsd, xl, setXl, from, spare, layout, roll }:
+  { notes, dsd, xl, setXl, from, spare, layout, roll, half }:
   {
     notes: NoteRow[]; dsd: LoadedDsd;
     xl: Filled | null; setXl: (v: Filled | null) => void; from: NoteFrom; spare: number;
     layout: SheetLayout;
     /** 다음 해로 이월 — ②③④ 공통(DsdShell.WorkSettings) */ roll: boolean;
+    /** 같은 해 반기 보고서를 틀로 — 그 해(dsdHalf). ② 와 같아야 자리가 맞는다. */ half: number | null;
   },
 ) {
   const [src, setSrc] = useState<'xlsx' | 'dsd'>('xlsx');
@@ -68,7 +69,7 @@ export default function NoteVerifyCard(
         : '켜 둔 주석이 없습니다. ① 에서 골라 주세요.');
     }
     // 다 적힌 DSD 를 그대로 볼 때는 여분 행이 뜻이 없다 — 채울 자리가 아니라 읽을 파일이다.
-    const made = planNotes(picked, mode === 'dsd' ? false : roll, mode === 'dsd' ? 0 : spare, layout);
+    const made = planNotes(picked, mode === 'dsd' ? false : roll, mode === 'dsd' ? 0 : spare, layout, mode === 'dsd' ? null : half);
     // 맞아야 하는 숫자 짝은 **작년 값이 든 배치**에서 배운다 — 자리는 이월한 것과 같다.
     // DSD 를 그대로 볼 때는 짝을 배울 작년이 없다. 같은 파일에서 배워 같은 파일에 대 보면
     // 언제나 맞으므로 아무것도 말해 주지 않는다 — 그래서 하지 않는다.
@@ -93,7 +94,8 @@ export default function NoteVerifyCard(
         }
       }
       const out = verifyAll(refs.map((r) => r.plan), sheets);
-      const tie = tieOut(dsd.fs, refs, sheets, src === 'dsd' ? false : roll);
+      // 반기 틀은 재무제표 대사를 건너뛴다 — 틀의 재무제표가 반기 금액이라 올해 기말 주석과 맞출 짝이 없다.
+      const tie = half != null && src !== 'dsd' ? { rows: [], findings: [] } : tieOut(dsd.fs, refs, sheets, src === 'dsd' ? false : roll);
       out.findings.push(...tie.findings, ...checkLinks(links, sheets));
       setLinkCount(links.length);
       const rank: Record<Level, number> = { 틀림: 0, '살펴볼 것': 1, '안 채움': 2 };

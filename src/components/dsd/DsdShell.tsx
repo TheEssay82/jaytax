@@ -12,6 +12,7 @@ import { readDsd, readContents } from '../../lib/dsdFile';
 import { parseNoteBlocks, type NoteBlocks } from '../../lib/dsdBlocks';
 import { companyName, bareName } from '../../lib/dsdParse';
 import { parseStatements, type FsLine } from '../../lib/fsParse';
+import { isHalfReport } from '../../lib/dsdHalf';
 import { LAYOUT_LABEL, type SheetLayout } from '../../lib/notePick';
 
 /**
@@ -28,6 +29,12 @@ export interface LoadedDsd {
   fs: FsLine[];
   docName: string;
   /** 문서에 적힌 회사 이름 — 작업 건과 어긋나면 알려 주려고 읽는다. */ company: string;
+  /**
+   * **같은 해 반기 보고서를 틀로** 쓰는가(dsdHalf) — 작년 감사보고서가 없고 올해 반기 보고서가 있는 회사(인코어 FY26).
+   * 반기 보고서로 읽히면 저절로 켜고, ① 에서 끄고 켤 수 있다. ②③④ 가 모두 이 값을 따른다.
+   */
+  half: boolean;
+  /** 파일이 반기 보고서로 읽혔는가 — 켜 두기를 권할 때 쓴다 */ looksHalf: boolean;
 }
 
 export function useDsdFile() {
@@ -42,9 +49,10 @@ export function useDsdFile() {
       const info = await readDsd(f);
       const xml = await readContents(f);
       const blocks = parseNoteBlocks(xml);
+      const looksHalf = isHalfReport(xml);
       setDsd({
         name: f.name, bytes, blocks, fs: parseStatements(xml),
-        docName: info.docName, company: companyName(xml),
+        docName: info.docName, company: companyName(xml), half: looksHalf, looksHalf,
       });
       if (!blocks.length) setErr('이 파일에서 주석을 찾지 못했습니다.');
     } catch (e) {
@@ -52,7 +60,8 @@ export function useDsdFile() {
       setErr(e instanceof Error ? e.message : 'DSD 를 읽지 못했습니다.');
     }
   }
-  return { dsd, err, take, clear: () => { setDsd(null); setErr(null); } };
+  const setHalf = (v: boolean) => setDsd((d) => (d ? { ...d, half: v } : d));
+  return { dsd, err, take, setHalf, clear: () => { setDsd(null); setErr(null); } };
 }
 
 /** 「자세히 ▸」 — 긴 설명은 접어 둔다. */
@@ -111,7 +120,11 @@ export function Note({ tone, children }: { tone: 'good' | 'bad'; children: React
 
 /** ① 의 감사보고서 올리기 — 보통 **작년** 것. ②③④ 가 함께 쓴다. */
 export function DsdBar(
-  { dsd, err, take, clear, expect }: ReturnType<typeof useDsdFile> & { expect?: string },
+  { dsd, err, take, clear, setHalf, expect, fy, coach }: ReturnType<typeof useDsdFile> & {
+    expect?: string;
+    /** 작업 건의 사업연도 — 반기 틀이 몇 년 기말로 바뀌는지 보여 준다 */ fy?: number;
+    /** 말풍선 — 반기 틀 고르기 단계 */ coach?: React.ReactNode;
+  },
 ) {
   // 이름이 달라 보이면 알려만 준다 — 표기가 제각각이라 막지는 않는다.
   const odd = dsd && expect && dsd.company
@@ -141,6 +154,19 @@ export function DsdBar(
           </span>
         )}
       </div>
+      {dsd && (dsd.looksHalf || dsd.half) && (
+        <div style={{ position: 'relative', marginTop: 8, padding: '7px 10px', borderRadius: 'var(--r-sm)', background: '#fff', border: '1px solid var(--rule)', fontSize: 'var(--fs-2)', lineHeight: 1.6 }}>
+          {coach}
+          <label style={{ fontWeight: 600, color: 'var(--navy)' }}>
+            <input type="checkbox" checked={dsd.half} onChange={(e) => setHalf(e.target.checked)} />{' '}
+            같은 해 반기 보고서를 틀로{fy ? ` — FY${fy} 기말 보고서 서식으로 바꿉니다` : ''}
+          </label>
+          <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', marginLeft: 22 }}>
+            작년 감사보고서가 없는 회사용입니다. 기수는 그대로 두고 당반기→당기 · 전반기→전기 · 6월 30일→12월 31일로 바꿉니다.
+            당기 칸은 비우고, <b>전기말</b> 칸(잔액)은 반기 보고서 값 그대로, <b>전반기</b> 칸(손익·흐름)은 비워 정산표의 작년 열에 잇습니다. 감사의견 글은 손대지 않습니다.
+          </div>
+        </div>
+      )}
       {err && <div style={{ marginTop: 7, fontSize: 'var(--fs-2)', color: 'var(--bad)' }}>{err}</div>}
       {odd && (
         <div style={{ marginTop: 7, fontSize: 'var(--fs-2)', color: 'var(--bad)', lineHeight: 1.6 }}>
@@ -184,7 +210,9 @@ export function WorkSettings(
         <span>주석 <b>{n}개</b>{from === 'file' ? '(파일 전부)' : ''}</span>{dot}
         <span>{LAYOUT_LABEL[layout]}</span>{dot}
         <span>여분 행 {spare}</span>{dot}
-        <span style={{ color: roll ? 'var(--good)' : 'var(--warn)', fontWeight: 600 }}>{roll ? '✓ 작년 값을 전기로 이월' : '이월 안 함(작년 그대로)'}</span>
+        {roll && dsd.half
+          ? <span style={{ color: 'var(--good)', fontWeight: 600 }}>✓ 같은 해 반기 → 기말</span>
+          : <span style={{ color: roll ? 'var(--good)' : 'var(--warn)', fontWeight: 600 }}>{roll ? '✓ 작년 값을 전기로 이월' : '이월 안 함(작년 그대로)'}</span>}
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button className="btn-sm" onClick={goFirst}>틀 바꾸기</button>
           <button className="btn-sm" onClick={() => setOpen(!open)}>{open ? '접기 ▲' : '설정 바꾸기 ▼'}</button>

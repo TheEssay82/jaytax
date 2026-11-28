@@ -80,11 +80,14 @@ export function pickAll(blocks: NoteBlocks[]): Picked[] {
  * 보고하고 ④ 가 주석마다 되돌리는 규칙이 그대로 살아 있어야 하기 때문이다. 시트 XML 로 만들
  * 때만 `sheetsToInject` 로 같은 이름끼리 합친다.
  */
-export function planNotes(picked: Picked[], roll: boolean, spare = 0, layout: SheetLayout = 'sheets'): SheetPlan[] {
+export function planNotes(
+  picked: Picked[], roll: boolean, spare = 0, layout: SheetLayout = 'sheets',
+  /** 같은 해 반기 보고서를 틀로 — 그 해. ②③④ 가 같은 값을 써야 한다(dsdHalf). */ half: number | null = null,
+): SheetPlan[] {
   const used = new Set<string>();
   const plans = picked.map(({ note, title }, i) => {
     const name = sheetName(`N${String(i + 1).padStart(2, '0')} ${title}`, used);
-    return note ? layoutNote({ ...note, title }, name, { roll, spare }) : layoutNewNote(i + 1, title, name);
+    return note ? layoutNote({ ...note, title }, name, { roll, spare, half }) : layoutNewNote(i + 1, title, name);
   });
   if (layout !== 'long') return plans;
   let base = 0;

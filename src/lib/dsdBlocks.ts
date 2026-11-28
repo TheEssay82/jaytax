@@ -82,6 +82,13 @@ export type Block =
     isUnitMark?: boolean;
     /** 이 표가 당기 자료인가 전기 자료인가 — 「<당기>」 표지판에서 온다. */
     period?: '당기' | '전기';
+    /**
+     * 표지판에 적힌 그대로의 기간 말 — 「당반기」·「전반기」·「전기말」.
+     * 같은 해 반기 보고서를 틀로 쓸 때(halfRoll) 「전기말」(잔액이라 그대로)과 「전반기」(흐름이라 다시 채움)를 가른다.
+     */
+    periodText?: string;
+    /** 이 표 자체가 「<전기말>」처럼 기간만 적힌 한 칸 표인가 — 그 글자. 표지판(isUnitMark)으로 치지 않은 것도 있다. */
+    markText?: string;
   };
 
 /**
@@ -208,7 +215,22 @@ export function periodMark(rows: TableCell[][]): '당기' | '전기' | null {
   if (flat.length > 40) return null;
   if (/[<〈(（[]\s*당\s*기\s*[>〉)）\]]/.test(flat)) return '당기';
   if (/[<〈(（[]\s*전\s*기\s*[>〉)）\]]/.test(flat)) return '전기';
+  // 반기 보고서의 표지판 — 「<당반기>」·「<당반기말>」·「<전반기>」(인코어 FY26 반기, 2026-11-28).
+  // 연차 보고서에는 없는 말이라 넓혀도 옛 결과가 바뀌지 않는다.
+  if (/[<〈(（[]\s*당\s*반\s*기\s*(?:말\s*)?[>〉)）\]]/.test(flat)) return '당기';
+  if (/[<〈(（[]\s*전\s*반\s*기\s*(?:말\s*)?[>〉)）\]]/.test(flat)) return '전기';
   return null;
+}
+
+/**
+ * 표지판에 적힌 그대로의 기간 말 — 「<전기말>」이면 「전기말」. 없으면 null.
+ * 「<당기말>」·「<전기말>」은 periodMark 가 기간으로 치지 않지만(옛 결과를 지키려고) 반기 틀에서는 이 글자로 가른다.
+ */
+export function periodMarkText(rows: TableCell[][]): string | null {
+  const flat = rows.flat().map((c) => c.text).join(' ');
+  if (flat.length > 40) return null;
+  const m = /[<〈(（[]\s*([당전]\s*(?:반\s*)?기\s*(?:말)?)\s*[>〉)）\]]/.exec(flat);
+  return m ? m[1].replace(/\s/g, '') : null;
 }
 
 /** 「(단위: 천원)」 표지판이면 그 단위를, 아니면 null. */
@@ -223,7 +245,7 @@ const UNIT_MARK = /\(\s*단\s*위\s*[:：]?\s*([^)]{1,30})\)/;
  * 「(1) 당기법인세」처럼 뒤에 말이 더 붙으면 표지판이 아니다 — 딱 기간만 있을 때다.
  */
 const PERIOD_PARA =
-  /^\s*(?:[([]?\s*\d{1,2}\s*[).\]]|[\u2460-\u246E\u3260-\u327B\u24DB]|[-·▪])?\s*[<〈([]?\s*(당기|전기|당분기|전분기)(?:말)?\s*[>〉)\]]?\s*$/;
+  /^\s*(?:[([]?\s*\d{1,2}\s*[).\]]|[\u2460-\u246E\u3260-\u327B\u24DB]|[-·▪])?\s*[<〈([]?\s*(당기|전기|당분기|전분기|당반기|전반기)(?:말)?\s*[>〉)\]]?\s*$/;
 export function periodPara(text: string): '당기' | '전기' | null {
   const m = PERIOD_PARA.exec((text ?? '').replace(/\u00a0/g, ' '));
   if (!m) return null;
@@ -254,6 +276,7 @@ function markUnits(notes: NoteBlocks[]): void {
   for (const n of notes) {
     let cur: string | undefined;
     let per: '당기' | '전기' | undefined;
+    let perText: string | undefined;
     for (const b of n.blocks) {
       if (b.kind === 'para') {
         // 표 바로 앞 문단이 「1) 당기」 하나뿐이면 그것이 표지판이다.
@@ -264,9 +287,11 @@ function markUnits(notes: NoteBlocks[]): void {
       if (b.kind !== 'table') continue;
       const u = unitMark(b.rows);
       const p = periodMark(b.rows);
+      const pt = periodMarkText(b.rows);
       if (u || p) {
         if (u) { cur = u; b.unit = u; }
         if (p) per = p;
+        if (pt) perText = pt;
         b.isUnitMark = true;
         continue;
       }
@@ -275,6 +300,9 @@ function markUnits(notes: NoteBlocks[]): void {
       // 명진 12. 특수관계자는 「<전기>」 뒤에 자금거래·채권채무·담보제공 표가 줄줄이 오는데
       // 앞의 둘만 전기 자료다. 단위는 다르다 — 한 번 밝히면 그 아래로 쭉 간다.
       if (per) { b.period = per; per = undefined; }
+      if (perText) { b.periodText = perText; perText = undefined; }
+      // 「<전기말>」 한 칸짜리 표 — 옛 규칙은 표지판으로 치지 않으므로 그대로 두고 표시만 남긴다(반기 틀이 읽는다).
+      if (pt) { b.markText = pt; perText = pt; }
     }
   }
 }

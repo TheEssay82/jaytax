@@ -461,6 +461,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy);box-shadow:0 0 
   padding:8px 12px;border-radius:14px;background:var(--info,#2563eb);color:#fff;font-size:var(--fs-2);line-height:1.45;
   box-shadow:0 6px 18px rgba(0,0,0,.18);animation:coach-pop .22s ease-out}
 .coach-bubble::after{content:"";position:absolute;left:22px;top:100%;border:9px solid transparent;border-top-color:var(--info,#2563eb)}
+.coach-bubble.coach-right{left:auto;right:0}
+.coach-bubble.coach-right::after{left:auto;right:22px}
 .coach-no{flex:none;min-width:30px;padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.22);font-weight:700;text-align:center;font-size:var(--fs-1)}
 .coach-off{flex:none;background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff;border-radius:6px;padding:1px 6px;font-size:var(--fs-0);cursor:pointer}
 @keyframes coach-pop{from{opacity:0;transform:translateY(6px) scale(.96)}to{opacity:1;transform:none}}

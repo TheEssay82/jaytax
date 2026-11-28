@@ -22,7 +22,9 @@ import { inheritFormulas } from '../../lib/noteInherit';
 import { injectSheets } from '../../lib/xlsxInject';
 import { readWorkbook, sheetNames, type SheetData } from '../../lib/xlsxRead';
 import { removeSheets } from '../../lib/xlsxTransplant';
-import { wtbSources, linkToWtb, linkListSheet, leftoverSheets } from '../../lib/noteWtbLink';
+import { wtbSources, linkToWtb, linkListSheet, leftoverSheets, wtbHalfSources, linkHalfToWtb } from '../../lib/noteWtbLink';
+import { halfStatements } from '../../lib/dsdHalf';
+import { useCoach, CoachSpot, CoachBubble } from '../common/CoachBubble';
 import { readLayout } from '../../lib/wtbRoll';
 import { writeNotes, buildDsd, sheetsFromPlans, contentsOf } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
@@ -32,11 +34,12 @@ import { StepHead, Opt, Note, type LoadedDsd, type NoteFrom } from './DsdShell';
 import { safeName, download } from './dsdUi';
 
 export default function NotePrepareTab(
-  { eng, notes, dsd, from, spare, layout, roll, canWrite, onStarted, onWtb }:
+  { eng, notes, dsd, from, spare, layout, roll, half, canWrite, onStarted, onWtb }:
   {
     eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd; from: NoteFrom; spare: number;
     layout: SheetLayout;
     /** 다음 해로 이월 — ②③④ 공통(DsdShell.WorkSettings) */ roll: boolean;
+    /** 같은 해 반기 보고서를 틀로 — 그 해(dsdHalf). ③④ 와 같아야 자리가 맞는다. */ half: number | null;
     /** 서버에 쓸 수 있나(건 상태를 「진행」으로) */ canWrite: boolean;
     /** 주석 엑셀을 내려받아 건이 「진행」이 되었을 때 — 목록 색을 다시 칠한다 */ onStarted: () => void;
     /** 📒 정산표 관리로(이 회사를 골라 둔 채) */ onWtb: () => void;
@@ -54,6 +57,13 @@ export default function NotePrepareTab(
   const [drop, setDrop] = useState<Set<string>>(new Set());
   const [link, setLink] = useState(true);
   /** 정산표 표·보고서가 아닌 시트 — 빼기 후보. 남는 시트의 수식이 가리키면 뺄 수 없다. */
+  // 말풍선 — 반기 틀일 때 ① 다음 단계부터(같은 열쇠 'dsd-half' — ① 의 1/4 다음이 여기 2/4).
+  const [madeSheet, setMadeSheet] = useState(false);
+  const [madeDsd, setMadeDsd] = useState(false);
+  const coach = useCoach('dsd-half', [
+    { id: 'wtb', done: !!wtb }, { id: 'sheet', done: madeSheet }, { id: 'dsd', done: madeDsd }]);
+  const at = (id: string) => half != null && coach.step === id;
+  const off = () => coach.setOff(true);
   const extras = useMemo(() => (book ? leftoverSheets(book, drop).filter((x) => !x.core) : []), [book, drop]);
 
   useEffect(() => {
@@ -123,13 +133,13 @@ export default function NotePrepareTab(
       if (drop.size) { const files = unzipSync(base); dropped = removeSheets(files, [...drop]); base = zipSync(files); }
       const p = picked();
       const fresh = p.filter((x) => !x.note).map((x) => x.title);
-      let plans = planNotes(p, roll, spare, layout);
+      let plans = planNotes(p, roll, spare, layout, half);
       // 맞아야 하는 숫자 짝은 **작년 값이 든 배치**에서 배운다. 자리는 이월한 것과 같다.
       const links = findLinks(roll ? planNotes(p, false, spare, layout) : plans, dsd.fs);
 
       // 작년 표준주석엑셀의 수식을 노란 칸에 미리 넣는다.
       let told = '';
-      if (roll && inherit && prevBook) {
+      if (roll && half == null && inherit && prevBook) {
         const old = readWorkbook(await noteBookBytes(prevBook), isAnyNoteSheet);
         const known = new Set([
           ...sheetNames(base), ...plans.map((x) => x.name), INDEX_SHEET, '대사표',
@@ -151,7 +161,10 @@ export default function NotePrepareTab(
       let linked = 0, ambiguous = 0;
       const extra: ReturnType<typeof linkListSheet>[] = [];
       if (roll && link && kept.length) {
-        const r = linkToWtb(plans, planNotes(p, false, spare, layout), wtbSources(kept, eng.fy - 1));
+        // 반기 틀은 열쇠 칸(전기말·전반기 값)으로 정산표 줄을 찾는다 — 올해 반기 값은 중간 정산표에 없다.
+        const r = half != null
+          ? linkHalfToWtb(plans, planNotes(p, false, spare, layout), wtbHalfSources(kept, half))
+          : linkToWtb(plans, planNotes(p, false, spare, layout), wtbSources(kept, eng.fy - 1));
         plans = r.plans; linked = r.links.length; ambiguous = r.ambiguous;
         if (r.links.length) extra.push(linkListSheet(r.links));
       }
@@ -167,14 +180,18 @@ export default function NotePrepareTab(
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       const yellow = plans.flatMap((x) => x.cells).filter((c) => c.kind === 'input').length;
       // 주석 엑셀을 내려받으면 그 회사는 「진행 중」(사용자 2026-10-05). 건 상태 「준비」 → 「진행」. 못 써도 내려받기는 된 것이다.
+      setMadeSheet(true);
       if (canWrite && eng.status === '준비') void updateEngagement(eng.id, { status: '진행' }).then(onStarted).catch(() => undefined);
       setDone((layout === 'long'
         ? `주석 ${plans.length}개를 「${LONG_SHEET}」 시트 한 장에 세로로 내리고 목록 한 장을 그 앞에 두었습니다`
         : `주석 시트 ${plans.length}장을 얹고 목록 한 장을 그 앞에 두었습니다`)
         + ' — 목록의 제목을 누르면 그 주석으로, 주석 맨 위 「◀ 주석목록」을 누르면 목록으로 갑니다.'
-        + (roll ? ` 당기 값을 전기로 밀고 채워 넣을 칸 ${yellow}개를 노랗게 두었습니다.` : '')
+        + (roll && half != null ? ` 같은 해 반기 보고서를 FY${half} 기말 서식으로 바꿨습니다 — 당기·전반기 칸 ${yellow}개를 노랗게 두고 전기말 칸은 반기 값 그대로 두었습니다.`
+          : roll ? ` 당기 값을 전기로 밀고 채워 넣을 칸 ${yellow}개를 노랗게 두었습니다.` : '')
         + told
-        + (linked ? ` 당기 칸 ${linked}개는 작년 금액이 같은 정산표 줄에 미리 연결했습니다(파란 칸 — 「정산표연결」 시트에 목록).`
+        + (linked ? (half != null
+          ? ` ${linked}칸은 반기 보고서의 전기말·전반기 금액이 같은 정산표 줄에 미리 연결했습니다(파란 칸 — 「정산표연결」 시트에 목록).`
+          : ` 당기 칸 ${linked}개는 작년 금액이 같은 정산표 줄에 미리 연결했습니다(파란 칸 — 「정산표연결」 시트에 목록).`)
           + (ambiguous ? ` ${ambiguous}칸은 같은 금액 줄이 여럿이라 비워 두었습니다.` : '') : '')
         + (dropped.length ? ` 정산표에서 ${dropped.join(' · ')} 시트를 뺐습니다.` : '')
         + (links.length ? ` 맞아야 하는 숫자 짝 ${links.length}개를 「대사표」 시트에 걸어 두었습니다.` : '')
@@ -191,12 +208,12 @@ export default function NotePrepareTab(
     setBusy('dsd'); setSay(null); setDone(null);
     try {
       const p = picked();
-      const plans = planNotes(p, true, spare, layout);
+      const plans = planNotes(p, true, spare, layout, half);
       let xml = contentsOf(dsd.bytes);
       const skip = new Set<number>();
       for (const x of plans) for (const b of x.back ?? []) skip.add(b.slot);
       // 민 자리를 붉게 — 무엇이 바뀌었는지 편집기에서 바로 보인다.
-      const rolled = rollStatements(xml, 1, skip, true);
+      const rolled = half != null ? halfStatements(xml, half, skip, true) : rollStatements(xml, 1, skip, true);
       xml = rolled.xml;
       const r = writeNotes(xml, plans, sheetsFromPlans(plans));
       download(buildDsd(dsd.bytes, r.xml),
@@ -204,9 +221,12 @@ export default function NotePrepareTab(
 
       const why = new Map<string, number>();
       for (const l of rolled.leftovers) why.set(l.why, (why.get(l.why) ?? 0) + 1);
-      setDone(`작년 것을 한 해 밀어 빈 서식을 만들었습니다 — 주석 ${r.changed}칸 · `
+      setMadeDsd(true);
+      setDone((half != null
+        ? `반기 보고서를 FY${half} 기말 서식으로 바꿨습니다 — 주석 ${r.changed}칸 · 말·날짜 ${rolled.terms}칸 · 재무제표 금액 비움 ${rolled.amounts}칸. 바꾼 자리는 붉은 글자로 표시했습니다. 감사의견 글은 그대로이니 편집기에서 고치십시오.`
+        : `작년 것을 한 해 밀어 빈 서식을 만들었습니다 — 주석 ${r.changed}칸 · `
         + `기수·연도 ${rolled.terms}칸 · 재무제표 금액 ${rolled.amounts}칸. `
-        + '기수·연도를 민 자리는 붉은 글자로 표시했습니다.'
+        + '기수·연도를 민 자리는 붉은 글자로 표시했습니다.')
         + (why.size ? ` 다만 ${[...why].map(([k, v]) => `${v}곳은 ${k}`).join(', ')} — 편집기에서 보십시오.` : ''));
     } catch (e) {
       setSay(e instanceof Error ? e.message : '만들지 못했습니다.');
@@ -233,7 +253,13 @@ export default function NotePrepareTab(
             지금 「다음 해로 이월」이 꺼져 있습니다 — 작년 보고서를 그대로 옮긴 엑셀이 나옵니다(위 작업 설정).
           </div>
         )}
-        {prevBook && (
+        {half != null && (
+          <div style={{ fontSize: 'var(--fs-2)', color: 'var(--navy)', marginLeft: 38, marginTop: 4 }}>
+            <b>같은 해 반기 → 기말</b> — 틀이 FY{half} 반기 보고서입니다. 기수는 그대로, 당기·전반기 칸은 비우고 전기말 칸은 반기 값 그대로 둡니다.
+            {coach.off && <button className="btn-sm" style={{ marginLeft: 8 }} onClick={() => coach.setOff(false)}>💬 단계 안내 다시 켜기</button>}
+          </div>
+        )}
+        {prevBook && half == null && (
           <div style={{ marginLeft: 38 }}>
             <Opt label="작년 수식" hint="주석 제목 → 행 라벨 → 열로 짝을 지어 수식만 가져옵니다(값은 안 가져옴). 올해 정산표의 시트 이름이 작년과 같아야 링크가 삽니다.">
               <label style={{ opacity: roll ? 1 : 0.5 }}>
@@ -251,6 +277,10 @@ export default function NotePrepareTab(
       <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'minmax(0, 3fr) minmax(280px, 2fr)', alignItems: 'start' }}>
         <div className="card">
           <div className="chdr">가. 주석 엑셀 <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>정산표에 주석 시트를 얹어 새 파일로</span></div>
+          <CoachSpot>
+          <CoachBubble show={at('wtb')} n={2} of={4} onOff={off}>
+            📒 정산표 관리에서 <b>「같은 해 반기 정산표에서 시작」</b>으로 만든 <b>중간 정산표</b>를 고르세요. 당기 칸을 그 정산표에 미리 잇습니다.
+          </CoachBubble>
           <Opt label="올해 정산표">
             <label className="btn-sm btn-sm-navy" style={{ cursor: 'pointer' }}>
               {wtb ? '다른 파일' : '파일 고르기'}
@@ -261,6 +291,7 @@ export default function NotePrepareTab(
               : <span style={{ marginLeft: 8, color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>정산표 이월로 만든 중간 정산표를 그대로 넣으면 됩니다</span>}
             <button className="btn-sm" style={{ marginLeft: 8 }} onClick={onWtb} title="📒 정산표 관리 — 중간 이월 · 기말 갱신">📒 정산표 만들기 ›</button>
           </Opt>
+          </CoachSpot>
           {extras.length > 0 && (
             <Opt label="뺄 시트" hint="정산표 표(WBS·WPL·WMS)·보고서·SCE·SCF·WCF·A500 이 아닌 시트입니다. 다른 시트의 수식이 가리키는 시트는 빼면 #REF! 가 되어 막아 둡니다. 원본 파일은 그대로입니다.">
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px' }}>
@@ -282,26 +313,34 @@ export default function NotePrepareTab(
               당기 칸을 정산표에 미리 연결 <span style={{ color: 'var(--ink-3)', fontSize: 'var(--fs-1)' }}>(파란 칸 — 기말에 정산표만 고치면 따라옴)</span>
             </label>
           </Opt>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 10, borderTop: '1px solid var(--rule-2)' }}>
+          <CoachSpot style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 10, borderTop: '1px solid var(--rule-2)' }}>
+            <CoachBubble show={at('sheet')} n={3} of={4} onOff={off} align="right">
+              <b>주석 엑셀 내려받기</b>를 누르세요. 당기·전반기 칸은 노랗게(정산표에 이은 칸은 파랗게), 전기말 칸은 반기 값 그대로 나옵니다.
+            </CoachBubble>
             <button className="btn-p" disabled={!!busy || !wtb} onClick={() => void makeSheet()}>
               {busy === 'sheet' ? '만드는 중…' : '주석 엑셀 내려받기'}
             </button>
-          </div>
+          </CoachSpot>
         </div>
 
         <div className="card">
           <div className="chdr">나. 사전작성 DSD <span style={{ fontSize: 'var(--fs-1)', fontWeight: 400, color: 'var(--ink-3)' }}>편집기용 껍데기</span></div>
           <div style={{ fontSize: 'var(--fs-2)', color: 'var(--ink-2)', lineHeight: 1.7 }}>
-            작년 보고서를 한 해 밀어 둡니다 — 민 자리는 <b style={{ color: 'var(--bad)' }}>붉게</b>. 정산표는 필요 없습니다.
+            {half != null
+              ? <>반기 보고서를 기말 서식으로 바꿔 둡니다 — 바꾼 자리는 <b style={{ color: 'var(--bad)' }}>붉게</b>. 정산표는 필요 없습니다.</>
+              : <>작년 보고서를 한 해 밀어 둡니다 — 민 자리는 <b style={{ color: 'var(--bad)' }}>붉게</b>. 정산표는 필요 없습니다.</>}
           </div>
           <div style={{ fontSize: 'var(--fs-1)', color: 'var(--ink-3)', margin: '8px 0', fontFamily: 'var(--font-num)', wordBreak: 'break-all' }}>
             감사보고서_{safeName(eng.entityName)}_FY{eng.fy}_사전작성.DSD
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <CoachSpot style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <CoachBubble show={at('dsd')} n={4} of={4} onOff={off} align="right">
+              편집기에서 이어 쓸 <b>기말 서식 DSD</b>도 받아 두세요(선택). 다 채우면 ③ 검증 → ④ 완성으로 갑니다.
+            </CoachBubble>
             <button className="btn-p" disabled={!!busy} onClick={makeDsd}>
               {busy === 'dsd' ? '만드는 중…' : '사전작성 DSD 내려받기'}
             </button>
-          </div>
+          </CoachSpot>
         </div>
       </div>
 

@@ -16,6 +16,7 @@ import { pickAll, pickNotes, planNotes, isNoteSheet, LAYOUT_LABEL, type SheetLay
 import { readWorkbook } from '../../lib/xlsxRead';
 import { writeNotes, buildDsd, contentsOf } from '../../lib/dsdWrite';
 import { rollStatements } from '../../lib/dsdRoll';
+import { halfStatements } from '../../lib/dsdHalf';
 import type { Engagement, NoteRow } from '../../lib/dsdApi';
 import { registerNoteBook, type NoteBook } from '../../lib/dsdBookApi';
 import { StepHead, Opt, type LoadedDsd, type NoteFrom } from './DsdShell';
@@ -23,12 +24,13 @@ import type { Filled } from './NoteVerifyCard';
 import { safeName, download } from './dsdUi';
 
 export default function NoteDsdCard(
-  { eng, notes, dsd, xl, setXl, from, spare, layout, book, onBook, readOnly, roll }:
+  { eng, notes, dsd, xl, setXl, from, spare, layout, book, onBook, readOnly, roll, half }:
   {
     eng: Engagement; notes: NoteRow[]; dsd: LoadedDsd;
     xl: Filled | null; setXl: (v: Filled | null) => void; from: NoteFrom; spare: number;
     layout: SheetLayout; book: NoteBook | null; onBook: (b: NoteBook) => void; readOnly: boolean;
     /** 다음 해로 이월 — ②③④ 공통(DsdShell.WorkSettings) */ roll: boolean;
+    /** 같은 해 반기 보고서를 틀로 — 그 해(dsdHalf). ② 와 같아야 자리가 맞는다. */ half: number | null;
   },
 ) {
   const [rollFs, setRollFs] = useState(true);
@@ -53,7 +55,7 @@ export default function NoteDsdCard(
       // ② 와 **같은 규칙으로** 골라야 시트 이름이 맞는다(DsdShell.NoteFrom · 작업 건의 시트 구성).
       const picked = from === 'file' ? pickAll(dsd.blocks) : pickNotes(dsd.blocks, notes);
       if (!picked.length) throw new Error('켜 둔 주석이 없습니다. ① 대상에서 골라 주세요.');
-      const plans = planNotes(picked, roll, spare, layout);
+      const plans = planNotes(picked, roll, spare, layout, half);
       const sheets = readWorkbook(xl.bytes, (n) => isNoteSheet(n, layout));
       if (!sheets.length) {
         throw new Error(layout === 'long'
@@ -67,11 +69,14 @@ export default function NoteDsdCard(
       if (roll && rollFs) {
         const skip = new Set<number>();
         for (const p of plans) for (const b of p.back ?? []) skip.add(b.slot);
-        const rolled = rollStatements(xml, 1, skip);
+        // 반기 틀은 한 해 밀지 않고 같은 해 반기 → 기말로 바꾼다(기수 그대로 · 6월 30일 → 12월 31일 · 당기·전반기 금액 비움).
+        const rolled = half != null ? halfStatements(xml, half, skip) : rollStatements(xml, 1, skip);
         xml = rolled.xml;
         const why = new Map<string, number>();
         for (const l of rolled.leftovers) why.set(l.why, (why.get(l.why) ?? 0) + 1);
-        fsTold = ` 재무제표·표지는 기수·연도 ${rolled.terms}칸을 올리고 금액 ${rolled.amounts}칸을 전기로 내렸습니다.`
+        fsTold = (half != null
+          ? ` 재무제표·표지는 반기 말·날짜 ${rolled.terms}칸을 기말로 바꾸고 당기·전반기 금액 ${rolled.amounts}칸을 비웠습니다(전기말은 그대로) — 재무제표 금액은 편집기에서 넣으십시오.`
+          : ` 재무제표·표지는 기수·연도 ${rolled.terms}칸을 올리고 금액 ${rolled.amounts}칸을 전기로 내렸습니다.`)
           + (why.size ? ` 다만 ${[...why].map(([k, v]) => `${v}곳은 ${k}`).join(', ')} — 편집기에서 보십시오.` : '');
       }
       const r = writeNotes(xml, plans, sheets);
@@ -147,7 +152,8 @@ export default function NoteDsdCard(
 
       <Opt label="재무제표·표지" hint="「제 18(당) 기 2025년 12월 31일」 → 「제 19(당) 기 2026년 12월 31일」. 본문 서술 속의 연도는 건드리지 않습니다. 감사보고서 본문과 자본변동표는 손대지 않고 몇 곳인지 알려 드립니다.">
         <label style={{ opacity: roll ? 1 : 0.5 }}>
-          <input type="checkbox" checked={rollFs} disabled={!roll} onChange={(e) => setRollFs(e.target.checked)} /> 기수·연도를 올리고 재무제표 금액을 전기로 내립니다
+          <input type="checkbox" checked={rollFs} disabled={!roll} onChange={(e) => setRollFs(e.target.checked)} />{' '}
+          {half != null ? '같은 해 반기 → 기말로 바꿉니다(기수 그대로 · 6월 30일 → 12월 31일 · 당기·전반기 금액 비움, 전기말 그대로)' : '기수·연도를 올리고 재무제표 금액을 전기로 내립니다'}
         </label>
       </Opt>
 
